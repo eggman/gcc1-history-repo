@@ -1,10 +1,12 @@
-This is a copy of one node from the Info file internals-1.
+This is a copy of one node from the Info file gcc.info-1.
 For full information on installing and porting GCC, refer to the
-internals manual:
+GCC manual:
 
-  Info file   internals
-  TeX output  internals.dvi
-  TeX source  internals.texinfo
+  Info file   gcc.info
+  TeX output  gcc.dvi
+  TeX source  gcc.texinfo
+
+File: gcc.info,  Node: Installation,  Next: Trouble,  Prev: Options,  Up: Top
 
 Installing GNU CC
 *****************
@@ -159,7 +161,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      more time, do this:
 
           make stage2
-          Make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
+          make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
           foreach file (*.o)
           cmp $file stage2/$file
           end
@@ -223,8 +225,8 @@ Also, you can specify an alternative default directory for these
 files by setting the Make variable `libdir' when you make GNU CC.
 
 
-
-File: internals,  Node: VMS Install,  Prev: Installation,  Up: Installation
+
+File: gcc.info,  Node: VMS Install,  Prev: Installation,  Up: Installation
 
 Installing GNU CC on VMS
 ========================

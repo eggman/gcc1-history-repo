@@ -8,45 +8,47 @@
 # Directory in which to store the results.
 LIB=/usr/local/lib/gcc-include
 
-mkdir ${LIB}
-for dir in sys sun sundev sunwindow; do
-  if [ -d /usr/include/$dir ]; then
-    mkdir ${LIB}/$dir
+echo 'Finding header files:'
+cd /usr/include
+files=`find . -print`
+echo 'Checking header files:'
+for file in $files; do
+  if egrep -s '[ 	]_IO[A-Z]*\(|#define._IO|CTRL' $file; then
+    echo Fixing $file
+    if [ -r $file ]; then
+      cp $file ${LIB}/$file >/dev/null 2>&1	\
+      || (mkdir `dirname ${LIB}/$file`		\
+	  && cp $file ${LIB}/$file)		\
+      || echo "Can't copy $file"
+      chmod +w ${LIB}/$file
+      ex ${LIB}/$file <<EOF
+      g/[ 	]_IO[A-Z]*(/s/(\(.\),/('\1',/
+      g/#define._IO/s/'x'/x/g
+      g/CTRL[ 	]*(/s/\(.\))/'\1')/
+      g/#define.CTRL/s/'c'/c/g
+      wq
+EOF
+    fi
   fi
 done
 
-cp /usr/include/sys/ioctl.h ${LIB}/sys/ioctl.h
-chmod +w ${LIB}/sys/ioctl.h
-ex ${LIB}/sys/ioctl.h <<EOF
-g/_IO/s/(\(.\),/('\1',/
-g/#define._IO/s/'x'/x/g
-wq
-EOF
-
-for file in sys/mtio.h sys/vcmd.h sys/des.h  \
-	    vaxuba/qvioctl.h \
-	    sun/dkio.h sun/fbio.h sun/gpio.h sun/ndio.h  \
-            sundev/kbio.h sundev/msio.h sundev/fpareg.h sundev/mcpcmd.h  \
-	    sundev/msreg.h sundev/vuid_event.h sunwindow/win_ioctl.h; do
-  if [ -r /usr/include/$file ]; then
-    cp /usr/include/$file ${LIB}/$file
-    chmod +w ${LIB}/$file
-    ex ${LIB}/$file <<EOF
-    g/_IO/s/(\(.\),/('\1',/
-    wq
-EOF
-  fi
-done
 
 # Fix one other error in this file: a mismatched quote not inside a C comment.
-ex ${LIB}/sundev/vuid_event.h <<EOF
-g/doesn't/s/doesn't/doesn''t/
-wq
+file=sundev/vuid_event.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    cp $file ${LIB}/$file >/dev/null 2>&1	\
+    || (mkdir `dirname ${LIB}/$file`		\
+        && cp $file ${LIB}/$file)		\
+    || echo "Can't copy $file"
+    chmod +w ${LIB}/$file
+  fi
+fi
 
-cp /usr/include/sys/ttychars.h ${LIB}/sys/ttychars.h
-chmod +w ${LIB}/sys/ttychars.h
-ex ${LIB}/sys/ttychars.h << EOF
-g/CTRL/s/(\(.\))/('\1')/
-g/#define.CTRL/s/'c'/c/g
-wq
+if [ -r ${LIB}/sundev/vuid_event.h ]; then
+  echo Fixing sundev/vuid_event.h comment
+  ex ${LIB}/sundev/vuid_event.h <<EOF
+  g/doesn't/s/doesn't/doesn''t/
+  wq
 EOF
+fi

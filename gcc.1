@@ -308,6 +308,9 @@ Spurious warning can occur because GNU CC does not realize that
 certain functions (including \fBabort\fR
 and \fBlongjmp\fR) will never return.
 .TP
+.B \-Wunused
+Warn whenever a local variable is unused aside from its declaration.
+.TP
 .B \-Wimplicit
 Warn whenever a function is implicitly declared.
 .TP
@@ -443,6 +446,10 @@ Always pop the arguments to each function call as soon as that
 function returns.
 Normally the compiler (when optimizing) lets arguments accumulate on the
 stack for several function calls and pops them all at once.
+.TP 10
+.B \ \ \ \ \ \ \ \ \-fstrength-reduce
+Perform the optimizations of loop strength reduction and
+elimination of iteration variables.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fcombine-regs
 Allow the combine pass to combine an instruction that copies one

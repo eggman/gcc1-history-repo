@@ -324,7 +324,7 @@ main (argc, argv)
   rtx desc;
   FILE *infile;
   extern rtx read_rtx ();
-  register int c, i;
+  register int c;
 
   max_opno = -1;
 

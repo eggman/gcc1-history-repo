@@ -33,8 +33,8 @@ and this notice must be preserved on all copies.  */
    as argument) before parsing the then-clause and calling `expand_end_cond'
    after parsing the then-clause.
 
-   `expand_start_function' is called at the beginning of a function,
-   before the function body is parsed, and `expand_end_function' is
+   `expand_function_start' is called at the beginning of a function,
+   before the function body is parsed, and `expand_function_end' is
    called after parsing the body.
 
    Call `assign_stack_local' to allocate a stack slot for a local variable.
@@ -66,6 +66,15 @@ and this notice must be preserved on all copies.  */
    May affect compilation of return insn or of function epilogue.  */
 
 int current_function_pops_args;
+
+/* Nonzero if function being compiled needs to be given an address
+   where the value should be stored.  */
+
+int current_function_returns_struct;
+
+/* Nonzero if function being compiled needs to be passed a static chain.  */
+
+int current_function_needs_context;
 
 /* If function's args have a fixed size, this is that size, in bytes.
    Otherwise, it is -1.
@@ -122,6 +131,9 @@ static rtx tail_recursion_reentry;
 static tree last_expr_type;
 static rtx last_expr_value;
 
+/* Chain of all RTL_EXPRs that have insns in them.  */
+static tree rtl_expr_chain;
+
 /* Last insn of those whose job was to put parms into their nominal homes.  */
 static rtx last_parm_insn;
 
@@ -136,6 +148,7 @@ static void fixup_stack_slots ();
 static rtx fixup_stack_1 ();
 static rtx fixup_memory_subreg ();
 static void fixup_var_refs ();
+static void fixup_var_refs_insns ();
 static rtx fixup_var_refs_1 ();
 static rtx parm_stack_loc ();
 static void optimize_bit_field ();
@@ -589,7 +602,6 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
   int ninputs = list_length (inputs);
   int noutputs = list_length (outputs);
   int nclobbers = list_length (clobbers);
-  int numargs = 0;
   tree tail;
   int i;
 
@@ -612,8 +624,15 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
       if (TREE_CODE (val) != VAR_DECL
 	  && TREE_CODE (val) != PARM_DECL
 	  && TREE_CODE (val) != INDIRECT_REF)
-	TREE_VALUE (tail) = build (SAVE_EXPR, TREE_TYPE (val), val,
-				   gen_reg_rtx (TYPE_MODE (TREE_TYPE (val))));
+	{
+	  rtx reg = gen_reg_rtx (TYPE_MODE (TREE_TYPE (val)));
+	  /* `build' isn't safe; it really expects args to be trees.  */
+	  tree t = build_nt (SAVE_EXPR, val, reg);
+
+	  save_expr_regs = gen_rtx (EXPR_LIST, VOIDmode, reg, save_expr_regs);
+	  TREE_VALUE (tail) = t;
+	  TREE_TYPE (t) = TREE_TYPE (val);
+	}
     }
 
   if (ninputs + noutputs > MAX_RECOG_OPERANDS)
@@ -629,7 +648,7 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
 
   body = gen_rtx (ASM_OPERANDS, VOIDmode,
 		  TREE_STRING_POINTER (string), "", 0, argvec, constraints);
-  body->volatil = vol;
+  MEM_VOLATILE_P (body) = vol;
 
   /* Eval the inputs and put them into ARGVEC.
      Put their constraints into ASM_INPUTs and store in CONSTRAINTS.  */
@@ -693,7 +712,7 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
 				TREE_STRING_POINTER (string),
 				TREE_STRING_POINTER (TREE_PURPOSE (tail)),
 				i, argvec, constraints));
-	  SET_SRC (XVECEXP (body, 0, i))->volatil = vol;
+	  MEM_VOLATILE_P (SET_SRC (XVECEXP (body, 0, i))) = vol;
 	}
 
       /* Store (clobber REG) for each clobbered register specified.  */
@@ -750,16 +769,20 @@ clear_last_expr ()
 }
 
 /* Begin a statement which will return a value.
-   Returns a tree node containing information that will be needed
-   at the end in order to restore the previous state.  */
+   Return the RTL_EXPR for this statement expr.
+   The caller must save that value and pass it to expand_end_stmt_expr.  */
 
 tree
 expand_start_stmt_expr ()
 {
   rtx save = start_sequence ();
+  /* Make the RTL_EXPR node temporary, not momentary,
+     so that rtl_expr_chain doesn't become garbage.  */
+  int momentary = suspend_momentary ();
   tree t = make_node (RTL_EXPR);
-  expr_stmts_for_value++;
+  resume_momentary (momentary);
   RTL_EXPR_RTL (t) = save;
+  expr_stmts_for_value++;
   return t;
 }
 
@@ -769,7 +792,7 @@ expand_start_stmt_expr ()
 
    The nodes of that expression have been freed by now, so we cannot use them.
    But we don't want to do that anyway; the expression has already been
-   evaluated and now we just want to use the value.  So generate a SAVE_EXPR
+   evaluated and now we just want to use the value.  So generate a RTL_EXPR
    with the proper type and RTL value.
 
    If the last substatement was not an expression,
@@ -788,9 +811,18 @@ expand_end_stmt_expr (t)
     }
   TREE_TYPE (t) = last_expr_type;
   RTL_EXPR_RTL (t) = last_expr_value;
-  RTL_EXPR_SEQUENCE (t) = gen_sequence ();
+  RTL_EXPR_SEQUENCE (t) = get_insns ();
+
+  rtl_expr_chain = tree_cons (NULL_TREE, t, rtl_expr_chain);
 
   end_sequence (saved);
+
+  /* Don't consider deleting this expr or containing exprs at tree level.  */
+  TREE_VOLATILE (t) = 1;
+  /* Propagate volatility of the actual RTL expr.  */
+  TREE_THIS_VOLATILE (t) = volatile_refs_p (last_expr_value);
+
+  last_expr_type = 0;
   expr_stmts_for_value--;
 
   return t;
@@ -932,7 +964,6 @@ expand_loop_continue_here ()
 void
 expand_end_loop ()
 {
-  register struct nesting *thisloop = loop_stack;
   register rtx insn = get_last_insn ();
   register rtx start_label = loop_stack->data.loop.start_label;
 
@@ -1071,6 +1102,7 @@ expand_null_return_1 (last_insn)
      rtx last_insn;
 {
   clear_pending_stack_adjust ();
+  do_pending_stack_adjust ();
 #ifdef FUNCTION_EPILOGUE
 #ifdef HAVE_return
   if (! HAVE_return)
@@ -1158,6 +1190,8 @@ expand_return (retval)
 	  case LE_EXPR:
 	  case TRUTH_ANDIF_EXPR:
 	  case TRUTH_ORIF_EXPR:
+	  case TRUTH_AND_EXPR:
+	  case TRUTH_OR_EXPR:
 	  case TRUTH_NOT_EXPR:
 	    op0 = gen_label_rtx ();
 	    val = DECL_RTL (DECL_RESULT (this_function));
@@ -1328,6 +1362,11 @@ expand_end_bindings (vars, mark_ends, dont_jump_in)
   register struct nesting *thisblock = block_stack;
   register tree decl;
 
+  if (warn_unused)
+    for (decl = vars; decl; decl = TREE_CHAIN (decl))
+      if (! TREE_USED (decl) && TREE_CODE (decl) == VAR_DECL)
+	warning_with_decl (decl, "unused variable `%s'");
+
   /* Mark the beginning and end of the scope if requested.  */
 
   if (mark_ends)
@@ -1473,7 +1512,7 @@ expand_decl (decl, cleanup)
       DECL_RTL (decl) = gen_reg_rtx (DECL_MODE (decl));
       if (TREE_CODE (type) == POINTER_TYPE)
 	mark_reg_pointer (DECL_RTL (decl));
-      DECL_RTL (decl)->volatil = 1;
+      REG_USERVAR_P (DECL_RTL (decl)) = 1;
     }
   else if (DECL_SIZE (decl) == 0)
     /* Variable with incomplete type.  */
@@ -1490,7 +1529,7 @@ expand_decl (decl, cleanup)
 			      / BITS_PER_UNIT);
       /* If this is a memory ref that contains aggregate components,
 	 mark it as such for cse and loop optimize.  */
-      DECL_RTL (decl)->in_struct
+      MEM_IN_STRUCT_P (DECL_RTL (decl))
 	= (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
 	   || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
 	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
@@ -1499,7 +1538,7 @@ expand_decl (decl, cleanup)
 	 set the volatile bit, to prevent optimizations from
 	 undoing the effects.  */
       if (flag_float_store && TREE_CODE (type) == REAL_TYPE)
-	DECL_RTL (decl)->volatil = 1;
+	MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
 #endif
     }
   else
@@ -1552,9 +1591,9 @@ expand_decl (decl, cleanup)
     }
 
   if (TREE_VOLATILE (decl))
-    DECL_RTL (decl)->volatil = 1;
+    MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
   if (TREE_READONLY (decl))
-    DECL_RTL (decl)->unchanging = 1;
+    RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
 
   /* If doing stupid register allocation, make sure life of any
      register variable starts here, at the start of its scope.  */
@@ -2188,17 +2227,17 @@ put_var_into_stack (decl)
   if (new == 0)
     new = assign_stack_local (GET_MODE (reg), GET_MODE_SIZE (GET_MODE (reg)));
 
+  XEXP (reg, 0) = XEXP (new, 0);
+  /* `volatil' bit means one thing for MEMs, another entirely for REGs.  */
+  REG_USERVAR_P (reg) = 0;
+  PUT_CODE (reg, MEM);
+
   /* If this is a memory ref that contains aggregate components,
      mark it as such for cse and loop optimize.  */
-  reg->in_struct
+  MEM_IN_STRUCT_P (reg)
     = (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
        || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
        || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
-
-  XEXP (reg, 0) = XEXP (new, 0);
-  PUT_CODE (reg, MEM);
-  /* `volatil' bit means one thing for MEMs, another entirely for REGs.  */
-  reg->volatil = 0;
 
   fixup_var_refs (reg);
 }
@@ -2208,9 +2247,48 @@ fixup_var_refs (var)
      rtx var;
 {
   register rtx insn;
+  extern rtx sequence_stack;
+  rtx stack = sequence_stack;
+  tree pending;
 
-  /* Yes.  Must scan all insns for stack-refs that exceed the limit.  */
-  for (insn = get_insns (); insn; )
+  stack = sequence_stack;
+
+  /* Must scan all insns for stack-refs that exceed the limit.  */
+  fixup_var_refs_insns (var, get_insns (), stack == 0);
+
+  /* Scan all pending sequences too.  */
+  for (; stack; stack = XEXP (XEXP (stack, 1), 1))
+    {
+      push_to_sequence (XEXP (stack, 0));
+      fixup_var_refs_insns (var, XEXP (stack, 0),
+			    XEXP (XEXP (stack, 1), 1) == 0);
+      end_sequence ();
+    }
+
+  /* Scan all waiting RTL_EXPRs too.  */
+  for (pending = rtl_expr_chain; pending; pending = TREE_CHAIN (pending))
+    {
+      rtx seq = RTL_EXPR_SEQUENCE (TREE_VALUE (pending));
+      if (seq != const0_rtx && seq != 0)
+	{
+	  push_to_sequence (seq);
+	  fixup_var_refs_insns (var, seq, 0);
+	  end_sequence ();
+	}
+    }
+}
+
+/* Scan the insn-chain starting with INSN for refs to VAR
+   and fix them up.  TOPLEVEL is nonzero if this chain is the
+   main chain of insns for the current function.  */
+
+static void
+fixup_var_refs_insns (var, insn, toplevel)
+     rtx var;
+     rtx insn;
+     int toplevel;
+{
+  while (insn)
     {
       rtx next = NEXT_INSN (insn);
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == CALL_INSN
@@ -2218,7 +2296,8 @@ fixup_var_refs (var)
 	{
 	  /* The insn to load VAR from a home in the arglist
 	     is now a no-op.  When we see it, just delete it.  */
-	  if (GET_CODE (PATTERN (insn)) == SET
+	  if (toplevel
+	      && GET_CODE (PATTERN (insn)) == SET
 	      && SET_DEST (PATTERN (insn)) == var
 	      && rtx_equal_p (SET_SRC (PATTERN (insn)), var))
 	    {
@@ -2300,7 +2379,6 @@ fixup_var_refs_1 (var, x, insn)
 	rtx src = SET_SRC (x);
 	rtx outerdest = dest;
 	rtx outersrc = src;
-	int strictflag = GET_CODE (dest) == STRICT_LOW_PART;
 
 	while (GET_CODE (dest) == SUBREG || GET_CODE (dest) == STRICT_LOW_PART
 	       || GET_CODE (dest) == SIGN_EXTRACT
@@ -2543,7 +2621,7 @@ optimize_bit_field (body, insn, equiv_mem)
     {
       register rtx memref = 0;
 
-      /* Now check that the contanting word is memory, not a register,
+      /* Now check that the containing word is memory, not a register,
 	 and that it is safe to change the machine mode and to
 	 add something to the address.  */
 
@@ -2600,8 +2678,7 @@ optimize_bit_field (body, insn, equiv_mem)
 			 && SUBREG_WORD (src) == 0)
 		    src = SUBREG_REG (src);
 		  if (GET_MODE (src) != GET_MODE (memref))
-		    src = gen_rtx (SUBREG, GET_MODE (memref),
-				   SET_SRC (body), 0);
+		    src = gen_lowpart (GET_MODE (memref), SET_SRC (body));
 		  SET_SRC (body) = src;
 		}
 	      else if (GET_MODE (SET_SRC (body)) != VOIDmode
@@ -2628,12 +2705,14 @@ optimize_bit_field (body, insn, equiv_mem)
 		SET_SRC (body) = memref;
 	      else
 		{
+		  /* Convert the mem ref to the destination mode.  */
+		  rtx last = get_last_insn ();
 		  rtx newreg = gen_reg_rtx (GET_MODE (dest));
-		  emit_insn_before (gen_extend_insn (newreg, memref,
-						     GET_MODE (dest),
-						     GET_MODE (memref),
-						     GET_CODE (SET_SRC (body)) == ZERO_EXTRACT),
-				    insn);
+		  convert_move (newreg, memref,
+				GET_CODE (SET_SRC (body)) == ZERO_EXTRACT);
+		  /* Put the conversion before the insn being fixed.  */
+		  reorder_insns (NEXT_INSN (last), get_last_insn (),
+				 PREV_INSN (insn));
 		  SET_SRC (body) = newreg;
 		}
 	    }
@@ -2746,7 +2825,8 @@ assign_parms (fndecl)
       DECL_OFFSET (parm) = -1;
 
       if (TREE_TYPE (parm) == error_mark_node
-	  /* This can happen after weird syntax errors.  */
+	  /* This can happen after weird syntax errors
+	     or if an enum type is defined among the parms.  */
 	  || TREE_CODE (parm) != PARM_DECL
 	  || DECL_ARG_TYPE (parm) == NULL)
 	{
@@ -2805,7 +2885,7 @@ assign_parms (fndecl)
 
       /* If this is a memory ref that contains aggregate components,
 	 mark it as such for cse and loop optimize.  */
-      stack_parm->in_struct = aggregate;
+      MEM_IN_STRUCT_P (stack_parm) = aggregate;
 
       /* Let machine desc say which reg (if any) the parm arrives in.
 	 0 means it arrives on the stack.  */
@@ -2931,7 +3011,7 @@ assign_parms (fndecl)
 
 	  /* If this is a memory ref that contains aggregate components,
 	     mark it as such for cse and loop optimize.  */
-	  stack_parm->in_struct = aggregate;
+	  MEM_IN_STRUCT_P (stack_parm) = aggregate;
 	}
 
       /* ENTRY_PARM is an RTX for the parameter as it arrives,
@@ -2964,7 +3044,8 @@ assign_parms (fndecl)
 	    }
 	  DECL_RTL (parm) = stack_parm;
 	}
-      else if (! ((obey_regdecls && ! TREE_REGDECL (parm))
+      else if (! ((obey_regdecls && ! TREE_REGDECL (parm)
+		   && ! TREE_INLINE (fndecl))
 		  /* If -ffloat-store specified, don't put explicit
 		     float variables into registers.  */
 		  || (flag_float_store
@@ -2973,7 +3054,7 @@ assign_parms (fndecl)
 	  /* Store the parm in a pseudoregister during the function.  */
 	  register rtx parmreg = gen_reg_rtx (nominal_mode);
 
-	  parmreg->volatil = 1;
+	  REG_USERVAR_P (parmreg) = 1;
 	  DECL_RTL (parm) = parmreg;
 
 	  /* Copy the value into the register.  */
@@ -2999,8 +3080,9 @@ assign_parms (fndecl)
 	  if (nominal_mode == passed_mode
 	      && GET_CODE (entry_parm) == MEM
 	      && stack_offset.var == 0)
-	    REG_NOTES (get_last_insn ()) = gen_rtx (EXPR_LIST, REG_EQUIV,
-						    entry_parm, 0);
+	    REG_NOTES (get_last_insn ())
+	      = gen_rtx (EXPR_LIST, REG_EQUIV,
+			 entry_parm, REG_NOTES (get_last_insn ()));
 
 	  /* For pointer data type, suggest pointer register.  */
 	  if (TREE_CODE (TREE_TYPE (parm)) == POINTER_TYPE)
@@ -3028,9 +3110,9 @@ assign_parms (fndecl)
 	}
       
       if (TREE_VOLATILE (parm))
-	DECL_RTL (parm)->volatil = 1;
+	MEM_VOLATILE_P (DECL_RTL (parm)) = 1;
       if (TREE_READONLY (parm))
-	DECL_RTL (parm)->unchanging = 1;
+	RTX_UNCHANGING_P (DECL_RTL (parm)) = 1;
 
       /* Update info on where next arg arrives in registers.  */
 
@@ -3162,6 +3244,14 @@ expand_function_start (subr)
 
   current_function_name = IDENTIFIER_POINTER (DECL_NAME (subr));
 
+  /* Nonzero if this is a nested function that uses a static chain.  */
+
+  current_function_needs_context = (DECL_CONTEXT (current_function_decl) != 0);
+
+  /* Nonzero if this function needs an arg saying where to store value.  */
+  current_function_returns_struct
+    = (DECL_MODE (DECL_RESULT (current_function_decl)) == BLKmode);
+
   /* Make the label for return statements to jump to, if this machine
      does not have a one-instruction return.  */
 #ifdef HAVE_return
@@ -3194,6 +3284,9 @@ expand_function_start (subr)
   /* No SAVE_EXPRs in this function yet.  */
   save_expr_regs = 0;
 
+  /* No RTL_EXPRs in this function yet.  */
+  rtl_expr_chain = 0;
+
   /* Within function body, compute a type's size as soon it is laid out.  */
   immediate_size_expand++;
 
@@ -3213,15 +3306,6 @@ expand_function_start (subr)
      In some cases this requires emitting insns.  */
 
   assign_parms (subr);
-
-  /* If doing stupid allocation, mark parms as born here.  */
-
-  if (obey_regdecls)
-    {
-      parm_birth_insn = get_last_insn ();
-      for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
-	use_variable (regno_reg_rtx[i]);
-    }
 
   /* Initialize rtx used to return the value.  */
 
@@ -3249,6 +3333,15 @@ expand_function_start (subr)
   /* Mark this reg as the function's return value.  */
   if (GET_CODE (DECL_RTL (DECL_RESULT (subr))) == REG)
     REG_FUNCTION_VALUE_P (DECL_RTL (DECL_RESULT (subr))) = 1;
+
+  /* If doing stupid allocation, mark parms as born here.  */
+
+  if (obey_regdecls)
+    {
+      parm_birth_insn = get_last_insn ();
+      for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
+	use_variable (regno_reg_rtx[i]);
+    }
 
   /* After the parm initializations is where the tail-recursion label
      should go, if we end up needing one.  */
@@ -3285,7 +3378,7 @@ expand_function_end (filename, line)
       /* Likewise for the regs of all the SAVE_EXPRs in the function.  */
 
       for (tem = save_expr_regs; tem; tem = XEXP (tem, 1))
-	emit_insn (gen_rtx (USE, VOIDmode, XEXP (tem, 0)));
+	use_variable (XEXP (tem, 0));
 
       /* Also mark those as borm at the beginning of the function.
 	 (This was done in expand_function_start for parms).  */

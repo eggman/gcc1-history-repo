@@ -837,14 +837,14 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 /* Here we define machine-dependent flags and fields in cc_status
    (see `conditions.h').  */
 
-#define CC_IN_FCCR 040
+#define CC_IN_FCCR 04000
 
 /* Store in cc_status the expressions
    that the condition codes will describe
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 { if (GET_CODE (EXP) == SET)					\
     { if (GET_CODE (SET_DEST (EXP)) == CC0)			\
 	{ cc_status.flags = 0;					\
@@ -853,10 +853,10 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 	}							\
       else if (GET_CODE (SET_DEST (EXP)) == REG)		\
 	{ if ((cc_status.value1					\
-	       && reg_mentioned_p (SET_DEST (EXP), cc_status.value1))) \
+	       && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value1))) \
 	    cc_status.value1 = 0;				\
 	  if ((cc_status.value2					\
-	      && reg_mentioned_p (SET_DEST (EXP), cc_status.value2))) \
+	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value2))) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (EXP)) == MEM)		\
@@ -871,10 +871,10 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == REG) \
 	{ if ((cc_status.value1					\
-	       && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1))) \
+	       && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1))) \
 	    cc_status.value1 = 0;				\
 	  if ((cc_status.value2					\
-	       && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2))) \
+	       && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2))) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
@@ -884,7 +884,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
     { /* all bets are off */ CC_STATUS_INIT; }			\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
-      && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
+      && reg_overlap_mentioned_p (cc_status.value1, cc_status.value2))	\
     printf ("here!\n", cc_status.value2 = 0);			\
 }
 
@@ -892,7 +892,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START ""
+#define ASM_FILE_START(FILE)
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */
@@ -1080,7 +1080,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 	fprintf (FILE, "0r%.9g", u1.f);					\
       else								\
 	fprintf (FILE, "0x%x", u1.i); }					\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       fprintf (FILE, "0r%.20g", u.d); }					\

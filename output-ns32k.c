@@ -90,7 +90,7 @@ char *
 output_move_double (operands)
      rtx *operands;
 {
-  enum { REGOP, OFFSOP, POPOP, CNSTOP, RNDOP } optype0, optype1;
+  enum anon1 { REGOP, OFFSOP, POPOP, CNSTOP, RNDOP } optype0, optype1;
   rtx latehalf[2];
 
   /* First classify both operands.  */
@@ -202,7 +202,7 @@ check_reg (oper, reg)
 
 /* Nonzero if we have printed a base register.
    If zero, on some systems, it means `(sb)' must be printed.  */
-static int paren_base_reg_printed = 0;
+int paren_base_reg_printed = 0;
 
 print_operand_address (file, addr)
      register FILE *file;

@@ -88,6 +88,10 @@ extern CC_STATUS cc_status;
    should be tested as the complement of the N bit.  */
 #define CC_Z_IN_NOT_N 020
 
+/* This bit means that what ought to be in the Z bit
+   should be tested as the N bit.  */
+#define CC_Z_IN_N 040
+
 /* This is how to initialize the variable cc_status.
    final does this at appropriate moments.  */
 

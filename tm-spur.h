@@ -39,6 +39,13 @@ extern int target_flags;
 /* Nonzero if we should generate code to use the fpu.  */
 #define TARGET_FPU (target_flags & 1)
 
+/* Nonzero if we should expand constant shifts into series of shift
+   instructions.  */
+#define TARGET_EXPAND_SHIFTS (target_flags & 2)
+
+/* Nonzero if we should generate long jumps for compares. */
+#define TARGET_LONG_JUMPS (target_flags & 4)
+
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
    each pair being { "NAME", VALUE }
@@ -48,6 +55,10 @@ extern int target_flags;
 #define TARGET_SWITCHES  \
   { {"fpu", 1},			\
     {"soft-float", -1},		\
+    {"expand-shifts", 2},       \
+    {"lib-shifts", -2},		\
+    {"long-jumps", 4},		\
+    {"short-jumps", -4},	\
     { "", TARGET_DEFAULT}}
 
 #define TARGET_DEFAULT 0
@@ -460,10 +471,24 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
     }								\
   if (fp_used) fsize += 8;					\
   fprintf (FILE, "0:\trd_special r24,pc\n");			\
+  fprintf (FILE, "\tand r24,r24,$~0x3\n");			\
   fprintf (FILE, "\tadd_nt r25,r4,$%d\n",			\
 	   - current_function_pretend_args_size);		\
-  if (fsize + nregs != 0 || current_function_pretend_args_size > 0) \
-    fprintf (FILE, "\tadd_nt r4,r25,$%d\n", - fsize - nregs * 16); \
+  if (fsize + nregs != 0 || current_function_pretend_args_size > 0)\
+    {								\
+      int n = - fsize - nregs * 16;				\
+      if (n >= -8192)						\
+        fprintf (FILE, "\tadd_nt r4,r25,$%d\n", n);		\
+      else							\
+        {							\
+	  fprintf (FILE, "\tadd_nt r4,r25,$-8192\n");		\
+	  n += 8192;						\
+          while (n < -8192)					\
+            fprintf (FILE, "\tadd_nt r4,r4,$-8192\n"), n += 8192; \
+	  if (n != 0)						\
+            fprintf (FILE, "\tadd_nt r4,r4,$%d\n", n);		\
+        }							\
+      }								\
   for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
     if (regs_ever_live[i] && ! call_used_regs[i])		\
       {								\
@@ -629,8 +654,10 @@ extern int current_function_pretend_args_size;
    The MODE argument is the machine mode for the MEM expression
    that wants to use this address.
 
-   On SPUR, the actual legitimate addresses must be REG+REG or REG+SMALLINT.
-   But we can treat a SYMBOL_REF as legitimate if it is part of this
+   On SPUR, the actual legitimate addresses must be REG+SMALLINT or REG+REG.
+   Actually, REG+REG is not legitimate for stores, so 
+   it is obtained only by combination on loads.
+   We can treat a SYMBOL_REF as legitimate if it is part of this
    function's constant-pool, because such addresses can actually
    be output as REG+SMALLINT.  */
 
@@ -773,7 +800,7 @@ extern int current_function_pretend_args_size;
 
 /* The SPUR does not really have a condition code.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 { CC_STATUS_INIT; }
 
 /* Control the assembler format that we output.  */
@@ -880,6 +907,18 @@ extern int current_function_pretend_args_size;
 
 #define ASM_OUTPUT_BYTE(FILE,VALUE)  \
   fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
+
+/* This is how to output code to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tadd_nt r4,r4,$-4\n\tst_32 %s,r4,$0\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tld_32 %s,r4,$0\n\tadd_nt r4,r4,$4\n", reg_names[REGNO])
 
 /* This is how to output an element of a case-vector that is absolute.  */
 

@@ -282,9 +282,9 @@ output_move_double (operands)
       else
 	{
 	  /* We know structs not on the stack are properly aligned.  */
-	  if (operands[1]->in_struct)
+	  if (MEM_IN_STRUCT_P (operands[1]))
 	    return "ldd %1,%0";
-	  else if (operands[0]->in_struct)
+	  else if (MEM_IN_STRUCT_P (operands[0]))
 	    return "std %1,%0";
 	}
     }
@@ -311,7 +311,7 @@ output_move_double (operands)
       return singlemove_string (operands);
     }
   else if (optype0 == REGOP && optype1 != REGOP
-	   && reg_mentioned_p (operands[0], XEXP (operands[1], 0)))
+	   && reg_overlap_mentioned_p (operands[0], XEXP (operands[1], 0)))
     {
       /* Do the late half first.  */
       output_asm_insn (singlemove_string (latehalf), latehalf);
@@ -688,6 +688,9 @@ output_block_move (operands)
 
   bzero (reg_conflicts, sizeof (reg_conflicts));
   bzero (op_conflicts, sizeof (op_conflicts));
+  xoperands[0] = 0;
+  xoperands[1] = 0;
+  xoperands[2] = 0;
 
   /* Get past the MEMs.  */
   operands[0] = XEXP (operands[0], 0);
@@ -698,7 +701,7 @@ output_block_move (operands)
     {
       for (j = 0; j < 3; j++)
 	{
-	  if (reg_mentioned_p (regs[i], operands[j]))
+	  if (reg_overlap_mentioned_p (regs[i], operands[j]))
 	    {
 	      reg_conflicts[i].ops[reg_conflicts[i].n_ops++] = operands[j];
 	      op_conflicts[j].regs[op_conflicts[j].n_regs++] = i;

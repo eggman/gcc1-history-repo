@@ -1,4 +1,5 @@
-/* Subroutines for insn-output.c for Motorola 68000 family.
+/* Subroutines for insn-output.c for SPUR.  Adapted from routines for
+   the Motorola 68000 family.
    Copyright (C) 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -21,25 +22,33 @@ and this notice must be preserved on all copies.  */
 static rtx find_addr_reg ();
 
 char *
-output_compare (operands, opcode, exchange_opcode)
+output_compare (operands, opcode, exchange_opcode, 
+		neg_opcode, neg_exchange_opcode)
      rtx *operands;
      char *opcode;
      char *exchange_opcode;
+     char *neg_opcode;
+     char *neg_exchange_opcode;
 {
-  static char buf[40];
+  static char buf[100];
   operands[2] = operands[0];
   if (GET_CODE (cc_prev_status.value1) == CONST_INT)
     {
       operands[1] = cc_prev_status.value1;
       operands[0] = cc_prev_status.value2;
-      opcode = exchange_opcode;
+      opcode = exchange_opcode, neg_opcode = neg_exchange_opcode;
     }
   else
     {
       operands[0] = cc_prev_status.value1;
       operands[1] = cc_prev_status.value2;
     }
-  sprintf (buf, "cmp_br_delayed %s,%%0,%%1,%%l2\n\tnop", opcode);
+  if (TARGET_LONG_JUMPS)
+    sprintf (buf,
+	     "cmp_br_delayed %s,%%0,%%1,1f\n\tnop\n\tjump %%l2\n\tnop\n1:",
+	     neg_opcode);
+  else 
+    sprintf (buf, "cmp_br_delayed %s,%%0,%%1,%%l2\n\tnop", opcode);
   return buf;
 }
 
@@ -54,6 +63,8 @@ singlemove_string (operands)
     return "st_32 %r1,%0";
   if (GET_CODE (operands[1]) == MEM)
     return "ld_32 %0,%1\n\tnop";
+  if (GET_CODE (operands[1]) == REG)
+    return "add_nt %0,%1,$0";
   return "add_nt %0,r0,%1";
 }
 
@@ -87,7 +98,7 @@ output_move_double (operands)
   else if (offsetable_memref_p (operands[1]))
     optype1 = OFFSOP;
   else if (GET_CODE (operands[1]) == MEM)
-    optype0 = MEMOP;
+    optype1 = MEMOP;
   else
     optype1 = RNDOP;
 
@@ -254,4 +265,49 @@ find_addr_reg (addr)
   if (GET_CODE (addr) == REG)
     return addr;
   return 0;
+}
+
+/* Generate code to add a large integer constant to register, reg, storing
+ * the result in a register, target.  Offset must be 27-bit signed quantity */
+
+static char *
+output_add_large_offset (target, reg, offset)
+     rtx target, reg;
+     int offset;
+{
+  rtx operands[3];
+  int high, n, i;
+  operands[0] = target, operands[1] = reg;
+    
+  for (high = offset, n = 0; 
+       (unsigned) (high + 0x2000) >= 0x4000; 
+       high >>= 1, n += 1)
+    ;
+  operands[2] = gen_rtx (CONST_INT, VOIDmode, high);
+  output_asm_insn ("add_nt r2,r0,%2", operands);
+  i = n;
+  while (i >= 3)
+    output_asm_insn ("sll r2,r2,$3", operands), i -= 3;
+  if (i == 2) 
+    output_asm_insn ("sll r2,r2,$2", operands);
+  else if (i == 1)
+    output_asm_insn ("sll r2,r2,$1", operands);
+  output_asm_insn ("add_nt %0,r2,%1", operands);
+  if (offset - (high << n) != 0)
+    {
+      operands[2] = gen_rtx (CONST_INT, VOIDmode, offset - (high << n));
+      output_asm_insn ("add_nt %0,%0,%2", operands);
+    }
+  return "";
+}
+
+/* Additional TESTFN for matching. Like immediate_operand, but matches big
+ * constants */
+
+int
+big_immediate_operand (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  return (GET_CODE (op) == CONST_INT);
 }

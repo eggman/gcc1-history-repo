@@ -8,8 +8,15 @@
    This will control the use of inline 68881 insns in certain macros.
    Also inform the program which CPU this is for.  */
 
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}\
+#if TARGET_DEFAULT & 0102
+/* m68881 or mfpa is the default */
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} \
 %{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}"
+#else
+/* msoft-float is the default */
+#define CPP_SPEC "%{m68881:-D__HAVE_68881__} %{mfpa:-D__HAVE_68881__} \
+%{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}"
+#endif
 
 /* -m68000 requires special flags to the assembler.  */
 
@@ -27,12 +34,31 @@
    args translates to the same effect as -m68881
    I'm not sure what would happen below if people gave contradictory
    arguments (eg. -msoft-float -mfpa) */
-  
-#define STARTFILE_SPEC  \
-  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}\
-   %{mfpa:Wcrt1.o%s} %{!mfpa:%{m68881:Mcrt1.o%s}} \
-   %{!mfpa:%{msoft-float:Fcrt1.o%s}} \
-   %{!mfpa:%{!m68881:%{!msoft-float:Mcrt1.o%s}}}"
+
+#if TARGET_DEFAULT & 0100
+/* -mfpa is the default */
+#define STARTFILE_SPEC					\
+  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}	\
+   %{m68881:Mcrt1.o%s}					\
+   %{msoft-float:Fcrt1.o%s}				\
+   %{!m68881:%{!msoft-float:Wcrt1.o%s}}"
+#else
+#if TARGET_DEFAULT & 2
+/* -m68881 is the default */
+#define STARTFILE_SPEC					\
+  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}	\
+   %{mfpa:Wcrt1.o%s}					\
+   %{msoft-float:Fcrt1.o%s}				\
+   %{!mfpa:%{!msoft-float:Mcrt1.o%s}}"
+#else
+/* -msoft-float is the default */
+#define STARTFILE_SPEC					\
+  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}	\
+   %{m68881:Mcrt1.o%s}					\
+   %{mfpa:Wcrt1.o%s}					\
+   %{!m68881:%{!mfpa:Fcrt1.o%s}}"
+#endif
+#endif
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 

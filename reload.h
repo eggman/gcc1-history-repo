@@ -35,6 +35,12 @@ extern rtx reload_reg_rtx[FIRST_PSEUDO_REGISTER];
 
 extern rtx *reg_equiv_constant;
 extern rtx *reg_equiv_address;
+extern rtx *reg_equiv_mem;
+
+/* All the "earlyclobber" operands of the current insn
+   are recorded here.  */
+extern int n_earlyclobbers;
+extern rtx reload_earlyclobbers[MAX_RECOG_OPERANDS];
 
 /* First uid used by insns created by reload in this function.
    Used in find_equiv_reg.  */

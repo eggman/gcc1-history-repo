@@ -49,6 +49,7 @@ static tree unary_complex_lvalue ();
 static tree process_init_constructor ();
 tree digest_init ();
 tree truthvalue_conversion ();
+static tree invert_truthvalue ();
 void incomplete_type_error ();
 void readonly_warning ();
 
@@ -354,7 +355,8 @@ comptypes (type1, type2)
     case ARRAY_TYPE:
       /* Target types must match.  */
       if (!(TREE_TYPE (t1) == TREE_TYPE (t2)
-	    || comptypes (TREE_TYPE (t1), TREE_TYPE (t2))))
+	    || comptypes (TYPE_MAIN_VARIANT (TREE_TYPE (t1)),
+			  TYPE_MAIN_VARIANT (TREE_TYPE (t2)))))
 	return 0;
       {
 	tree d1 = TYPE_DOMAIN (t1);
@@ -1158,11 +1160,14 @@ build_binary_op_nodefault (code, op0, op1)
 	     but that does not mean the operands should be
 	     converted to ints!  */
 	  result_type = integer_type_node;
+	  op0 = truthvalue_conversion (op0);
+	  op1 = truthvalue_conversion (op1);
 	  converted = 1;
 	}
       break;
 
-      /* Shift operations: result has same type as first operand.
+      /* Shift operations: result has same type as first operand;
+	 always convert second operand to int.
 	 Also set SHORT_SHIFT if shifting rightward.  */
 
     case RSHIFT_EXPR:
@@ -1172,6 +1177,10 @@ build_binary_op_nodefault (code, op0, op1)
 	  if (TREE_CODE (op1) == INTEGER_CST
 	      && TREE_INT_CST_LOW (op1) > 0)
 	    short_shift = 1;
+	  /* Convert the shift-count to an integer, regardless of
+	     size of value being shifted.  */
+	  if (TREE_TYPE (op1) != integer_type_node)
+	    op1 = convert (integer_type_node, op1);
 	}
       break;
 
@@ -1182,13 +1191,23 @@ build_binary_op_nodefault (code, op0, op1)
 	  if (TREE_CODE (op1) == INTEGER_CST
 	      && TREE_INT_CST_LOW (op1) < 0)
 	    short_shift = 1;
+	  /* Convert the shift-count to an integer, regardless of
+	     size of value being shifted.  */
+	  if (TREE_TYPE (op1) != integer_type_node)
+	    op1 = convert (integer_type_node, op1);
 	}
       break;
 
     case RROTATE_EXPR:
     case LROTATE_EXPR:
       if (code0 == INTEGER_TYPE && code1 == INTEGER_TYPE)
-	result_type = dt0;
+	{
+	  result_type = dt0;
+	  /* Convert the shift-count to an integer, regardless of
+	     size of value being shifted.  */
+	  if (TREE_TYPE (op1) != integer_type_node)
+	    op1 = convert (integer_type_node, op1);
+	}
       break;
 
     case EQ_EXPR:
@@ -1412,9 +1431,6 @@ build_binary_op_nodefault (code, op0, op1)
 		  || unsigned_arg
 		  || 2 * TYPE_PRECISION (TREE_TYPE (arg0)) <= TYPE_PRECISION (result_type)))
 	    {
-	      /* Convert the shift-count to its nominal type.  */
-	      if (TREE_TYPE (op1) != result_type)
-		op1 = convert (result_type, op1);
 	      /* Do an unsigned shift if the operand was zero-extended.  */
 	      result_type
 		= signed_or_unsigned_type (unsigned_arg,
@@ -1997,20 +2013,8 @@ build_unary_op (code, xarg, noconvert)
 	  break;
 	}
       arg = truthvalue_conversion (arg);
-      if (TREE_CODE (arg) == NE_EXPR)
-	{
-	  TREE_SET_CODE (arg, EQ_EXPR);
-	  return arg;
-	}
-      if (TREE_CODE (arg) == EQ_EXPR)
-	{
-	  TREE_SET_CODE (arg, NE_EXPR);
-	  return arg;
-	}
-      if (TREE_CODE (arg) == TRUTH_NOT_EXPR)
-	{
-	  return TREE_OPERAND (arg, 0);
-	}
+      val = invert_truthvalue (arg);
+      if (val) return val;
       break;
 
     case NOP_EXPR:
@@ -2355,6 +2359,74 @@ truthvalue_conversion (expr)
     return truthvalue_conversion (TREE_OPERAND (expr, 0));
 
   return build_binary_op (NE_EXPR, expr, integer_zero_node);
+}
+
+/* Return a simplified tree node for the truth-negation of ARG
+   (perhaps by altering ARG).
+   If it can't be simplified, return 0.  */
+
+static tree
+invert_truthvalue (arg)
+     tree arg;
+{
+  switch (TREE_CODE (arg))
+    {
+    case NE_EXPR:
+      TREE_SET_CODE (arg, EQ_EXPR);
+      return arg;
+
+    case EQ_EXPR:
+      TREE_SET_CODE (arg, NE_EXPR);
+      return arg;
+
+    case GE_EXPR:
+      TREE_SET_CODE (arg, LT_EXPR);
+      return arg;
+
+    case GT_EXPR:
+      TREE_SET_CODE (arg, LE_EXPR);
+      return arg;
+
+    case LE_EXPR:
+      TREE_SET_CODE (arg, GT_EXPR);
+      return arg;
+
+    case LT_EXPR:
+      TREE_SET_CODE (arg, GE_EXPR);
+      return arg;
+
+    case TRUTH_AND_EXPR:
+      return build (TRUTH_OR_EXPR, TREE_TYPE (arg),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 0), 0),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 1), 0));
+
+    case TRUTH_OR_EXPR:
+      return build (TRUTH_AND_EXPR, TREE_TYPE (arg),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 0), 0),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 1), 0));
+
+    case TRUTH_ANDIF_EXPR:
+      return build (TRUTH_ORIF_EXPR, TREE_TYPE (arg),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 0), 0),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 1), 0));
+
+    case TRUTH_ORIF_EXPR:
+      return build (TRUTH_ANDIF_EXPR, TREE_TYPE (arg),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 0), 0),
+		    build_unary_op (TRUTH_NOT_EXPR,
+				    TREE_OPERAND (arg, 1), 0));
+
+    case TRUTH_NOT_EXPR:
+      return TREE_OPERAND (arg, 0);
+    }
+  return 0;
 }
 
 /* Mark EXP saying that we need to be able to take the
@@ -3134,7 +3206,6 @@ digest_init (type, init, tail)
 
   if (code == ARRAY_TYPE || code == RECORD_TYPE)
     {
-      tree result = 0;
       if (raw_constructor)
 	return process_init_constructor (type, init, 0);
       else if (tail != 0)

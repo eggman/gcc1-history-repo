@@ -602,10 +602,22 @@ duplicate_decls (new, old)
   else
     {
       if (flag_traditional && TREE_CODE (new) == FUNCTION_DECL
-	  && IDENTIFIER_IMPLICIT_DECL (DECL_NAME (new)) != 0)
+	  && IDENTIFIER_IMPLICIT_DECL (DECL_NAME (new)) == old)
 	/* If -traditional, avoid error for redeclaring fcn
 	   after implicit decl.  */
 	;
+      else if (TREE_CODE (old) == FUNCTION_DECL
+	       && DECL_FUNCTION_CODE (old) != NOT_BUILT_IN)
+	warning_with_decl (new, "built-in function `%s' redeclared");
+      else if (TREE_CODE (old) == FUNCTION_DECL
+	       && DECL_INITIAL (old) != 0
+	       && TYPE_ARG_TYPES (TREE_TYPE (old)) == 0
+	       && TYPE_ARG_TYPES (TREE_TYPE (new)) != 0)
+	{
+	  /* Prototype decl follows defn w/o prototype.  */
+	  warning_with_decl (new, "prototype for `%s'");
+	  warning_with_decl (old, "follows non-prototype definition here");
+	}
       else if (!types_match)
 	{
 	  error_with_decl (new, "conflicting types for `%s'");
@@ -679,6 +691,12 @@ duplicate_decls (new, old)
 	 unless its definition was passed already.  */
       if (TREE_INLINE (new) && DECL_INITIAL (old) == 0)
 	TREE_INLINE (old) = 1;
+
+      /* If redeclaring a builtin function, and not a definition,
+	 it stays built in.  */
+      if (TREE_CODE (new) == FUNCTION_DECL
+	  && DECL_INITIAL (new) == 0)
+	DECL_SET_FUNCTION_CODE (new, DECL_FUNCTION_CODE (old));
 
       bcopy ((char *) new + sizeof (struct tree_common),
 	     (char *) old + sizeof (struct tree_common),
@@ -834,7 +852,7 @@ implicitly_declare (functionid)
   register tree decl;
 
   /* Save the decl permanently so we can warn if definition follows.  */
-  if (flag_traditional)
+  if (flag_traditional || !warn_implicit)
     end_temporary_allocation ();
 
   /* We used to reuse an old implicit decl here,
@@ -862,7 +880,7 @@ implicitly_declare (functionid)
 
   IDENTIFIER_IMPLICIT_DECL (functionid) = decl;
 
-  if (flag_traditional)
+  if (flag_traditional || ! warn_implicit)
     resume_temporary_allocation ();
 
   return decl;
@@ -1514,7 +1532,6 @@ finish_decl (decl, init, asmspec)
      tree asmspec;
 {
   register tree type = TREE_TYPE (decl);
-  int init_written = init != 0;
 
   /* If `start_decl' didn't like having an initialization, ignore it now.  */
 
@@ -2429,7 +2446,6 @@ get_parm_info (void_at_end)
 {
   register tree decl;
   register tree types = 0;
-  tree link;
   int erred = 0;
   tree tags = gettags ();
   tree parms = nreverse (getdecls ());
@@ -2448,24 +2464,27 @@ get_parm_info (void_at_end)
   storedecls (parms);
 
   for (decl = parms; decl; decl = TREE_CHAIN (decl))
-    {
-      /* Since there is a prototype,
-	 args are passed in their declared types.  */
-      tree type = TREE_TYPE (decl);
-      DECL_ARG_TYPE (decl) = type;
+    /* There may also be declarations for enumerators if an enumeration
+       type is declared among the parms.  Ignore them here.  */
+    if (TREE_CODE (decl) == PARM_DECL)
+      {
+	/* Since there is a prototype,
+	   args are passed in their declared types.  */
+	tree type = TREE_TYPE (decl);
+	DECL_ARG_TYPE (decl) = type;
 #ifdef PROMOTE_PROTOTYPES
-      if (TREE_CODE (type) == INTEGER_TYPE
-	  && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node))
-	DECL_ARG_TYPE (decl) = integer_type_node;
+	if (TREE_CODE (type) == INTEGER_TYPE
+	    && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node))
+	  DECL_ARG_TYPE (decl) = integer_type_node;
 #endif
 
-      types = saveable_tree_cons (NULL_TREE, TREE_TYPE (decl), types);
-      if (TREE_VALUE (types) == void_type_node && ! erred)
-	{
-	  error ("`void' in parameter list must be the entire list");
-	  erred = 1;
-	}
-    }
+	types = saveable_tree_cons (NULL_TREE, TREE_TYPE (decl), types);
+	if (TREE_VALUE (types) == void_type_node && ! erred)
+	  {
+	    error ("`void' in parameter list must be the entire list");
+	    erred = 1;
+	  }
+      }
 
   if (void_at_end)
     return saveable_tree_cons (parms, tags,
@@ -2909,7 +2928,7 @@ build_enumerator (name, value)
   TREE_TYPE (value) = integer_type_node;
   pushdecl (decl);
 
-  return build_tree_list (name, value);
+  return saveable_tree_cons (name, value, NULL);
 }
 
 /* Create the FUNCTION_DECL for a function definition.
@@ -3044,7 +3063,7 @@ store_parm_decls ()
      then CONST_DECLs for foo and bar are put here.  */
   tree nonparms = 0;
 
-  if (specparms != 0 && TREE_CODE (specparms) == PARM_DECL)
+  if (specparms != 0 && TREE_CODE (specparms) != TREE_LIST)
     {
       /* This case is when the function was defined with an ANSI prototype.
 	 The parms already have decls, so we need not do anything here

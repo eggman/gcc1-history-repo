@@ -358,7 +358,6 @@ try_combine (i3, i2, i1)
   int i2_is_used;
   register rtx link;
   int insn_code_number;
-  int recog_flags = 0;
   rtx i2dest, i2src;
   rtx i1dest, i1src;
   int maxreg;
@@ -413,10 +412,10 @@ try_combine (i3, i2, i1)
 	  || (GET_CODE (i2src) == REG
 	      && (!flag_combine_regs
 		  /* Don't substitute a function value reg for any other.  */
-		  || FUNCTION_VALUE_REGNO_P (REGNO (i2src))
-		  /* Don't substitute a different reg into an increment.  */
-		  || find_reg_note (i3, REG_INC, i2dest)))
+		  || FUNCTION_VALUE_REGNO_P (REGNO (i2src))))
 	  || GET_CODE (i2src) == CALL
+	  /* Don't substitute into an incremented register.  */
+	  || find_reg_note (i3, REG_INC, i2dest)
 	  || use_crosses_set_p (i2src, INSN_CUID (i2))))
     return 0;
 
@@ -437,10 +436,10 @@ try_combine (i3, i2, i1)
 	  && (GET_CODE (i1dest) != REG
 	      || (GET_CODE (i1src) == REG
 		  && (!flag_combine_regs
-		      || FUNCTION_VALUE_REGNO_P (REGNO (i1src))
-		      || find_reg_note (i3, REG_INC, i1dest)
-		      || find_reg_note (i2, REG_INC, i1dest)))
+		      || FUNCTION_VALUE_REGNO_P (REGNO (i1src))))
 	      || GET_CODE (i1src) == CALL
+	      || find_reg_note (i3, REG_INC, i1dest)
+	      || find_reg_note (i2, REG_INC, i1dest)
 	      || use_crosses_set_p (i1src, INSN_CUID (i1))))
 	return 0;
     }
@@ -729,9 +728,14 @@ subst (x, from, to)
    because (SUBREG (MEM...)) is guaranteed to cause the MEM to be reloaded.
    If not for that, MEM's would very rarely be safe.  */
 
+/* Reject MODEs bigger than a word, because we might not be able
+   to reference a two-register group starting with an arbitrary register
+   (and currently gen_lowpart might crash for a SUBREG).  */
+
 #define FAKE_EXTEND_SAFE_P(MODE, FROM) \
-  (GET_CODE (FROM) == REG || GET_CODE (FROM) == SUBREG \
-   || GET_CODE (FROM) == MEM)
+  (GET_MODE_SIZE (MODE) <= UNITS_PER_WORD			\
+   && (GET_CODE (FROM) == REG || GET_CODE (FROM) == SUBREG	\
+       || GET_CODE (FROM) == MEM))
 
   if (x == from)
     return to;
@@ -1627,11 +1631,15 @@ gen_lowpart_for_combine (mode, x)
 {
   if (GET_CODE (x) == SUBREG || GET_CODE (x) == REG)
     return gen_lowpart (mode, x);
-  if (GET_MODE (x) == mode || x->volatil)
+  if (GET_MODE (x) == mode)
     return gen_rtx (CLOBBER, VOIDmode, const0_rtx);
   if (GET_CODE (x) == MEM)
     {
       register int offset = 0;
+
+      /* Refuse to work on a volatile memory ref.  */
+      if (MEM_VOLATILE_P (x))
+	return gen_rtx (CLOBBER, VOIDmode, const0_rtx);
 
       /* If we want to refer to something bigger than the original memref,
 	 generate a perverse subreg instead.  That will force a reload
@@ -1871,7 +1879,7 @@ use_crosses_set_p (x, from_cuid)
 
   fmt = GET_RTX_FORMAT (code);
 
-  for (i = GET_RTX_LENGTH (code); i >= 0; i--)
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
     {
       if (fmt[i] == 'E')
 	{
@@ -2168,7 +2176,7 @@ try_distrib (insn, xprev1, xprev2)
   rtx prev1, prev2, pat1, pat2, src1, src2;
   rtx to_prev, to_insn;
   enum rtx_code code;
-  int insn_code_number, prev_code_number, regno, length;
+  int insn_code_number, prev_code_number, regno;
   rtx new_insn_pat, new_prev_pat;
 
   distrib_attempts++;
@@ -2275,15 +2283,29 @@ try_distrib (insn, xprev1, xprev2)
     {
     case LSHIFTRT:
     case ASHIFTRT:
+      /* Right-shift can't distribute through addition
+	 since the round-off would happen differently.  */
+    case AND:
+    case IOR:
+    case XOR:
+      /* Boolean ops don't distribute through addition.  */
       if (code == PLUS)
 	return 0;
 
-    case AND:
     case LSHIFT:
     case ASHIFT:
-    case IOR:
-    case XOR:
-      /* Try changing (+ (* x c) (* y c)) to (* (+ (x y) c)).  */
+      /* Left shifts are multiplication; they distribute through
+	 addition.  Also, since they work bitwise, they
+	 distribute through boolean operations.  */
+      goto do_distrib;
+
+    case MULT:
+      /* Multiplication distributes through addition only.  */
+      if (code != PLUS)
+	return 0;
+
+    do_distrib:
+      /* Try changing (+ (* x c) (* y c)) to (* (+ x y) c).  */
 
       if (GET_CODE (XEXP (src1, 1)) != CONST_INT
 	  || GET_CODE (XEXP (src2, 1)) != CONST_INT
@@ -2296,11 +2318,15 @@ try_distrib (insn, xprev1, xprev2)
 
     case ZERO_EXTEND:
     case SIGN_EXTEND:
+      /* Extension can't distribute through addition;
+	 the carries could be changed.  */
+      if (code == PLUS)
+	return 0;
       {
 	rtx inner1 = XEXP (src1, 0), inner2 = XEXP (src2, 0);
 	int subreg_needed = 0;
 
-	/* Try changing (+ ($ x) ($ y)) to ($ (+ (x y))).  */
+	/* Try changing (+ (extend x) (extend y)) to (extend (+ x y)).  */
 	/* But keep extend insns together with their subregs.  */
 	if (GET_CODE (inner1) == SUBREG)
 	  if (SUBREG_WORD (inner1) != 0)

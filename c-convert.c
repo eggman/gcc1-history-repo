@@ -195,7 +195,9 @@ convert_to_integer (type, expr)
 	case LT_EXPR:
 	case LE_EXPR:
 	case TRUTH_AND_EXPR:
+	case TRUTH_ANDIF_EXPR:
 	case TRUTH_OR_EXPR:
+	case TRUTH_ORIF_EXPR:
 	case TRUTH_NOT_EXPR:
 	  /* If we want result of comparison converted to a byte,
 	     we can just regard it as a byte, since it is 0 or 1.  */

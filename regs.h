@@ -96,6 +96,10 @@ extern short *reg_renumber;
 
 extern char regs_ever_live[FIRST_PSEUDO_REGISTER];
 
+/* Vector indexed by hardware reg giving its name.  */
+
+extern char *reg_names[FIRST_PSEUDO_REGISTER];
+
 /* Vector indexed by regno; gives uid of first insn using that reg.
    This is computed by reg_scan and not adjusted for subsequent changes. */
 

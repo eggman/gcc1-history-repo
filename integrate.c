@@ -511,16 +511,14 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   tree formal, actual;
   rtx header = DECL_SAVED_INSNS (fndecl);
   rtx insns = FIRST_FUNCTION_INSN (header);
-  rtx insn, protect;
-  rtx last_insn = get_last_insn ();
+  rtx insn;
   int max_regno = MAX_REGNUM (header) + 1;
   register int i;
-  int keep;
   int min_labelno = FIRST_LABELNO (header);
   int max_labelno = LAST_LABELNO (header);
   int nargs;
   rtx *arg_vec;
-  rtx return_label = 0;
+  rtx local_return_label = 0;
   rtx follows_call = 0;
   rtx this_struct_value_rtx = 0;
 
@@ -619,7 +617,6 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   if (DECL_ARGUMENTS (fndecl))
     {
       tree decl = DECL_ARGUMENTS (fndecl);
-      tree last = tree_last (decl);
       int offset = FUNCTION_ARGS_SIZE (header);
 
       parm_map =
@@ -778,7 +775,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 		  copy = emit_insn (gen_rtx (SET, VOIDmode,
 					     copy_rtx_and_substitute (SET_DEST (pattern)),
 					     follows_call));
-		  copy->integrated = 1;
+		  RTX_INTEGRATED_P (copy) = 1;
 		  follows_call = 0;
 		  break;
 		}
@@ -790,7 +787,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 		{
 		  copy = emit_insn (gen_rtx (SET, VOIDmode, inline_target,
 					     follows_call));
-		  copy->integrated = 1;
+		  RTX_INTEGRATED_P (copy) = 1;
 		  follows_call = 0;
 		  break;
 		}
@@ -820,7 +817,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  else
 	    {
 	      copy = emit_insn (copy_rtx_and_substitute (pattern));
-	      copy->integrated = 1;
+	      RTX_INTEGRATED_P (copy) = 1;
 	    }
 	  break;
 
@@ -828,13 +825,13 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  follows_call = 0;
 	  if (GET_CODE (PATTERN (insn)) == RETURN)
 	    {
-	      if (return_label == 0)
-		return_label = gen_label_rtx ();
-	      emit_jump (return_label);
+	      if (local_return_label == 0)
+		local_return_label = gen_label_rtx ();
+	      emit_jump (local_return_label);
 	      break;
 	    }
 	  copy = emit_jump_insn (copy_rtx_and_substitute (PATTERN (insn)));
-	  copy->integrated = 1;
+	  RTX_INTEGRATED_P (copy) = 1;
 	  break;
 
 	case CALL_INSN:
@@ -873,7 +870,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 #else /* 1 */
 	  copy = emit_call_insn (copy_rtx_and_substitute (PATTERN (insn)));
 #endif /* 1 */
-	  copy->integrated = 1;
+	  RTX_INTEGRATED_P (copy) = 1;
 	  /* Special handling needed for the following INSN depending on
 	     whether it copies the value from the fcn return reg.  */
 	  if (GET_CODE (PATTERN (insn)) == SET)
@@ -904,8 +901,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
       insn_map[INSN_UID (insn)] = copy;
     }
 
-  if (return_label)
-    emit_label (return_label);
+  if (local_return_label)
+    emit_label (local_return_label);
 
   /* Make copies of the decls of the symbols in the inline function, so that
      the copies of the variables get declared in the current function.  */
@@ -949,6 +946,8 @@ copy_parm_decls (args, vec)
     {
       register tree decl = pushdecl (build_decl (VAR_DECL, DECL_NAME (tail),
 						 TREE_TYPE (tail)));
+      /* These args would always appear unused, if not for this.  */
+      TREE_USED (decl) = 1;
       DECL_RTL (decl) = vec[i];
     }
 }
@@ -989,6 +988,8 @@ copy_decl_tree (let, level)
       TREE_ADDRESSABLE (d) = TREE_ADDRESSABLE (t);
       TREE_READONLY (d) = TREE_READONLY (t);
       TREE_VOLATILE (d) = TREE_VOLATILE (t);
+      /* These args would always appear unused, if not for this.  */
+      TREE_USED (d) = 1;
       pushdecl (d);
     }
 
@@ -1032,7 +1033,18 @@ copy_rtx_and_substitute (orig)
       if (regno < FIRST_PSEUDO_REGISTER)
 	{
 	  if (REG_FUNCTION_VALUE_P (orig))
-	    return inline_target;
+	    {
+	      /* This is a reference to the function return value.  If
+		 the function doesn't have a return value, error.
+		 If it does, it may not be the same mode as `inline_target'
+		 because SUBREG is not required for hard regs.
+		 If not, adjust mode of inline_target to fit the context.  */
+	      if (inline_target == 0)
+		abort ();
+	      if (mode == GET_MODE (inline_target))
+		return inline_target;
+	      return gen_rtx (SUBREG, mode, inline_target, 0);
+	    }
 	  if (regno == FRAME_POINTER_REGNUM)
 	    return plus_constant (orig, fp_delta);
 	  return orig;
@@ -1158,13 +1170,14 @@ copy_rtx_and_substitute (orig)
 
       /* Allow a pushing-address even if that is not valid as an
 	 ordinary memory address.  It indicates we are inlining a special
-	 push-insn.  */
+	 push-insn.  These must be copied; otherwise unshare_all_rtl
+	 might clobber them to point at temporary rtl of this function.  */
 #ifdef STACK_GROWS_DOWNWARD
       if (GET_CODE (copy) == PRE_DEC && XEXP (copy, 0) == stack_pointer_rtx)
-	return orig;
+	return gen_rtx (MEM, mode, copy_rtx_and_substitute (copy));
 #else
       if (GET_CODE (copy) == PRE_INC && XEXP (copy, 0) == stack_pointer_rtx)
-	return orig;
+	return gen_rtx (MEM, mode, copy_rtx_and_substitute (copy));
 #endif
 
       /* If this is some other sort of address that isn't generally valid,
@@ -1271,8 +1284,6 @@ copy_rtx_and_substitute (orig)
 
   for (i = 0; i < GET_RTX_LENGTH (GET_CODE (copy)); i++)
     {
-      rtx new;
-
       switch (*format_ptr++)
 	{
 	case '0':
@@ -1285,7 +1296,8 @@ copy_rtx_and_substitute (orig)
 	case 'u':
 	  /* Change any references to old-insns to point to the
 	     corresponding copied insns.  */
-	  return insn_map[INSN_UID (XEXP (orig, i))];
+	  XEXP (copy, i) = insn_map[INSN_UID (XEXP (orig, i))];
+	  break;
 
 	case 'E':
 	  XVEC (copy, i) = XVEC (orig, i);
@@ -1322,12 +1334,11 @@ static rtx
 copy_address (orig)
      register rtx orig;
 {
-  register rtx copy, temp;
+  register rtx copy;
   register int i, j;
   register RTX_CODE code;
   register enum machine_mode mode;
   register char *format_ptr;
-  int regno;
 
   if (orig == 0)
     return 0;
@@ -1338,12 +1349,22 @@ copy_address (orig)
   switch (code)
     {
     case REG:
+      if (REGNO (orig) != FRAME_POINTER_REGNUM)
+	return copy_rtx_and_substitute (orig);
+      return plus_constant (frame_pointer_rtx, fp_delta);
+
+    case PLUS:
+      if (GET_CODE (XEXP (orig, 0)) == REG
+	  && REGNO (XEXP (orig, 0)) == FRAME_POINTER_REGNUM)
+	return plus_constant (orig, fp_delta);
+      break;
+
     case MEM:
-      return copy_to_reg (copy_rtx_and_substitute (code));
+      return copy_to_reg (copy_rtx_and_substitute (orig));
 
     case CODE_LABEL:
     case LABEL_REF:
-      return copy_rtx_and_substitute (code);
+      return copy_rtx_and_substitute (orig);
 
     case PC:
     case CC0:
@@ -1363,8 +1384,6 @@ copy_address (orig)
 
   for (i = 0; i < GET_RTX_LENGTH (GET_CODE (copy)); i++)
     {
-      rtx new;
-
       switch (*format_ptr++)
 	{
 	case '0':
@@ -1377,7 +1396,8 @@ copy_address (orig)
 	case 'u':
 	  /* Change any references to old-insns to point to the
 	     corresponding copied insns.  */
-	  return insn_map[INSN_UID (XEXP (orig, i))];
+	  XEXP (copy, i) = insn_map[INSN_UID (XEXP (orig, i))];
+	  break;
 
 	case 'E':
 	  XVEC (copy, i) = XVEC (orig, i);

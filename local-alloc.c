@@ -928,6 +928,19 @@ reg_is_set (reg, clobber_flag)
 	  qty_death[reg_qty[regno]]++;
 	}
     }
+  else if (reg_qty[regno] >= 0 && qty_death[reg_qty[regno]] == this_insn_number
+	   && qty_birth[reg_qty[regno]] == this_insn_number)
+    {
+      /* A psuedo-reg is clobbered by this insn and was born and dies here.
+	 This is a temporary required for this insn and so will
+	 conflict with any other live registers at this point.  We must
+	 assume that this register is used before all the inputs of the
+	 insn are dead.  So this register must not conflict with any of them.
+	 Mark it as born at the previous insn.  */
+      qty_birth[reg_qty[regno]]--;
+      /* It should also conflict with this insn's outputs.  */
+      qty_death[reg_qty[regno]]++;
+    }
 }
 
 /* Handle beginning of the life of register REG.

@@ -608,7 +608,8 @@ life_analysis (f, nregs)
   init_regset_vector (basic_block_significant, tem, n_basic_blocks, regset_bytes);
 
   /* Record which insns refer to any volatile memory
-     or for any reason can't be deleted just because they are dead stores.  */
+     or for any reason can't be deleted just because they are dead stores.
+     Also, delete any insns that copy a register to itself. */
 
   for (insn = f; insn; insn = NEXT_INSN (insn))
     {
@@ -617,7 +618,17 @@ life_analysis (f, nregs)
 	INSN_VOLATILE (insn) = 1;
       else if (code1 == INSN || code1 == JUMP_INSN)
 	{
-	  if (GET_CODE (PATTERN (insn)) != USE)
+	  if (GET_CODE (PATTERN (insn)) == SET
+	      && GET_CODE (SET_DEST (PATTERN (insn))) == REG
+	      && GET_CODE (SET_SRC (PATTERN (insn))) == REG
+	      && REGNO (SET_DEST (PATTERN (insn))) ==
+			REGNO (SET_SRC (PATTERN (insn))))
+	    {
+	      PUT_CODE (insn, NOTE);
+	      NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
+	      NOTE_SOURCE_FILE (insn) = 0;
+	    }
+	  else if (GET_CODE (PATTERN (insn)) != USE)
 	    INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
 	}
       /* A SET that makes space on the stack cannot be dead.
@@ -980,7 +991,7 @@ propagate_block (old, first, last, final, significant, bnum)
 		{
 		  rtx first = XEXP (note, 0);
 		  rtx prev = insn;
-		  while (first->volatil)
+		  while (INSN_DELETED_P (first))
 		    first = NEXT_INSN (first);
 		  while (prev != first)
 		    {
@@ -1032,7 +1043,8 @@ propagate_block (old, first, last, final, significant, bnum)
 	      insn = XEXP (note, 0);
 	      prev = PREV_INSN (insn);
 	    }
-	  else if (SET_DEST (PATTERN (insn)) == stack_pointer_rtx
+	  else if (GET_CODE (PATTERN (insn)) == SET
+		   && SET_DEST (PATTERN (insn)) == stack_pointer_rtx
 		   && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
 		   && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx
 		   && GET_CODE (XEXP (SET_SRC (PATTERN (insn)), 1)) == CONST_INT)
@@ -1061,28 +1073,32 @@ propagate_block (old, first, last, final, significant, bnum)
 		     mark_set_regs has already had a chance to handle it.  */
 		  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 		    if (call_used_regs[i])
-		      old[i / REGSET_ELT_BITS]
-			&= ~(1 << (i % REGSET_ELT_BITS));
+		      dead[i / REGSET_ELT_BITS] |=
+			(1 << (i % REGSET_ELT_BITS));
 
 		  /* The stack ptr is used (honorarily) by a CALL insn.  */
-		  old[STACK_POINTER_REGNUM / REGSET_ELT_BITS]
+		  live[STACK_POINTER_REGNUM / REGSET_ELT_BITS]
 		    |= (1 << (STACK_POINTER_REGNUM % REGSET_ELT_BITS));
+		}
 
-		  if (final)
-		    {
-		      /* Any regs live at the time of a call instruction
-			 must not go in a register clobbered by calls.
-			 Find all regs now live and record this for them.  */
+	      /* Update OLD for the registers used or set.  */
+	      for (i = 0; i < regset_size; i++)
+		{
+		  old[i] &= ~dead[i];
+		  old[i] |= live[i];
+		}
 
-		      register struct foo *p = regs_sometimes_live;
+	      if (GET_CODE (insn) == CALL_INSN && final)
+		{
+		  /* Any regs live at the time of a call instruction
+		     must not go in a register clobbered by calls.
+		     Find all regs now live and record this for them.  */
 
-		      for (i = 0; i < sometimes_max; i++, p++)
-			{
-			  if (old[p->offset]
-			      & (1 << p->bit))
-			    reg_crosses_call[p->offset * REGSET_ELT_BITS + p->bit] = 1;
-			}
-		    }
+		  register struct foo *p = regs_sometimes_live;
+
+		  for (i = 0; i < sometimes_max; i++, p++)
+		    if (old[p->offset] & (1 << p->bit))
+		      reg_crosses_call[p->offset * REGSET_ELT_BITS + p->bit] = 1;
 		}
 	    }
 
@@ -1318,7 +1334,9 @@ mark_set_1 (needed, dead, x, insn, significant)
 	  register rtx y = reg_next_use[regno];
 	  register int blocknum = BLOCK_NUM (insn);
 
-	  /* If this is a hard reg, record this function uses the reg.  */
+	  /* If this is a hard reg, record this function uses the reg.
+	     `combine.c' will get confused if LOG_LINKs are made
+	     for hard regs.  */
 
 	  if (regno < FIRST_PSEUDO_REGISTER)
 	    {

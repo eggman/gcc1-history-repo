@@ -471,14 +471,14 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    is at least partially passed in a register unless its data type forbids.  */
   
 #define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)				\
-((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))		\
+((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))	\
  ? gen_rtx (REG, (MODE), BASE_PASSING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* Define where a function finds its arguments.
    This is different from FUNCTION_ARG because of register windows.  */
 
 #define FUNCTION_INCOMING_ARG(CUM, MODE, TYPE, NAMED)			\
-((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))		\
+((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))	\
  ? gen_rtx (REG, (MODE), BASE_INCOMING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* For an arg passed partly in registers and partly in memory,
@@ -488,7 +488,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    needs partial registers on the Sparc.  */
   
 #define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) 		\
-  (((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))	\
+  (((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))\
     && ((CUM)								\
 	+ ((MODE) == BLKmode						\
 	   ? (int_size_in_bytes (TYPE) + 3) / 4				\
@@ -857,8 +857,9 @@ extern union tree_node *current_function_decl;
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS 0
 
-/* On Sun 4, this limit is 2048.  We use 2000 to be safe.  */
-#define DBX_CONTIN_LENGTH 2000
+/* On Sun 4, this limit is 2048.  We use 1500 to be safe,
+   since the length can run past this up to a continuation point.  */
+#define DBX_CONTIN_LENGTH 1500
 
 /* We assume that the store-condition-codes instructions store 0 for false
    and some other value for true.  This is the value stored for true.  */
@@ -913,24 +914,24 @@ extern union tree_node *current_function_decl;
 /* Nonzero if the results of the previous comparison are
    in the floating point condition code register.  */
 
-#define CC_IN_FCCR 040
+#define CC_IN_FCCR 04000
 
 /* Nonzero if the results of the previous comparison are
    int the coprocessor's condition code register.  */
 
-#define CC_IN_CCCR 0100
+#define CC_IN_CCCR 010000
 
 /* Nonzero if we know (easily) that floating point register f0
    (f1) contains the value 0.  */
-#define CC_F0_IS_0 0200
-#define CC_F1_IS_0 0400
+#define CC_F0_IS_0 020000
+#define CC_F1_IS_0 040000
 
 /* Store in cc_status the expressions
    that the condition codes will describe
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 { if (GET_CODE (EXP) == SET)					\
     { if (SET_DEST (EXP) == cc0_rtx)				\
 	{ cc_status.flags = 0;					\
@@ -940,10 +941,10 @@ extern union tree_node *current_function_decl;
 	{ CC_STATUS_INIT; }					\
       else if (GET_CODE (SET_DEST (EXP)) == REG)		\
 	{ if (cc_status.value1					\
-	      && reg_mentioned_p (SET_DEST (EXP), cc_status.value1)) \
+	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
 	  if (cc_status.value2					\
-	      && reg_mentioned_p (SET_DEST (EXP), cc_status.value2)) \
+	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value2)) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (EXP)) == MEM)		\
@@ -960,10 +961,10 @@ extern union tree_node *current_function_decl;
 	{ /* all bets are off */ CC_STATUS_INIT; }		\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == REG) \
 	{ if (cc_status.value1					\
-	      && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1)) \
+	      && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
 	  if (cc_status.value2					\
-	      && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2)) \
+	      && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2)) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
@@ -1135,7 +1136,7 @@ extern union tree_node *current_function_decl;
    to define a local common symbol.  */
 
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
-( fputs ("\n.common ", (FILE)),			\
+( fputs ("\n.reserve ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
   fprintf ((FILE), ",%d,\"bss\"\n", (ROUNDED)))
 

@@ -31,7 +31,7 @@ bindir = /usr/local
 libdir = /usr/local/lib
 
 # These are what you would need on HPUX:
-# CFLAGS = -Wc,-Ns2000 -Wc,-Ne700
+# CFLAGS = -Wc,-Ns2000 -Wc,-Ne700 -Wc,-Np300
 # -g is desirable in CFLAGS, but a compiler bug in HPUX version 5
 # bites whenever tree.def, rtl.def or machmode.def is included
 # (ie., on every source file).
@@ -106,7 +106,7 @@ TREE_H = tree.h tree.def machmode.def
 
 all: gnulib gcc cc1 cpp
 
-doc: cpp.info internals
+doc: cpp.info gcc.info
 
 compilations: ${OBJS}
 
@@ -188,7 +188,7 @@ jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
 cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h
-loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h
+loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h flags.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
    insn-config.h regs.h basic-block.h recog.h
@@ -327,7 +327,7 @@ cccp.o: cccp.c
 cpp.info: cpp.texinfo
 	makeinfo $<
 
-internals: internals.texinfo
+gcc.info: gcc.texinfo
 	makeinfo $<
 
 # gnulib is not deleted because deleting it would be inconvenient
@@ -369,26 +369,30 @@ maketest:
 	make -f test-Makefile clean
 # You must create the necessary links tm.h, md and aux-output.c
 
+bootstrap: all force
+	$(MAKE) stage1
+	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) stage2
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+
 # Copy the object files from a particular stage into a subdirectory.
 stage1: force
 	-mkdir stage1
 	mv $(STAGESTUFF) $(STAGE_GCC) stage1
-	-rm stage1/gnulib
+	-rm -f stage1/gnulib
 	-ln gnulib stage1 || cp gnulib stage1
 
 stage2: force
 	-mkdir stage2
 	mv $(STAGESTUFF) $(STAGE_GCC) stage2
-	-rm stage2/gnulib
+	-rm -f stage2/gnulib
 	-ln gnulib stage2 || cp gnulib stage2
 
 stage3: force
 	-mkdir stage3
 	mv $(STAGESTUFF) $(STAGE_GCC) stage3
-	-rm stage3/gnulib
+	-rm -f stage3/gnulib
 	-ln gnulib stage3 || cp gnulib stage3
-
-force:
 
 TAGS: force
 	mkdir temp
@@ -398,4 +402,6 @@ TAGS: force
 	rmdir temp
 
 #In GNU Make, ignore whether `stage*' exists.
-.PHONY: stage1 stage2 stage3 clean realclean TAGS
+.PHONY: stage1 stage2 stage3 clean realclean TAGS bootstrap
+
+force:

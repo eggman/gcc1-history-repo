@@ -88,7 +88,7 @@ and this notice must be preserved on all copies.  */
 	  break;							\
 	}								\
     }									\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     if (GET_MODE (X) == DFmode)						\
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\

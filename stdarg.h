@@ -9,8 +9,14 @@ typedef char *va_list;
 #define __va_rounded_size(TYPE)  \
   (((sizeof (TYPE) + sizeof (int) - 1) / sizeof (int)) * sizeof (int))
 
+#ifndef sparc
 #define va_start(AP, LASTARG) 						\
  (AP = ((char *) &(LASTARG) + __va_rounded_size (LASTARG)))
+#else
+#define va_start(AP, LASTARG) 						\
+ (__builtin_saveregs (),						\
+  AP = ((char *) &(LASTARG) + __va_rounded_size (LASTARG)))
+#endif
 
 void va_end (va_list);		/* Defined in gnulib */
 #define va_end(AP)

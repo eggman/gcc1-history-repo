@@ -832,8 +832,8 @@ lookup_for_remove (x, hash, mode)
   return 0;
 }
 
-/* Look for an expression equivalent to X and of the form (CODE Y).
-   If one is found, return Y.  */
+/* Look for an expression equivalent to X and with code CODE.
+   If one is found, return that expression.  */
 
 static rtx
 lookup_as_function (x, code)
@@ -850,7 +850,7 @@ lookup_as_function (x, code)
       if (GET_CODE (p->exp) == code
 	  /* Make sure this is a valid entry in the table.  */
 	  && (exp_equiv_p (XEXP (p->exp, 0), XEXP (p->exp, 0), 1)))
-	return XEXP (p->exp, 0);
+	return p->exp;
     }
   
   return 0;
@@ -1242,13 +1242,15 @@ use_related_value (x, elt)
 
 /* Hash an rtx.  We are careful to make sure the value is never negative.
    Equivalent registers hash identically.
+   MODE is used in hashing for CONST_INTs only;
+   otherwise the mode of X is used.
 
    Store 1 in do_not_record if any subexpression is volatile.
 
    Store 1 in hash_arg_in_memory if X contains a MEM rtx
-   which does not have the ->unchanging bit set.
+   which does not have the RTX_UNCHANGING_P bit set.
    In this case, also store 1 in hash_arg_in_struct
-   if there is a MEM rtx which has the ->in_struct bit set.
+   if there is a MEM rtx which has the MEM_IN_STRUCT_P bit set.
 
    Note that cse_insn knows that the hash code of a MEM expression
    is just (int) MEM plus the hash code of the address.
@@ -1292,7 +1294,7 @@ canon_hash (x, mode)
 
     case CONST_INT:
       hash += ((int) mode + ((int) CONST_INT << 7)
-	       + INTVAL (x) + INTVAL (x) >> HASHBITS);
+	       + INTVAL (x) + (INTVAL (x) >> HASHBITS));
       return ((1 << HASHBITS) - 1) & hash;
 
     case CONST_DOUBLE:
@@ -1301,9 +1303,9 @@ canon_hash (x, mode)
       hash += (int) code + (int) GET_MODE (x);
       {
 	int tem = XINT (x, 0);
-	hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+	hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
 	tem = XINT (x, 1);
-	hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+	hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
       }
       return hash;
 
@@ -1315,15 +1317,15 @@ canon_hash (x, mode)
       return hash + ((int) SYMBOL_REF << 7) + (int) XEXP (x, 0);
 
     case MEM:
-      if (x->volatil)
+      if (MEM_VOLATILE_P (x))
 	{
 	  do_not_record = 1;
 	  return 0;
 	}
-      if (! x->unchanging)
+      if (! RTX_UNCHANGING_P (x))
 	{
 	  hash_arg_in_memory = 1;
-	  if (x->in_struct) hash_arg_in_struct = 1;
+	  if (MEM_IN_STRUCT_P (x)) hash_arg_in_struct = 1;
 	}
       /* Now that we have already found this special case,
 	 might as well speed it up as much as possible.  */
@@ -1342,7 +1344,7 @@ canon_hash (x, mode)
       return 0;
 
     case ASM_OPERANDS:
-      if (x->volatil)
+      if (MEM_VOLATILE_P (x))
 	{
 	  do_not_record = 1;
 	  return 0;
@@ -1375,13 +1377,13 @@ canon_hash (x, mode)
 	  while (*p)
 	    {
 	      register int tem = *p++;
-	      hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+	      hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
 	    }
 	}
       else
 	{
 	  register int tem = XINT (x, i);
-	  hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+	  hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
 	}
     }
   return hash;
@@ -1817,6 +1819,34 @@ fold_rtx (x, copyflag)
 	 Doing nothing is is harmless.  */
       ;
 
+  /* If a commutative operation, place a constant integer as the second
+     operand unless the first operand is also a constant integer.  Otherwise,
+     place any constant second unless the first operand is also a constant.  */
+
+  switch (code)
+    {
+    case PLUS:
+    case MULT:
+    case UMULT:
+    case AND:
+    case IOR:
+    case XOR:
+    case NE:
+    case EQ:
+      if ((const_arg0 && ! const_arg1)
+	  || (const_arg0 && const_arg1 && GET_CODE (const_arg0) == CONST_INT
+	      && GET_CODE (const_arg1) != CONST_INT))
+	{
+	  register rtx tem;
+
+	  if (! copied)
+	    copied = 1, x = copy_rtx (x);
+	  tem = XEXP (x, 0); XEXP (x, 0) = XEXP (x, 1); XEXP (x, 1) = tem;
+	  tem = const_arg0; const_arg0 = const_arg1; const_arg1 = tem;
+	}
+      break;
+    }
+
   /* Now decode the kind of rtx X is
      and either return X (if nothing can be done)
      or store a value in VAL and drop through
@@ -1852,6 +1882,8 @@ fold_rtx (x, copyflag)
 	      return x;
 	    if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
 	      val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
+	    else
+	      return x;
 	    break;
 	  }
 
@@ -1866,6 +1898,8 @@ fold_rtx (x, copyflag)
 		if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
 		  val -= 1 << GET_MODE_BITSIZE (mode);
 	      }
+	    else
+	      return x;
 	    break;
 	  }
 
@@ -1925,8 +1959,9 @@ fold_rtx (x, copyflag)
 	{
 	  /* Even if we can't compute a constant result,
 	     there are some cases worth simplifying.  */
-	  if (code == PLUS)
+	  switch (code)
 	    {
+	    case PLUS:
 	      if (const_arg0 == const0_rtx)
 		return XEXP (x, 1);
 	      if (const_arg1 == const0_rtx)
@@ -1935,9 +1970,7 @@ fold_rtx (x, copyflag)
 	      /* Handle both-operands-constant cases.  */
 	      if (const_arg0 != 0 && const_arg1 != 0)
 	        {
-		  if (GET_CODE (const_arg0) == CONST_INT)
-		    new = plus_constant (const_arg1, INTVAL (const_arg0));
-		  else if (GET_CODE (const_arg1) == CONST_INT)
+		  if (GET_CODE (const_arg1) == CONST_INT)
 		    new = plus_constant (const_arg0, INTVAL (const_arg1));
 		  else
 		    {
@@ -1951,28 +1984,20 @@ fold_rtx (x, copyflag)
 		      new = gen_rtx (CONST, GET_MODE (new), new);
 		    }
 		}
-
-	      else if (const_arg0 != 0
-		       && GET_CODE (const_arg0) == CONST_INT
-		       && GET_CODE (XEXP (x, 1)) == PLUS
-		       && (CONSTANT_P (XEXP (XEXP (x, 1), 0))
-			   || CONSTANT_P (XEXP (XEXP (x, 1), 1))))
-		/* constant + (variable + constant)
-		   can result if an index register is made constant.
-		   We simplify this by adding the constants.
-		   If we did not, it would become an invalid address.  */
-		new = plus_constant (XEXP (x, 1),
-				     INTVAL (const_arg0));
 	      else if (const_arg1 != 0
 		       && GET_CODE (const_arg1) == CONST_INT
 		       && GET_CODE (XEXP (x, 0)) == PLUS
 		       && (CONSTANT_P (XEXP (XEXP (x, 0), 0))
 			   || CONSTANT_P (XEXP (XEXP (x, 0), 1))))
+		/* constant + (variable + constant)
+		   can result if an index register is made constant.
+		   We simplify this by adding the constants.
+		   If we did not, it would become an invalid address.  */
 		new = plus_constant (XEXP (x, 0),
 				     INTVAL (const_arg1));
-	    }
-	  else if (code == MINUS)
-	    {
+	      break;
+
+	    case MINUS:
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
 
@@ -1984,30 +2009,81 @@ fold_rtx (x, copyflag)
 		    return const0_rtx;
 		}
 
+	      /* Change subtraction from zero into negation.  */
+	      if (GET_MODE (x) != VOIDmode && const_arg0 == const0_rtx)
+		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 1));
+
+	      /* Don't let a relocatable value get a negative coeff.  */
 	      if (const_arg0 != 0 && const_arg1 != 0
-		  /* Don't let a relocatable value get a negative coeff.  */
 		  && GET_CODE (const_arg1) == CONST_INT)
 		new = plus_constant (const_arg0, - INTVAL (const_arg1));
-	    }
+	      break;
 
-	  /* PLUS and MULT can appear inside of a MEM.
-	     In such situations, a constant term must come second.  */
-	  else if (code == MULT || code == PLUS)
-	    {
-	      if (copyflag && const_arg0 != 0)
-		{
-		  if (! copied)
-		    x = gen_rtx (code, GET_MODE (x), XEXP (x, 0), XEXP (x, 1));
-		  XEXP (x, 0) = XEXP (x, 1);
-		  XEXP (x, 1) = const_arg0;
-		}
-	    }
+	    case MULT:
+	    case UMULT:
+	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
+		  && INTVAL (const_arg1) == -1)
+		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 0));
+	      if (const_arg1 == const0_rtx)
+		new = const0_rtx;
+	      if (const_arg1 == const1_rtx)
+		return XEXP (x, 0);
+	      break;
 
+	    case IOR:
+	      if (const_arg1 == const0_rtx)
+		return XEXP (x, 0);
+	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
+		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		new = const_arg1;
+	      break;
+
+	    case XOR:
+	      if (const_arg1 == const0_rtx)
+		return XEXP (x, 0);
+	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
+		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		return gen_rtx (NOT, GET_MODE (x), XEXP (x, 0));
+	      break;
+
+	    case AND:
+	      if (const_arg1 == const0_rtx)
+		new = const0_rtx;
+	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
+		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		return XEXP (x, 0);
+	      break;
+
+	    case DIV:
+	    case UDIV:
+	      if (const_arg1 == const1_rtx)
+		return XEXP (x, 0);
+	      if (const_arg0 == const0_rtx)
+		new = const0_rtx;
+	      break;
+
+	    case UMOD:
+	    case MOD:
+	      if (const_arg0 == const0_rtx || const_arg1 == const1_rtx)
+		new = const0_rtx;
+	      break;
+
+	    case LSHIFT:
+	    case ASHIFT:
+	    case ROTATE:
+	    case ASHIFTRT:
+	    case LSHIFTRT:
+	    case ROTATERT:
+	      if (const_arg1 == const0_rtx)
+		return XEXP (x, 0);
+	      break;
+
+	    case SUBREG:
 	  /* If integer truncation is being done with SUBREG,
-	     we can compute the result.  */
-
-	  else if (code == SUBREG)
-	    {
+	 	  we can compute the result.  */
 	      if (SUBREG_WORD (x) == 0
 		  && const_arg0 != 0
 		  && GET_CODE (const_arg0) == CONST_INT
@@ -2325,7 +2401,8 @@ fold_cc0 (x)
     /* Value is frame-pointer plus a constant?  Or non-explicit constant?
        That isn't zero, but we don't know its sign.  */
     if (FIXED_BASE_PLUS_P (y0)
-	|| GET_CODE (y0) == SYMBOL_REF || GET_CODE (y0) == CONST)
+	|| GET_CODE (y0) == SYMBOL_REF || GET_CODE (y0) == CONST
+	|| GET_CODE (y0) == LABEL_REF)
       return 0300 + (1<<3) + 1;
 
     /* Otherwise, only integers enable us to optimize.  */
@@ -2358,7 +2435,7 @@ predecide_loop_entry (insn)
   register rtx jump = NEXT_INSN (insn);
   register rtx p;
   register rtx loop_top_label = NEXT_INSN (jump);
-  enum { UNK, DELETE_LOOP, DELETE_JUMP } disposition = UNK;
+  enum anon1 { UNK, DELETE_LOOP, DELETE_JUMP } disposition = UNK;
   int count = 0;
 
   /* Find the label at the top of the loop.  */
@@ -2496,7 +2573,6 @@ cse_insn (insn)
   struct table_elt *src_eqv_elt = 0;
   int src_eqv_in_memory;
   int src_eqv_in_struct;
-  int src_eqv_volatile = 0;
   int src_eqv_hash_code;
 
   struct set *sets;
@@ -2674,7 +2750,7 @@ cse_insn (insn)
 	{
 	  rtx y = lookup_as_function (XEXP (src, 0), GET_CODE (src));
 	  if (y != 0)
-	    src = y;
+	    src = copy_rtx (XEXP (y, 0));
 	}
 
       /* If storing a constant value in a register that
@@ -2783,7 +2859,7 @@ cse_insn (insn)
 		  /* Record the actual constant value in a REG_EQUIV note.  */
 		  if (GET_CODE (SET_DEST (sets[i].rtl)) == REG)
 		    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV,
-						oldsrc, 0);
+						oldsrc, REG_NOTES (insn));
 		}
 	    }
 
@@ -2895,7 +2971,8 @@ cse_insn (insn)
 		      /* Create a new MEM rtx, in case the old one
 			 is shared somewhere else.  */
 		      dest = gen_rtx (MEM, GET_MODE (dest), addr);
-		      dest->volatil = sets[i].inner_dest->volatil;
+		      MEM_VOLATILE_P (dest)
+			= MEM_VOLATILE_P (sets[i].inner_dest);
 		      SET_DEST (sets[i].rtl) = dest;
 		      sets[i].inner_dest = dest;
 		    }
@@ -2912,12 +2989,14 @@ cse_insn (insn)
 	sets[i].src_volatile = 1, src_eqv = 0;
 
       /* No further processing for this assignment
-	 if destination is volatile.  */
+	 if destination is volatile or if the source and destination
+	 are the same.  */
 
       else if (do_not_record
 	       || (GET_CODE (dest) == REG 
 		   ? REGNO (dest) == STACK_POINTER_REGNUM
-		   : GET_CODE (dest) != MEM))
+		   : GET_CODE (dest) != MEM)
+	       || rtx_equal_p (SET_SRC (sets[i].rtl), SET_DEST (sets[i].rtl)))
 	sets[i].rtl = 0;
 
       if (sets[i].rtl != 0 && dest != SET_DEST (sets[i].rtl))
@@ -3077,7 +3156,7 @@ cse_insn (insn)
 	elt->in_memory = GET_CODE (sets[i].inner_dest) == MEM;
 	if (elt->in_memory)
 	  {
-	    elt->in_struct = (sets[i].inner_dest->in_struct
+	    elt->in_struct = (MEM_IN_STRUCT_P (sets[i].inner_dest)
 			      || sets[i].inner_dest != SET_DEST (sets[i].rtl));
 	  }
       }
@@ -3185,7 +3264,7 @@ note_mem_written (written, writes_ptr)
 	  /* A varying address that is a sum indicates an array element,
 	     and that's just as good as a structure element
 	     in implying that we need not invalidate scalar variables.  */
-	  if (!(written->in_struct
+	  if (!(MEM_IN_STRUCT_P (written)
 		|| GET_CODE (XEXP (written, 0)) == PLUS))
 	    writes_ptr->all = 1;
 	  writes_ptr->nonscalar = 1;
@@ -3292,7 +3371,6 @@ cse_main (f, nregs)
   while (insn)
     {
       register rtx p = insn;
-      register int i = 0;
       register int last_uid;
 
       max_qty = 0;

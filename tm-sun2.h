@@ -8,7 +8,7 @@
    This will control the use of inline 68881 insns in certain macros.
    Also inform the program which CPU this is for.  */
 
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}\
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} \
 %{m68020:-Dmc68020}%{mc68020:-Dmc68020}%{!mc68020:%{!m68020:-Dmc68010}}"
 
 /* -m68020 requires special flags to the assembler.  */

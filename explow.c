@@ -246,7 +246,7 @@ memory_address (mode, x)
      enum machine_mode mode;
      register rtx x;
 {
-  register rtx tem, oldx;
+  register rtx oldx;
 
   /* By passing constant addresses thru registers
      we get a chance to cse them.  */
@@ -363,8 +363,8 @@ stabilize (x)
       mem = gen_rtx (MEM, GET_MODE (x), temp);
       /* Mark returned memref with in_struct
 	 if it's in an array or structure. */
-      if (GET_CODE (addr) == PLUS || x->in_struct)
-	mem->in_struct = 1;
+      if (GET_CODE (addr) == PLUS || MEM_IN_STRUCT_P (x))
+	MEM_IN_STRUCT_P (mem) = 1;
       return mem;
     }
   return x;
@@ -430,7 +430,7 @@ force_reg (mode, x)
   /* Let optimizers know that TEMP's value never changes
      and that X can be substituted for it.  */
   if (CONSTANT_P (x))
-    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV, x, 0);
+    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV, x, REG_NOTES (insn));
   return temp;
 }
 

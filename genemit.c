@@ -276,10 +276,9 @@ gen_expand (expand)
      make a local variable.  */
   for (i = operands; i <= max_dup_opno; i++)
     printf ("  rtx operand%d;\n", i);
-  printf ("  rtx operands[%d];\n\n", max (operands, max_dup_opno + 1));
-  printf ("  extern rtx gen_sequence ();\n");
-  printf ("  extern int emit_to_sequence;\n\n");
-  printf ("  emit_to_sequence++;\n");
+  printf ("  rtx operands[%d];\n", max (operands, max_dup_opno + 1));
+  printf ("  rtx _val;\n");
+  printf ("  start_sequence ();\n");
 
   /* The fourth operand of DEFINE_EXPAND is some code to be executed
      before the actual construction.
@@ -332,7 +331,8 @@ gen_expand (expand)
       else if (GET_CODE (next) == CODE_LABEL)
 	printf ("  emit_label (");
       else if (GET_CODE (next) == MATCH_OPERAND
-	       || GET_CODE (next) == MATCH_DUP)
+	       || GET_CODE (next) == MATCH_DUP
+	       || GET_CODE (next) == PARALLEL)
 	printf ("  emit (");
       else
 	printf ("  emit_insn (");
@@ -343,12 +343,13 @@ gen_expand (expand)
 	printf ("  emit_barrier ();");
     }
 
-  printf ("  emit_to_sequence--;\n");
-
   /* Call `gen_sequence' to make a SEQUENCE out of all the
      insns emitted within this gen_... function.  */
 
-  printf ("  return gen_sequence ();\n}\n\n");
+  printf (" _done:\n");
+  printf ("  _val = gen_sequence ();\n");
+  printf ("  end_sequence ();\n");
+  printf ("  return _val;\n}\n\n");
 }
 
 int
@@ -421,8 +422,8 @@ from the machine description file `md'.  */\n\n");
   printf ("extern char *insn_operand_constraint[][MAX_RECOG_OPERANDS];\n\n");
   printf ("extern rtx recog_operand[];\n");
   printf ("#define operands recog_operand\n\n");
-  printf ("#define FAIL do { emit_to_sequence--; return 0;} while (0)\n\n");
-  printf ("#define DONE do { emit_to_sequence--; return gen_sequence ();} while (0)\n\n");
+  printf ("#define FAIL do { end_sequence (); return 0;} while (0)\n\n");
+  printf ("#define DONE goto _done\n\n");
 
   /* Read the machine description.  */
 

@@ -195,7 +195,7 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
   if (binoptab->handlers[(int) mode].lib_call
       && (methods == OPTAB_LIB || methods == OPTAB_LIB_WIDEN))
     {
-      rtx insn_before;
+      rtx insn_before, insn_first, insn_last;
       rtx funexp = gen_rtx (SYMBOL_REF, Pmode,
 			    binoptab->handlers[(int) mode].lib_call);
 
@@ -206,6 +206,8 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 	funexp = copy_to_mode_reg (Pmode, funexp);
 #endif
       insn_before = get_last_insn ();
+      if (insn_before == 0)
+	abort ();
 
       /* Cannot pass FUNEXP since emit_library_call insists
 	 on getting a SYMBOL_REF.  But cse will make this SYMBOL_REF
@@ -215,18 +217,28 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 			 mode, 2, op0, mode, op1, mode);
       target = hard_libcall_value (mode);
       temp = copy_to_reg (target);
-      REG_NOTES (get_last_insn ())
+
+      insn_first = NEXT_INSN (insn_before);
+      insn_last = get_last_insn ();
+
+      REG_NOTES (insn_last)
 	= gen_rtx (EXPR_LIST, REG_EQUAL,
 		   gen_rtx (binoptab->code, mode, op0, op1),
-		   gen_rtx (INSN_LIST, REG_RETVAL,
-			    NEXT_INSN (insn_before), 0));
+		   gen_rtx (INSN_LIST, REG_RETVAL, insn_first,
+			    REG_NOTES (insn_last)));
+      REG_NOTES (insn_first)
+	= gen_rtx (INSN_LIST, REG_LIBCALL, insn_last,
+		   REG_NOTES (insn_first));
       return temp;
     }
 
   /* It can't be done in this mode.  Can we do it in a wider mode?  */
 
   if (! (methods == OPTAB_WIDEN || methods == OPTAB_LIB_WIDEN))
-    return 0;			/* Caller says, don't even try.  */
+    {
+      delete_insns_since (last);
+      return 0;			/* Caller says, don't even try.  */
+    }
 
   /* Compute the value of METHODS to pass to recursive calls.
      Don't allow widening to be tried recursively.  */
@@ -303,9 +315,8 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 	  convert_move (target, temp, 0);
 	  return target;
 	}
-      else
-	delete_insns_since (last);
     }
+  delete_insns_since (last);
   return 0;
 }
 
@@ -462,7 +473,7 @@ expand_unop (mode, unoptab, op0, target, unsignedp)
     }
   else if (unoptab->handlers[(int) mode].lib_call)
     {
-      rtx insn_before;
+      rtx insn_before, insn_last;
       rtx funexp = gen_rtx (SYMBOL_REF, Pmode,
 			    unoptab->handlers[(int) mode].lib_call);
 
@@ -482,11 +493,16 @@ expand_unop (mode, unoptab, op0, target, unsignedp)
 			 mode, 1, op0, mode);
       target = hard_libcall_value (mode);
       temp = copy_to_reg (target);
-      REG_NOTES (get_last_insn ())
+      insn_last = get_last_insn ();
+      REG_NOTES (insn_last)
 	= gen_rtx (EXPR_LIST, REG_EQUAL,
 		   gen_rtx (unoptab->code, mode, op0),
 		   gen_rtx (INSN_LIST, REG_RETVAL,
-			    NEXT_INSN (insn_before), 0));
+			    NEXT_INSN (insn_before),
+			    REG_NOTES (insn_last)));
+      REG_NOTES (NEXT_INSN (insn_before))
+	= gen_rtx (INSN_LIST, REG_LIBCALL, insn_last,
+		   REG_NOTES (NEXT_INSN (insn_before)));
       return temp;
     }
 
@@ -574,11 +590,11 @@ emit_unop_insn (icode, target, op0, code)
   /* If we just made a multi-insn sequence,
      record in the last insn an equivalent expression for its value
      and a pointer to the first insn.  This makes cse possible.  */
-  if (code != UNKNOWN && insn != NEXT_INSN (prev_insn))
+  if (code != UNKNOWN && PREV_INSN (insn) != prev_insn)
     REG_NOTES (insn)
       = gen_rtx (EXPR_LIST, REG_EQUAL,
 		 gen_rtx (code, GET_MODE (temp), op0),
-		 0);
+		 REG_NOTES (insn));
   
   if (temp != target)
     emit_move_insn (target, temp);
@@ -620,10 +636,6 @@ emit_cmp_insn (x, y, size, unsignedp)
      With no special code here, this will call abort,
      reminding the programmer to implement such folding.  */
 
-  emit_queue ();
-  x = protect_from_queue (x, 0);
-  y = protect_from_queue (y, 0);
-
   if (mode != BLKmode && flag_force_mem)
     {
       x = force_not_mem (x);
@@ -632,13 +644,17 @@ emit_cmp_insn (x, y, size, unsignedp)
 
   if (mode == BLKmode)
     {
+      emit_queue ();
+      x = protect_from_queue (x, 0);
+      y = protect_from_queue (y, 0);
+
       if (size == 0)
 	abort ();
 #ifdef HAVE_cmpstrqi
       if (HAVE_cmpstrqi
 	  && GET_CODE (size) == CONST_INT
 	  && INTVAL (size) < (1 << BITS_PER_UNIT))
-	emit_insn (gen_cmpstrqi (x, y, convert_to_mode (SImode, size, 1)));
+	emit_insn (gen_cmpstrqi (x, y, size));
       else
 #endif
 #ifdef HAVE_cmpstrsi
@@ -662,6 +678,10 @@ emit_cmp_insn (x, y, size, unsignedp)
     {
       int icode = (int) tst_optab->handlers[(int) mode].insn_code;
 
+      emit_queue ();
+      x = protect_from_queue (x, 0);
+      y = protect_from_queue (y, 0);
+
       /* Now, if insn requires register operands, put operands into regs.  */
       if (! (*insn_operand_predicate[icode][0])
 	  (x, insn_operand_mode[icode][0]))
@@ -672,6 +692,10 @@ emit_cmp_insn (x, y, size, unsignedp)
   else if (cmp_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
     {
       int icode = (int) cmp_optab->handlers[(int) mode].insn_code;
+
+      emit_queue ();
+      x = protect_from_queue (x, 0);
+      y = protect_from_queue (y, 0);
 
       /* Now, if insn requires register operands, put operands into regs.  */
       if (! (*insn_operand_predicate[icode][0])
@@ -793,6 +817,7 @@ gen_move_insn (x, y)
   return (GEN_FCN (mov_optab->handlers[(int) mode].insn_code) (x, y));
 }
 
+#if 0
 /* Tables of patterns for extending one integer mode to another.  */
 enum insn_code zero_extend_optab[MAX_MACHINE_MODE][MAX_MACHINE_MODE];
 enum insn_code sign_extend_optab[MAX_MACHINE_MODE][MAX_MACHINE_MODE];
@@ -814,7 +839,6 @@ gen_extend_insn (x, y, mto, mfrom, unsignedp)
 static void
 init_extends ()
 {
-  int i;
   bzero (sign_extend_optab, sizeof sign_extend_optab);
   bzero (zero_extend_optab, sizeof zero_extend_optab);
   sign_extend_optab[(int) SImode][(int) HImode] = CODE_FOR_extendhisi2;
@@ -824,6 +848,7 @@ init_extends ()
   zero_extend_optab[(int) SImode][(int) QImode] = CODE_FOR_zero_extendqisi2;
   zero_extend_optab[(int) HImode][(int) QImode] = CODE_FOR_zero_extendqihi2;
 }
+#endif
 
 /* can_fix_p and can_float_p say whether the target machine
    can directly convert a given fixed point type to
@@ -996,7 +1021,7 @@ expand_float (real_to, from, unsignedp)
      int unsignedp;
 {
   enum insn_code icode;
-  register rtx intermediate = 0, to;
+  register rtx to;
 
   to = real_to = protect_from_queue (real_to, 1);
   from = protect_from_queue (from, 0);
@@ -1214,7 +1239,7 @@ init_optabs ()
   init_fixtab ();
   init_floattab ();
   init_comparisons ();
-  init_extends ();
+/*  init_extends (); */
 
   add_optab = init_optab (PLUS);
   sub_optab = init_optab (MINUS);

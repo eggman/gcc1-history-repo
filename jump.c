@@ -96,7 +96,7 @@ static void find_cross_jump ();
 static void do_cross_jump ();
 static enum rtx_code reverse_condition ();
 static int jump_back_p ();
-static int condjump_p ();
+int condjump_p ();
 
 /* Delete no-op jumps and optimize jumps to jumps
    and jumps around jumps.
@@ -169,7 +169,7 @@ jump_optimize (f, cross_jump, noop_moves)
      also make a chain of all returns.  */
 
   for (insn = f; insn; insn = NEXT_INSN (insn))
-    if (GET_CODE (insn) == JUMP_INSN && !insn->volatil)
+    if (GET_CODE (insn) == JUMP_INSN && ! INSN_DELETED_P (insn))
       {
 	mark_jump_label (PATTERN (insn), insn, cross_jump);
 	if (JUMP_LABEL (insn) != 0 && simplejump_p (insn))
@@ -217,14 +217,14 @@ jump_optimize (f, cross_jump, noop_moves)
 
       if (insn && GET_CODE (insn) == NOTE
 	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
-	  && ! insn->volatil)
+	  && ! INSN_DELETED_P (insn))
 	{
 	  extern int current_function_returns_null;
 	  current_function_returns_null = 1;
 	}
       /* Zero the "deleted" flag of all the "deleted" insns.  */
       for (insn = f; insn; insn = NEXT_INSN (insn))
-	insn->volatil = 0;
+	INSN_DELETED_P (insn) = 0;
       return;
     }
 
@@ -290,8 +290,10 @@ jump_optimize (f, cross_jump, noop_moves)
 			 || (GET_CODE (SET_DEST (body)) == MEM
 			     && GET_CODE (SET_SRC (body)) == MEM
 			     && rtx_equal_p (SET_SRC (body), SET_DEST (body))))
-		     && ! SET_DEST (body)->volatil
-		     && ! SET_SRC (body)->volatil)
+		     && ! (GET_CODE (SET_DEST (body)) == MEM
+			   && MEM_VOLATILE_P (SET_DEST (body)))
+		     && ! (GET_CODE (SET_SRC (body)) == MEM
+			   && MEM_VOLATILE_P (SET_SRC (body))))
 	      delete_insn (insn);
 
 	    /* Detect and ignore no-op move instructions
@@ -399,6 +401,15 @@ jump_optimize (f, cross_jump, noop_moves)
 		  delete_jump (insn);
 		  changed = 1;
 		  next = NEXT_INSN (insn);
+		}
+	      /* A jump to a return becomes a return.  */
+	      else if (simplejump_p (insn)
+		       && (temp = next_real_insn (JUMP_LABEL (insn))) != 0
+		       && GET_CODE (PATTERN (temp)) == RETURN)
+		{
+		  PATTERN (insn) = PATTERN (temp);
+		  /* Re-recognize this insn.  */
+		  INSN_CODE (insn) = -1;
 		}
 	      /* Detect jumping over an unconditional jump.  */
 	      else if (reallabelprev != 0
@@ -557,7 +568,7 @@ jump_optimize (f, cross_jump, noop_moves)
 			  if (target != insn
 			      && JUMP_LABEL (target) == JUMP_LABEL (insn)
 			      /* Ignore TARGET if it's deleted.  */
-			      && ! target->volatil)
+			      && ! INSN_DELETED_P (target))
 			    find_cross_jump (insn, target, 2,
 					     &newjpos, &newlpos);
 
@@ -589,7 +600,7 @@ jump_optimize (f, cross_jump, noop_moves)
 		       target != 0 && newjpos == 0;
 		       target = jump_chain[INSN_UID (target)])
 		    if (target != insn
-			&& ! target->volatil
+			&& ! INSN_DELETED_P (target)
 			&& GET_CODE (PATTERN (target)) == RETURN)
 		      find_cross_jump (insn, target, 2,
 				       &newjpos, &newlpos);
@@ -692,8 +703,7 @@ find_cross_jump (e1, e2, minimum, f1, f2)
 	     unless the compare is also shared.
 	     Here, if either of these non-matching insns is a compare,
 	     exclude the following insn from possible cross-jumping.  */
-	  if ((GET_CODE (p1) == SET && SET_DEST (p1) == cc0_rtx)
-	      || (GET_CODE (p2) == SET && SET_DEST (p2) == cc0_rtx))
+	  if (sets_cc0_p (p1) || sets_cc0_p (p2))
 	    last1 = afterlast1, last2 = afterlast2, ++minimum;
 
 	  /* If cross-jumping here will feed a jump-around-jump optimization,
@@ -847,7 +857,7 @@ simplejump_p (insn)
 /* Return nonzero if INSN is a (possibly) conditional jump
    and nothing more.  */
 
-static int
+int
 condjump_p (insn)
      rtx insn;
 {
@@ -866,6 +876,34 @@ condjump_p (insn)
   if (XEXP (SET_SRC (x), 1) == pc_rtx
       && GET_CODE (XEXP (SET_SRC (x), 2)) == LABEL_REF)
     return 1;
+  return 0;
+}
+
+/* Return 1 if X is an RTX that does nothing but set the condition codes
+   and CLOBBER or USE registers.
+   Return -1 if X does explicitly set the condition codes,
+   but also does other things.  */
+
+int
+sets_cc0_p (x)
+     rtx x;
+{
+  if (GET_CODE (x) == SET && SET_DEST (x) == cc0_rtx)
+    return 1;
+  if (GET_CODE (x) == PARALLEL)
+    {
+      int i;
+      int sets_cc0 = 0;
+      int other_things = 0;
+      for (i = XVECLEN (x, 0) - 1; i >= 0; i--)
+	{
+	  if (GET_CODE (x) == SET && SET_DEST (x) == cc0_rtx)
+	    sets_cc0 = 1;
+	  else if (GET_CODE (x) == SET)
+	    other_things = 1;
+	}
+      return ! sets_cc0 ? 0 : other_things ? -1 : 1;
+    }
   return 0;
 }
 
@@ -1101,8 +1139,7 @@ delete_jump (insn)
       while (prev && GET_CODE (prev) == NOTE)
 	prev = PREV_INSN (prev);
       if (prev && GET_CODE (prev) == INSN
-	  && GET_CODE (PATTERN (prev)) == SET
-	  && SET_DEST (PATTERN (prev)) == cc0_rtx
+	  && sets_cc0_p (PATTERN (prev)) > 0
 	  && !find_reg_note (prev, REG_INC, 0))
 	delete_insn (prev);
     }
@@ -1121,24 +1158,24 @@ delete_insn (insn)
   register rtx next = NEXT_INSN (insn);
   register rtx prev = PREV_INSN (insn);
 
-  if (insn->volatil)
+  if (INSN_DELETED_P (insn))
     {
       /* This insn is already deleted => return first following nondeleted.  */
-      while (next && next->volatil)
+      while (next && INSN_DELETED_P (next))
 	next = NEXT_INSN (next);
       return next;
     }
 
   /* Mark this insn as deleted.  */
 
-  insn->volatil = 1;
+  INSN_DELETED_P (insn) = 1;
 
   /* If instruction is followed by a barrier,
      delete the barrier too.  */
 
   if (next != 0 && GET_CODE (next) == BARRIER)
     {
-      next->volatil = 1;
+      INSN_DELETED_P (next) = 1;
       next = NEXT_INSN (next);
     }
 
@@ -1167,12 +1204,12 @@ delete_insn (insn)
 	   but I see no clean and sure alternative way
 	   to find the first insn after INSN that is not now deleted.
 	   I hope this works.  */
-	while (next && next->volatil)
+	while (next && INSN_DELETED_P (next))
 	  next = NEXT_INSN (next);
 	return next;
       }
 
-  while (prev && GET_CODE (prev) == NOTE)
+  while (prev && (INSN_DELETED_P (prev) || GET_CODE (prev) == NOTE))
     prev = PREV_INSN (prev);
 
   /* If INSN was a label, delete insns following it if now unreachable.  */
@@ -1208,7 +1245,7 @@ rtx
 next_nondeleted_insn (insn)
      rtx insn;
 {
-  while (insn->volatil)
+  while (INSN_DELETED_P (insn))
     insn = NEXT_INSN (insn);
   return insn;
 }
@@ -1466,7 +1503,7 @@ true_regnum (x)
   if (GET_CODE (x) == SUBREG)
     {
       int base = true_regnum (SUBREG_REG (x));
-      if (base >= 0)
+      if (base >= 0 && base < FIRST_PSEUDO_REGISTER)
 	return SUBREG_WORD (x) + base;
     }
   return -1;

@@ -139,6 +139,7 @@ struct tree_common
   unsigned unsigned_attr : 1;
   unsigned asm_written_attr: 1;
   unsigned inline_attr : 1;
+  unsigned used_attr : 1;
 };
 
 /* Define accessors for the fields that all tree nodes have
@@ -164,7 +165,7 @@ struct tree_common
    Decls in the same scope are chained together to record the contents
    of the scope.
    Statement nodes for successive statements used to be chained together.
-   Often lists of things are represented by TREE_LIST nodes thaht
+   Often lists of things are represented by TREE_LIST nodes that
    are chained together.  */
 
 #define TREE_CHAIN(NODE) ((NODE)->common.chain)
@@ -188,7 +189,7 @@ struct tree_common
    So it cannot be in a register.
    In a FUNCTION_DECL, nonzero means its address is needed.
    So it must be compiled even if it is an inline function.
-   In CONSTRUCTOR nodes, it means are all constants suitable
+   In CONSTRUCTOR nodes, it means the elements are all constants suitable
    for output as assembly-language initializers.
    In LABEL_DECL nodes, it means a goto for this label has been seen 
    from a place outside all binding contours that restore stack levels,
@@ -257,6 +258,9 @@ struct tree_common
 /* Nonzero in a FUNCTION_DECL means this function can be substituted
    where it is called.  */
 #define TREE_INLINE(NODE) ((NODE)->common.inline_attr)
+
+/* Nonzero in a _DECL if the name is used in its scope.  */
+#define TREE_USED(NODE) ((NODE)->common.used_attr)
 
 /* Define additional fields and accessors for nodes representing constants.  */
 
@@ -858,7 +862,8 @@ extern int all_types_permanent;
 
 /* In stmt.c */
 
-extern tree expand_start_stmt_expr (), expand_end_stmt_expr ();
+extern tree expand_start_stmt_expr ();
+extern tree expand_end_stmt_expr ();
 extern void expand_expr_stmt(), clear_last_expr();
 extern void expand_label(), expand_goto(), expand_asm();
 extern void expand_start_cond(), expand_end_cond();

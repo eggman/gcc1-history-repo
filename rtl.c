@@ -120,6 +120,8 @@ char *rtx_format[] = {
          prints the integer
      "s" a pointer to a string
          prints the string
+     "S" like "s", but optional:
+	 the containing rtx may end before this operand
      "e" a pointer to an rtl expression
          prints the expression
      "E" a pointer to a vector that points to a number of rtl expressions
@@ -251,7 +253,7 @@ rtx_unstable_p (x)
   register char *fmt;
 
   if (code == MEM)
-    return ! x->unchanging;
+    return ! RTX_UNCHANGING_P (x);
 
   if (code == QUEUED)
     return 1;
@@ -262,7 +264,7 @@ rtx_unstable_p (x)
   if (code == REG)
     return ! (REGNO (x) == FRAME_POINTER_REGNUM
 	      || REGNO (x) == ARG_POINTER_REGNUM
-	      || x->unchanging);
+	      || RTX_UNCHANGING_P (x));
 
   fmt = GET_RTX_FORMAT (code);
   for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
@@ -359,12 +361,10 @@ reg_mentioned_p (reg, in)
 	 and are unique.  */
     case CC0:
     case PC:
-    case CONST_INT:
-    case CONST:
-    case CONST_DOUBLE:
-    case LABEL_REF:
-    case SYMBOL_REF:
       return 0;
+
+    case CONST_INT:
+      return GET_CODE (reg) == CONST_INT && INTVAL (in) == INTVAL (reg);
     }
 
   if (GET_CODE (reg) == code && rtx_equal_p (reg, in))
@@ -405,6 +405,90 @@ reg_used_between_p (reg, from_insn, to_insn)
   return 0;
 }
 
+/* Return nonzero if hard register in range [REGNO, ENDREGNO)
+   appears either explicitly or implicitly in X
+   other than being stored into.
+
+   References contained within the substructure at LOC do not count.
+   LOC may be zero, meaning don't ignore anything.  */
+
+int
+refers_to_regno_p (regno, endregno, x, loc)
+     int regno, endregno;
+     rtx x;
+     rtx *loc;
+{
+  register int i;
+  register RTX_CODE code;
+  register char *fmt;
+
+ repeat:
+  code = GET_CODE (x);
+  if (code == REG)
+    {
+      i = REGNO (x);
+      return (endregno > i && regno < i + HARD_REGNO_NREGS (i, GET_MODE (x)));
+    }
+
+  if (code == SET)
+    {
+      /* Note setting a SUBREG counts as referring to the REG it is in!  */
+      if (GET_CODE (SET_DEST (x)) != REG
+	  && refers_to_regno_p (regno, endregno, SET_DEST (x), loc))
+	return 1;
+      if (loc == &SET_SRC (x))
+	return 0;
+      x = SET_SRC (x);
+      goto repeat;
+    }
+
+  if (code == CLOBBER)
+    {
+      if (GET_CODE (SET_DEST (x)) != REG
+	  && refers_to_regno_p (regno, endregno, SET_DEST (x), loc))
+	return 1;
+      return 0;
+    }
+
+  /* X does not match, so try its subexpressions.  */
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e' && loc != &XEXP (x, i))
+	{
+	  if (i == 0)
+	    {
+	      x = XEXP (x, 0);
+	      goto repeat;
+	    }
+	  else
+	    if (refers_to_regno_p (regno, endregno, XEXP (x, i), loc))
+	      return 1;
+	}
+      else if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = XVECLEN (x, i) - 1; j >=0; j--)
+	    if (loc != &XVECEXP (x, i, j)
+		&& refers_to_regno_p (regno, endregno, XVECEXP (x, i, j), loc))
+	      return 1;
+	}
+    }
+  return 0;
+}
+
+/* Nonzero if X contains any reg that overlaps hard register REG.  */
+
+int
+reg_overlap_mentioned_p (reg, x)
+     rtx reg, x;
+{
+  int regno = REGNO (reg);
+  int endregno = regno + HARD_REGNO_NREGS (regno, GET_MODE (reg));
+  return refers_to_regno_p (regno, endregno, x, 0);
+}
+
 /* Return 1 if X and Y are identical-looking rtx's.
    This is the Lisp function EQUAL for rtx arguments.  */
 
@@ -431,8 +515,13 @@ rtx_equal_p (x, y)
     return 0;
 
   /* These three types of rtx's can be compared nonrecursively.  */
+  /* Don't consider the a reference to the return register of the current
+     function the same as the return from a called function.  This eases
+     the job of function integration.  Once the distinction no longer
+     matters, the insn will be deleted.  */
   if (code == REG)
-    return (REGNO (x) == REGNO (y));
+    return (REGNO (x) == REGNO (y)
+	    && REG_FUNCTION_VALUE_P (x) == REG_FUNCTION_VALUE_P (y));
   if (code == LABEL_REF)
     return XEXP (x, 0) == XEXP (y, 0);
   if (code == SYMBOL_REF)
@@ -459,6 +548,10 @@ rtx_equal_p (x, y)
 	case 's':
 	  if (strcmp (XSTR (x, i), XSTR (y, i)))
 	    return 0;
+	  break;
+
+	case 'u':
+	  /* These are just backpointers, so they don't matter.  */
 	  break;
 
 	case '0':
@@ -642,7 +735,7 @@ volatile_refs_p (x)
 
     case MEM:
     case ASM_OPERANDS:
-      if (x->volatil)
+      if (MEM_VOLATILE_P (x))
 	return 1;
     }
 
@@ -726,6 +819,7 @@ print_rtx (in_rtx)
   for (i = 0; i < GET_RTX_LENGTH (GET_CODE (in_rtx)); i++)
     switch (*format_ptr++)
       {
+      case 'S':
       case 's':
 	if (XSTR (in_rtx, i) == 0)
 	  fprintf (outfile, " \"\"");
@@ -810,8 +904,11 @@ debug_rtx (x)
   fprintf (stderr, "\n");
 }
 
-/* External entry point for printing a chain of INSNs
-   starting with RTX_FIRST onto file OUTF.  */
+/* External entry point for printing a chain of insns
+   starting with RTX_FIRST onto file OUTF.
+   A blank line separates insns.
+
+   If RTX_FIRST is not an insn, then it alone is printed, with no newline.  */
 
 void
 print_rtl (outf, rtx_first)
@@ -823,10 +920,23 @@ print_rtl (outf, rtx_first)
   outfile = outf;
   sawclose = 0;
 
-  for (tmp_rtx = rtx_first; NULL != tmp_rtx; tmp_rtx = NEXT_INSN (tmp_rtx))
+  switch (GET_CODE (rtx_first))
     {
-      print_rtx (tmp_rtx);
-      fprintf (outfile, "\n");
+    case INSN:
+    case JUMP_INSN:
+    case CALL_INSN:
+    case NOTE:
+    case CODE_LABEL:
+    case BARRIER:
+      for (tmp_rtx = rtx_first; NULL != tmp_rtx; tmp_rtx = NEXT_INSN (tmp_rtx))
+	{
+	  print_rtx (tmp_rtx);
+	  fprintf (outfile, "\n");
+	}
+      break;
+
+    default:
+      print_rtx (rtx_first);
     }
 }
 
@@ -1055,6 +1165,17 @@ read_rtx (infile)
 	  /* close bracket gotten */
 	}
 	break;
+
+      case 'S':
+	/* 'S' is an optional string: if a closeparen follows,
+	   just store NULL for this element.  */
+	c = read_skip_spaces (infile);
+	ungetc (c, infile);
+	if (c == ')')
+	  {
+	    XSTR (return_rtx, i) = 0;
+	    break;
+	  }
 
       case 's':
 	{

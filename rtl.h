@@ -173,6 +173,9 @@ typedef struct rtx_def
 #define GET_MODE(RTX)		((RTX)->mode)
 #define PUT_MODE(RTX, MODE)	((RTX)->mode = (MODE))
 
+#define RTX_INTEGRATED_P(RTX) ((RTX)->integrated)
+#define RTX_UNCHANGING_P(RTX) ((RTX)->unchanging)
+
 /* RTL vector.  These appear inside RTX's when there is a need
    for a variable number of things.  The principle use is inside
    PARALLEL expressions.  */
@@ -231,6 +234,9 @@ typedef struct rtvec_def{
    They are always in the same basic block as this insn.  */
 #define LOG_LINKS(INSN)		((INSN)->fld[5].rtx)
 
+/* 1 if insn has been deleted.  */
+#define INSN_DELETED_P(INSN) ((INSN)->volatil)
+
 /* Holds a list of notes on what this insn does to various REGs.
    It is a chain of EXPR_LIST rtx's, where the second operand
    is the chain pointer and the first operand is the REG being described.
@@ -256,15 +262,21 @@ typedef struct rtvec_def{
    is actually an INSN_LIST and it points to the first insn involved
    in setting up arguments for the call.  flow.c uses this to delete
    the entire library call when its result is dead.
+     REG_LIBCALL is the inverse of REG_RETVAL: it goes on the first insn
+   of the library call and points at the one that has the REG_RETVAL.
      REG_WAS_0 says that the register set in this insn held 0 before the insn.
    The contents of the note is the insn that stored the 0.
    If that insn is deleted or patched to a NOTE, the REG_WAS_0 is inoperative.
-   The REG_WAS_0 note is actually an INSN_LIST, not an EXPR_LIST.  */
+   The REG_WAS_0 note is actually an INSN_LIST, not an EXPR_LIST.
+     REG_NONNEG means that the register is always nonnegative during
+   the containing loop.  This is used in branches so that decrement and
+   branch instructions terminating on zero can be matched.  */
 
 #define REG_NOTES(INSN)	((INSN)->fld[6].rtx)
 
 enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
-		REG_EQUAL = 5, REG_RETVAL = 6 };
+		REG_EQUAL = 5, REG_RETVAL = 6, REG_LIBCALL = 7,
+		REG_NONNEG = 8 };
 
 /* Extract the reg-note kind from an EXPR_LIST.  */
 #define REG_NOTE_KIND(LINK) ((enum reg_note) GET_MODE (LINK))
@@ -344,6 +356,9 @@ enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 
 #define REG_FUNCTION_VALUE_P(RTX) ((RTX)->integrated)
 
+/* 1 in a REG rtx if it corresponds to a variable declared by the user.  */
+#define REG_USERVAR_P(RTX) ((RTX)->volatil)
+
 /* For a CONST_INT rtx, INTVAL extracts the integer.  */
 
 #define INTVAL(RTX) ((RTX)->fld[0].rtint)
@@ -354,10 +369,20 @@ enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 #define SUBREG_REG(RTX) ((RTX)->fld[0].rtx)
 #define SUBREG_WORD(RTX) ((RTX)->fld[1].rtint)
 
+/* For a MEM rtx, 1 if it's a volatile reference.
+   Also in an ASM_OPERANDS rtx.  */
+#define MEM_VOLATILE_P(RTX) ((RTX)->volatil)
+
+/* For a MEM rtx, 1 if it refers to a structure or union component.  */
+#define MEM_IN_STRUCT_P(RTX) ((RTX)->in_struct)
+
 /* For a SET rtx, SET_DEST is the place that is set
    and SET_SRC is the value it is set to.  */
 #define SET_DEST(RTX) ((RTX)->fld[0].rtx)
 #define SET_SRC(RTX) ((RTX)->fld[1].rtx)
+
+/* 1 in a SYMBOL_REF if it addresses this function's constants pool.  */
+#define CONSTANT_POOL_ADDRESS_P(RTX) ((RTX)->unchanging)
 
 /* For an INLINE_HEADER rtx, FIRST_FUNCTION_INSN is the first insn
    of the function that is not involved in copying parameters to
@@ -428,8 +453,6 @@ extern rtx plus_constant ();
 extern rtx find_equiv_reg ();
 extern rtx delete_insn ();
 extern rtx adj_offsetable_operand ();
-
-extern int emit_to_sequence;
 
 /* Maximum number of parallel sets and clobbers in any insn in this fn.
    Always at least 3, since the combiner could put that many togetherm

@@ -153,9 +153,9 @@ static int current_sym_nchars;
 void dbxout_types ();
 void dbxout_tags ();
 void dbxout_args ();
+void dbxout_symbol ();
 static void dbxout_type_name ();
 static void dbxout_type ();
-static void dbxout_type_def ();
 static void dbxout_finish_symbol ();
 static void dbxout_continue ();
 
@@ -184,8 +184,8 @@ dbxout_init (asm_file, input_file_name)
   /* Make sure that types `int' and `char' have numbers 1 and 2.
      Definitions of other integer types will refer to those numbers.  */
 
-  dbxout_type_def (integer_type_node);
-  dbxout_type_def (char_type_node);
+  dbxout_symbol (TYPE_NAME (integer_type_node));
+  dbxout_symbol (TYPE_NAME (char_type_node));
 
   /* Get all permanent types not yet gotten, and output them.  */
 
@@ -351,11 +351,16 @@ dbxout_type (type, full)
 	     and mark the type as partially described.
 	     If it later becomes defined, we will output
 	     its real definition.
-	     If the type has a name, don't nest its name within
+	     If the type has a name, don't nest its definition within
 	     another type's definition; instead, output an xref
 	     and let the definition come when the name is defined.  */
 	  fprintf (asmfile, (TREE_CODE (type) == RECORD_TYPE) ? "xs" : "xu");
 	  CHARS (3);
+	  /* We shouldn't be outputting a reference to a type before its
+	     definition unless the type has a tag name.
+	     A typedef name without a tag name should be impossible.  */
+	  if (TREE_CODE (TYPE_NAME (type)) != IDENTIFIER_NODE)
+	    abort ();
 	  dbxout_type_name (type);
 	  fprintf (asmfile, ":");
 	  typevec[TYPE_SYMTAB_ADDRESS (type)] = TYPE_XREF;
@@ -399,7 +404,6 @@ dbxout_type (type, full)
 		CHARS (2);
 		if (TREE_CODE (tem) == FUNCTION_DECL)
 		  {
-		    tree t;
 		    putc (':', asmfile);
 		    CHARS (1);
 		    dbxout_type (TREE_TYPE (tem), 0); /* FUNCTION_TYPE */
@@ -596,10 +600,20 @@ dbxout_symbol (decl, local)
       break;
 
     case TYPE_DECL:
+#if 0
+      /* This seems all wrong.  Outputting most kinds of types gives no name
+	 at all.  A true definition gives no name; a cross-ref for a
+	 structure can give the tag name, but not a type name.
+	 It seems that no typedef name is defined by outputting a type.  */
+
       /* If this typedef name was defined by outputting the type,
 	 don't duplicate it.  */
       if (typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED
 	  && TYPE_NAME (TREE_TYPE (decl)) == decl)
+	return;
+#endif
+      /* Don't output the same typedef twice.  */
+      if (TREE_ASM_WRITTEN (decl))
 	return;
 
       /* Output typedef name.  */
@@ -610,6 +624,9 @@ dbxout_symbol (decl, local)
 
       dbxout_type (TREE_TYPE (decl), 1);
       dbxout_finish_symbol ();
+
+      /* Prevent duplicate output of a typedef.  */
+      TREE_ASM_WRITTEN (decl) = 1;
       break;
       
     case PARM_DECL:
@@ -929,8 +946,9 @@ dbxout_args (args)
     }
 }
 
-/* Given a chain of ..._TYPE nodes, all of which have names,
-   output definitions of those names, as typedefs.  */
+/* Given a chain of ..._TYPE nodes,
+   find those which have typedef names and output those names.
+   This is to ensure those types get output.  */
 
 void
 dbxout_types (types)
@@ -939,40 +957,11 @@ dbxout_types (types)
   while (types)
     {
       if (TYPE_NAME (types)
-	  && TREE_CODE (TYPE_NAME (types)) == TYPE_DECL)
-	dbxout_type_def (types);
+	  && TREE_CODE (TYPE_NAME (types)) == TYPE_DECL
+	  && ! TREE_ASM_WRITTEN (TYPE_NAME (types)))
+	dbxout_symbol (TYPE_NAME (types), 1);
       types = TREE_CHAIN (types);
     }
-}
-
-/* Output a definition of a typedef name.
-   It works much like any other kind of symbol definition.
-   Output nothing if TYPE's definition has been output already.  */
-
-static void
-dbxout_type_def (type)
-     tree type;
-{
-  /* This fn is called an extra time for int and char types.  Do nothing.  */
-  /* This `if' used to reject any type already output,
-     but that caused some type NAMES not to be defined,
-     whose TYPES were defined already.  */
-  if (TYPE_SYMTAB_ADDRESS (type) != 0
-      && typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED
-      && (type == integer_type_node || type == char_type_node))
-    return;
-
-  current_sym_code = N_LSYM;
-  current_sym_value = 0;
-  current_sym_addr = 0;
-  current_sym_nchars = 0;
-  current_sym_nchars
-    = 2 + IDENTIFIER_LENGTH (DECL_NAME (TYPE_NAME (type)));
-
-  fprintf (asmfile, ".stabs \"%s:t",
-	   IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type))));
-  dbxout_type (type, 1);
-  dbxout_finish_symbol ();
 }
 
 /* Output the tags (struct, union and enum definitions with names) for a block,

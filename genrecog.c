@@ -546,7 +546,7 @@ write_tree (tree, prevpos, afterward, afterpos, initial)
   char *pos;
   register int depth;
   int ignmode;
-  enum { NO_SWITCH, CODE_SWITCH, MODE_SWITCH } in_switch = NO_SWITCH;
+  enum anon1 { NO_SWITCH, CODE_SWITCH, MODE_SWITCH } in_switch = NO_SWITCH;
   char modemap[NUM_MACHINE_MODES];
   char codemap[NUM_RTX_CODE];
 

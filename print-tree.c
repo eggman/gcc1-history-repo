@@ -117,7 +117,7 @@ cpart (title, ct, punct)
       else
 	fprintf (outfile, "%ld", TREE_INT_CST_LOW (ct));
     }
-  putc(punct, outfile);
+  putc (punct, outfile);
 }
 
 static
@@ -131,8 +131,7 @@ walk (node, leaf, indent)
     dump (node, indent+1);
 }
 
-static
-void
+static void
 cwalk (s, leaf, indent)
      tree s;
      tree leaf;
@@ -140,11 +139,10 @@ cwalk (s, leaf, indent)
 {
   if (s != NULL) 
     if (!TREE_LITERAL (s))
-      walk(s, leaf, indent);
+      walk (s, leaf, indent);
 }
  
-static
-void
+static void
 prtypeinfo (node)
      register tree node;
 {
@@ -237,12 +235,17 @@ prtypeinfo (node)
       fputs ("inline", outfile);
       first = 0;
     }
+  if (TREE_USED (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("used", outfile);
+      first = 0;
+    }
   fputs ("] ", outfile);
 }
 
-static
-void
-prdeclmodeinfo(node)
+static void
+prdeclmodeinfo (node)
      tree node;
 {
   register enum machine_mode mode = DECL_MODE (node);
@@ -256,7 +259,7 @@ prdeclmodeinfo(node)
 
 static
 void
-prtypemodeinfo(node)
+prtypemodeinfo (node)
      tree node;
 {
   register enum machine_mode mode = TYPE_MODE (node);
@@ -288,7 +291,7 @@ dump (node, indent)
 {
   register enum tree_code code = TREE_CODE (node);
   register int i;
-  register int len;
+  register int len, first_rtl;
   int nochain = 0;
 
   if (markvec[TREE_UID (node)])
@@ -305,7 +308,7 @@ dump (node, indent)
     case 'd':
       fputs (" name = ", outfile);
       if (DECL_NAME (node) == NULL)
-	fputs("<>;", outfile);
+	fputs ("<>;", outfile);
       else
 	fprintf (outfile, "%s;",
 		 IDENTIFIER_POINTER (DECL_NAME (node)));
@@ -329,7 +332,7 @@ dump (node, indent)
       if (DECL_ARGUMENTS (node) || DECL_RESULT (node)
 	  || DECL_INITIAL (node))
 	{
-	  skip(indent);
+	  skip (indent);
 	  part ("arguments", DECL_ARGUMENTS (node));
 	  part ("result", DECL_RESULT (node));
 	  if ((int) (DECL_INITIAL (node)) == 1)
@@ -413,12 +416,34 @@ dump (node, indent)
     case 'r':
       prtypeinfo (node);
       fputs (" ops =", outfile);
-      len = tree_code_length[(int) code];
+      first_rtl = len = tree_code_length[(int) code];
+      /* These kinds of nodes contain rtx's, not trees,
+	 after a certain point.  Print the rtx's as rtx's.  */
+      switch (code)
+	{
+	case SAVE_EXPR:
+	  first_rtl = 1;
+	  break;
+	case CALL_EXPR:
+	  first_rtl = 2;
+	  break;
+	case RTL_EXPR:
+	  first_rtl = 0;
+	}
       for (i = 0; i < len; i++)
 	{
-	  fputs (" ", outfile);
-	  wruid (TREE_OPERAND (node, i));
-	  fputs (";", outfile);
+	  if (i >= first_rtl)
+	    {
+	      fprintf (outfile, "\n");
+	      skip (indent);
+	      print_rtl (outfile, TREE_OPERAND (node, i));
+	    }
+	  else
+	    {
+	      fputs (" ", outfile);
+	      wruid (TREE_OPERAND (node, i));
+	      fputs (";", outfile);
+	    }
 	}
       part ("chain", TREE_CHAIN (node));
       fputc ('\n', outfile);
@@ -517,7 +542,7 @@ dump (node, indent)
 	case STRING_CST:
 	  fprintf (outfile, " = \"%s\";", TREE_STRING_POINTER (node));
 	}
-      prtypeinfo(node);
+      prtypeinfo (node);
       part ("chain", TREE_CHAIN (node));
       fputc ('\n', outfile);
       walk (TREE_TYPE (node), node, indent);
@@ -551,5 +576,5 @@ dump (node, indent)
     } /* switch */
 
   if (TREE_CHAIN (node) != NULL && ! nochain)
-    dump(TREE_CHAIN (node), indent);
+    dump (TREE_CHAIN (node), indent);
 }

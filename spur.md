@@ -70,7 +70,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"eq\", \"eq\"); ")
+  "* return output_compare (operands, \"eq\", \"eq\", \"ne\", \"ne\"); ")
 
 (define_insn "bne"
   [(set (pc)
@@ -79,7 +79,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"ne\", \"ne\"); ")
+  "* return output_compare (operands, \"ne\", \"ne\", \"eq\", \"eq\"); ")
 
 (define_insn "bgt"
   [(set (pc)
@@ -88,7 +88,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"gt\", \"lt\"); ")
+  "* return output_compare (operands, \"gt\", \"lt\", \"le\", \"ge\"); ")
 
 (define_insn "bgtu"
   [(set (pc)
@@ -97,7 +97,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"ugt\", \"ult\"); ")
+  "* return output_compare (operands, \"ugt\", \"ult\", \"ule\", \"uge\"); ")
 
 (define_insn "blt"
   [(set (pc)
@@ -106,7 +106,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"lt\", \"gt\"); ")
+  "* return output_compare (operands, \"lt\", \"gt\", \"ge\", \"le\"); ")
 
 (define_insn "bltu"
   [(set (pc)
@@ -115,7 +115,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"ult\", \"ugt\"); ")
+  "* return output_compare (operands, \"ult\", \"ugt\", \"uge\", \"ule\"); ")
 
 (define_insn "bge"
   [(set (pc)
@@ -124,7 +124,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"ge\", \"le\"); ")
+  "* return output_compare (operands, \"ge\", \"le\", \"lt\", \"gt\"); ")
 
 (define_insn "bgeu"
   [(set (pc)
@@ -133,7 +133,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"uge\", \"ule\"); ")
+  "* return output_compare (operands, \"uge\", \"ule\", \"ult\", \"ugt\"); ")
 
 (define_insn "ble"
   [(set (pc)
@@ -142,7 +142,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"le\", \"ge\"); ")
+  "* return output_compare (operands, \"le\", \"ge\", \"gt\", \"lt\"); ")
 
 (define_insn "bleu"
   [(set (pc)
@@ -151,7 +151,7 @@
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
   ""
-  "* return output_compare (operands, \"ule\", \"uge\"); ")
+  "* return output_compare (operands, \"ule\", \"uge\", \"ugt\", \"ult\"); ")
 
 ;; These match inverted jump insns for register allocation.
 
@@ -162,7 +162,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"ne\", \"ne\"); ")
+  "* return output_compare (operands, \"ne\", \"ne\", \"eq\", \"eq\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -171,7 +171,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"eq\", \"eq\"); ")
+  "* return output_compare (operands, \"eq\", \"eq\", \"ne\", \"ne\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -180,7 +180,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"le\", \"ge\"); ")
+  "* return output_compare (operands, \"le\", \"ge\", \"gt\", \"lt\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -189,7 +189,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"ule\", \"uge\"); ")
+  "* return output_compare (operands, \"ule\", \"uge\", \"ugt\", \"ult\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -198,7 +198,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"ge\", \"le\"); ")
+  "* return output_compare (operands, \"ge\", \"le\", \"lt\", \"gt\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -207,7 +207,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"uge\", \"ule\"); ")
+  "* return output_compare (operands, \"uge\", \"ule\", \"ult\", \"ugt\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -216,7 +216,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"lt\", \"gt\"); ")
+  "* return output_compare (operands, \"lt\", \"gt\", \"ge\", \"le\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -225,7 +225,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"ult\", \"ugt\"); ")
+  "* return output_compare (operands, \"ult\", \"ugt\", \"uge\", \"ule\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -234,7 +234,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"gt\", \"lt\"); ")
+  "* return output_compare (operands, \"gt\", \"lt\", \"le\", \"ge\"); ")
 
 (define_insn ""
   [(set (pc)
@@ -243,7 +243,7 @@
 		      (pc)
 		      (label_ref (match_operand 0 "" ""))))]
   ""
-  "* return output_compare (operands, \"ugt\", \"ult\"); ")
+  "* return output_compare (operands, \"ugt\", \"ult\", \"ule\", \"uge\"); ")
 
 ;; Move instructions
 
@@ -463,7 +463,8 @@
 			       gen_reg_rtx (SImode), gen_reg_rtx (SImode),
 			       gen_reg_rtx (QImode)));
       /* Tell cse what value the loadhi produces, so it detect duplicates.  */
-      REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUAL, operands[1], 0);
+      REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUAL, operands[1],
+					     REG_NOTES (insn));
     }
   else if (GET_CODE (operands[0]) == MEM)
     {
@@ -542,7 +543,7 @@
 ;; to be reloaded by putting the constant into memory.
 ;; It must come before the more general movdf pattern.
 (define_insn ""
-  [(set (match_operand:DF 0 "general_operand" "=r,f,o")
+  [(set (match_operand:DF 0 "general_operand" "=&r,f,&o")
 	(match_operand:DF 1 "" "mG,m,G"))]
   "GET_CODE (operands[1]) == CONST_DOUBLE"
   "*
@@ -564,8 +565,8 @@
 ")
   
 (define_insn "movdf"
-  [(set (match_operand:DF 0 "general_operand" "=r,m,?f,?rm")
-	(match_operand:DF 1 "general_operand" "rm,r,rfm,f"))]
+  [(set (match_operand:DF 0 "general_operand" "=r,&r,m,?f,?rm")
+	(match_operand:DF 1 "general_operand" "r,m,r,rfm,f"))]
   ""
   "*
 {
@@ -576,8 +577,8 @@
 ")
 
 (define_insn "movdi"
-  [(set (match_operand:DI 0 "general_operand" "=r,m,?f,?rm")
-	(match_operand:DI 1 "general_operand" "rm,r,rfm,f"))]
+  [(set (match_operand:DI 0 "general_operand" "=r,&r,m,?f,?rm")
+	(match_operand:DI 1 "general_operand" "r,m,r,rfm,f"))]
   ""
   "*
 {
@@ -635,27 +636,26 @@
 }")
 
 ;;- truncation instructions
-;; I think these are unnecessary, since subreg will be used instead.
-;(define_insn "truncsiqi2"
-;  [(set (match_operand:QI 0 "register_operand" "=r")
-;	(truncate:QI
-;	 (match_operand:SI 1 "register_operand" "r")))]
-;  ""
-;  "add_nt, %0,%1,$0")
-;
-;(define_insn "trunchiqi2"
-;  [(set (match_operand:QI 0 "register_operand" "=r")
-;	(truncate:QI
-;	 (match_operand:HI 1 "register_operand" "r")))]
-;  ""
-;  "add_nt, %0,%1,$0")
-;
-;(define_insn "truncsihi2"
-;  [(set (match_operand:HI 0 "register_operand" "=r")
-;	(truncate:HI
-;	 (match_operand:SI 1 "register_operand" "r")))]
-;  ""
-;  "add_nt, %0,%1,$0")
+(define_insn "truncsiqi2"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+	(truncate:QI
+	 (match_operand:SI 1 "register_operand" "r")))]
+  ""
+  "add_nt %0,%1,$0")
+
+(define_insn "trunchiqi2"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+	(truncate:QI
+	 (match_operand:HI 1 "register_operand" "r")))]
+  ""
+  "add_nt %0,%1,$0")
+
+(define_insn "truncsihi2"
+  [(set (match_operand:HI 0 "register_operand" "=r")
+	(truncate:HI
+	 (match_operand:SI 1 "register_operand" "r")))]
+  ""
+  "add_nt %0,%1,$0")
 
 ;;- zero extension instructions
 
@@ -742,6 +742,18 @@
 		 (match_operand:SI 2 "nonmemory_operand" "rI")))]
   ""
   "add %0,%1,%2")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(plus:SI (match_operand:SI 1 "nonmemory_operand" "%r")
+		 (match_operand:SI 2 "big_immediate_operand" "g")))]
+  "GET_CODE (operands[2]) == CONST_INT 
+   && (unsigned) (INTVAL (operands[2]) + 0x8000000) < 0x10000000"
+  "*
+{
+  return 
+    output_add_large_offset (operands[0], operands[1], INTVAL (operands[2]));
+}")
 
 (define_insn "subsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
@@ -871,23 +883,71 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(ashift:SI (match_operand:SI 1 "register_operand" "r")
 		   (match_operand:SI 2 "immediate_operand" "I")))]
-  "GET_CODE (operands[2]) == CONST_INT
-   && (unsigned) INTVAL (operands[2]) <= 3"
-  "sll %0,%1,%2")
+  "GET_CODE (operands[2]) == CONST_INT"
+  "*
+{
+  unsigned int amount = INTVAL (operands[2]);
+
+  switch (amount)
+    {
+    case 0:
+      return \"add_nt %0,%1,$0\";
+    case 1:
+      return \"sll %0,%1,$1\";
+    case 2:
+      return \"sll %0,%1,$2\";
+    default:
+      output_asm_insn (\"sll %0,%1,$3\", operands);
+
+      for (amount -= 3; amount >= 3; amount -= 3)
+	output_asm_insn (\"sll %0,%0,$3\", operands);
+
+      if (amount > 0)
+	output_asm_insn (amount == 1 ? \"sll %0,%0,$1\" : \"sll %0,%0,$2\",
+			 operands);
+      return \"\";
+    }
+}")
 
 (define_insn ""
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(ashiftrt:SI (match_operand:SI 1 "register_operand" "r")
-		     (const_int 1)))]
-  ""
-  "sra %0,%1,$1")
+	             (match_operand:SI 2 "immediate_operand" "I")))]
+  "GET_CODE (operands[2]) == CONST_INT"
+  "*
+{
+  unsigned int amount = INTVAL (operands[2]);
+
+  if (amount == 0) 
+    return \"add_nt %0,%1,$0\";
+  else
+    output_asm_insn (\"sra %0,%1,$1\", operands);
+  
+  for (amount -= 1; amount > 0; amount -= 1)
+    output_asm_insn (\"sra %0,%0,$1\", operands);
+
+  return \"\";
+}")
 
 (define_insn ""
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(lshiftrt:SI (match_operand:SI 1 "register_operand" "r")
-		     (const_int 1)))]
-  ""
-  "srl %0,%1,$1")
+	             (match_operand:SI 2 "immediate_operand" "I")))]
+  "GET_CODE (operands[2]) == CONST_INT"
+  "*
+{
+  unsigned int amount = INTVAL (operands[2]);
+
+  if (amount == 0) 
+    return \"add_nt %0,%1,$0\";
+  else
+    output_asm_insn (\"srl %0,%1,$1\", operands);
+  
+  for (amount -= 1; amount > 0; amount -= 1)
+    output_asm_insn (\"srl %0,%0,$1\", operands);
+
+  return \"\";
+}")
 
 (define_expand "ashlsi3"
   [(set (match_operand:SI 0 "register_operand" "")
@@ -897,7 +957,7 @@
   "
 {
   if (GET_CODE (operands[2]) != CONST_INT
-      || (unsigned) INTVAL (operands[2]) > 3)
+      || (! TARGET_EXPAND_SHIFTS && (unsigned) INTVAL (operands[2]) > 3))
     FAIL;
 }")
 
@@ -909,7 +969,7 @@
   "
 {
   if (GET_CODE (operands[2]) != CONST_INT
-      || (unsigned) INTVAL (operands[2]) > 3)
+      || (! TARGET_EXPAND_SHIFTS && (unsigned) INTVAL (operands[2]) > 3))
     FAIL;
 }")
 
@@ -921,7 +981,7 @@
   "
 {
   if (GET_CODE (operands[2]) != CONST_INT
-      || (unsigned) INTVAL (operands[2]) > 1)
+      || (! TARGET_EXPAND_SHIFTS && (unsigned) INTVAL (operands[2]) > 1))
     FAIL;
 }")
 
@@ -933,7 +993,7 @@
   "
 {
   if (GET_CODE (operands[2]) != CONST_INT
-      || (unsigned) INTVAL (operands[2]) > 1)
+      || (! TARGET_EXPAND_SHIFTS && (unsigned) INTVAL (operands[2]) > 1))
     FAIL;
 }")
 
@@ -956,7 +1016,7 @@
 	 (match_operand:SI 1 "general_operand" "g"))]
   ;;- Don't use operand 1 for most machines.
   ""
-  "add_nt r9,%0\;call .+8\;jump_reg r0,r9\;nop")
+  "add_nt r2,%0\;call .+8\;jump_reg r0,r2\;nop")
 
 (define_insn "call_value"
   [(set (match_operand 0 "" "g")
@@ -964,7 +1024,7 @@
 	      (match_operand:SI 2 "general_operand" "g")))]
   ;;- Don't use operand 1 for most machines.
   ""
-  "add_nt r9,%1\;call .+8\;jump_reg r0,r9\;nop")
+  "add_nt r2,%1\;call .+8\;jump_reg r0,r2\;nop")
 
 ;; A memory ref with constant address is not normally valid.
 ;; But it is valid in a call insns.  This pattern allows the
@@ -993,3 +1053,4 @@
 ;;- eval: (modify-syntax-entry ?{ "(}")
 ;;- eval: (modify-syntax-entry ?} "){")
 ;;- End:
+

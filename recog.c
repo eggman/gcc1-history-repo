@@ -181,7 +181,11 @@ general_operand (op, mode)
     {
       op = SUBREG_REG (op);
       code = GET_CODE (op);
+#if 0
+      /* No longer needed, since (SUBREG (MEM...))
+	 will load the MEM into a reload reg in the MEM's own mode.  */
       mode_altering_drug = 1;
+#endif
     }
   if (code == REG)
     return 1;
@@ -190,7 +194,7 @@ general_operand (op, mode)
   if (code == MEM)
     {
       register rtx y = XEXP (op, 0);
-      if (! volatile_ok && op->volatil)
+      if (! volatile_ok && MEM_VOLATILE_P (op))
 	return 0;
       GO_IF_LEGITIMATE_ADDRESS (mode, y, win);
     }
@@ -230,8 +234,16 @@ register_operand (op, mode)
   if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
+  /* We can allow (SUBREG (MEM...)) as a register operand
+     because it is guaranteed to be reloaded into one.
+     Just make sure the MEM is valid in itself.
+     (At rtl generation time, (SUBREG (MEM...)) is forbidden to exist.)  */
+  if (GET_CODE (op) == SUBREG)
+    return general_operand (op, mode);
+#if 0
   while (GET_CODE (op) == SUBREG)
     op = SUBREG_REG (op);
+#endif
 
   return GET_CODE (op) == REG;
 }
@@ -278,8 +290,16 @@ nonmemory_operand (op, mode)
   if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
+  /* We can allow (SUBREG (MEM...)) as a nonmemory operand
+     because it is guaranteed to be reloaded into one.
+     Just make sure the MEM is valid in itself.
+     (At rtl generation time, (SUBREG (MEM...)) is forbidden to exist.)  */
+  if (GET_CODE (op) == SUBREG)
+    return general_operand (op, mode);
+#if 0
   while (GET_CODE (op) == SUBREG)
     op = SUBREG_REG (op);
+#endif
 
   return GET_CODE (op) == REG;
 }
@@ -338,8 +358,19 @@ memory_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  enum rtx_code code = GET_CODE (op);
-  int mode_altering_drug = 0;
+  /* Note that no SUBREG is a memory operand
+     because (SUBREG (MEM...)) forces reloading into a register.  */
+  return GET_CODE (op) == MEM && general_operand (op, mode);
+}
+
+#if 0
+int
+memory_operand (op, mode)
+     register rtx op;
+     enum machine_mode mode;
+{
+  if (code == SUBREG)
+    return 0;
 
   while (code == SUBREG)
     {
@@ -352,6 +383,7 @@ memory_operand (op, mode)
 	  && ! (mode_altering_drug
 		&& mode_dependent_address_p (XEXP (op, 0))));
 }
+#endif
 
 /* Return 1 if OP is a valid indirect memory reference with mode MODE;
    that is, a memory reference whose address is a general_operand.  */
@@ -373,8 +405,6 @@ int
 asm_noperands (body)
      rtx body;
 {
-  int noperands;
-
   if (GET_CODE (body) == ASM_OPERANDS)
     /* No output operands: return number of input operands.  */
     return XVECLEN (body, 3);
@@ -655,12 +685,13 @@ mode_dependent_address_p (addr)
    other than a memory ref with a mode dependent address.  */
 
 int
-mode_independent_operand (mode, op)
+mode_independent_operand (op, mode)
+     enum machine_mode mode;
      rtx op;
 {
   rtx addr;
 
-  if (! general_operand (mode, op))
+  if (! general_operand (op, mode))
     return 0;
 
   if (GET_CODE (op) != MEM)
@@ -821,18 +852,14 @@ constrain_operands (insn_code_num)
 		   but the hard reg is not in the class GENERAL_REGS.  */
 		if (GENERAL_REGS == ALL_REGS
 		    || GET_CODE (op) != REG
-		    || (REGNO (op) >= FIRST_PSEUDO_REGISTER
-			&& reg_renumber[REGNO (op)] < 0)
-		    || reg_renumbered_fits_class_p (op, GENERAL_REGS, 0,
-						    GET_MODE (op)))
+		    || reg_fits_class_p (op, GENERAL_REGS, 0, GET_MODE (op)))
 		  win = 1;
 		break;
 
 	      case 'r':
 		if (GET_CODE (op) == REG
 		    && (GENERAL_REGS == ALL_REGS
-			|| reg_renumbered_fits_class_p (op, GENERAL_REGS,
-							0, GET_MODE (op))))
+			|| reg_fits_class_p (op, GENERAL_REGS, 0, GET_MODE (op))))
 		  win = 1;
 		break;
 
@@ -897,9 +924,8 @@ constrain_operands (insn_code_num)
 
 	      default:
 		if (GET_CODE (op) == REG
-		    && reg_renumbered_fits_class_p (op,
-						    REG_CLASS_FROM_LETTER (c),
-						    0, GET_MODE (op)))
+		    && reg_fits_class_p (op, REG_CLASS_FROM_LETTER (c),
+					 0, GET_MODE (op)))
 		  win = 1;
 	      }
 
@@ -928,35 +954,29 @@ constrain_operands (insn_code_num)
 
 /* Return 1 iff OPERAND (assumed to be a REG rtx)
    is a hard reg in class CLASS when its regno is offsetted by OFFSET
-   and changed to mode MODE,
-   or is a pseudo reg allocated into such a hard reg.
-   If REG occupies multiple hard regs, all of them must by in CLASS.  */
+   and changed to mode MODE.
+   If REG occupies multiple hard regs, all of them must be in CLASS.  */
 
 int
-reg_renumbered_fits_class_p (operand, class, offset, mode)
+reg_fits_class_p (operand, class, offset, mode)
      rtx operand;
      register enum reg_class class;
      int offset;
      enum machine_mode mode;
 {
-  if (GET_CODE (operand) == REG)
+  register int regno = REGNO (operand);
+  if (regno < FIRST_PSEUDO_REGISTER
+      && TEST_HARD_REG_BIT (reg_class_contents[(int) class],
+			    regno + offset))
     {
-      register int regno = REGNO (operand);
-      if (reg_renumber[regno] >= 0)
-	regno = reg_renumber[regno];
-      if (regno < FIRST_PSEUDO_REGISTER
-	  && TEST_HARD_REG_BIT (reg_class_contents[(int) class],
-				regno + offset))
-	{
-	  register int sr;
-	  regno += offset;
-	  for (sr = HARD_REGNO_NREGS (regno, mode) - 1;
-	       sr > 0; sr--)
-	    if (! TEST_HARD_REG_BIT (reg_class_contents[(int) class],
-				     regno + sr))
-	      break;
-	  return sr == 0;
-	}
+      register int sr;
+      regno += offset;
+      for (sr = HARD_REGNO_NREGS (regno, mode) - 1;
+	   sr > 0; sr--)
+	if (! TEST_HARD_REG_BIT (reg_class_contents[(int) class],
+				 regno + sr))
+	  break;
+      return sr == 0;
     }
   return 0;
 }

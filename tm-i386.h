@@ -500,7 +500,7 @@ enum reg_class {
    THIS DEFINITION FOR THE 80386 IS A GUESS.  IT HAS NOT BEEN TESTED.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   fprintf (FILE, "\tlea EAX,LP%d\n\tcall mcount\n", (LABELNO));
+   fprintf (FILE, "\tlea LP%d,%%eax\n\tcall mcount\n", (LABELNO));
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -839,15 +839,15 @@ enum reg_class {
 
 /* Set if the cc value is actually in the 80387, so a floating point
    conditional branch must be output.  */
-#define CC_IN_80387 040
+#define CC_IN_80387 04000
 
 /* Store in cc_status the expressions
    that the condition codes will describe
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
-  notice_update_cc(EXP)
+#define NOTICE_UPDATE_CC(EXP, INSN) \
+  notice_update_cc((EXP))
 
 /* Output a signed jump insn.  Use template NORMAL ordinarily, or
    FLOAT following a floating point comparison.
@@ -981,6 +981,18 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_BYTE(FILE,VALUE)  \
   fprintf ((FILE), "%s0x%x\n", ASM_BYTE, (VALUE))
 
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tpushl e%s\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tpopl e%s\n", reg_names[REGNO])
+
 /* This is how to output an element of a case-vector that is absolute.
      */
 
@@ -1016,7 +1028,13 @@ do { union { float f; long l;} tem;			\
    outputs b,w,or l respectively.
 
    On the 80386, we use several such letters:
-   'f' for float insn (print a CONST_DOUBLE as a float rather than in hex).  */
+   f -- float insn (print a CONST_DOUBLE as a float rather than in hex).
+   L,W,B,Q,S -- print the opcode suffix for specified size of operand.
+   R -- print the prefix for register names.
+   z -- print the opcode suffix for the size of the current operand.
+   * -- print a star (in certain assembler syntax)
+   w -- print the operand as if it's a "word" (HImode) even if it isn't.
+   c -- don't print special prefixes before constant operands.  */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
   print_operand (FILE, X, CODE)

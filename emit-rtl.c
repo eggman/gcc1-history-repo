@@ -95,20 +95,22 @@ rtx static_chain_rtx;		/* (REG:Pmode STATIC_CHAIN_REGNUM) */
 rtx static_chain_incoming_rtx;	/* (REG:Pmode STATIC_CHAIN_INCOMING_REGNUM) */
 
 /* The ends of the doubly-linked chain of rtl for the current function.
-   Both are reset to null at the start of rtl generation for the function.  */
+   Both are reset to null at the start of rtl generation for the function.
+   
+   start_sequence saves both of these on `sequence_stack' and then
+   starts a new, nested sequence of insns.  */
 
 static rtx first_insn = NULL;
 static rtx last_insn = NULL;
 
-/* The ends of a similar chain of rtl insns to become part
-   of the SEQUENCE returned by a gen_... function (in insn-emit.c).
-   This allows define_expand to use subroutines that call emit_insn.  */
-static rtx sequence_first_insn = NULL;
-static rtx sequence_last_insn = NULL;
+/* Stack of pending (incomplete) sequences saved by `start_sequence'.
+   This looks like
+   (INSN_LIST saved-first-insn
+              (INSN_LIST saved-last-insn ...more saved sequences...)).
+   The main insn-chain is saved in the last two link of the chain,
+   unless the chain is empty.  */
 
-/* Nonzero if emit_insn should add to the sequence_first_insn chain
-   instead of the ordinary chain.  */
-int emit_to_sequence;
+rtx sequence_stack = 0;
 
 /* INSN_UID for next insn emitted.
    Reset to 1 for each function compiled.  */
@@ -169,7 +171,6 @@ gen_rtx (va_alist)
   va_list p;
   enum rtx_code code;
   enum machine_mode mode;
-  register char *argp;		/* Pointer to arguments...		*/
   register int i;		/* Array indices...			*/
   register char *fmt;		/* Current rtx's format...		*/
   register rtx rt_val;		/* RTX to return to caller...		*/
@@ -256,7 +257,6 @@ gen_rtvec (va_alist)
      va_dcl
 {
   int n, i;
-  rtx first;
   va_list p;
   rtx *vector;
 
@@ -373,12 +373,9 @@ gen_lowpart (mode, x)
 {
   /* This case loses if X is a subreg.  To catch bugs early,
      complain if an invalid MODE is used even in other cases.  */
-  if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
+  if (GET_MODE_SIZE (mode) > UNITS_PER_WORD
+      && GET_MODE_SIZE (mode) != GET_MODE_SIZE (GET_MODE (x)))
     abort ();
-  if (GET_CODE (x) == SUBREG)
-    return (GET_MODE (SUBREG_REG (x)) == mode && SUBREG_WORD (x) == 0
-	    ? SUBREG_REG (x)
-	    : gen_rtx (SUBREG, mode, SUBREG_REG (x), SUBREG_WORD (x)));
   if (GET_MODE (x) == mode)
     return x;
   if (GET_CODE (x) == CONST_INT)
@@ -400,6 +397,10 @@ gen_lowpart (mode, x)
 		      memory_address (mode,
 				      plus_constant (XEXP (x, 0), offset)));
     }
+  else if (GET_CODE (x) == SUBREG)
+    return (GET_MODE (SUBREG_REG (x)) == mode && SUBREG_WORD (x) == 0
+	    ? SUBREG_REG (x)
+	    : gen_rtx (SUBREG, mode, SUBREG_REG (x), SUBREG_WORD (x)));
   else if (GET_CODE (x) == REG)
     {
 #ifdef WORDS_BIG_ENDIAN
@@ -494,15 +495,17 @@ change_address (memref, mode, addr)
 {
   rtx new;
 
+  if (GET_CODE (memref) != MEM)
+    abort ();
   if (mode == VOIDmode)
     mode = GET_MODE (memref);
   if (addr == 0)
     addr = XEXP (memref, 0);
 
   new = gen_rtx (MEM, mode, memory_address (mode, addr));
-  new->volatil = memref->volatil;
-  new->unchanging = memref->unchanging;
-  new->in_struct = memref->in_struct;
+  MEM_VOLATILE_P (new) = MEM_VOLATILE_P (memref);
+  RTX_UNCHANGING_P (new) = RTX_UNCHANGING_P (memref);
+  MEM_IN_STRUCT_P (new) = MEM_IN_STRUCT_P (memref);
   return new;
 }
 
@@ -563,13 +566,9 @@ unshare_all_rtl (insn)
     if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	|| GET_CODE (insn) == CALL_INSN)
       {
-	rtx tail;
 	PATTERN (insn) = copy_rtx_if_shared (PATTERN (insn));
-	/* Copy the contents of the reg-notes */
-	for (tail = REG_NOTES (insn); tail; tail = XEXP (tail, 1))
-	  /* But if contents are an insn, don't copy that.  */
-	  if (GET_CODE (tail) == EXPR_LIST)
-	    XEXP (tail, 0) = copy_rtx_if_shared (XEXP (tail, 0));
+	REG_NOTES (insn) = copy_rtx_if_shared (REG_NOTES (insn));
+	LOG_LINKS (insn) = copy_rtx_if_shared (LOG_LINKS (insn));
       }
 }
 
@@ -585,6 +584,9 @@ copy_rtx_if_shared (orig)
   register enum rtx_code code;
   register char *format_ptr;
   int copied = 0;
+
+  if (x == 0)
+    return 0;
 
   code = GET_CODE (x);
 
@@ -602,6 +604,15 @@ copy_rtx_if_shared (orig)
     case CC0:
       return x;
 
+    case INSN:
+    case JUMP_INSN:
+    case CALL_INSN:
+    case NOTE:
+    case LABEL_REF:
+    case BARRIER:
+      /* The chain of insns is not being copied.  */
+      return x;
+
     case MEM:
       /* A MEM is allowed to be shared if its address is constant
 	 or is a constant plus one of the special registers.  */
@@ -612,6 +623,7 @@ copy_rtx_if_shared (orig)
 	  && (REGNO (XEXP (XEXP (x, 0), 0)) == FRAME_POINTER_REGNUM
 	      || REGNO (XEXP (XEXP (x, 0), 0)) == ARG_POINTER_REGNUM)
 	  && CONSTANT_ADDRESS_P (XEXP (XEXP (x, 0), 1)))
+	return x;
       if (GET_CODE (XEXP (x, 0)) == REG
 	  && (REGNO (XEXP (x, 0)) == FRAME_POINTER_REGNUM
 	      || REGNO (XEXP (x, 0)) == ARG_POINTER_REGNUM)
@@ -675,7 +687,6 @@ rtx
 make_safe_from (x, other)
      rtx x, other;
 {
-  rtx out = other;
   while (1)
     switch (GET_CODE (other))
       {
@@ -694,7 +705,8 @@ make_safe_from (x, other)
   if ((GET_CODE (other) == MEM
        && ! CONSTANT_P (x)
        && GET_CODE (x) != CONST_DOUBLE
-       && GET_CODE (x) != REG)
+       && GET_CODE (x) != REG
+       && GET_CODE (x) != SUBREG)
       || (GET_CODE (other) == REG
 	  && (REGNO (other) < FIRST_PSEUDO_REGISTER
 	      || reg_mentioned_p (other, x))))
@@ -708,7 +720,7 @@ make_safe_from (x, other)
 
 /* Emission of insns (adding them to the doubly-linked list).  */
 
-/* Return the first insn of the current function.  */
+/* Return the first insn of the current sequence or current function.  */
 
 rtx
 get_insns ()
@@ -716,7 +728,7 @@ get_insns ()
   return first_insn;
 }
 
-/* Return the last insn of the current function.  */
+/* Return the last insn emitted in current sequence or current function.  */
 
 rtx
 get_last_insn ()
@@ -782,32 +794,16 @@ static void
 add_insn (insn)
      register rtx insn;
 {
-  if (emit_to_sequence)
-    {
-      PREV_INSN (insn) = sequence_last_insn;
-      NEXT_INSN (insn) = 0;
+  PREV_INSN (insn) = last_insn;
+  NEXT_INSN (insn) = 0;
 
-      if (NULL != sequence_last_insn)
-	NEXT_INSN (sequence_last_insn) = insn;
+  if (NULL != last_insn)
+    NEXT_INSN (last_insn) = insn;
 
-      if (NULL == sequence_first_insn)
-	sequence_first_insn = insn;
+  if (NULL == first_insn)
+    first_insn = insn;
 
-      sequence_last_insn = insn;
-    }
-  else
-    {
-      PREV_INSN (insn) = last_insn;
-      NEXT_INSN (insn) = 0;
-
-      if (NULL != last_insn)
-	NEXT_INSN (last_insn) = insn;
-
-      if (NULL == first_insn)
-	first_insn = insn;
-
-      last_insn = insn;
-    }
+  last_insn = insn;
 }
 
 /* Add INSN, an rtx of code INSN, into the doubly-linked list
@@ -834,7 +830,10 @@ void
 delete_insns_since (from)
      rtx from;
 {
-  NEXT_INSN (from) = 0;
+  if (from == 0)
+    first_insn = 0;
+  else
+    NEXT_INSN (from) = 0;
   last_insn = from;
 }
 
@@ -1039,6 +1038,20 @@ emit_insn (pattern)
   return insn;
 }
 
+/* Emit the insns in a chain starting with INSN.  */
+
+rtx
+emit_insns (insn)
+     rtx insn;
+{
+  while (insn)
+    {
+      rtx next = NEXT_INSN (insn);
+      add_insn (insn);
+      insn = next;
+    }
+}
+
 /* Make an insn of code JUMP_INSN with pattern PATTERN
    and add it to the end of the doubly-linked list.  */
 
@@ -1186,7 +1199,7 @@ classify_insn (x)
 /* Emit the rtl pattern X as an appropriate kind of insn.
    If X is a label, it is simply added into the insn chain.  */
 
-rtx
+void
 emit (x)
      rtx x;
 {
@@ -1198,8 +1211,8 @@ emit (x)
     emit_insn (x);
   else if (code == JUMP_INSN)
     {
-      emit_jump_insn (x);
-      if (simplejump_p (x) || GET_CODE (x) == RETURN)
+      register rtx insn = emit_jump_insn (x);
+      if (simplejump_p (insn) || GET_CODE (x) == RETURN)
 	emit_barrier ();
     }
   else if (code == CALL_INSN)
@@ -1213,29 +1226,50 @@ rtx
 start_sequence ()
 {
   rtx save;
-  ++emit_to_sequence;
-  save = gen_rtx (INSN_LIST, VOIDmode,
-		  sequence_first_insn, sequence_last_insn);
-  sequence_first_insn = 0;
-  sequence_last_insn = 0;
-  return save;
+  sequence_stack
+    = gen_rtx (INSN_LIST, VOIDmode,
+	       first_insn, gen_rtx (INSN_LIST, VOIDmode,
+				    last_insn, sequence_stack));
+  first_insn = 0;
+  last_insn = 0;
+  return sequence_stack;
+}
+
+/* Set up the insn chain starting with FIRST
+   as the current sequence, saving the previously current one.  */
+
+void
+push_to_sequence (first)
+     rtx first;
+{
+  rtx last;
+  for (last = first; last && NEXT_INSN (last); last = NEXT_INSN (last));
+  sequence_stack
+    = gen_rtx (INSN_LIST, VOIDmode,
+	       first_insn, gen_rtx (INSN_LIST, VOIDmode,
+				    last_insn, sequence_stack));
+  first_insn = first;
+  last_insn = last;
 }
 
 /* After emitting to a sequence, restore previous saved state.
-   The argument SAVED should be the value returned by `start_sequence'
-   when this sequence was started.  */
+   The argument SAVED is no longer used.
+
+   To get the contents of the sequence just made,
+   you must call `gen_sequence' *before* calling here.  */
 
 void
 end_sequence (saved)
      rtx saved;
 {
-  sequence_first_insn = XEXP (saved, 0);
-  sequence_last_insn = XEXP (saved, 1);
-  --emit_to_sequence;
+  first_insn = XEXP (sequence_stack, 0);
+  last_insn = XEXP (XEXP (sequence_stack, 1), 0);
+  sequence_stack = XEXP (XEXP (sequence_stack, 1), 1);
 }
 
-/* Generate a SEQUENCE rtx containing the insn-patterns in VEC
-   following any insns previously placed on sequence_first_insn.
+/* Generate a SEQUENCE rtx containing the insns already emitted
+   to the current sequence.
+
    This is how the gen_... function from a DEFINE_EXPAND
    constructs the SEQUENCE that it returns.  */
 
@@ -1249,7 +1283,7 @@ gen_sequence ()
 
   /* Count the insns in the chain.  */
   len = 0;
-  for (tem = sequence_first_insn; tem; tem = NEXT_INSN (tem))
+  for (tem = first_insn; tem; tem = NEXT_INSN (tem))
     len++;
 
   /* For an empty sequence... */
@@ -1258,25 +1292,18 @@ gen_sequence ()
 
   /* If only one insn, return its pattern rather than a SEQUENCE.  */
   if (len == 1
-      && (GET_CODE (sequence_first_insn) == INSN
-	  || GET_CODE (sequence_first_insn) == JUMP_INSN
-	  || GET_CODE (sequence_first_insn) == CALL_INSN))
-    {
-      tem = PATTERN (sequence_first_insn);
-      sequence_first_insn = 0;
-      sequence_last_insn = 0;
-      return tem;
-    }
+      && (GET_CODE (first_insn) == INSN
+	  || GET_CODE (first_insn) == JUMP_INSN
+	  || GET_CODE (first_insn) == CALL_INSN))
+    return PATTERN (first_insn);
 
   /* Put them in a vector.  */
   newvec = rtvec_alloc (len);
   i = 0;
-  for (tem = sequence_first_insn; tem; tem = NEXT_INSN (tem), i++)
+  for (tem = first_insn; tem; tem = NEXT_INSN (tem), i++)
     newvec->elem[i].rtx = tem;
 
-  /* Clear the chain and make a SEQUENCE from this vector.  */
-  sequence_first_insn = 0;
-  sequence_last_insn = 0;
+  /* Make a SEQUENCE from this vector.  */
   return gen_rtx (SEQUENCE, VOIDmode, newvec);
 }
 
@@ -1382,6 +1409,8 @@ restore_reg_data_1 (orig)
       return;
 
     case MEM:
+      if (GET_CODE (XEXP (x, 0)) == REG)
+	mark_reg_pointer (XEXP (x, 0));
       restore_reg_data_1 (XEXP (x, 0));
       return;
     }
@@ -1422,14 +1451,12 @@ init_emit (write_symbols)
 {
   first_insn = NULL;
   last_insn = NULL;
+  sequence_stack = NULL;
   cur_insn_uid = 1;
   reg_rtx_no = FIRST_PSEUDO_REGISTER;
   last_linenum = 0;
   last_filename = 0;
   first_label_num = label_num;
-  sequence_first_insn = NULL;
-  sequence_last_insn = NULL;
-  emit_to_sequence = 0;
 
   no_line_numbers = ! write_symbols;
   

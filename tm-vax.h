@@ -749,7 +749,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 { if (GET_CODE (EXP) == SET)					\
     { if (GET_CODE (SET_SRC (EXP)) == CALL)			\
 	CC_STATUS_INIT;						\
@@ -766,7 +766,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
   else CC_STATUS_INIT;						\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
-      && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
+      && reg_overlap_mentioned_p (cc_status.value1, cc_status.value2))	\
     cc_status.value2 = 0;					\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == MEM	\
       && cc_status.value2					\
@@ -905,6 +905,18 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_OUTPUT_BYTE(FILE,VALUE)  \
   fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
 
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tpushl %s\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tpopl %s\n", reg_names[REGNO])
+
 /* This is how to output an element of a case-vector that is absolute.
    (The Vax does not use such vectors,
    but we must define this macro anyway.)  */
@@ -982,7 +994,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       fprintf (FILE, "$0%c%.20e", ASM_DOUBLE_CHAR, u.d); }		\

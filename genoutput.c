@@ -67,6 +67,9 @@ and this notice must be preserved on all copies.  */
    These cases are specified by a * at the beginning of the template string
    in the machine description.  They are identified for the sake of
    other parts of the compiler by a zero element in `insn_template'.
+  
+   10. An array of structures, `insn_machine_info', that gives machine-specific
+   information about the insn.
 
 The code number of an insn is simply its position in the machine description;
 code numbers are assigned sequentially to entries in the description,
@@ -131,6 +134,7 @@ struct data
   enum machine_mode modes[MAX_MAX_OPERANDS];
   char strict_low[MAX_MAX_OPERANDS];
   char outfun;			/* Nonzero means this has an output function */
+  char *machine_info;		/* machine-specific info string. */
 };
 
 /* This variable points to the first link in the chain.  */
@@ -161,9 +165,18 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"conditions.h\"\n");
   printf ("#include \"insn-flags.h\"\n");
   printf ("#include \"insn-config.h\"\n\n");
-  printf ("#include \"output.h\"\n");
 
+  printf ("#ifndef __STDC__\n");
+  printf ("#define const\n");
+  printf ("#endif\n\n");
+
+  printf ("#include \"output.h\"\n");
   printf ("#include \"aux-output.c\"\n\n");
+
+  /* Make sure there is at least a dummy definition of INSN_MACHINE_INFO.  */
+  printf ("#ifndef INSN_MACHINE_INFO\n");
+  printf ("#define INSN_MACHINE_INFO struct dummy1 {int i;}\n");
+  printf ("#endif\n\n");
 }
 
 void
@@ -171,7 +184,7 @@ output_epilogue ()
 {
   register struct data *d;
 
-  printf ("\nchar *insn_template[] =\n  {\n");
+  printf ("\nchar * const insn_template[] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       if (d->template)
@@ -181,7 +194,7 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nchar *(*insn_outfun[])() =\n  {\n");
+  printf ("\nchar *(*const insn_outfun[])() =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       if (d->outfun)
@@ -191,7 +204,7 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nrtx (*insn_gen_function[]) () =\n  {\n");
+  printf ("\nrtx (*const insn_gen_function[]) () =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       if (d->name)
@@ -201,14 +214,14 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nint insn_n_operands[] =\n  {\n");
+  printf ("\nconst int insn_n_operands[] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       printf ("    %d,\n", d->n_operands);
     }
   printf ("  };\n");
 
-  printf ("\nint insn_n_dups[] =\n  {\n");
+  printf ("\nconst int insn_n_dups[] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       printf ("    %d,\n", d->n_dups);
@@ -217,7 +230,7 @@ output_epilogue ()
 
   if (have_constraints)
     {
-      printf ("\nchar *insn_operand_constraint[][MAX_RECOG_OPERANDS] =\n  {\n");
+      printf ("\nchar *const insn_operand_constraint[][MAX_RECOG_OPERANDS] =\n  {\n");
       for (d = insn_data; d; d = d->next)
 	{
 	  register int i;
@@ -237,7 +250,7 @@ output_epilogue ()
     }
   else
     {
-      printf ("\nchar insn_operand_address_p[][MAX_RECOG_OPERANDS] =\n  {\n");
+      printf ("\nconst char insn_operand_address_p[][MAX_RECOG_OPERANDS] =\n  {\n");
       for (d = insn_data; d; d = d->next)
 	{
 	  register int i;
@@ -251,7 +264,7 @@ output_epilogue ()
       printf ("  };\n");
     }
 
-  printf ("\nenum machine_mode insn_operand_mode[][MAX_RECOG_OPERANDS] =\n  {\n");
+  printf ("\nconst enum machine_mode insn_operand_mode[][MAX_RECOG_OPERANDS] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       register int i;
@@ -264,7 +277,7 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nchar insn_operand_strict_low[][MAX_RECOG_OPERANDS] =\n  {\n");
+  printf ("\nconst char insn_operand_strict_low[][MAX_RECOG_OPERANDS] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       register int i;
@@ -277,7 +290,7 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nint (*insn_operand_predicate[][MAX_RECOG_OPERANDS])() =\n  {\n");
+  printf ("\nint (*const insn_operand_predicate[][MAX_RECOG_OPERANDS])() =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       register int i;
@@ -290,6 +303,16 @@ output_epilogue ()
       printf (" },\n");
     }
   printf ("  };\n");
+
+  printf ("\nconst INSN_MACHINE_INFO insn_machine_info[] =\n  {\n");
+  for (d = insn_data; d; d = d->next)
+    {
+      if (d->machine_info)
+	printf ("    {%s},\n", d->machine_info);
+      else
+	printf("     {0},\n");
+    }
+  printf("  };\n");
 }
 
 /* scan_operands (X) stores in max_opno the largest operand
@@ -419,6 +442,7 @@ gen_insn (insn)
   mybcopy (address_p, d->address_p, sizeof address_p);
   mybcopy (modes, d->modes, sizeof modes);
   mybcopy (strict_low, d->strict_low, sizeof strict_low);
+  d->machine_info = XSTR (insn, 4);
 
   /* We need to consider only the instructions whose assembler code template
      starts with a *.  These are the ones where the template is really
@@ -491,6 +515,7 @@ gen_peephole (peep)
   mybzero (d->address_p, sizeof address_p);
   mybzero (d->modes, sizeof modes);
   mybzero (d->strict_low, sizeof strict_low);
+  d->machine_info = XSTR (peep, 3);
 
   /* We need to consider only the instructions whose assembler code template
      starts with a *.  These are the ones where the template is really
@@ -564,6 +589,7 @@ gen_expand (insn)
   d->n_dups = 0;
   d->template = 0;
   d->outfun = 0;
+  d->machine_info = 0;
 }
 
 int

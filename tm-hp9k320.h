@@ -79,6 +79,8 @@ and this notice must be preserved on all copies.  */
 #undef REGISTER_NAMES
 #undef FUNCTION_PROLOGUE
 #undef FUNCTION_EPILOGUE
+#undef ASM_OUTPUT_REG_PUSH
+#undef ASM_OUTPUT_REG_POP
 #undef ASM_FILE_START
 #undef ASM_APP_ON
 #undef ASM_APP_OFF
@@ -200,6 +202,18 @@ and this notice must be preserved on all copies.  */
     fprintf (FILE, "\trtd &%d\n", current_function_args_size);	\
   else fprintf (FILE, "\trts\n"); }
 
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tmov.l %s,-(%%sp)\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tmov.l (%%sp)+,%s\n", reg_names[REGNO])
+
 #define ASM_FILE_START(FILE)
 
 #define ASM_APP_ON ""
@@ -317,7 +331,7 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
         fprintf (FILE, "&0f%.9g", u1.f);				\
       else								\
         fprintf (FILE, "&0x%x", u1.i); }				\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == DFmode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       fprintf (FILE, "&0f%.20g", u.d); }				\

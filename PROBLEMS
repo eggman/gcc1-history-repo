@@ -117,3 +117,9 @@ The code in scan_loop doesn't even try to deal with them.
 
 122. When insn-output.c turns a bit-test into a sign-test,
 it should see whether the cc is already set up with that sign.
+
+123. When a conditional expression is used as a function arg, it would
+be faster (and in some cases shorter) to push each alternative rather
+than compute in a register and push that.  This would require
+being able to specify "push this" as a target for expand_expr.
+

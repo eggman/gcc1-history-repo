@@ -386,8 +386,6 @@ layout_record (rec)
   register tree var_size = 0;
   register int size_unit = BITS_PER_UNIT;
 
-  int n_basetypes = list_length (TYPE_BASETYPES (rec));
-
   /* Handle basetypes almost like fields, but record their
      offsets differently.  */
 
@@ -847,7 +845,6 @@ make_unsigned_type (precision)
      int precision;
 {
   register tree type = make_node (INTEGER_TYPE);
-  register tree low, high;
 
   TYPE_PRECISION (type) = precision;
 

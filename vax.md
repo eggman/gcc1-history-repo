@@ -126,6 +126,8 @@
 {
   if (operands[1] == dconst0_rtx)
     return \"clr%# %0\";
+  if (GET_CODE (operands[1]) != CONST_DOUBLE)
+    return \"movq %1,%0\";
   return \"mov%# %1,%0\";
 }")
 
@@ -160,14 +162,15 @@
 	(match_operand:SI 1 "general_operand" "g"))]
   ""
   "*
-{ if (operands[1] == const1_rtx
-      && REG_NOTES (insn)
-      && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0
+{
+  rtx link;
+  if (operands[1] == const1_rtx
+      && (link = find_reg_note (insn, REG_WAS_0, 0))
       /* Make sure the insn that stored the 0 is still present.  */
-      && ! XEXP (REG_NOTES (insn), 0)->volatil
-      && GET_CODE (XEXP (REG_NOTES (insn), 0)) != NOTE
+      && ! XEXP (link, 0)->volatil
+      && GET_CODE (XEXP (link, 0)) != NOTE
       /* Make sure cross jumping didn't happen here.  */
-      && no_labels_between_p (XEXP (REG_NOTES (insn), 0), insn))
+      && no_labels_between_p (XEXP (link, 0), insn))
     /* Fastest way to change a 0 to a 1.  */
     return \"incl %0\";
   if (GET_CODE (operands[1]) == SYMBOL_REF || GET_CODE (operands[1]) == CONST)
@@ -176,17 +179,25 @@
 	return \"pushab %a1\";
       return \"movab %a1,%0\";
     }
+  /* this is slower than a movl, except when pushing an operand */
   if (operands[1] == const0_rtx)
     return \"clrl %0\";
   if (GET_CODE (operands[1]) == CONST_INT
       && (unsigned) INTVAL (operands[1]) >= 64)
     {
       int i = INTVAL (operands[1]);
-      if ((unsigned)(-i) < 64)
+      if ((unsigned)(~i) < 64)
 	{
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, -i);
-	  return \"mnegl %1,%0\";
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, ~i);
+	  return \"mcoml %1,%0\";
 	}
+      if ((unsigned)i < 127)
+	{
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, 63);
+	  operands[2] = gen_rtx (CONST_INT, VOIDmode, i-63);
+	  return \"addl3 %2,%1,%0\";
+	}
+      /* trading speed for space */
       if ((unsigned)i < 0x100)
 	return \"movzbl %1,%0\";
       if (i >= -0x80 && i < 0)
@@ -207,9 +218,15 @@
   ""
   "*
 {
- if (operands[1] == const1_rtx
-      && REG_NOTES (insn)
-      && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0)
+  rtx link;
+  if (operands[1] == const1_rtx
+      && (link = find_reg_note (insn, REG_WAS_0, 0))
+      /* Make sure the insn that stored the 0 is still present.  */
+      && ! XEXP (link, 0)->volatil
+      && GET_CODE (XEXP (link, 0)) != NOTE
+      /* Make sure cross jumping didn't happen here.  */
+      && no_labels_between_p (XEXP (link, 0), insn))
+    /* Fastest way to change a 0 to a 1.  */
     return \"incw %0\";
   if (operands[1] == const0_rtx)
     return \"clrw %0\";
@@ -217,15 +234,22 @@
       && (unsigned) INTVAL (operands[1]) >= 64)
     {
       int i = INTVAL (operands[1]);
-      if ((unsigned)(-i) < 64)
+      if ((unsigned)(~i & 0xffff) < 64)
 	{
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, -i);
-	  return \"mnegw %1,%0\";
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, ~i);
+	  return \"mcomw %1,%0\";
 	}
-      if ((unsigned)i < 0x100)
-	return \"movzbw %1,%0\";
-      if (i >= -0x80 && i < 0)
-	return \"cvtbw %1,%0\";
+      if ((unsigned)(i & 0xffff) < 127)
+	{
+	   operands[1] = gen_rtx (CONST_INT, VOIDmode, 63);
+	   operands[2] = gen_rtx (CONST_INT, VOIDmode, i-63);
+	   return \"addw3 %2,%1,%0\";
+	}
+      /* this is a lot slower, and only saves 1 measly byte! */
+      /* if ((unsigned)i < 0x100)
+	   return \"movzbw %1,%0\"; */
+      /* if (i >= -0x80 && i < 0)
+	   return \"cvtbw %1,%0\"; */
     }
   return \"movw %1,%0\";
 }")
@@ -238,6 +262,25 @@
 {
   if (operands[1] == const0_rtx)
     return \"clrb %0\";
+  if (GET_CODE (operands[1]) == CONST_INT
+      && (unsigned) INTVAL (operands[1]) >= 64)
+    {
+      int i = INTVAL (operands[1]);
+      if ((unsigned)(~i & 0xff) < 64)
+	{
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, ~i);
+	  return \"mcomb %1,%0\";
+	}
+#if 0
+      /* ASCII alphabetics */
+      if (((unsigned) INTVAL (operands[1]) &0xff) < 127)
+	{
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, 63);
+	  operands[2] = gen_rtx (CONST_INT, VOIDmode, i-63);
+	  return \"addb3 %2,%1,%0\";
+	}
+#endif
+    }
   return \"movb %1,%0\";
 }")
 
@@ -454,7 +497,7 @@
   [(set (match_operand:QI 0 "general_operand" "=g")
 	(fix:QI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
   ""
-  "cvtdb %1,%0")
+  "cvt%#b %1,%0")
 
 (define_insn "fix_truncdfhi2"
   [(set (match_operand:HI 0 "general_operand" "=g")
@@ -515,20 +558,25 @@
       if (GET_CODE (operands[2]) == CONST_INT
 	  && (unsigned) (- INTVAL (operands[2])) < 64)
 	return \"subl2 $%n2,%0\";
+      if (GET_CODE (operands[2]) == CONST_INT
+	  && (unsigned) INTVAL (operands[2]) >= 64
+	  && GET_CODE (operands[1]) == REG)
+	return \"movab %c2(%1),%0\";
       return \"addl2 %2,%0\";
     }
   if (rtx_equal_p (operands[0], operands[2]))
     return \"addl2 %1,%0\";
   if (GET_CODE (operands[2]) == CONST_INT
+      && (unsigned) (- INTVAL (operands[2])) < 64)
+    return \"subl3 $%n2,%1,%0\";
+  if (GET_CODE (operands[2]) == CONST_INT
+      && (unsigned) INTVAL (operands[2]) >= 64
       && GET_CODE (operands[1]) == REG)
     {
       if (push_operand (operands[0], SImode))
-        return \"pushab %c2(%1)\";
+	return \"pushab %c2(%1)\";
       return \"movab %c2(%1),%0\";
     }
-  if (GET_CODE (operands[2]) == CONST_INT
-      && (unsigned) (- INTVAL (operands[2])) < 64)
-    return \"subl3 $%n2,%1,%0\";
   return \"addl3 %1,%2,%0\";
 }")
 
@@ -806,6 +854,53 @@
 ;  ""
 ;  "ediv %2,%1,%0,%3")
 
+;; Bit-and on the vax is done with a clear-bits insn.
+(define_expand "andsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(and:SI (match_operand:SI 1 "general_operand" "g")
+		(not:SI (match_operand:SI 2 "general_operand" "g"))))]
+  ""
+  "
+{
+  extern rtx expand_unop ();
+  if (GET_CODE (operands[2]) == CONST_INT)
+    operands[2] = gen_rtx (CONST_INT, VOIDmode, ~INTVAL (operands[2]));
+  else
+    operands[2] = expand_unop (SImode, one_cmpl_optab, operands[2], 0, 1);
+}")
+
+(define_expand "andhi3"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(and:HI (match_operand:HI 1 "general_operand" "g")
+		(not:HI (match_operand:HI 2 "general_operand" "g"))))]
+  ""
+  "
+{
+  extern rtx expand_unop ();
+  rtx op = operands[2];
+  if (GET_CODE (op) == CONST_INT)
+    operands[2] = gen_rtx (CONST_INT, VOIDmode,
+			   ((1 << 16) - 1) & ~INTVAL (op));
+  else
+    operands[2] = expand_unop (HImode, one_cmpl_optab, op, 0, 1);
+}")
+
+(define_expand "andqi3"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(and:QI (match_operand:QI 1 "general_operand" "g")
+		(not:QI (match_operand:QI 2 "general_operand" "g"))))]
+  ""
+  "
+{
+  extern rtx expand_unop ();
+  rtx op = operands[2];
+  if (GET_CODE (op) == CONST_INT)
+    operands[2] = gen_rtx (CONST_INT, VOIDmode,
+			   ((1 << 8) - 1) & ~INTVAL (op));
+  else
+    operands[2] = expand_unop (QImode, one_cmpl_optab, op, 0, 1);
+}")
+
 (define_insn "andcbsi3"
   [(set (match_operand:SI 0 "general_operand" "=g")
 	(and:SI (match_operand:SI 1 "general_operand" "g")
@@ -1017,6 +1112,18 @@
   ""
   "mcomb %1,%0")
 
+;; Arithmetic right shift on the vax works by negating the shift count.
+(define_expand "ashrsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(ashift:SI (match_operand:SI 1 "general_operand" "g")
+		   (match_operand:QI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
 (define_insn "ashlsi3"
   [(set (match_operand:SI 0 "general_operand" "=g")
 	(ashift:SI (match_operand:SI 1 "general_operand" "g")
@@ -1026,7 +1133,30 @@
 {
   if (operands[2] == const1_rtx && rtx_equal_p (operands[0], operands[1]))
     return \"addl2 %0,%0\";
+  if (GET_CODE (operands[1]) == REG
+      && GET_CODE (operands[2]) == CONST_INT)
+    {
+      int i = INTVAL (operands[2]);
+      if (i == 1)
+	return \"addl3 %1,%1,%0\";
+      if (i == 2)
+	return \"moval 0[%1],%0\";
+      if (i == 3)
+	return \"movad 0[%1],%0\";
+    }
   return \"ashl %2,%1,%0\";
+}")
+
+;; Arithmetic right shift on the vax works by negating the shift count.
+(define_expand "ashrdi3"
+  [(set (match_operand:DI 0 "general_operand" "=g")
+	(ashift:DI (match_operand:DI 1 "general_operand" "g")
+		   (match_operand:QI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
 }")
 
 (define_insn "ashldi3"
@@ -1036,19 +1166,24 @@
   ""
   "ashq %2,%1,%0")
 
+;; Rotate right on the vax works by negating the shift count.
+(define_expand "rotrsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(rotate:SI (match_operand:SI 1 "general_operand" "g")
+		   (match_operand:QI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
 (define_insn "rotlsi3"
   [(set (match_operand:SI 0 "general_operand" "=g")
 	(rotate:SI (match_operand:SI 1 "general_operand" "g")
 		   (match_operand:QI 2 "general_operand" "g")))]
   ""
   "rotl %2,%1,%0")
-
-(define_insn "rotldi3"
-  [(set (match_operand:DI 0 "general_operand" "=g")
-	(rotate:DI (match_operand:DI 1 "general_operand" "g")
-		   (match_operand:QI 2 "general_operand" "g")))]
-  ""
-  "rotq %2,%1,%0")
 
 ;This insn is probably slower than a multiply and an add.
 ;(define_insn ""
@@ -1710,8 +1845,8 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (gt (minus:SI (match_operand:SI 0 "general_operand" "+g")
-		       (const_int 1))
+	 (gt (plus:SI (match_operand:SI 0 "general_operand" "+g")
+		      (const_int -1))
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
@@ -1724,8 +1859,8 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (ge (minus:SI (match_operand:SI 0 "general_operand" "+g")
-		       (const_int 1))
+	 (ge (plus:SI (match_operand:SI 0 "general_operand" "+g")
+		      (const_int -1))
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
@@ -1740,8 +1875,8 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (le (minus:SI (match_operand:SI 0 "general_operand" "+g")
-		       (const_int 1))
+	 (le (plus:SI (match_operand:SI 0 "general_operand" "+g")
+		      (const_int -1))
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))
@@ -1754,8 +1889,8 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (lt (minus:SI (match_operand:SI 0 "general_operand" "+g")
-		       (const_int 1))
+	 (lt (plus:SI (match_operand:SI 0 "general_operand" "+g")
+		      (const_int -1))
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))

@@ -101,7 +101,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.13}
+\def\texinfoversion{1.16}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -481,11 +481,11 @@
 \def\b#1{{\bf #1}}
 \let\strong=\b
 
-\def\t#1{{\tt \rawbackslash #1}\null}
+\def\t#1{{\tt \rawbackslash \frenchspacing #1}\null}
 \let\ttfont = \t
 \let\kbd=\t
 \let\code=\t
-\def\samp #1{`{\tt \rawbackslash #1}'\null}
+\def\samp #1{`{\tt \rawbackslash \frenchspacing #1}'\null}
 \def\key #1{{\tt \uppercase{#1}}\null}
 \def\ctrl #1{{\tt \rawbackslash \hat}#1}
 
@@ -805,6 +805,17 @@ July\or August\or September\or October\or November\or December\fi
 \def\copyright{\realbackslash copyright }%
 }
 
+% \indexnofonts no-ops all font-change commands.
+% This is used when outputting the strings to sort the index by.
+\def\indexdummyfont#1{#1}
+\def\indexnofonts{%
+\let\code=\indexdummyfont
+\let\samp=\indexdummyfont
+\let\kbd=\indexdummyfont
+\let\key=\indexdummyfont
+\let\var=\indexdummyfont
+}
+
 % To define \realbackslash, we must make \ not be an escape.
 % We must first make another character (@) an escape
 % so we do not become unable to do a definition.
@@ -821,9 +832,17 @@ July\or August\or September\or October\or November\or December\fi
 {\let\folio=0% Expand all macros now EXCEPT \folio
 \def\rawbackslashxx{\indexbackslash}% \indexbackslash isn't defined now
 % so it will be output as is; and it will print as backslash in the indx.
+%
+% Now process the index-string once, with all font commands turned off,
+% to get the string to sort the index by.
+{\indexnofonts
+\xdef\temp1{#2}%
+}%
+% Now produce the complete index entry.  We process the index-string again,
+% this time with font commands expanded, to get what to print in the index.
 \edef\temp{%
 \write \csname#1indfile\endcsname{%
-\realbackslash entry {#2}{\folio}{#2}}}%
+\realbackslash entry {\temp1}{\folio}{#2}}}%
 \temp }%
 \penalty\count10}}
 
@@ -833,9 +852,17 @@ July\or August\or September\or October\or November\or December\fi
 \escapechar=`\\%
 {\let\folio=0%
 \def\rawbackslashxx{\indexbackslash}%
+%
+% Now process the index-string once, with all font commands turned off,
+% to get the string to sort the index by.
+{\indexnofonts
+\xdef\temp1{#2 #3}%
+}%
+% Now produce the complete index entry.  We process the index-string again,
+% this time with font commands expanded, to get what to print in the index.
 \edef\temp{%
 \write \csname#1indfile\endcsname{%
-\realbackslash entry {#2 #3}{\folio}{#2}{#3}}}%
+\realbackslash entry {\temp1}{\folio}{#2}{#3}}}%
 \temp }%
 \penalty\count10}}
 
@@ -983,6 +1010,7 @@ July\or August\or September\or October\or November\or December\fi
 \chapmacro {#1}{\the\chapno}%
 \gdef\thissection{#1}\gdef\thischapter{#1}%
 \let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash chapentry {#1}{\the\chapno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
@@ -994,6 +1022,8 @@ July\or August\or September\or October\or November\or December\fi
 \secno=0 \subsecno=0 \subsubsecno=0 \global\advance \appendixno by 1 \message{Appendix \appendixletter}%
 \chapmacro {#1}{Appendix \appendixletter}%
 \gdef\thischapter{#1}\gdef\thissection{#1}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash chapentry {#1}{Appendix \appendixletter}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
@@ -1005,6 +1035,8 @@ July\or August\or September\or October\or November\or December\fi
 \secno=0 \subsecno=0 \subsubsecno=0 \message{(#1)}
 \unnumbchapmacro {#1}%
 \gdef\thischapter{#1}\gdef\thissection{#1}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash unnumbchapentry {#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
@@ -1015,6 +1047,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\sectionzzz #1{\seccheck{section}%
 \subsecno=0 \subsubsecno=0 \global\advance \secno by 1 %
 \gdef\thissection{#1}\secheading {#1}{\the\chapno}{\the\secno}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash secentry %
 {#1}{\the\chapno}{\the\secno}{\noexpand\folio}}}%
 \escapechar=`\\%
@@ -1028,6 +1062,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\appendixsectionzzz #1{\seccheck{appendixsection}%
 \subsecno=0 \subsubsecno=0 \global\advance \secno by 1 %
 \gdef\thissection{#1}\secheading {#1}{\appendixletter}{\the\secno}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash secentry %
 {#1}{\appendixletter}{\the\secno}{\noexpand\folio}}}%
 \escapechar=`\\%
@@ -1039,8 +1075,9 @@ July\or August\or September\or October\or November\or December\fi
 \outer\def\unnumberedsec{\parsearg\unnumberedseczzz}
 \def\unnumberedseczzz #1{\seccheck{unnumberedsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\edef\temp{{\realbackslash unnumbsecentry %
-{#1}{\noexpand\folio}}}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
+\edef\temp{{\realbackslash unnumbsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
@@ -1051,6 +1088,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\subsectionzzz #1{\seccheck{subsection}%
 \gdef\thissection{#1}\subsubsecno=0 \global\advance \subsecno by 1 %
 \subsecheading {#1}{\the\chapno}{\the\secno}{\the\subsecno}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash subsecentry %
 {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\noexpand\folio}}}%
 \escapechar=`\\%
@@ -1063,6 +1102,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\appendixsubseczzz #1{\seccheck{appendixsubsec}%
 \gdef\thissection{#1}\subsubsecno=0 \global\advance \subsecno by 1 %
 \subsecheading {#1}{\appendixletter}{\the\secno}{\the\subsecno}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash subsecentry %
 {#1}{\appendixletter}{\the\secno}{\the\subsecno}{\noexpand\folio}}}%
 \escapechar=`\\%
@@ -1074,8 +1115,9 @@ July\or August\or September\or October\or November\or December\fi
 \outer\def\unnumberedsubsec{\parsearg\unnumberedsubseczzz}
 \def\unnumberedsubseczzz #1{\seccheck{unnumberedsubsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\edef\temp{{\realbackslash unnumbsubsecentry %
-{#1}{\noexpand\folio}}}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
+\edef\temp{{\realbackslash unnumbsubsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
@@ -1086,6 +1128,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\subsubsectionzzz #1{\seccheck{subsubsection}%
 \gdef\thissection{#1}\global\advance \subsubsecno by 1 %
 \subsubsecheading {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\the\subsubsecno}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
 \edef\temp{{\realbackslash subsubsecentry %
 {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\the\subsubsecno}{\noexpand\folio}}}%\
 \escapechar=`\\%
@@ -1098,8 +1142,10 @@ July\or August\or September\or October\or November\or December\fi
 \def\appendixsubsubseczzz #1{\seccheck{appendixsubsubsec}%
 \gdef\thissection{#1}\global\advance \subsubsecno by 1 %
 \subsubsecheading {#1}{\appendixletter}{\the\secno}{\the\subsecno}{\the\subsubsecno}%
-\edef\temp{{\realbackslash subsubsecentry %
-{#1}{\appendixletter}{\the\secno}{\the\subsecno}{\the\subsubsecno}{\noexpand\folio}}}%\
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
+\edef\temp{{\realbackslash subsubsecentry{#1}%
+{\appendixletter}{\the\secno}{\the\subsecno}{\the\subsubsecno}{\noexpand\folio}}}%\
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
@@ -1109,8 +1155,9 @@ July\or August\or September\or October\or November\or December\fi
 \outer\def\unnumberedsubsubsec{\parsearg\unnumberedsubsubseczzz}
 \def\unnumberedsubsubseczzz #1{\seccheck{unnumberedsubsubsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\edef\temp{{\realbackslash unnumbsubsubsecentry %
-{#1}{\noexpand\folio}}}%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
+\edef\temp{{\realbackslash unnumbsubsubsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %

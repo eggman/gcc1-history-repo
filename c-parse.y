@@ -374,6 +374,8 @@ primary:
 			  IDENTIFIER_GLOBAL_VALUE ($1) = error_mark_node;
 			}
 		    }
+		  else
+		    TREE_USED ($$) = 1;
 		  if (TREE_CODE ($$) == CONST_DECL)
 		    $$ = DECL_INITIAL ($$);
 		}
@@ -681,13 +683,13 @@ structsp:
 	| ENUM identifier '{'
 		{ $<itype>3 = suspend_momentary ();
 		  $$ = start_enum ($2); }
-	  enumlist maybecomma '}'
+	  enumlist maybecomma_warn '}'
 		{ $$ = finish_enum ($<ttype>4, nreverse ($5));
 		  resume_momentary ($<itype>3); }
 	| ENUM '{'
 		{ $<itype>2 = suspend_momentary ();
 		  $$ = start_enum (NULL_TREE); }
-	  enumlist maybecomma '}'
+	  enumlist maybecomma_warn '}'
 		{ $$ = finish_enum ($<ttype>3, nreverse ($4));
 		  resume_momentary ($<itype>2); }
 	| ENUM identifier
@@ -697,6 +699,12 @@ structsp:
 maybecomma:
 	  /* empty */
 	| ','
+	;
+
+maybecomma_warn:
+	  /* empty */
+	| ','
+		{ if (pedantic) warning ("comma at end of enumerator list"); }
 	;
 
 component_decl_list:   /* empty */
@@ -1248,6 +1256,7 @@ FILE *finput;			/* input file.
 static int maxtoken;		/* Current nominal length of token buffer */
 static char *token_buffer;	/* Pointer to token buffer.
 				   Actual allocated length is maxtoken + 2.  */
+static int end_of_file;
 
 #define MIN_WORD_SIZE       2      /* minimum size for C keyword */
 #define MAX_WORD_SIZE       9      /* maximum size for C keyword */
@@ -1604,8 +1613,12 @@ check_newline ()
 		      return getc (finput);
 		    }
 
+#ifdef ASM_OUTPUT_IDENT
+		  ASM_OUTPUT_IDENT (asm_out_file, TREE_STRING_POINTER (yylval.ttype));
+#else
 		  fprintf (asm_out_file, "\t.ident \"%s\"\n",
 			   TREE_STRING_POINTER (yylval.ttype));
+#endif
 
 		  /* Skip the rest of this line.  */
 		  while ((c = getc (finput)) && c != '\n');
@@ -1796,8 +1809,10 @@ yyerror (string)
 
   /* We can't print string and character constants well
      because the token_buffer contains the result of processing escapes.  */
-  if (token_buffer[0] == 0)
+  if (end_of_file)
     strcat (buf, " at end of input");
+  else if (token_buffer[0] == 0)
+    strcat (buf, " at null character");
   else if (token_buffer[0] == '"')
     strcat (buf, " before string constant");
   else if (token_buffer[0] == '\'')
@@ -1853,6 +1868,7 @@ yylex ()
   switch (c)
     {
     case EOF:
+      end_of_file = 1;
       token_buffer[0] = 0;
       value = ENDFILE;
       break;
@@ -1963,7 +1979,7 @@ yylex ()
 	   giving us 64 bits of reliable precision */
 	short shorts[8];
 
-	enum { NOT_FLOAT, AFTER_POINT, TOO_MANY_POINTS} floatflag
+	enum anon1 { NOT_FLOAT, AFTER_POINT, TOO_MANY_POINTS} floatflag
 	  = NOT_FLOAT;
 
 	for (count = 0; count < 8; count++)
@@ -2125,7 +2141,16 @@ yylex ()
 	    value = atof (token_buffer);
 #ifdef ERANGE
 	    if (errno == ERANGE && !flag_traditional)
-	      warning ("floating point number exceeds range of `double'");
+	      {
+		char *p1 = token_buffer;
+		/* Check for "0.0" and variants;
+		   Sunos 4 spuriously returns ERANGE for them.  */
+		while (*p1 == '0') p1++;
+		if (*p1 == '.') p1++;
+		while (*p1 == '0') p1++;
+		if (*p1 != 0)
+		  warning ("floating point number exceeds range of `double'");
+	      }
 #endif
 
 	    /* Read the suffixes to choose a data type.  */
@@ -2435,6 +2460,11 @@ yylex ()
 	else value = c;
 	goto done;
       }
+
+    case 0:
+      /* Don't make yyparse think this is eof.  */
+      value = 1;
+      break;
 
     default:
       value = c;

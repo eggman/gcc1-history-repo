@@ -51,8 +51,12 @@ and this notice must be preserved on all copies.  */
 
 /* cpp has to support a #sccs directive for the /usr/include files */
 
-#define IDENT_DIRECTIVE
 #define SCCS_DIRECTIVE
+
+/* Allow #ident but output nothing for it.  */
+
+#define IDENT_DIRECTIVE
+#define ASM_OUTPUT_IDENT(FILE, NAME)
 
 /* Make output for SDB.  */
 

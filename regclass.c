@@ -611,7 +611,7 @@ record_address_regs (x, bcost, icost)
      rtx x;
      int bcost, icost;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code = GET_CODE (x);
 
   switch (code)
     {
@@ -630,12 +630,20 @@ record_address_regs (x, bcost, icost)
 	 the "base".  Luckily, we can use the REGNO_POINTER_FLAG
 	 to make a good choice most of the time.  */
       {
-	register RTX_CODE code0 = GET_CODE (XEXP (x, 0));
-	register RTX_CODE code1 = GET_CODE (XEXP (x, 1));
+	rtx arg0 = XEXP (x, 0);
+	rtx arg1 = XEXP (x, 1);
+	register enum rtx_code code0 = GET_CODE (arg0);
+	register enum rtx_code code1 = GET_CODE (arg1);
 	int icost0 = 0;
 	int icost1 = 0;
 	int suppress1 = 0;
 	int suppress0 = 0;
+
+	/* Look inside subregs.  */
+	while (code0 == SUBREG)
+	  arg0 = SUBREG_REG (arg0), code0 = GET_CODE (arg0);
+	while (code1 == SUBREG)
+	  arg1 = SUBREG_REG (arg1), code1 = GET_CODE (arg1);
 
 	if (code0 == MULT || code1 == MEM)
 	  icost0 = 2;
@@ -647,9 +655,9 @@ record_address_regs (x, bcost, icost)
 	  suppress1 = 1;
 	else if (code0 == REG && code1 == REG)
 	  {
-	    if (REGNO_POINTER_FLAG (REGNO (XEXP (x, 0))))
+	    if (REGNO_POINTER_FLAG (REGNO (arg0)))
 	      icost1 = 2;
-	    else if (REGNO_POINTER_FLAG (REGNO (XEXP (x, 1))))
+	    else if (REGNO_POINTER_FLAG (REGNO (arg1)))
 	      icost0 = 2;
 	    else
 	      icost0 = icost1 = 1;
@@ -657,18 +665,18 @@ record_address_regs (x, bcost, icost)
 	else if (code0 == REG)
 	  {
 	    if (code1 == PLUS
-		&& ! REGNO_POINTER_FLAG (REGNO (XEXP (x, 0))))
+		&& ! REGNO_POINTER_FLAG (REGNO (arg0)))
 	      icost0 = 2;
 	    else
-	      REGNO_POINTER_FLAG (REGNO (XEXP (x, 0))) = 1;
+	      REGNO_POINTER_FLAG (REGNO (arg0)) = 1;
 	  }
 	else if (code1 == REG)
 	  {
 	    if (code0 == PLUS
-		&& ! REGNO_POINTER_FLAG (REGNO (XEXP (x, 1))))
+		&& ! REGNO_POINTER_FLAG (REGNO (arg1)))
 	      icost1 = 2;
 	    else
-	      REGNO_POINTER_FLAG (REGNO (XEXP (x, 1))) = 1;
+	      REGNO_POINTER_FLAG (REGNO (arg1)) = 1;
 	  }
 
 	/* ICOST0 determines whether we are treating operand 0
@@ -677,9 +685,9 @@ record_address_regs (x, bcost, icost)
 	   ICOST1 and SUPPRESS1 are likewise for operand 1.  */
 
 	if (! suppress0)
-	  record_address_regs (XEXP (x, 0), 2 - icost0, icost0);
+	  record_address_regs (arg0, 2 - icost0, icost0);
 	if (! suppress1)
-	  record_address_regs (XEXP (x, 1), 2 - icost1, icost1);
+	  record_address_regs (arg1, 2 - icost1, icost1);
       }
       break;
 
@@ -810,7 +818,7 @@ reg_scan_mark_refs (x, uid)
      rtx x;
      int uid;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code = GET_CODE (x);
 
   switch (code)
     {

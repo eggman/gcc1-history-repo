@@ -1,10 +1,10 @@
 \input texinfo  @c -*-texinfo-*-
 
-@settitle Internals of GNU CC
-@setfilename internals
+@settitle Using and Porting GNU CC
+@setfilename gcc.info
 
 @ifinfo
-This file documents the internals of the GNU compiler.
+This file documents the use and the internals of the GNU compiler.
 
 Copyright (C) 1988 Free Software Foundation, Inc.
 
@@ -35,13 +35,13 @@ Free Software Foundation instead of in the original English.
 @setchapternewpage odd
 
 @titlepage
-@center @titlefont{Internals of GNU CC}
+@center @titlefont{Using and Porting GNU CC}
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 12 September 1988
+@center last updated 3 October 1988
 @sp 1
-@center for version 1.28
+@center for version 1.29
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -267,6 +267,10 @@ definitions, and of the Vax machine description.
 Ted Lemon wrote parts of the RTL reader and printer.
 
 @item
+Jim Wilson implemented loop strength reduction and some other
+loop optimizations.
+
+@item
 Nobuyuki Hikichi of Software Research Associates, Tokyo, contributed
 the support for the SONY NEWS machine.
 
@@ -473,8 +477,8 @@ Some of the @samp{-f} options described below turn specific kinds of
 optimization on or off.
 
 @item -g
-Produce debugging information in the operating system's native
-format (for DBX or SDB).
+Produce debugging information in the operating system's native format
+(for DBX or SDB).  GDB also can work with this debugging information.
 
 Unlike most other C compilers, GNU CC allows you to use @samp{-g} with
 @samp{-O}.  The shortcuts taken by optimized code may occasionally
@@ -487,8 +491,15 @@ Nevertheless it proves possible to debug optimized output.  This makes
 it reasonable to use the optimizer for programs that might have bugs.
 
 @item -gg
-Produce debugging information in GDB's own format.  This requires
-the GNU assembler and linker in order to work.
+Produce debugging information in GDB's own format.  This requires the
+GNU assembler and linker in order to work.
+
+This feature will probably be eliminated.  It was intended to enable
+GDB to read the symbol table faster, but it doesn't result in enough
+of a speedup to be worth the larger object files and executables.  We
+are working on other ways of making GDB start faster, which work with
+DBX format debugging information and could be made to work with SDB
+format.
 
 @item -w
 Inhibit all warning messages.
@@ -591,6 +602,9 @@ Warn whenever a function is implicitly declared.
 Warn whenever a function is defined with a return-type that defaults
 to @code{int}.  Also warn about any @code{return} statement with no
 return-value in a function whose return-type is not @code{void}.
+
+@item -Wunused
+Warn whenever a local variable is unused aside from its declaration.
 
 @item -Wcomment
 Warn whenever a comment-start sequence @samp{/*} appears in a comment.
@@ -747,6 +761,10 @@ function returns.  Normally the compiler (when optimizing) lets
 arguments accumulate on the stack for several function calls and
 pops them all at once.
 
+@item -fstrength-reduce
+Perform the optimizations of loop strength reduction and
+elimination of iteration variables.
+
 @item -fcombine-regs
 Allow the combine pass to combine an instruction that copies one
 register into another.  This might or might not produce better
@@ -860,7 +878,7 @@ in the machine's execution model, such as the stack pointer or
 frame pointer, will produce disastrous results.
 
 A different sort of disaster will result from the use of this
-flag for a register in which function values are may be returned.
+flag for a register in which function values may be returned.
 @end table
 
 @item -d@var{letters}
@@ -1142,7 +1160,7 @@ time, do this:
 
 @example
 make stage2
-Make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
+make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
 foreach file (*.o)
 cmp $file stage2/$file
 end
@@ -1272,10 +1290,10 @@ Unix.
 @end enumerate
 
 @node Trouble, Incompatibilities, Installation, Top
-@chapter Trouble in Installation
+@chapter Known Causes of Trouble with GNU CC.
 
 Here are some of the things that have caused trouble for people installing
-GNU CC.
+or using GNU CC.
 
 @itemize @bullet
 @item
@@ -1298,6 +1316,12 @@ It is possible to fix this by writing machine-independent code which
 understands the floating point representation of the target machine.
 I am not interested in doing that much work to compensate for bugs
 in assemblers.
+
+@item
+DBX rejects some files produced by GNU CC, though it accepts similar
+constructs in output from PCC.  Until someone can supply a coherent
+description of what is valid DBX input and what is not, there is
+nothing I can do about these problems.  You are on your own.
 @end itemize
 
 @node Incompatibilities, Extensions, Trouble, Top
@@ -1410,6 +1434,23 @@ PCC allows whitespace in the middle of compound assignment operators
 such as @samp{+=}.  GNU CC, following the ANSI standard, does not
 allow this.  The difficulty described immediately above applies here
 too.
+
+@item
+GNU CC will flag unterminated character constants inside of preprocessor
+conditionals that fail.  Some programs have English comments enclosed in
+conditionals that are guaranteed to fail; if these comments contain
+apostrophes, GNU CC will probably report an error.  For example,
+this code would produce an error:
+
+@example
+#if 0
+You can't expect this to work.
+#endif
+@end example
+
+The best solution to such a problem is to put the text into an actual
+C comment delimited by @samp{/*@dots{}*/}.  However,
+@samp{-traditional} suppresses these error messages.
 
 @item
 When compiling functions that return @code{float}, PCC converts it to
@@ -2390,7 +2431,43 @@ diffs.  If you even discuss something in the GNU CC source, refer to
 it by context, not by line number.
 
 The line numbers in my development sources don't match those in your
-sources.  They won't tell me anything.
+sources.  Your line numbers would convey no useful information to me.
+
+@item
+Additional information from a debugger might enable me to find
+a problem on a machine which I do not have available myself.
+However, you need to think when you collect this information if
+you want it to have any chance of being useful.
+
+For example, many people send just a backtrace, but that is never
+useful by itself.  A simple backtrace with arguments conveys little
+about GNU CC because the compiler is largely data-driven; the same
+functions are called over and over for different RTL insns, doing
+different things depending on the details of the insn.
+
+Most of the arguments listed in the backtrace are useless because they
+are pointers to RTL list structure.  The numeric values of the
+pointers, which the debugger prints in the backtrace, have no
+significance whatever; all that matters is the contents of the objects
+they point to (and most of the contents are other such pointers).
+
+In addition, most compiler passes consist of one or more loops that
+scan the RTL insn sequence.  The most vital piece of information about
+such a loop--which insn it has reached--is usually in a local variable,
+not in an argument.
+
+What you need to provide in addition to a backtrace are the values of
+the local variables for several stack frames up.  When a local
+variable or an argument is an RTX, first print its value and then use
+the GDB command @code{pr} to print the RTL expression that it points
+to.  (If GDB doesn't run on your machine, use your debugger to call
+the function @code{debug_rtx} with the RTX as an argument.)  In
+general, whenever a variable is a pointer, its value is no use
+without the data it points to.
+
+In addition, include a debugging dump from just before the pass
+in which the crash happens.  Most bugs involve a series of insns,
+not just one.
 @end itemize
 
 Here are some things that are not necessary:
@@ -2407,15 +2484,17 @@ This is often time consuming and not very useful, because the way I
 will find the bug is by running a single example under the debugger
 with breakpoints, not by pure deduction from a series of examples.
 
-Of course, it can't hurt if you can find a simpler example that
-triggers the same bug.  Errors in the output will be easier to spot,
-running under the debugger will take less time, etc.  An easy way
-to simplify an example is to delete all the function definitions
-except the one where the bug occurs.  Those earlier in the file
-may be replaced by external declarations.
+Of course, if you can find a simpler example to report @emph{instead}
+of the original one, that is a convenience for me.  Errors in the
+output will be easier to spot, running under the debugger will take
+less time, etc.  Most GNU CC bugs involve just one function, so the
+most straightforward way to simplify an example is to delete all the
+function definitions except the one where the bug occurs.  Those
+earlier in the file may be replaced by external declarations if the
+crucial function depends on them.
 
-However, simplification is not necessary; if you don't want to do
-this, report the bug anyway.
+However, simplification is not vital; if you don't want to do this,
+report the bug anyway.
 
 @item
 A patch for the bug.
@@ -2425,16 +2504,15 @@ the necessary information, such as the test case, because I might see
 problems with your patch and decide to fix the problem another way.
 
 Sometimes with a program as complicated as GNU CC it is very hard to
-construct an example that will make the program go through a certain
-point in the code.  If you don't send me the example, I won't be able
-to verify that the bug is fixed.
+construct an example that will make the program follow a certain path
+through the code.  If you don't send me the example, I won't be able
+to construct one, so I won't be able to verify that the bug is fixed.
 
 @item
 A guess about what the bug is or what it depends on.
 
 Such guesses are usually wrong.  Even I can't guess right about such
-things without using the debugger to find the facts.  They also don't
-serve a useful purpose.
+things without using the debugger to find the facts.
 @end itemize
 
 @node Portability, Interface, Bugs, Top
@@ -3011,7 +3089,60 @@ to access them.
 @section Flags in an RTL Expression
 
 RTL expressions contain several flags (one-bit bit-fields) that are used
-in certain types of expression.
+in certain types of expression.  Most often they are accessed with the
+following macros:
+
+@table @code
+@item MEM_VOLATILE_P (@var{x})
+In @samp{mem} expressions, nonzero for volatile memory references.
+Stored in the @code{volatil} field and printed as @samp{/v}.
+
+@item MEM_IN_STRUCT_P (@var{x})
+In @samp{mem} expressions, nonzero for reference to an entire
+structure, union or array, or to a component of one.  Zero for
+references to a scalar variable or through a pointer to a scalar.
+Stored in the @code{in_struct} field and printed as @samp{/s}.
+
+@item REG_USER_VAR_P (@var{x})
+In a @samp{reg}, nonzero if it corresponds to a variable present in
+the user's source code.  Zero for temporaries generated internally by
+the compiler.  Stored in the @code{volatil} field and printed as
+@samp{/v}.
+
+@item REG_FUNCTION_VALUE_P (@var{x})
+Nonzero in a @samp{reg} if it is the place in which this function's
+value is going to be returned.  (This happens only in a hard
+register.)  Stored in the @code{integrated} field and printed as
+@samp{/i}.
+
+The same hard register may be used also for collecting the values of
+functions called by this one, but @code{REG_FUNCTION_VALUE_P} is zero
+in this kind of use.
+
+@item RTX_UNCHANGING_P (@var{x})
+Nonzero in a @samp{reg} or @samp{mem} if the value is not changed
+explicitly by the current function.  (If it is a memory reference then
+it may be changed by other functions or by aliasing.)  Stored in the
+@code{unchanging} field and printed as @samp{/u}.
+
+@item RTX_INTEGRATED_P (@var{insn})
+Nonzero in an insn if it resulted from an in-line function call.
+Stored in the @code{integrated} field and printed as @samp{/i}.  This
+may be deleted; nothing currently depends on it.
+
+@item INSN_DELETED_P (@var{insn})
+In an insn, nonzero if the insn has been deleted.  Stored in the
+@code{volatil} field and printed as @samp{/v}.
+
+@item CONSTANT_POOL_ADDRESS_P (@var{x})
+Nonzero in a @samp{symbol_ref} if it refers to part of the current
+function's ``constants pool''.  These are addresses close to the
+beginning of the function, and GNU CC assumes they can be addressed
+directly (perhaps with the help of base registers).  Stored in the
+@code{unchanging} field and printed as @samp{/u}.
+@end table
+
+These are the fields which the above macros refer to:
 
 @table @code
 @item used
@@ -3197,9 +3328,14 @@ value zero or one will return @code{const0_rtx} or @code{const1_rtx}
 as appropriate.
 
 @item (const_double:@var{m} @var{i0} @var{i1})
-Represents a floating point constant value of mode @var{m}.  The two
-integers @var{i0} and @var{i1} together contain the bits of a
-@code{double} value.  To convert them to a @code{double}, do
+Represents a 64-bit constant or mode @var{m}.  All floating point
+constants are represented in this way, and so are 64-bit @code{DImode}
+integer constants.
+
+The two integers @var{i0} and @var{i1} together contain the bits of
+the value.  If the constant is floating point (either single or double
+precision), then they represent a @code{double}.  To convert them to a
+@code{double}, do
 
 @example
 union @{ double d; int i[2];@} u;
@@ -3208,9 +3344,7 @@ u.i[1] = XINT (x, 1);
 @end example
 
 @noindent
-and then refer to @code{u.d}.  The value of the constant is
-represented as a double in this fashion even if the value represented
-is single-precision.
+and then refer to @code{u.d}.
 
 The global variables @code{dconst0_rtx} and @code{fconst0_rtx} hold
 @samp{const_double} expressions with value 0, in modes @code{DFmode} and
@@ -4151,6 +4285,17 @@ result is dead.
 @item REG_WAS_0
 The register @var{op} contained zero before this insn.  You can rely
 on this note if it is present; its absence implies nothing.
+
+@item REG_LIBCALL
+This is the inverse of @code{REG_RETVAL}: it is placed on the first
+insn of a library call, and it points to the last one.
+
+Loop optimization uses this note to move an entire library call out
+of a loop when its value is constant.
+
+@item REG_NONNEG
+The register @var{op} is known to have nonnegative value when this
+insn is reached.
 @end table
 
 (The only difference between the expression codes @samp{insn_list} and
@@ -4332,7 +4477,7 @@ to be filled in later, operand constraints that restrict how the pieces can
 be filled in, and an output pattern or C code to generate the assembler
 output, all wrapped up in a @samp{define_insn} expression.
 
-A @samp{define_insn} is an RTL expression containing four operands:
+A @samp{define_insn} is an RTL expression containing four or five operands:
 
 @enumerate
 @item
@@ -4384,6 +4529,16 @@ to substitute the value of an operand.  @xref{Output Template}.
 
 When simple substitution isn't general enough, you can specify a piece
 of C code to compute the output.  @xref{Output Statement}.
+
+@item
+Optionally, some @dfn{machine-specific information}.  The meaning
+of this information is defined only by an individual machine description;
+typically it might say whether this insn alters the condition codes,
+or how many bytes of output it generates.
+
+This operand is written as a string containing a C initializer
+(complete with braces) for the structure type @code{INSN_MACHINE_INFO},
+whose definition is up to you (@pxref{Misc}).
 @end enumerate
 
 @node Example, RTL Template, Patterns, Machine Desc
@@ -4450,20 +4605,25 @@ and the putative operand as the other argument.  If it returns zero,
 this instruction pattern fails to match.  @var{testfn} may be
 an empty string; then it means no test is to be done on the operand.
 
+@var{constraint} is explained later (@pxref{Constraints}).
+
 Most often, @var{testfn} is @code{"general_operand"}.  It checks
 that the putative operand is either a constant, a register or a
 memory reference, and that it is valid for mode @var{m}.
 
 For an operand that must be a register, @var{testfn} should be
-@code{"register_operand"}.  This prevents GNU CC from creating insns
-that have memory references in these operands, insns which would only
-have to be taken apart in the reload pass.
+@code{"register_operand"}.  It would be valid to use
+@code{"general_operand"}, since the reload pass would copy any
+non-register operands through registers, but this would make GNU CC do
+extra work, and it would prevent the register allocator from doing the
+best possible job.
 
 For an operand that must be a constant, either @var{testfn} should be
-@code{"immediate_operand"}, or the instruction pattern's extra condition
-should check for constants, or both.
-
-@var{constraint} is explained later (@pxref{Constraints}).
+@code{"immediate_operand"}, or the instruction pattern's extra
+condition should check for constants, or both.  You cannot expect the
+constraints to do this work!  If the constraints allow only constants,
+but the predicate allows something else, the compiler will crash when
+that case arises.
 
 @item (match_dup @var{n})
 This expression is also a placeholder for operand number @var{n}.
@@ -5129,10 +5289,6 @@ They apply not only to the patterns with these standard names, but to
 any patterns that will match such an instruction.  @xref{Register
 Classes}.
 
-@item @samp{andcb@var{m}3}
-Bitwise logical-and operand 1 with the complement of operand 2
-and store the result in operand 0.
-
 @item @samp{mulhisi3}
 Multiply operands 1 and 2, which have mode @code{HImode}, and store
 a @code{SImode} product in operand 0.
@@ -5623,8 +5779,14 @@ A definition looks like this:
    @var{insn-pattern-2}
    @dots{}]
   "@var{condition}"
-  "@var{template}")
+  "@var{template}"
+  "@var{machine-specific info}")
 @end example
+
+@noindent
+The last string operand may be omitted if you are not using any
+machine-specific information in this machine description.  If present,
+it must obey the same rules as in a @samp{define_insn}.
 
 In this skeleton, @var{insn-pattern-1} and so on are patterns to match
 consecutive instructions.  The optimization applies to a sequence of
@@ -6251,9 +6413,18 @@ as the floating registers are not in class @code{GENERAL_REGS}, they
 will not be used unless some insn's constraint asks for one.
 
 It is obligatory to support floating point `move' instructions into
-and out of general registers, because unions and structures (which
-have modes @samp{SImode} or @samp{DImode}) can be in those registers
-and they may have floating point members.
+and out of any registers that can hold fixed point values, because
+unions and structures (which have modes @samp{SImode} or
+@samp{DImode}) can be in those registers and they may have floating
+point members.
+
+There may also be a need to support fixed point `move' instructions in
+and out of floating point registers.  Unfortunately, I have forgotten
+why this was so, and I don't know whether it is still true.  If
+@code{HARD_REGNO_MODE_OK} rejects fixed point values in floating point
+registers, then the constraints of the fixed point `move' instructions
+must be designed to avoid ever trying to reload into a floating point
+register.
 
 @item MODES_TIEABLE_P (@var{mode1}, @var{mode2})
 A C expression that is nonzero if it is desirable to choose register
@@ -7195,6 +7366,16 @@ An alias for the machine mode used for memory references to functions
 being called, in @samp{call} RTL expressions.  On most machines this
 should be @code{QImode}.
 
+@item INSN_MACHINE_INFO
+This macro should expand into a C structure type to use for the
+machine-dependent info field specified with the optional last argument
+in @samp{define_insn} and @samp{define_peephole} patterns.  For example,
+it might expand into @samp{struct machine_info}; then it would be up
+to you to define this structure in the @file{tm.h} file.
+
+You do not need to define this macro if you do not write the optional
+last argument in any of the patterns in the machine description.
+
 @item CONST_COSTS (@var{x}, @var{code})
 A part of a C @code{switch} statement that describes the relative
 costs of constant RTL expressions.  It must contain @code{case} labels
@@ -7235,12 +7416,12 @@ component of @code{cc_status}.  It defaults to @code{int}.
 A C expression for the initial value of the @code{mdep} field.  It
 defaults to 0.
 
-@item NOTICE_UPDATE_CC (@var{exp})
+@item NOTICE_UPDATE_CC (@var{exp}, @var{insn})
 A C compound statement to set the components of @code{cc_status}
-appropriately for an insn whose body is @var{exp}.  It is this macro's
-responsibility to recognize insns that set the condition code as a
-byproduct of other activity as well as those that explicitly set
-@code{(cc0)}.
+appropriately for an insn @var{insn} whose body is @var{exp}.  It is
+this macro's responsibility to recognize insns that set the condition
+code as a byproduct of other activity as well as those that explicitly
+set @code{(cc0)}.
 
 If there are insn that do not set the condition code but do alter
 other machine registers, this macro must check to see whether they
@@ -7492,6 +7673,18 @@ conflict with the user's own symbols.  Most assemblers allow periods
 or percent signs in assembler symbols; putting at least one of these
 between the name and the number will suffice.
 
+@item ASM_OUTPUT_REG_PUSH (@var{stream}, @var{regno})
+A C expression to output to @var{stream} some assembler code
+which will push hard register number @var{regno} onto the stack.
+The code need not be optimal, since this macro is used only when
+profiling.
+
+@item ASM_OUTPUT_REG_POP (@var{stream}, @var{regno})
+A C expression to output to @var{stream} some assembler code
+which will pop hard register number @var{regno} off of the stack.
+The code need not be optimal, since this macro is used only when
+profiling.
+
 @item ASM_OUTPUT_ADDR_DIFF_ELT (@var{stream}, @var{value}, @var{rel})
 This macro should be provided on machines where the addresses
 in a dispatch table are relative to the table's own address.
@@ -7596,6 +7789,14 @@ stdio stream @var{stream}.
 
 This macro need not be defined if the standard form of debugging
 information for the debugger in use is appropriate.
+
+@item ASM_OUTPUT_IDENT (@var{stream}, @var{string})
+A C statement to output something to the assembler file to handle a
+@samp{#ident} directive containing the text @var{string}.  If this
+macro is not defined, the assembler code @samp{.ident "@var{string}"}
+will be output by default.
+
+This macro is significant only if @code{IDENT_DIRECTIVE} is defined.
 
 @item TARGET_BELL
 A C constant expression for the integer value for escape sequence

@@ -148,6 +148,10 @@ int flag_float_store = 0;
 
 int flag_combine_regs = 0;
 
+/* Nonzero enables strength-reduction in loop.c.  */
+
+int flag_strength_reduce = 0;
+
 /* Nonzero for -fwritable-strings:
    store string constants in data segment and don't uniquize them.  */
 
@@ -190,6 +194,10 @@ int inhibit_warnings = 0;
 /* Do print extra warnings (such as for uninitialized variables).  -W.  */
 
 int extra_warnings = 0;
+
+/* Nonzero to warn about unused local variables.  */
+
+int warn_unused;
 
 /* Number of error messages and warning messages so far.  */
 
@@ -370,16 +378,17 @@ announce_function (decl)
     {
       fprintf (stderr, " %s", IDENTIFIER_POINTER (DECL_NAME (decl)));
       fflush (stderr);
+      need_error_newline = 1;
+      last_error_function = current_function_decl;
     }
-  need_error_newline = 1;
-  last_error_function = current_function_decl;
 }
 
 /* Prints out, if necessary, the name of the current function
    which caused an error.  Called from all error and warning functions.  */
 
-void
-report_error_function()
+static void
+report_error_function (file)
+     char *file;
 {
   if (need_error_newline)
     {
@@ -389,6 +398,9 @@ report_error_function()
 
   if (last_error_function != current_function_decl)
     {
+      if (file)
+	fprintf (stderr, "%s: ", file);
+
       if (current_function_decl == NULL)
 	fprintf (stderr, "At top level:\n");
       else
@@ -424,7 +436,7 @@ error_with_file_and_line (file, line, s, v, v2)
 {
   count_error (0);
 
-  report_error_function ();
+  report_error_function (file);
 
   if (file)
     fprintf (stderr, "%s:%d: ", file, line);
@@ -444,7 +456,7 @@ error_with_decl (decl, s)
 {
   count_error (0);
 
-  report_error_function ();
+  report_error_function (DECL_SOURCE_FILE (decl));
 
   fprintf (stderr, "%s:%d: ",
 	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
@@ -469,7 +481,7 @@ warning_with_line (line, s, v, v2)
   if (count_error (1) == 0)
     return;
 
-  report_error_function ();
+  report_error_function (input_filename);
 
   if (input_filename)
     fprintf (stderr, "%s:%d: ", input_filename, line);
@@ -504,7 +516,7 @@ warning_with_decl (decl, s)
   if (count_error (1) == 0)
     return;
 
-  report_error_function ();
+  report_error_function (DECL_SOURCE_FILE (decl));
 
   fprintf (stderr, "%s:%d: ",
 	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
@@ -625,7 +637,13 @@ compile_file (name)
 {
   tree globals;
   int start_time;
-  int dump_base_name_length = strlen (dump_base_name);
+  int dump_base_name_length;
+
+  int name_specified = name != 0;
+
+  if (dump_base_name == 0)
+    dump_base_name = name ? name : "gccdump";
+  dump_base_name_length = strlen (dump_base_name);
 
   parse_time = 0;
   varconst_time = 0;
@@ -643,7 +661,13 @@ compile_file (name)
 
   /* Open input file.  */
 
-  finput = fopen (name, "r");
+  if (name == 0 || !strcmp (name, "-"))
+    {
+      finput = stdin;
+      name = "stdin";
+    }
+  else
+    finput = fopen (name, "r");
   if (finput == 0)
     pfatal_with_name (name);
 
@@ -757,26 +781,32 @@ compile_file (name)
 
   /* Open assembler code output file.  */
  
-  {
-    register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
-    int len = strlen (dump_base_name);
-    strcpy (dumpname, dump_base_name);
-    if (len > 2 && ! strcmp (".c", dumpname + len - 2))
-      dumpname[len - 2] = 0;
-    else if (len > 2 && ! strcmp (".i", dumpname + len - 2))
-      dumpname[len - 2] = 0;
-    else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
-      dumpname[len - 3] = 0;
-    strcat (dumpname, ".s");
-    if (asm_file_name == 0)
-      {
-	asm_file_name = (char *) malloc (strlen (dumpname) + 1);
-	strcpy (asm_file_name, dumpname);
-      }
-    asm_out_file = fopen (asm_file_name, "w");
-    if (asm_out_file == 0)
-      pfatal_with_name (asm_file_name ? asm_file_name : dumpname);
-  }
+  if (! name_specified && asm_file_name == 0)
+    asm_out_file = stdout;
+  else
+    {
+      register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
+      int len = strlen (dump_base_name);
+      strcpy (dumpname, dump_base_name);
+      if (len > 2 && ! strcmp (".c", dumpname + len - 2))
+	dumpname[len - 2] = 0;
+      else if (len > 2 && ! strcmp (".i", dumpname + len - 2))
+	dumpname[len - 2] = 0;
+      else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
+	dumpname[len - 3] = 0;
+      strcat (dumpname, ".s");
+      if (asm_file_name == 0)
+	{
+	  asm_file_name = (char *) malloc (strlen (dumpname) + 1);
+	  strcpy (asm_file_name, dumpname);
+	}
+      if (!strcmp (asm_file_name, "-"))
+	asm_out_file = stdout;
+      else
+	asm_out_file = fopen (asm_file_name, "w");
+      if (asm_out_file == 0)
+	pfatal_with_name (asm_file_name);
+    }
 
   input_filename = name;
 
@@ -1138,8 +1168,7 @@ rest_of_compilation (decl)
       TIMEVAR (loop_time,
 	       {
 		 reg_scan (insns, max_reg_num (), 1);
-		 loop_optimize (insns, max_reg_num (),
-				loop_dump ? loop_dump_file : 0);
+		 loop_optimize (insns, loop_dump ? loop_dump_file : 0);
 	       });
     }
 
@@ -1295,7 +1324,7 @@ rest_of_compilation (decl)
 	     final_start_function (insns, asm_out_file,
 				   write_symbols, optimize);
 	     final (insns, asm_out_file,
-		    write_symbols, optimize);
+		    write_symbols, optimize, 0);
 	     final_end_function (insns, asm_out_file,
 				 write_symbols, optimize);
 	     fflush (asm_out_file);
@@ -1446,6 +1475,8 @@ main (argc, argv, envp)
 	      flag_omit_frame_pointer = 1;
 	    else if (!strcmp (p, "no-omit-frame-pointer"))
 	      flag_omit_frame_pointer = 0;
+	    else if (!strcmp (p, "strength-reduce"))
+	      flag_strength_reduce = 1;
 	    else if (!strcmp (p, "writable-strings"))
 	      flag_writable_strings = 1;
 	    else if (!strcmp (p, "no-peephole"))
@@ -1503,6 +1534,8 @@ main (argc, argv, envp)
 	  inhibit_warnings = 1;
 	else if (!strcmp (str, "W"))
 	  extra_warnings = 1;
+	else if (!strcmp (str, "Wunused"))
+	  warn_unused = 1;
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
 	else if (!strcmp (str, "gg"))
@@ -1534,12 +1567,6 @@ main (argc, argv, envp)
       }
     else
       filename = argv[i];
-
-  if (filename == 0)
-    fatal ("no input file specified");
-
-  if (dump_base_name == 0)
-    dump_base_name = filename;
 
 #ifdef OVERRIDE_OPTIONS
   /* Some machines may reject certain combinations of options.  */

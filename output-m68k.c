@@ -194,7 +194,7 @@ output_move_double (operands)
      for the low word as well, to compensate for the first decrement of sp.  */
   if (optype0 == PUSHOP
       && REGNO (XEXP (XEXP (operands[0], 0), 0)) == STACK_POINTER_REGNUM
-      && reg_mentioned_p (XEXP (XEXP (operands[0], 0), 0), operands[1]))
+      && reg_overlap_mentioned_p (stack_pointer_rtx, operands[1]))
     operands[1] = latehalf[1];
 
   /* If one or both operands autodecrementing,

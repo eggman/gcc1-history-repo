@@ -525,7 +525,7 @@ output_move_double (operands)
      for the low word as well, to compensate for the first decrement of sp.  */
   if (optype0 == PUSHOP
       && REGNO (XEXP (XEXP (operands[0], 0), 0)) == STACK_POINTER_REGNUM
-      && reg_mentioned_p (XEXP (XEXP (operands[0], 0), 0), operands[1]))
+      && reg_overlap_mentioned_p (stack_pointer_rtx, operands[1]))
     operands[1] = latehalf[1];
 
   /* If one or both operands autodecrementing,
@@ -859,6 +859,7 @@ hard_regno_mode_ok (regno, mode)
      } while (0)
 
 /* Meaning of CODE:
+   f -- float insn (print a CONST_DOUBLE as a float rather than in hex).
    L,W,B,Q,S -- print the opcode suffix for specified size of operand.
    R -- print the prefix for register names.
    z -- print the opcode suffix for the size of the current operand.
@@ -958,7 +959,7 @@ print_operand (file, x, code)
 	  fprintf (file, "0x%x", u1.i);
 	}
     }
-  else if (GET_CODE (x) == CONST_DOUBLE)
+  else if (GET_CODE (x) == CONST_DOUBLE && GET_MODE (x) == DFmode)
     {
       union { double d; int i[2]; } u;
       u.i[0] = XINT (x, 0);
@@ -1120,10 +1121,10 @@ notice_update_cc (exp)
 	  && (REG_P (SET_SRC (exp)) || GET_CODE (SET_SRC (exp)) == MEM))
 	{
 	  if (cc_status.value1
-	      && reg_mentioned_p (SET_DEST (exp), cc_status.value1))
+	      && reg_overlap_mentioned_p (SET_DEST (exp), cc_status.value1))
 	    cc_status.value1 = 0;
 	  if (cc_status.value2
-	      && reg_mentioned_p (SET_DEST (exp), cc_status.value2))
+	      && reg_overlap_mentioned_p (SET_DEST (exp), cc_status.value2))
 	    cc_status.value2 = 0;
 	}
       /* Moving register into memory doesn't alter the cc's.

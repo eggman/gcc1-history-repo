@@ -250,9 +250,10 @@ extern int target_flags;
    when one has mode MODE1 and one has mode MODE2.
    If HARD_REGNO_MODE_OK could produce different values for MODE1 and MODE2,
    for any hard reg, then this must be 0 for correct output.  */
-#define MODES_TIEABLE_P(MODE1, MODE2) \
-  (((MODE1) == SFmode || (MODE1) == DFmode) \
-   == ((MODE2) == SFmode || (MODE2) == DFmode))
+#define MODES_TIEABLE_P(MODE1, MODE2)			\
+  (! TARGET_68881					\
+   || (((MODE1) == SFmode || (MODE1) == DFmode)		\
+       == ((MODE2) == SFmode || (MODE2) == DFmode)))
 
 /* Specify the registers used for certain standard purposes.
    The values of these macros are register numbers.  */
@@ -620,7 +621,7 @@ extern enum reg_class regno_reg_class[];
    for profiling a function entry.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   fprintf (FILE, "\tlea LP%d,a0\n\tjsr mcount\n", (LABELNO));
+  fprintf (FILE, "\tlea LP%d,a0\n\tjsr mcount\n", (LABELNO))
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -1064,7 +1065,7 @@ extern enum reg_class regno_reg_class[];
 
 /* Set if the cc value is actually in the 68881, so a floating point
    conditional branch must be output.  */
-#define CC_IN_68881 040
+#define CC_IN_68881 04000
 
 /* Store in cc_status the expressions
    that the condition codes will describe
@@ -1076,7 +1077,7 @@ extern enum reg_class regno_reg_class[];
    can make it possibly invalid to use the saved cc's.  In those
    cases we clear out some or all of the saved cc's so they won't be used.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 {								\
   /* If the cc is being set from the fpa and the
      expression is not an explicit floating point
@@ -1093,10 +1094,10 @@ extern enum reg_class regno_reg_class[];
   else if (GET_CODE (EXP) == SET)				\
     { if (ADDRESS_REG_P (XEXP (EXP, 0)))			\
 	{ if (cc_status.value1					\
-	      && reg_mentioned_p (XEXP (EXP, 0), cc_status.value1)) \
+	      && reg_overlap_mentioned_p (XEXP (EXP, 0), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
 	  if (cc_status.value2					\
-	      && reg_mentioned_p (XEXP (EXP, 0), cc_status.value2)) \
+	      && reg_overlap_mentioned_p (XEXP (EXP, 0), cc_status.value2)) \
 	    cc_status.value2 = 0; }				\
       else if (!FP_REG_P (XEXP (EXP, 0))			\
 	       && XEXP (EXP, 0) != cc0_rtx			\
@@ -1143,7 +1144,7 @@ extern enum reg_class regno_reg_class[];
 	  cc_status.flags |= CC_NOT_NEGATIVE; }			\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
-      && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
+      && reg_overlap_mentioned_p (cc_status.value1, cc_status.value2))	\
     cc_status.value2 = 0;					\
   if (((cc_status.value1 && FP_REG_P (cc_status.value1))	\
        || (cc_status.value2 && FP_REG_P (cc_status.value2)))	\
@@ -1269,6 +1270,18 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_BYTE(FILE,VALUE)  \
   fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
 
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tmovel %s,sp@-\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tmovel sp@+,%s\n", reg_names[REGNO])
+
 /* This is how to output an element of a case-vector that is absolute.
    (The 68000 does not use such vectors,
    but we must define this macro anyway.)  */
@@ -1388,7 +1401,7 @@ do { union { float f; long l;} tem;			\
         fprintf (FILE, "#0r%.9g", u1.f);				\
       else								\
         fprintf (FILE, "#0x%x", u1.i); }				\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       fprintf (FILE, "#0r%.20g", u.d); }				\

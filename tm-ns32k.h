@@ -924,18 +924,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 /* This bit means that what ought to be in the Z bit
    should be tested in the F bit.  */
-#define CC_Z_IN_F 040
+#define CC_Z_IN_F 04000
 
 /* This bit means that what ought to be in the Z bit
    is complemented in the F bit.  */
-#define CC_Z_IN_NOT_F 0100
+#define CC_Z_IN_NOT_F 010000
 
 /* Store in cc_status the expressions
    that the condition codes will describe
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-#define NOTICE_UPDATE_CC(EXP) \
+#define NOTICE_UPDATE_CC(EXP, INSN) \
 { if (GET_CODE (EXP) == SET)					\
     { if (GET_CODE (SET_DEST (EXP)) == CC0)			\
 	{ cc_status.flags = 0;					\
@@ -946,10 +946,10 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 	{ CC_STATUS_INIT; }					\
       else if (GET_CODE (SET_DEST (EXP)) == REG)		\
 	{ if (cc_status.value1					\
-	      && reg_mentioned_p (SET_DEST (EXP), cc_status.value1)) \
+	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
 	  if (cc_status.value2					\
-	      && reg_mentioned_p (SET_DEST (EXP), cc_status.value2)) \
+	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value2)) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (EXP)) == MEM)		\
@@ -964,10 +964,10 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == REG) \
 	{ if (cc_status.value1					\
-	      && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1)) \
+	      && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
 	  if (cc_status.value2					\
-	      && reg_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2)) \
+	      && reg_overlap_mentioned_p (SET_DEST (XVECEXP (EXP, 0, 0)), cc_status.value2)) \
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
@@ -978,7 +978,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
   else { /* nothing happens? CC_STATUS_INIT; */}		\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
-      && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
+      && reg_overlap_mentioned_p (cc_status.value1, cc_status.value2))	\
     printf ("here!\n", cc_status.value2 = 0);			\
 }
 
@@ -1017,7 +1017,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 #define REGISTER_NAMES \
 {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", \
  "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", \
- "fp", "sp", "sb", "pc"}
+ "fp", "sp"}
 
 /* How to renumber registers for dbx and gdb.
    NS32000 may need more change in the numeration.  */
@@ -1089,6 +1089,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 #define ASM_OUTPUT_BYTE(FILE,VALUE)  \
   fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
+
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tmovd %s,tos\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tmovd tos,%s\n", reg_names[REGNO])
 
 /* This is how to output an element of a case-vector that is absolute.
    (The 68000 does not use such vectors,
@@ -1164,7 +1176,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     if (GET_MODE (X) == DFmode)						\
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\

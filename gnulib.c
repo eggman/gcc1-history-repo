@@ -29,11 +29,12 @@ union flt_or_int { int i; float f; };
 #include <stdio.h>
 /* This is used by the `assert' macro.  */
 void
-_eprintf (string, line)
+__eprintf (string, line, filename)
      char *string;
      int line;
+     char *filename;
 {
-  fprintf (stderr, string, line);
+  fprintf (stderr, string, line, filename);
 }
 #endif
 

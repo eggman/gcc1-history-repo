@@ -55,6 +55,10 @@ extern int inhibit_warnings;
 
 extern int extra_warnings;
 
+/* Nonzero to warn about unused local variables.  */
+
+extern int warn_unused;
+
 /* Nonzero if generating code to do profiling.  */
 
 extern int profile_flag;
@@ -91,6 +95,10 @@ extern int flag_float_store;
    that just copies one reg to another.  */
 
 extern int flag_combine_regs;
+
+/* Nonzero enables strength-reduction in loop.c.  */
+
+extern int flag_strength_reduce;
 
 /* Nonzero for -fwritable-strings:
    store string constants in data segment and don't uniquize them.  */

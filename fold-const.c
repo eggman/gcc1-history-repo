@@ -1163,7 +1163,6 @@ fold (expr)
 	{
 	  tree var, con, tem;
 	  int varsign;
-	  tree inner_arg;
 
 	  if (split_tree (arg0, code, &var, &con, &varsign))
 	    {

@@ -242,10 +242,10 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
       DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
 				 gen_rtx (SYMBOL_REF, Pmode, name));
       if (TREE_VOLATILE (decl))
-	DECL_RTL (decl)->volatil = 1;
+	MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
       if (TREE_READONLY (decl))
-	DECL_RTL (decl)->unchanging = 1;
-      DECL_RTL (decl)->in_struct
+	RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
+      MEM_IN_STRUCT_P (DECL_RTL (decl))
 	= (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
 	   || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
 	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
@@ -909,7 +909,6 @@ output_constant_def (exp)
      tree exp;
 {
   register rtx def;
-  char label[10];
 
   if (TREE_CODE (exp) == INTEGER_CST)
     abort ();			/* No TREE_CST_RTL slot in these.  */
@@ -924,7 +923,7 @@ output_constant_def (exp)
 
   TREE_CST_RTL (exp)
     = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)), def);
-  TREE_CST_RTL (exp)->unchanging = 1;
+  RTX_UNCHANGING_P (TREE_CST_RTL (exp)) = 1;
 
   if (TREE_PERMANENT (exp))
     resume_temporary_allocation ();
@@ -988,21 +987,18 @@ decode_rtx_const (mode, x, value)
       break;
 
     case SYMBOL_REF:
-      /* Use the string's address, not the SYMBOL_REF's address,
-	 for the sake of addresses of library routines.  */
-      value->un.addr.base = XEXP (x, 0);
+      value->un.addr.base = x;
       break;
 
     case LABEL_REF:
-      /* Return the CODE_LABEL, not the LABEL_REF.  */
-      value->un.addr.base = XEXP (x, 0);
+      value->un.addr.base = x;
       break;
     
     case CONST:
       x = XEXP (x, 0);
       if (GET_CODE (x) == PLUS)
 	{
-	  value->un.addr.base = XEXP (x, 0);
+	  value->un.addr.base = XEXP (XEXP (x, 0), 0);
 	  if (GET_CODE (XEXP (x, 1)) != CONST_INT)
 	    abort ();
 	  value->un.addr.offset = INTVAL (XEXP (x, 1));
@@ -1021,6 +1017,17 @@ decode_rtx_const (mode, x, value)
     default:
       abort ();
     }
+
+  if (value->un.addr.base != 0)
+    switch (GET_CODE (value->un.addr.base))
+      {
+      case SYMBOL_REF:
+      case LABEL_REF:
+	/* Use the string's address, not the SYMBOL_REF's address,
+	   for the sake of addresses of library routines.
+	   For a LABEL_REF, compare labels.  */
+	value->un.addr.base = XEXP (value->un.addr.base, 0);
+      }
 }
 
 /* Compute a hash code for a constant RTL expression.  */
@@ -1030,8 +1037,7 @@ const_hash_rtx (mode, x)
      enum machine_mode mode;
      rtx x;
 {
-  register int hi, i, len;
-  register char *p;
+  register int hi, i;
 
   struct rtx_const value;
   decode_rtx_const (mode, x, &value);
@@ -1103,7 +1109,7 @@ force_const_mem (mode, x)
      enum machine_mode mode;
      rtx x;
 {
-  register int hash, i;
+  register int hash;
   register struct constant_descriptor *desc;
   char label[10];
   char *found = 0;
@@ -1192,9 +1198,9 @@ force_const_mem (mode, x)
 
   def = gen_rtx (MEM, mode, gen_rtx (SYMBOL_REF, Pmode, desc->label));
 
-  def->unchanging = 1;
+  RTX_UNCHANGING_P (def) = 1;
   /* Mark the symbol_ref as belonging to this constants pool.  */
-  XEXP (def, 0)->unchanging = 1;
+  CONSTANT_POOL_ADDRESS_P (XEXP (def, 0)) = 1;
 
   return def;
 }
@@ -1293,7 +1299,7 @@ output_constant (exp, size)
 	{
 	  if (TREE_CODE (exp) == INTEGER_CST)
 	    {
-#ifdef WORDS_BIG_ENDIAN
+#ifndef WORDS_BIG_ENDIAN
 	      ASM_OUTPUT_INT (asm_out_file,
 			      gen_rtx (CONST_INT, VOIDmode,
 				       TREE_INT_CST_LOW (exp)));

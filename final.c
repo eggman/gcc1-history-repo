@@ -238,10 +238,6 @@ final_start_function (first, file, write_symbols, optimize)
      enum debugger write_symbols;
      int optimize;
 {
-  extern int profile_flag;
-
-  init_recog ();
-
   block_depth = 0;
 
   /* Record beginning of the symbol-block that's the entire function.  */
@@ -273,16 +269,63 @@ final_start_function (first, file, write_symbols, optimize)
   if (profile_flag)
     {
       int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
+      extern int current_function_returns_struct;
+      extern int current_function_needs_context;
+      int sval = current_function_returns_struct;
+      int cxt = current_function_needs_context;
       data_section ();
       ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
       ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
       assemble_integer_zero ();
       text_section ();
+
+#ifdef STRUCT_VALUE_INCOMING_REGNUM
+      if (sval)
+	ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_INCOMING_REGNUM);
+#else
+#ifdef STRUCT_VALUE_REGNUM
+      if (sval)
+	ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_REGNUM);
+#endif
+#endif
+
+#if 0
+#ifdef STATIC_CHAIN_INCOMING_REGNUM
+      if (cxt)
+	ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_INCOMING_REGNUM);
+#else
+#ifdef STATIC_CHAIN_REGNUM
+      if (cxt)
+	ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_REGNUM);
+#endif
+#endif
+#endif /* 0 */
+
       FUNCTION_PROFILER (file, profile_label_no);
       profile_label_no++;
-    }
 
-  CC_STATUS_INIT;
+#if 0
+#ifdef STATIC_CHAIN_INCOMING_REGNUM
+      if (cxt)
+	ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_INCOMING_REGNUM);
+#else
+#ifdef STATIC_CHAIN_REGNUM
+      if (cxt)
+	ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_REGNUM);
+#endif
+#endif
+#endif /* 0 */
+
+#ifdef STRUCT_VALUE_INCOMING_REGNUM
+      if (sval)
+	ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_INCOMING_REGNUM);
+#else
+#ifdef STRUCT_VALUE_REGNUM
+      if (sval)
+	ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_REGNUM);
+#endif
+#endif
+    }
 }
 
 /* Output assembler code for the end of a function.
@@ -326,23 +369,38 @@ final_end_function (first, file, write_symbols, optimize)
 }
 
 /* Output assembler code for some insns: all or part of a function.
-   For description of args, see `final_start_function', above.  */
+   For description of args, see `final_start_function', above.
+
+   PRESCAN is 1 if we are not really outputting,
+     just scanning as if we were outputting.
+   Prescanning deletes and rearranges insns just like ordinary output.
+   PRESCAN is -2 if we are outputting after having prescanned.
+   In this case, don't try to delete or rearrange insns
+   because that has already been done.
+   Prescanning is done only on certain machines.  */
 
 void
-final (first, file, write_symbols, optimize)
+final (first, file, write_symbols, optimize, prescan)
      rtx first;
      FILE *file;
      enum debugger write_symbols;
      int optimize;
+     int prescan;
 {
   register rtx insn;
   register int i;
+
+  init_recog ();
+
+  CC_STATUS_INIT;
 
   for (insn = NEXT_INSN (first); insn; insn = NEXT_INSN (insn))
     {
       switch (GET_CODE (insn))
 	{
 	case NOTE:
+	  if (prescan > 0)
+	    break;
 	  if (write_symbols == NO_DEBUG)
 	    break;
 	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_BEG)
@@ -417,6 +475,9 @@ final (first, file, write_symbols, optimize)
 	  break;
 
 	case CODE_LABEL:
+	  CC_STATUS_INIT;
+	  if (prescan > 0)
+	    break;
 	  if (app_on)
 	    {
 	      fprintf (file, ASM_APP_OFF);
@@ -442,7 +503,6 @@ final (first, file, write_symbols, optimize)
 #endif
 
 	  ASM_OUTPUT_INTERNAL_LABEL (file, "L", CODE_LABEL_NUMBER (insn));
-	  CC_STATUS_INIT;
 	  break;
 
 	default:
@@ -459,15 +519,16 @@ final (first, file, write_symbols, optimize)
 	      break;
 	    if (GET_CODE (body) == ASM_INPUT)
 	      {
+		/* There's no telling what that did to the condition codes.  */
+		CC_STATUS_INIT;
+		if (prescan > 0)
+		  break;
 		if (! app_on)
 		  {
 		    fprintf (file, ASM_APP_ON);
 		    app_on = 1;
 		  }
 		fprintf (asm_out_file, "\t%s\n", XSTR (body, 0));
-
-		/* There's no telling what that did to the condition codes.  */
-		CC_STATUS_INIT;
 		break;
 	      }
 
@@ -475,8 +536,17 @@ final (first, file, write_symbols, optimize)
 	    if (asm_noperands (body) > 0)
 	      {
 		int noperands = asm_noperands (body);
-		rtx *ops = (rtx *) malloc (noperands * sizeof (rtx));
+		rtx *ops;
 		char *string;
+
+		/* There's no telling what that did to the condition codes.  */
+		CC_STATUS_INIT;
+		if (prescan > 0)
+		  break;
+
+		/* alloca won't do here, since only return from `final'
+		   would free it.  */
+		ops = (rtx *) malloc (noperands * sizeof (rtx));
 
 		if (! app_on)
 		  {
@@ -488,13 +558,11 @@ final (first, file, write_symbols, optimize)
 		string = decode_asm_operands (body, ops, 0, 0, 0);
 		/* Output the insn using them.  */
 		output_asm_insn (string, ops);
-
-		/* There's no telling what that did to the condition codes.  */
-		CC_STATUS_INIT;
+		free (ops);
 		break;
 	      }
 
-	    if (app_on)
+	    if (prescan <= 0 && app_on)
 	      {
 		fprintf (file, ASM_APP_OFF);
 		app_on = 0;
@@ -505,8 +573,11 @@ final (first, file, write_symbols, optimize)
 
 	    if (GET_CODE (body) == ADDR_VEC)
 	      {
-		enum machine_mode mode = GET_MODE (body);
 		register int vlen, idx;
+
+		if (prescan > 0)
+		  break;
+
 		vlen = XVECLEN (body, 0);
 		for (idx = 0; idx < vlen; idx++)
 		  ASM_OUTPUT_ADDR_VEC_ELT (file,
@@ -520,8 +591,11 @@ final (first, file, write_symbols, optimize)
 	      }
 	    if (GET_CODE (body) == ADDR_DIFF_VEC)
 	      {
-		enum machine_mode mode = GET_MODE (body);
 		register int vlen, idx;
+
+		if (prescan > 0)
+		  break;
+
 		vlen = XVECLEN (body, 1);
 		for (idx = 0; idx < vlen; idx++)
 		  ASM_OUTPUT_ADDR_DIFF_ELT (file,
@@ -538,16 +612,6 @@ final (first, file, write_symbols, optimize)
 	    /* We have a real machine instruction as rtl.  */
 
 	    body = PATTERN (insn);
-
-	    /* Check for redundant move insns moving a reg into itself.
-	       This takes little time and does not affect the semantics
-	       so we do it even when `optimize' is 0.
-	       It is not safe to do this for memory references;
-	       we would not know if they were volatile.  */
-	    if (GET_CODE (body) == SET
-		&& SET_DEST (body) == SET_SRC (body)
-		&& GET_CODE (SET_DEST (body)) == REG)
-	      break;
 
 	    /* Check for redundant test and compare instructions
 	       (when the condition codes are already set up as desired).
@@ -572,6 +636,7 @@ final (first, file, write_symbols, optimize)
 		    if (! find_reg_note (insn, REG_INC, 0)
 			/* or if anything in it is volatile.  */
 			&& ! volatile_refs_p (PATTERN (insn)))
+		      /* We don't really delete the insn; just ignore it.  */
 		      break;
 		  }
 	      }
@@ -585,7 +650,10 @@ final (first, file, write_symbols, optimize)
 		&& GET_CODE (insn) == JUMP_INSN
 		&& GET_CODE (body) == SET
 		&& SET_DEST (body) == pc_rtx
-		&& GET_CODE (SET_SRC (body)) == IF_THEN_ELSE)
+		&& GET_CODE (SET_SRC (body)) == IF_THEN_ELSE
+		/* This is done during prescan; it is not done again
+		   in final scan when prescan has been done.  */
+		&& prescan >= 0)
 	      {
 		/* This function may alter the contents of its argument
 		   and clear some of the cc_status.flags bits.
@@ -603,14 +671,20 @@ final (first, file, write_symbols, optimize)
 		   If it has become a no-op, don't try to output it.
 		   (It would not be recognized.)  */
 		if (SET_SRC (body) == pc_rtx)
-		  continue;
+		  {
+		    PUT_CODE (insn, NOTE);
+		    NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
+		    NOTE_SOURCE_FILE (insn) = 0;
+		    break;
+		  }
 		/* Rerecognize the instruction if it has changed.  */
 		if (result != 0)
 		  INSN_CODE (insn) = -1;
 	      }
 
+#ifdef STORE_FLAG_VALUE
 	    /* Make same adjustments to instructions that examine the
-	       condition codes without jumping.  */
+	       condition codes without jumping (if this machine has them).  */
 
 	    if (cc_status.flags != 0
 		&& GET_CODE (body) == SET)
@@ -627,15 +701,20 @@ final (first, file, write_symbols, optimize)
 		case EQ:
 		case NE:
 		  {
-		    register int result = alter_cond (SET_SRC (body));
+		    register int result;
+		    if (GET_CODE (XEXP (SET_SRC (body), 0)) != CC0)
+		      break;
+		    result = alter_cond (SET_SRC (body));
 		    if (result == 1)
-		      SET_SRC (body) = gen_rtx (CONST_INT, VOIDmode, -1);
+		      SET_SRC (body) = gen_rtx (CONST_INT, VOIDmode,
+						STORE_FLAG_VALUE);
 		    if (result == -1)
 		      SET_SRC (body) = const0_rtx;
 		    if (result != 0)
 		      INSN_CODE (insn) = -1;
 		  }
 		}
+#endif /* STORE_FLAG_VALUE */
 
 	    /* Try to recognize the instruction.
 	       If successful, verify that the operands satisfy the
@@ -670,7 +749,7 @@ final (first, file, write_symbols, optimize)
 	       below.  That's ok since jump insns don't normally alter
 	       the condition codes.  */
 
-	    NOTICE_UPDATE_CC (body);
+	    NOTICE_UPDATE_CC (body, insn);
 
 	    /* If the proper template needs to be chosen by some C code,
 	       run that code and get the real template.  */
@@ -678,6 +757,9 @@ final (first, file, write_symbols, optimize)
 	    template = insn_template[insn_code_number];
 	    if (template == 0)
 	      template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
+
+	    if (prescan > 0)
+	      break;
 
 	    /* Output assembler code from the template.  */
 
@@ -844,12 +926,11 @@ walk_alter_subreg (x)
 /* Given BODY, the body of a jump instruction, alter the jump condition
    as required by the bits that are set in cc_status.flags.
    Not all of the bits there can be handled at this level in all cases.
-   The bits that are taken care of here are cleared.
 
    The value is normally 0.
-    In this case, COND itself has usually been altered.
    1 means that the condition has become always true.
-   -1 means that the condition has become always false.  */
+   -1 means that the condition has become always false.
+   2 means that COND has been altered.  */
 
 static int
 alter_cond (cond)
@@ -889,7 +970,7 @@ alter_cond (cond)
 	}
     }
 
-  if (cond != 0 && cc_status.flags & CC_NOT_POSITIVE)
+  if (cc_status.flags & CC_NOT_POSITIVE)
     switch (GET_CODE (cond))
       {
       case LE:
@@ -915,7 +996,7 @@ alter_cond (cond)
 	break;
       }
 
-  if (cond != 0 && cc_status.flags & CC_NOT_NEGATIVE)
+  if (cc_status.flags & CC_NOT_NEGATIVE)
     switch (GET_CODE (cond))
       {
       case GE:
@@ -941,7 +1022,7 @@ alter_cond (cond)
 	break;
       }
 
-  if (cond != 0 && cc_status.flags & CC_NO_OVERFLOW)
+  if (cc_status.flags & CC_NO_OVERFLOW)
     switch (GET_CODE (cond))
       {
       case GEU:
@@ -963,6 +1044,30 @@ alter_cond (cond)
 	return -1;
       }
 
+  if (cc_status.flags & (CC_Z_IN_NOT_N | CC_Z_IN_N))
+    switch (GET_CODE (cond))
+      {
+      case LE:
+      case LEU:
+      case GE:
+      case GEU:
+      case LT:
+      case LTU:
+      case GT:
+      case GTU:
+	abort ();
+
+      case NE:
+	PUT_CODE (cond, cc_status.flags & CC_Z_IN_N ? GE : LT);
+	value = 2;
+	break;
+
+      case EQ:
+	PUT_CODE (cond, cc_status.flags & CC_Z_IN_N ? LT : GE);
+	value = 2;
+	break;
+      }
+  
   return value;
 }
 
@@ -1172,6 +1277,21 @@ output_addr_const (file, x)
     case CONST:
       x = XEXP (x, 0);
       goto restart;
+
+    case CONST_DOUBLE:
+      if (GET_MODE (x) == DImode)
+	{
+	  /* We can use %d if the number is <32 bits and positive.  */
+	  if (XINT (x, 1) || XINT (x, 0) < 0)
+	    fprintf (file, "0x%x%08x", XINT (x, 1), XINT (x, 0));
+	  else
+	    fprintf (file, "%d", XINT (x, 0));
+	}
+      else
+	/* We can't handle floating point constants;
+	   PRINT_OPERAND must handle them.  */
+	abort ();
+      break;
 
     case PLUS:
       /* Some assemblers need integer constants to appear last (eg masm).  */

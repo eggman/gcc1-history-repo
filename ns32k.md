@@ -674,6 +674,14 @@
   "GET_CODE (operands[0]) == CONST_INT"
   "*
 {
+#if defined(ns32532)
+  if (INTVAL(operands[0]) == 8)
+      return \"cmpd tos,tos # adjsp -8\";
+#endif
+#if defined(ns32532) || defined(ns32332)
+  if (INTVAL(operands[0]) == 4)
+      return \"cmpqd %$0,tos # adjsp -4\";
+#endif
   if (INTVAL(operands[0]) < 64 && INTVAL(operands[0]) > -64)
     return \"adjspb %$%n0\";
   else if (INTVAL (operands[0]) < 8192 && INTVAL (operands[0]) >= -8192)
@@ -1359,6 +1367,40 @@
   return \"ashb %2,%0\";
 }")
 
+;; Arithmetic right shift on the 32k works by negating the shift count.
+(define_expand "ashrsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(ashift:SI (match_operand:SI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "ashrhi3"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(ashift:HI (match_operand:HI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "ashrqi3"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(ashift:QI (match_operand:QI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
 ;; logical shift instructions
 
 (define_insn "lshlsi3"
@@ -1390,6 +1432,40 @@
   ""
   "lshb %2,%0")
 
+;; Logical right shift on the 32k works by negating the shift count.
+(define_expand "lshrsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(lshift:SI (match_operand:SI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "lshrhi3"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(lshift:HI (match_operand:HI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "lshrqi3"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(lshift:QI (match_operand:QI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
 ;; Rotate instructions
 
 (define_insn "rotlsi3"
@@ -1412,6 +1488,40 @@
 		   (match_operand:SI 2 "general_operand" "rmn")))]
   ""
   "rotb %2,%0")
+
+;; Right rotate on the 32k works by negating the shift count.
+(define_expand "rotrsi3"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(rotate:SI (match_operand:SI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "rotrhi3"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(rotate:HI (match_operand:HI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
+
+(define_expand "rotrqi3"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(rotate:QI (match_operand:QI 1 "general_operand" "g")
+		   (match_operand:SI 2 "general_operand" "g")))]
+  ""
+  "
+{
+  extern rtx negate_rtx ();
+  operands[2] = negate_rtx (operands[2]);
+}")
 
 ;;- load or push effective address 
 ;; These come after the move, add, and multiply patterns
@@ -1701,7 +1811,11 @@
       else
 	output_asm_insn (\"movzbd 3(sp),%0\", operands);
     }
+#if defined(ns32532) || defined(ns32332)
+  return \"cmpqd %$0,tos # adjsp -4\";
+#else
   return \"adjspb %$-4\";
+#endif
 }")
 
 (define_insn ""

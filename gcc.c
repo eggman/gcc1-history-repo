@@ -65,7 +65,7 @@ or with constant text in a single argument.
 	be linked.
  %p	substitutes the standard macro predefinitions for the
 	current target machine.  Use this when running cpp.
- %s     current argument is the name of a library file of some sort.
+ %s     current argument is the name of a library or startup file of some sort.
         Search for that file in a standard list of directories
 	and substitute the full pathname found.
  %a     process ASM_SPEC as a spec.
@@ -146,7 +146,6 @@ char *save_string ();
 char *concat ();
 int do_spec ();
 int do_spec_1 ();
-int give_string ();
 char *find_file ();
 
 /* config.h can define ASM_SPEC to provide extra args to the assembler

@@ -61,6 +61,8 @@ and this notice must be preserved on all copies.  */
 #undef FUNCTION_PROLOGUE
 #undef FUNCTION_EPILOGUE
 #undef REGISTER_NAMES
+#undef ASM_OUTPUT_REG_PUSH
+#undef ASM_OUTPUT_REG_POP
 #undef ASM_OUTPUT_DOUBLE
 #undef ASM_OUTPUT_SKIP
 #undef PRINT_OPERAND
@@ -191,6 +193,18 @@ and this notice must be preserved on all copies.  */
 {"d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",	\
  "a0", "a1", "a2", "a3", "a4", "a5", "fp", "sp",	\
  "fp0", "fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7"}
+
+/* This is how to output an insn to push a register on the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
+  fprintf (FILE, "\tmove.l %s,-(sp)\n", reg_names[REGNO])
+
+/* This is how to output an insn to pop a register from the stack.
+   It need not be very fast code.  */
+
+#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
+  fprintf (FILE, "\tmove.l (sp)+,%s\n", reg_names[REGNO])
   
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
   fprintf (FILE, "\t.double 0d%.20e\n", (VALUE))
@@ -218,7 +232,7 @@ and this notice must be preserved on all copies.  */
         fprintf (FILE, "#0f%.9e", u1.f);				\
       else								\
         fprintf (FILE, "#0x%x", u1.i); }				\
-  else if (GET_CODE (X) == CONST_DOUBLE)				\
+  else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       fprintf (FILE, "#0d%.20e", u.d); }				\
