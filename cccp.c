@@ -824,7 +824,13 @@ main (argc, argv)
       if (p[0] != '-' || p[1] != 'D')
 	abort ();
       q = &p[2];
-      while (*p && *p != ' ') p++;
+      while (*p && *p != ' ')
+	{
+	  /* If we have -DFOO=BAR, make it `FOO BAR' for make_definition.  */
+	  if (*p == '=')
+	    *p = ' ';
+	  p++;
+	}
       if (*p != 0)
 	*p++= 0;
       make_definition (q);

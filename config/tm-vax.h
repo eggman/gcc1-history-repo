@@ -30,8 +30,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Note that there are no profiling libraries for g-format.  */
 
 #define LIB_SPEC "%{mg:%{lm:-lmg} -lcg \
-  %{p:%eprofiling not supported with -mg\n\
-  %{pg:%eprofiling not supported with -mg\n}\
+  %{p:%eprofiling not supported with -mg}\n\
+  %{pg:%eprofiling not supported with -mg}\n}\
  %{!mg:%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p}}"
 
 /* Print subsidiary information on the compiler version in use.  */

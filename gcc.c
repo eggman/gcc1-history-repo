@@ -262,7 +262,7 @@ struct compiler compilers[] =
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%W{o*}}%{M*:%W{o*}} |\n\
     %{!M*:%{!E:cc1 %{!pipe:%g.cpp} %1 \
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
-		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+		   %{g} %{O*} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
@@ -277,7 +277,7 @@ struct compiler compilers[] =
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%W{o*}}%{M*:%W{o*}} |\n\
     %{!M*:%{!E:cc1plus %{!pipe:%g.cpp} %1\
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
-		   %{g} %{O} %{W*} %{w} %{pedantic} %{traditional}\
+		   %{g} %{O*} %{W*} %{w} %{pedantic} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
@@ -286,7 +286,7 @@ struct compiler compilers[] =
                       %{!pipe:%g.s}\n }}}"},
   {".i",
    "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*} %{a}\
-	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+	%{g} %{O*} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 	%{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 	%{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
     %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\

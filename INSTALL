@@ -476,8 +476,16 @@ Installing GNU CC
 
           make install
 
-     This copies the files `cc1', `cpp' and `gnulib' to files
-     `gcc-cc1', `gcc-cpp' and `gcc-gnulib' in directory
+     On some machines, you will find that starts to recompile the `.c'
+     files, due to a bug in Make.  If that happens, cancel it and try
+     again specifying the same values for Make variables that you used
+     in the last compilation; that may not prevent the spurious
+     recompilation, but will at least do it properly.  For example:
+
+          make CC=stage2/gcc CFLAGS="-g -O -Bstage2/" install
+
+     The `install' target copies the files `cc1', `cpp' and `gnulib' to
+     files `gcc-cc1', `gcc-cpp' and `gcc-gnulib' in directory
      `/usr/local/lib', which is where the compiler driver program looks
      for them.  It also copies the driver program `gcc' into the
      directory `/usr/local/bin', so that it appears in typical
@@ -522,7 +530,9 @@ Installing GNU CC
 
      *Warning:* `fixincludes' does not work on many MIPS systems,
      because those systems come with circular symbolic links which cause
-     `ls -lR' to go into an infinite loop.
+     `ls -lR' to go into an infinite loop.  The same problem may occur
+     on some versions of SunOS.  If you encounter this problem, try
+     using `fixinc.new' instead opf `fixincludes'.
 
    If you cannot install the compiler's passes and run-time support in
 `/usr/local/lib', you can alternatively use the `-B' option to specify

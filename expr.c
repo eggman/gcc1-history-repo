@@ -3727,7 +3727,12 @@ expand_increment (exp, post)
     temp = copy_rtx (op0);
 
   /* Increment however we can.  */
-  op1 = expand_binop (mode, this_optab, op0, op1, op0,
+  op1 = expand_binop (mode, this_optab,
+		      /* If OP0 is volatile memory, we read it once;
+			 avoid reading it again.  */
+		      (post && GET_CODE (op0) == MEM && MEM_VOLATILE_P (op0)
+		       ? temp : op0),
+		      op1, op0,
 		      TREE_UNSIGNED (TREE_TYPE (exp)), OPTAB_LIB_WIDEN);
   /* Make sure the value is stored into OP0.  */
   if (op1 != op0)

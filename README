@@ -1,4 +1,4 @@
-This directory contains the version 1.41 release of the GNU C compiler.
+This directory contains the version 1.42 release of the GNU C compiler.
 All serious bugs (that would make ordinary C programs fail) reported for
 previous test releases have been fixed.  We have often decided not to fix
 bugs that are Less important, to avoid risking creating new bugs.

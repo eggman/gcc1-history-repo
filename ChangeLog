@@ -1,3 +1,35 @@
+Sun Sep 20 02:02:50 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* Version 1.42 released.
+
+Fri Sep 18 15:58:15 1992  James Van Artsdalen  (james at bigtex.cactus.org)
+
+	* fixinc.new: Don't look for *.h symlinks if the host doesn't
+	have symlinks.
+
+Fri Sep 18 02:34:02 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* fixinc.new: New file.
+
+Fri Sep 11 02:58:48 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cccp.c (main): Handle -DFOO=BAR in predefs.
+
+Tue Sep  8 02:18:59 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expr.c (expand_increment): If OP0 is volatile, read it only once.
+
+	* gcc.c (compilers): Pass -O* to cc1 or cc1plus.
+
+Wed Sep  2 00:30:49 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* tm-vax.h (LIB_SPEC): Fix unmatched braces.
+	* tm-ultrix.h (CPP_PREDEFINES): Delete leading space.
+
+Mon Aug 31 04:08:52 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* fold-const.c (const_binop): Delete special case for mult by 3.
+
 Thu Aug 27 04:20:43 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
 
 	* version 1.41 released.
@@ -7880,10 +7912,3 @@ Thu Dec 22 15:57:12 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 	Add missing backslashes.
 
 See file OChangeLog.
-
-Local Variables:
-mode: indented-text
-left-margin: 8
-fill-column: 76
-version-control: never
-End:

@@ -25,6 +25,43 @@ permission notice may be included in translations approved by the Free
 Software Foundation instead of in the original English.
 
 
+File: gcc.info,  Node: Extensions,  Next: Bugs,  Prev: Incompatibilities,  Up: Top
+
+GNU Extensions to the C Language
+********************************
+
+   GNU C provides several language features not found in ANSI standard
+C. (The `-pedantic' option directs GNU CC to print a warning message if
+any of these features is used.)  To test for the availability of these
+features in conditional compilation, check for a predefined macro
+`__GNUC__', which is always defined under GNU CC.
+
+* Menu:
+
+* Statement Exprs::     Putting statements and declarations inside expressions.
+* Naming Types::        Giving a name to the type of some expression.
+* Typeof::              `typeof': referring to the type of an expression.
+* Lvalues::             Using `?:', `,' and casts in lvalues.
+* Conditionals::        Omitting the middle operand of a `?:' expression.
+* Zero-Length::         Zero-length arrays.
+* Variable-Length::     Arrays whose length is computed at run time.
+* Subscripting::        Any array can be subscripted, even if not an lvalue.
+* Pointer Arith::       Arithmetic on `void'-pointers and function pointers.
+* Initializers::        Non-constant initializers.
+* Constructors::        Constructor expressions give structures, unions
+                         or arrays as values.
+* Function Attributes:: Declaring that functions have no side effects,
+                         or that they can never return.
+* Dollar Signs::        Dollar sign is allowed in identifiers.
+* Alignment::           Inquiring about the alignment of a type or variable.
+* Inline::              Defining inline functions (as fast as macros).
+* Extended Asm::        Assembler instructions with C expressions as operands.
+                         (With them you can define "built-in" functions.)
+* Asm Labels::          Specifying the assembler name to use for a C symbol.
+* Explicit Reg Vars::   Defining variables residing in specified registers.
+* Alternate Keywords::  `__const__', `__asm__', etc., for header files.
+
+
 File: gcc.info,  Node: Statement Exprs,  Next: Naming Types,  Prev: Extensions,  Up: Extensions
 
 Statements and Declarations inside of Expressions
