@@ -27,6 +27,7 @@ and this notice must be preserved on all copies.  */
 #include "rtl.h"
 #include "hard-reg-set.h"
 #include "flags.h"
+#include "basic-block.h"
 #include "regs.h"
 #include "insn-config.h"
 #include "recog.h"
@@ -358,8 +359,21 @@ regclass (f, nregs)
 		&& ! rtx_equal_p (recog_operand[0], recog_operand[2])
 		&& GET_CODE (recog_operand[0]) == REG)
 	      {
-		emit_insn_before (gen_move_insn (recog_operand[0], recog_operand[1]),
-				  insn);
+		rtx previnsn = prev_real_insn (insn);
+		rtx newinsn
+		  = emit_insn_before (gen_move_insn (recog_operand[0],
+						     recog_operand[1]),
+				      insn);
+
+		/* If this insn was the start of a basic block,
+		   include the new insn in that block.  */
+		if (previnsn == 0 || GET_CODE (previnsn) == JUMP_INSN)
+		  {
+		    int b;
+		    for (b = 0; b < n_basic_blocks; b++)
+		      if (insn == basic_block_head[b])
+			basic_block_head[b] = newinsn;
+		  }
 
 		/* This makes one more setting of new insns's destination.  */
 		reg_n_sets[REGNO (recog_operand[0])]++;
@@ -368,6 +382,8 @@ regclass (f, nregs)
 		for (i = insn_n_dups[insn_code_number] - 1; i >= 0; i--)
 		  if (recog_dup_num[i] == 1)
 		    *recog_dup_loc[i] = recog_operand[0];
+
+
 	      }
 	  }
       }

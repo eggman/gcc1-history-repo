@@ -174,6 +174,8 @@ gen_exp (x)
 	gen_exp (XEXP (x, i));
       else if (fmt[i] == 'i')
 	printf ("%d", XINT (x, i));
+      else if (fmt[i] == 's')
+	printf ("\"%s\"", XSTR (x, i));
       else if (fmt[i] == 'E')
 	{
 	  int j;
@@ -316,10 +318,17 @@ gen_expand (expand)
       if ((GET_CODE (next) == SET && GET_CODE (SET_DEST (next)) == PC)
 	  || (GET_CODE (next) == PARALLEL
 	      && GET_CODE (XVECEXP (next, 0, 0)) == SET
-	      && GET_CODE (SET_DEST (XVECEXP (next, 0, 0))) == PC))
+	      && GET_CODE (SET_DEST (XVECEXP (next, 0, 0))) == PC)
+	  || GET_CODE (next) == RETURN)
 	printf ("  emit_jump_insn (");
+      else if ((GET_CODE (next) == SET && GET_CODE (SET_SRC (next)) == CALL)
+	       || GET_CODE (next) == CALL)
+	printf ("  emit_call_insn (");
       else if (GET_CODE (next) == CODE_LABEL)
 	printf ("  emit_label (");
+      else if (GET_CODE (next) == MATCH_OPERAND
+	       || GET_CODE (next) == MATCH_DUP)
+	printf ("  emit (");
       else
 	printf ("  emit_insn (");
       gen_exp (next);

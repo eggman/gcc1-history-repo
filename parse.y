@@ -211,7 +211,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @7.first_line); }
+		{ finish_function (); }
 	| typed_declspecs setspecs declarator error
 		{ }
 	| declmods setspecs notype_declarator
@@ -221,7 +221,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @7.first_line); }
+		{ finish_function (); }
 	| declmods setspecs notype_declarator error
 		{ }
 	| setspecs notype_declarator
@@ -231,7 +231,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @6.first_line); }
+		{ finish_function (); }
 	| setspecs notype_declarator error
 		{ }
 	;
@@ -725,11 +725,11 @@ components:
 
 component_declarator:
 	declarator
-		{ $$ = grokfield (input_filename, @1.first_line, $1, current_declspecs, NULL_TREE); }
+		{ $$ = grokfield (input_filename, lineno, $1, current_declspecs, NULL_TREE); }
 	| declarator ':' expr_no_commas
-		{ $$ = grokfield (input_filename, @1.first_line, $1, current_declspecs, $3); }
+		{ $$ = grokfield (input_filename, lineno, $1, current_declspecs, $3); }
 	| ':' expr_no_commas
-		{ $$ = grokfield (input_filename, @1.first_line, NULL_TREE, current_declspecs, $2); }
+		{ $$ = grokfield (input_filename, lineno, NULL_TREE, current_declspecs, $2); }
 	;
 
 /* We chain the enumerators in reverse order.
@@ -842,7 +842,7 @@ compstmt: '{' '}'
 
 simple_if:
 	  IF '(' expr ')'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  expand_start_cond (truthvalue_conversion ($3), 0); }
 	  stmt
 	;
@@ -850,7 +850,7 @@ simple_if:
 stmt:
 	  compstmt
 	| expr ';'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  expand_expr_stmt ($1);
 		  clear_momentary (); }
 	| simple_if ELSE
@@ -860,46 +860,46 @@ stmt:
 	| simple_if
 		{ expand_end_cond (); }
 	| WHILE
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  expand_start_loop (1); }
 	  '(' expr ')'
-		{ expand_exit_loop_if_false (truthvalue_conversion ($4)); }
+		{ emit_note (input_filename, lineno);
+		  expand_exit_loop_if_false (truthvalue_conversion ($4)); }
 	  stmt
 		{ expand_end_loop (); }
 	| DO
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  expand_start_loop_continue_elsewhere (1); }
 	  stmt WHILE
 		{ expand_loop_continue_here (); }
 	  '(' expr ')' ';'
-		{ emit_note (input_filename, @7.first_line);
+		{ emit_note (input_filename, lineno);
 		  expand_exit_loop_if_false (truthvalue_conversion ($7));
 		  expand_end_loop ();
 		  clear_momentary (); }
 	| FOR 
 	  '(' xexpr ';'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  if ($3) expand_expr_stmt ($3);
 		  expand_start_loop_continue_elsewhere (1); }
 	  xexpr ';'
-		{ emit_note (input_filename, @6.first_line);
+		{ emit_note (input_filename, lineno);
 		  if ($6)
 		    expand_exit_loop_if_false (truthvalue_conversion ($6)); }
 	  xexpr ')'
 		/* Don't let the tree nodes for $9 be discarded
 		   by clear_momentary during the parsing of the next stmt.  */
-		{ push_momentary (); }
+		{ push_momentary ();
+		  $<itype>10 = lineno; }
 	  stmt
-		{ emit_note (input_filename, @9.first_line);
+		{ emit_note (input_filename, $<itype>10);
 		  expand_loop_continue_here ();
 		  if ($9)
-		    {
-		      expand_expr_stmt ($9);
-		    }
+		    expand_expr_stmt ($9);
 		  pop_momentary ();
 		  expand_end_loop (); }
 	| SWITCH '(' expr ')'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  c_expand_start_case ($3);
 		  /* Don't let the tree nodes for $3 be discarded by
 		     clear_momentary during the parsing of the next stmt.  */
@@ -945,30 +945,28 @@ stmt:
 		}
 	  stmt
 	| BREAK ';'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  if ( ! expand_exit_something ())
 		    error ("break statement not within loop or switch"); }
 	| CONTINUE ';'	
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  if (! expand_continue_loop ())
 		    error ("continue statement not within a loop"); }
 	| RETURN ';'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  c_expand_return (NULL_TREE); }
 	| RETURN expr ';'
-		{ emit_note (input_filename, @1.first_line);
+		{ emit_note (input_filename, lineno);
 		  c_expand_return ($2); }
 	| ASM maybe_type_qual '(' string ')' ';'
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, @1.first_line);
 		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  expand_asm ($4); }
 	/* This is the case with just output operands.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, @1.first_line);
 		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
@@ -976,17 +974,16 @@ stmt:
 	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, @1.first_line);
 		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, $8,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	| GOTO identifier ';'
 		{ tree decl;
-		  emit_note (input_filename, @1.first_line);
+		  emit_note (input_filename, lineno);
 		  decl = lookup_label ($2);
 		  expand_goto (decl); }
 	| identifier ':'
-		{ tree label = define_label (input_filename, @1.first_line, $1);
+		{ tree label = define_label (input_filename, lineno, $1);
 		  if (label)
 		    expand_label (label); }
 	  stmt
@@ -995,7 +992,9 @@ stmt:
 
 maybe_type_qual:
 	/* empty */
+		{ emit_note (input_filename, lineno); }
 	| TYPE_QUAL
+		{ emit_note (input_filename, lineno); }
 	;
 
 xexpr:
@@ -1017,19 +1016,15 @@ asm_operand:
 	;
 
 /* This is what appears inside the parens in a function declarator.
-   Its value is a list of ..._TYPE nodes.
-   The caller must do `poplevel (0, 0, 0);' after return from this.
-   (The caller does it so that error recovery to the closeparen
-   can also do it.)  */
+   Its value is a list of ..._TYPE nodes.  */
 parmlist:
 		{ pushlevel (0); }
 	  parmlist_1
-		{ $$ = $2; poplevel (0); }
+		{ $$ = $2; poplevel (0, 0, 0); }
 	;
 
 /* This is referred to where either a parmlist or an identifier list is ok.
-   Its value is a list of ..._TYPE nodes or a list of identifiers.
-   The caller must do `poplevel (0, 0, 0);' after return from this.  */
+   Its value is a list of ..._TYPE nodes or a list of identifiers.  */
 parmlist_or_identifiers:
 		{ pushlevel (0); }
 	  parmlist_or_identifiers_1
@@ -1039,24 +1034,25 @@ parmlist_or_identifiers:
 parmlist_or_identifiers_1:
 	  parmlist_2 ')'
 	| identifiers ')'
+		{ $$ = tree_cons (NULL_TREE, NULL_TREE, $1); }
 	| error ')'
-		{ $$ = NULL_TREE; }
+		{ $$ = tree_cons (NULL_TREE, NULL_TREE, NULL_TREE); }
 	;
 
 parmlist_1:
 	  parmlist_2 ')'
 	| error ')'
-		{ $$ = NULL_TREE; }
+		{ $$ = tree_cons (NULL_TREE, NULL_TREE, NULL_TREE); }
 	;
 
 /* This is what appears inside the parens in a function declarator.
    Is value is represented in the format that grokdeclarator expects.  */
 parmlist_2:  /* empty */
-		{ $$ = get_parm_types (0); }
+		{ $$ = get_parm_info (0); }
 	| parms
-		{ $$ = get_parm_types (1); }
+		{ $$ = get_parm_info (1); }
 	| parms ',' ELLIPSIS
-		{ $$ = get_parm_types (0); }
+		{ $$ = get_parm_info (0); }
 	;
 
 parms:	
@@ -1623,18 +1619,25 @@ readescape ()
 }
 
 void
-yyerror ()
+yyerror (string)
+     char *string;
 {
+  char buf[200];
+
+  strcpy (buf, string);
+
   /* We can't print string and character constants well
      because the token_buffer contains the result of processing escapes.  */
   if (token_buffer[0] == 0)
-    error ("parse error at end of input");
+    strcat (buf, " at end of input");
   else if (token_buffer[0] == '"')
-    error ("parse error at string constant");
+    strcat (buf, " before string constant");
   else if (token_buffer[0] == '\'')
-    error ("parse error at character constant");
+    strcat (buf, " before character constant");
   else
-    error ("parse error at `%s'", token_buffer);
+    strcat (buf, " before `%s'");
+
+  error (buf, token_buffer);
 }
 
 static int
@@ -1645,7 +1648,31 @@ yylex ()
   register int value;
   int wide_flag = 0;
 
-  token_buffer[0] = c = skip_white_space ();
+  /* Effectively do c = skip_white_space ()
+     but do it faster in the usual cases.  */
+  c = getc (finput);
+  while (1)
+    switch (c)
+      {
+      case ' ':
+      case '\t':
+      case '\f':
+      case '\r':
+      case '\b':
+	c = getc (finput);
+	break;
+
+      case '\n':
+      case '/':
+      case '\\':
+	ungetc (c, finput);
+	c = skip_white_space ();
+      default:
+	goto found_nonwhite;
+      }
+ found_nonwhite:
+
+  token_buffer[0] = c;
   token_buffer[1] = 0;
 
   yylloc.first_line = lineno;

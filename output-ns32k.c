@@ -57,6 +57,20 @@ const_int (op, mode)
 {
   return (GET_CODE (op) == CONST_INT);
 }
+
+/* Return 1 if OP is a valid operand of mode MODE.  This
+   predicate rejects operands which do not have a mode
+   (such as CONST_INT which are VOIDmode).  */
+int
+reg_or_mem_operand (op, mode)
+     register rtx op;
+     enum machine_mode mode;
+{
+  return (GET_MODE (op) == mode
+	  && (GET_CODE (op) == REG
+	      || GET_CODE (op) == SUBREG
+	      || GET_CODE (op) == MEM));
+}
 
 /* Return the best assembler insn template
    for moving operands[1] into operands[0] as a fullword.  */
@@ -189,7 +203,8 @@ check_reg (oper, reg)
 print_operand_address (file, addr)
      register FILE *file;
      register rtx addr;
-{ register rtx reg1, reg2, breg, ireg;
+{
+  register rtx reg1, reg2, breg, ireg;
   rtx offset;
   static char scales[] = { 'b', 'w', 'd', 0, 'q', };
   static char *reg_name[] = REGISTER_NAMES;
@@ -378,7 +393,8 @@ print_operand_address (file, addr)
       if (GET_CODE (addr) == REG || GET_CODE (addr) == MULT)
 	{ if (reg1 == 0) reg1 = addr; else reg2 = addr; addr = 0; }
       if (addr != 0)
-	{ if (CONSTANT_P (addr) && reg1)
+	{
+	  if (CONSTANT_P (addr) && reg1)
 	    {
 	      if (offset != const0_rtx)
 		{
@@ -393,23 +409,25 @@ print_operand_address (file, addr)
 	    abort ();
 
 	  output_addr_const (file, offset);
-	  if (! SEQUENT_ADDRESS_BUG) {
-	    putc ('(', file);
-	    output_address (addr);
-	    putc (')', file);
-	  } else {
-	    if ((GET_CODE (offset) == SYMBOL_REF
-	         || GET_CODE (offset) == CONST)
-	        && GET_CODE (addr) == REG) {
+#ifndef SEQUENT_ADDRESS_BUG
+	  putc ('(', file);
+	  output_address (addr);
+	  putc (')', file);
+#else /* SEQUENT_ADDRESS_BUG */
+	  if ((GET_CODE (offset) == SYMBOL_REF
+	       || GET_CODE (offset) == CONST)
+	      && GET_CODE (addr) == REG)
+	    {
 	      if (reg1) abort ();
 	      fprintf (file, "[%s:b]", reg_name [REGNO (addr)]);
 	    }
-	    else {
+	  else
+	    {
 	      putc ('(', file);
 	      output_address (addr);
 	      putc (')', file);
 	    }
-	  }
+#endif /* SEQUENT_ADDRESS_BUG */
 	  ireg = reg1;
 	  goto print_index;
 	}
@@ -423,43 +441,53 @@ print_operand_address (file, addr)
       else
 	{ breg = reg1; ireg = reg2; }
       if (ireg != 0 && breg == 0 && GET_CODE (addr) == LABEL_REF)
-        { int scale;
+        {
+	  int scale;
 	  if (GET_CODE (ireg) == MULT)
-	    { scale = INTVAL (XEXP (ireg, 1)) >> 1;
-	      ireg = XEXP (ireg, 0); }
+	    {
+	      scale = INTVAL (XEXP (ireg, 1)) >> 1;
+	      ireg = XEXP (ireg, 0);
+	    }
 	  else scale = 0;
-	  fprintf (file, "L%d[%s:%c]",
-		   CODE_LABEL_NUMBER (XEXP (addr, 0)),
+	  output_asm_label (addr);
+	  fprintf (file, "[%s:%c]",
 		   reg_name[REGNO (ireg)], scales[scale]);
-	  break; }
+	  break;
+	}
       if (ireg && breg && offset == const0_rtx)
 	if (REGNO (breg) < 8)
 	  fprintf (file, "%s", reg_name[REGNO (breg)]);
 	else fprintf (file, "0(%s)", reg_name[REGNO (breg)]);
-      else {
-	if (addr != 0)
-	  {
-	    if (ireg != 0 && breg == 0
-		&& GET_CODE (offset) == CONST_INT) putc('@', file);
-	    output_addr_const (file, offset);
-	  }
-	if (breg != 0)
-	  { if (GET_CODE (breg) != REG) abort ();
-	    if (! SEQUENT_ADDRESS_BUG)
+      else
+	{
+	  if (addr != 0)
+	    {
+	      if (ireg != 0 && breg == 0
+		  && GET_CODE (offset) == CONST_INT) putc('@', file);
+	      output_addr_const (file, offset);
+	    }
+	  if (breg != 0)
+	    {
+	      if (GET_CODE (breg) != REG) abort ();
+#ifndef SEQUENT_ADDRESS_BUG
 	      fprintf (file, "(%s)", reg_name[REGNO (breg)]);
-	    else {
+#else
 	      if (GET_CODE (offset) == SYMBOL_REF || GET_CODE (offset) == CONST)
-		if (ireg) abort ();
-		else fprintf (file, "[%s:b]", reg_name[REGNO (breg)]);
+		{
+		  if (ireg) abort ();
+		  fprintf (file, "[%s:b]", reg_name[REGNO (breg)]);
+		}
 	      else
 		fprintf (file, "(%s)", reg_name[REGNO (breg)]);
-	      }
-	  }
+#endif
+	    }
 	}
   print_index:
       if (ireg != 0)
-	{ int scale;
-	  if (GET_CODE (ireg) == MULT) {
+	{
+	  int scale;
+	  if (GET_CODE (ireg) == MULT)
+	    {
 	      scale = INTVAL (XEXP (ireg, 1)) >> 1;
 	      ireg = XEXP (ireg, 0);
 	    }
@@ -473,4 +501,55 @@ print_operand_address (file, addr)
     default:
       output_addr_const (file, addr);
     }
+}
+
+/* National 32032 shifting is so bad that we can get
+   better performance in many common cases by using other
+   techniques.  */
+char *
+output_shift_insn (operands)
+     rtx *operands;
+{
+  if (GET_CODE (operands[2]) == CONST_INT
+      && INTVAL (operands[2]) > 0
+      && INTVAL (operands[2]) <= 3)
+    if (GET_CODE (operands[0]) == REG)
+      {
+	if (GET_CODE (operands[1]) == REG)
+	  {
+	    if (REGNO (operands[0]) == REGNO (operands[1]))
+	      {
+		if (operands[2] == const1_rtx)
+		  return "addd %0,%0";
+		else if (INTVAL (operands[2]) == 2)
+		  return "addd %0,%0\n\taddd %0,%0";
+	      }
+	    if (operands[2] == const1_rtx)
+	      return "movd %1,%0\n\taddd %0,%0";
+
+	    operands[1] = gen_indexed_expr (const0_rtx, operands[1], operands[2]);
+	    return "addr %a1,%0";
+	  }
+	if (operands[2] == const1_rtx)
+	  return "movd %1,%0\n\taddd %0,%0";
+      }
+    else if (GET_CODE (operands[1]) == REG)
+      {
+	operands[1] = gen_indexed_expr (const0_rtx, operands[1], operands[2]);
+	return "addr %a1,%0";
+      }
+    else if (INTVAL (operands[2]) == 1
+	     && GET_CODE (operands[1]) == MEM
+	     && rtx_equal_p (operands [0], operands[1]))
+      {
+	rtx temp = XEXP (operands[1], 0);
+
+	if (GET_CODE (temp) == REG
+	    || (GET_CODE (temp) == PLUS
+		&& GET_CODE (XEXP (temp, 0)) == REG
+		&& GET_CODE (XEXP (temp, 1)) == CONST_INT))
+	  return "addd %0,%0";
+      }
+    else return "ashd %2,%0";
+  return "ashd %2,%0";
 }

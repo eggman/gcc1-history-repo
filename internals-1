@@ -1,31 +1,3 @@
-Info file internals, produced by Makeinfo, -*- Text -*-
-from input file internals.texinfo.
-
-
-
-This file documents the internals of the GNU compiler.
-
-Copyright (C) 1988 Free Software Foundation, Inc.
-
-Permission is granted to make and distribute verbatim copies of
-this manual provided the copyright notice and this permission notice
-are preserved on all copies.
-
-Permission is granted to copy and distribute modified versions of this
-manual under the conditions for verbatim copying, provided also that the
-section entitled ``GNU CC General Public License'' is included exactly as
-in the original, and provided that the entire resulting derived work is
-distributed under the terms of a permission notice identical to this one.
-
-Permission is granted to copy and distribute translations of this manual
-into another language, under the above conditions for modified versions,
-except that the section entitled ``GNU CC General Public License'' and
-this permission notice may be included in translations approved by the
-Free Software Foundation instead of in the original English.
-
-
-
-
 
 
 File: internals,  Node: Top,  Next: Copying,  Up: (DIR)
@@ -36,7 +8,6 @@ Introduction
 This manual documents how to run, install and port the GNU C compiler, as
 well as its new features and incompatibilities, and how to report bugs.
 
-
 * Menu:
 
 * Copying::         GNU CC General Public License says
@@ -44,6 +15,7 @@ well as its new features and incompatibilities, and how to report bugs.
 * Contributors::    People who have contributed to GNU CC.
 * Options::         Command options supported by `gcc'.
 * Installation::    How to configure, compile and install GNU CC.
+* Trouble::         If you have trouble installing GNU CC.
 * Incompatibilities:: Incompatibilities of GNU CC.
 * Extensions::      GNU extensions to the C language.
 * Bugs::            How to report bugs (if you want to get them fixed).
@@ -227,6 +199,8 @@ In addition to Richard Stallman, several people have written parts of GNU CC.
      of the Chalmers Computer Club.  Tiemann also wrote the code for inline
      function integration.
 
+   * Robert Brown implemented the support for Encore 32000 systems.
+
    * Michael Kashtan of SRI adapted GNU CC to the Vomit-Making System.
 
    * Alex Crain provided changes for the 3b1.
@@ -268,7 +242,7 @@ those that say whether to link, whether to assemble, and so on.
      of output is being produced, whether it be an executable file, an
      object file, an assembler file or preprocessed C code.
 
-     If `-o' is not specified, the default is to put an excutable file in
+     If `-o' is not specified, the default is to put an executable file in
      `a.out', the object file `SOURCE.c' in `SOURCE.o', an assembler file
      in `SOURCE.s', and preprocessed C on standard output.
 
@@ -433,7 +407,6 @@ These options control the details of C compilation itself.
                  foo (x);
                }
 
-
           If the value of `y' is always 1, 2 or 3, then `x' is always
           initialized, but GNU CC doesn't know this.  Here is another
           common case:
@@ -444,7 +417,6 @@ These options control the details of C compilation itself.
                  ...
                  if (change_y) y = save_y;
                }
-
 
           This has no bug because `x' is used only if it is set.
 
@@ -468,7 +440,6 @@ These options control the details of C compilation itself.
                    return a;
                }
 
-
           Spurious warnings can occur because GNU CC does not realize that
           certain functions (including `abort' and `longjmp') will never
           return.
@@ -486,6 +457,9 @@ These options control the details of C compilation itself.
 `-Wcomment'
      Warn whenever a comment-start sequence `/*' appears in a comment.
 
+`-Wall'
+     All of the above `-W' options combined.
+
 `-p'
      Generate extra code to write profile information suitable for the
      analysis program `prof'.
@@ -494,10 +468,25 @@ These options control the details of C compilation itself.
      Generate extra code to write profile information suitable for the
      analysis program `gprof'.
 
-`-nostdinc'
-     Don't search the standard directories for include files.  Only the
-     directories you specify explicitly with the `-I' option will be
+`-lLIBRARY'
+     Search a standard list of directories for a library named LIBRARY,
+     which is actually a file named `libLIBRARY.a'.  The linker uses this
+     file as if it had been specified precisely by name.
+
+     The directories searched include several standard system directories
+     plus any that you specify with `-L'.
+
+     Normally the files found this way are library files---archive files
+     whose members are object files.  The linker handles an archive file by
+     through it for members which define symbols that have so far been
+     referenced but not defined.  But if the file that is found is an
+     ordinary object file, it is linked in the usual fashion.  The only
+     difference between an `-l' option and the full file name of the file
+     that is found is syntactic and the fact that several directories are
      searched.
+
+`-LDIR'
+     Add directory DIR to the list of directories to be searched for `-l'.
 
 `-nostdlib'
      Don't use the standard system libraries and startup files when
@@ -570,6 +559,10 @@ These options control the details of C compilation itself.
      `-mgnu'
           Do output those jump instructions, on the assumption that you
           will assemble with the GNU assembler.
+
+     `-mg'
+          Output code for g-format floating point numbers instead of
+          d-format.
 
 `-fFLAG'
      Specify machine-independent flags.  These are the flags:
@@ -754,6 +747,30 @@ suitable for actual compilation.
 `-IDIR'
      Search directory DIR for include files.
 
+`-I-'
+     Any directories specified with `-I' options before the `-I-' option
+     are searched only for the case of `#include "FILE"'; they are not
+     searched for `#include <FILE>'.
+
+     If additional directories are specified with `-I' options after the
+     `-I-', these directories are searched for all `#include' directives. 
+     (Ordinarily *all* `-I' directories are used this way.)
+
+     In addition, the `-I-' option inhibits the use of the current
+     directory as the first search directory for `#include "FILE"'. 
+     Therefore, the current directory is searched only if it is requested
+     explicitly with `-I.'.  Specifying both `-I-' and `-I.' allows you to
+     control precisely which directories are searched before the current
+     one and which are searched after.
+
+`-nostdinc'
+     Do not search the standard system directories for header files.  Only
+     the directories you have specified with `-I' options (and the current
+     directory, if appropriate) are searched.
+
+     Between `-nostdinc' and `-I-', you can eliminate all directories from
+     the search path except those you specify.
+
 `-M'
      Tell the preprocessor to output a rule suitable for `make' describing
      the dependencies of each source file.  For each source file, the
@@ -785,13 +802,12 @@ suitable for actual compilation.
      brain-damage.  The `-ansi' option also has this effect.
 
 
-File: internals,  Node: Installation,  Next: Incompatibilities,  Prev: Options,  Up: Top
+File: internals,  Node: Installation,  Next: Trouble,  Prev: Options,  Up: Top
 
 Installing GNU CC
 *****************
 
 Here is the procedure for installing GNU CC on a Unix system.
-
 
 * Menu:
 
@@ -835,10 +851,10 @@ Here is the procedure for installing GNU CC on a Unix system.
           instructions will appear here in the future.
 
           For the 32000, use `tm-sequent.h' if you are using a Sequent
-          machine; otherwise, use `tm-ns32k.h'.
+          machine, or `tm-encore.h' for an Encore machine; otherwise,
+          perhaps `tm-ns32k.h' will work for you.
 
-          For the vax, use `tm-vax.h' on BSD Unix, `tm-ultrix.h' on Ultrix,
-          or `tm-vms.h' on VMS.
+          For the vax, use `tm-vax.h' on Unix, or `tm-vms.h' on VMS.
 
         * Make a symbolic link named `md' to the machine description
           pattern file (its name should be `MACHINE.md').
@@ -868,7 +884,6 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make stage1
 
-
      The files are moved into a subdirectory named `stage1'.  Once
      installation is complete, you may wish to delete these files with `rm
      -r stage1'.
@@ -877,13 +892,11 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
 
-
      On a 68000 or 68020 system lacking floating point hardware, unless you
      have selected a `tm.h' file that expects by default that there is no
      such hardware, do this instead:
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
-
 
   8. If you wish to test the compiler by compiling it with itself one more
      time, do this:
@@ -893,7 +906,6 @@ Here is the procedure for installing GNU CC on a Unix system.
           foreach file (*.o)
           cmp $file stage2/$file
           end
-
 
      This will notify you if any of these stage 3 object files differs from
      those of stage 2.  Any difference, no matter how innocuous, indicates
@@ -905,7 +917,6 @@ Here is the procedure for installing GNU CC on a Unix system.
       You can use the following command:
 
           make install
-
 
      This copies the files `cc1', `cpp' and `gnulib' to files `gcc-cc1',
      `gcc-cpp' and `gcc-gnulib' in directory `/usr/local/lib', which is
@@ -946,17 +957,63 @@ File: internals,  Node: VMS Install,  Prev: Installation,  Up: Installation
 Installing GNU CC on VMS
 ========================
 
-The VMS version of GNU CC is normally distributed as a Backup saveset, so
-the only installation required is to copy the files.  But here is how to
-rebuild GNU CC if you change it:
+The VMS version of GNU CC is distributed in an unusual tape format which
+consists of several tape files.  The first is a command file; the second is
+an executable program which reads Unix tar format; the third is another
+command file which uses this program to read the remainder of the tape.
+
+To load the tape, it suffices to mount it `/foreign' and then do `@mta0:'
+to execute the command file at the beginning of the tape.
+
+The tape contains executables and object files as well as sources, so no
+compilation is necessary unless you change the sources.  (This is a good
+thing, since you probably don't have any other C compiler.)  If you must
+recompile, here is how:
 
   1. Copy the file `tm-vms.h' to `tm.h', `config-vms.h' to `config.h',
      `vax.md' to `md.' and `output-vax.c' to `aux-output.c'.
 
   2. Type `@make' to do recompile everything.
 
+To install the `GCC' command so you can use the compiler easily, in the
+same manner as you use the VMS C compiler, you must install the VMS CLD
+file for GNU CC as follows:
+
+  1. Define the VMS logical names `GNU_CC' and `GNU_CC_INCLUDE' to point to
+     the directories where the GNU CC executables (`gcc-cpp', `gcc-cc1',
+     etc.) and the C include files are kept.  This should be done with the
+     commands:
+
+          $ assign /super /system disk:[gcc] gnu_cc
+          $ assign /super /system disk:[gcc.include] gnu_cc_include
+
+     with the appropriate disk and directory names.  These commands can be
+     placed in your system startup file so they will be executed whenever
+     the machine is rebooted.
+
+  2. Install the `GCC' command with the command line:
+
+          $ set command /table=sys$library:dcltables gnu_cc:gcc
+
+     Now you can invoke the compiler with a command like `gcc /verbose
+     file.c', which is equivalent to the command `gcc -v -c file.c' in Unix.
+
 
-File: internals,  Node: Incompatibilities,  Next: Extensions,  Prev: Installation,  Up: Top
+File: internals,  Node: Trouble,  Next: Incompatibilities,  Prev: Installation,  Up: Top
+
+Trouble in Installation
+***********************
+
+Here are some of the things that have caused trouble for people installing
+GNU CC.
+
+
+
+     On certain systems, defining certain environment variables such as
+     `CC' can interfere with the functioning of `make'.
+
+
+File: internals,  Node: Incompatibilities,  Next: Extensions,  Prev: Trouble,  Up: Top
 
 Incompatibilities of GNU CC
 ***************************
@@ -991,7 +1048,6 @@ compilers.
 
           #define foo(a) "a"
 
-
      will produce output `"a"' regardless of what the argument A is.
 
      The `-traditional' option directs GNU CC to handle such cases (among
@@ -1016,7 +1072,6 @@ compilers.
             return a + fun3 ();
           }
 
-
      Here `a' may or may not be restored to its first value when the
      `longjmp' occurs.  If `a' is allocated in a register, then its first
      value is restored; otherwise, it keeps the last value stored in it.
@@ -1039,7 +1094,6 @@ compilers.
 
           typedef int foo;
           typedef long foo bar;
-
 
      In ANSI C, this is not allowed: `long' and other type modifiers
      require an explicit `int'.  Because this criterion is expressed by
@@ -1067,183 +1121,12 @@ compilers.
 
           struct foo nextfoo ();
 
-
      write this:
 
           struct foo *nextfoo ();
           #define nextfoo *nextfoo
 
-
      (Note that this assumes you are using the GNU preprocessor, so that
      the ANSI antirecursion rules for macro expansions are effective.)
-
-
-File: internals,  Node: Extensions,  Next: Bugs,  Prev: Incompatibilities,  Up: Top
-
-GNU Extensions to the C Language
-********************************
-
-GNU C provides several language features not found in ANSI standard C. 
-(The `-pedantic' option directs GNU CC to print a warning message if any of
-these features is used.)  To test for the availability of these features in
-conditional compilation, check for a predefined macro `__GNUC__', which is
-always defined under GNU CC.
-
-
-* Menu:
-
-* Statement Exprs::     Putting statements and declarations inside expressions.
-* Naming Types::        Giving a name to the type of some expression.
-* Typeof::		`typeof': referring to the type of an expression.
-* Lvalues::		Using `?:', `,' and casts in lvalues.
-* Conditionals::	Omitting the middle operand of a `?:' expression.
-* Zero-Length::		Zero-length arrays.
-* Variable-Length::	Arrays whose length is computed at run time.
-* Subscripting::	Any array can be subscripted, even if not an lvalue.
-* Pointer Arith::	Arithmetic on `void'-pointers and function pointers.
-* Constructors::	Constructor expressions give structures, unions
-			 or arrays as values.
-* Dollar Signs::        Dollar sign is allowed in identifiers.
-* Alignment::           Inquiring about the alignment of a type or variable.
-* Inline::              Defining inline functions (as fast as macros).
-* Extended Asm::	Assembler instructions with C expressions as operands.
-			 (With them you can define ``built-in'' functions.)
-* Asm Labels::		Specifying the assembler name to use for a C symbol.
-
-
-
-File: internals,  Node: Statement Exprs,  Next: Naming Types,  Prev: Extensions,  Up: Extensions
-
-Statements and Declarations inside of Expressions
-=================================================
-
-A compound statement in parentheses may appear inside an expression in GNU
-C.  This allows you to declare variables within an expression.  For example:
-
-     ({ int y = foo (); int z;
-        if (y > 0) z = y;
-        else z = - y;
-        z; })
-
-
-is a valid (though slightly more complex than necessary) expression for the
-absolute value of `foo ()'.
-
-This feature is especially useful in making macro definitions ``safe'' (so
-that they evaluate each operand exactly once).  For example, the
-``maximum'' function is commonly defined as a macro in standard C as follows:
-
-     #define max(a,b) ((a) > (b) ? (a) : (b))
-
-
-But this definition computes either A or B twice, with bad results if the
-operand has side effects.  In GNU C, if you know the type of the operands
-(here let's assume `int'), you can define the macro safely as follows:
-
-     #define maxint(a,b) \
-       ({int _a = (a), _b = (b); _a > _b ? _a : _b; })
-
-
-Embedded statements are not allowed in constant expressions, such as the
-value of an enumeration constant, the width of a bit field, or the initial
-value of a static variable.
-
-If you don't know the type of the operand, you can still do this, but you
-must use `typeof' (*Note Typeof::.) or type naming (*Note Naming Types::.).
-
-
-File: internals,  Node: Naming Types,  Next: Typeof,  Prev: Statement Exprs,  Up: Extensions
-
-Naming an Expression's Type
-===========================
-
-You can give a name to the type of an expression using a `typedef'
-declaration with an initializer.  Here is how to define NAME as a type name
-for the type of EXP:
-
-     typedef NAME = EXP;
-
-
-This is useful in conjunction with the statements-within-expressions
-feature.  Here is how the two together can be used to define a safe
-``maximum'' macro that operates on any arithmetic type:
-
-     #define max(a,b) \
-       ({typedef _ta = (a), _tb = (b);  \
-         _ta _a = (a); _tb _b = (b);     \
-         _a > _b ? _a : _b; })
-
-
-The reason for using names that start with underscores for the local
-variables is to avoid conflicts with variable names that occur within the
-expressions that are substituted for `a' and `b'.  Eventually we hope to
-design a new form of declaration syntax that allows you to declare
-variables whose scopes start only after their initializers; this will be a
-more reliable way to prevent such conflicts.
-
-
-File: internals,  Node: Typeof,  Next: Lvalues,  Prev: Naming Types,  Up: Extensions
-
-Referring to a Type with `typeof'
-=================================
-
-Another way to refer to the type of an expression is with `typeof'.  The
-syntax of using of this keyword looks like `sizeof', but the construct acts
-semantically like a type name defined with `typedef'.
-
-There are two ways of writing the argument to `typeof': with an expression
-or with a type.  Here is an example with an expression:
-
-     typeof (x[0](1))
-
-
-This assumes that `x' is an array of functions; the type described is that
-of the values of the functions.
-
-Here is an example with a typename as the argument:
-
-     typeof (int *)
-
-
-Here the type described is that of pointers to `int'.
-
-A `typeof'-construct can be used anywhere a typedef name could be used. 
-For example, you can use it in a declaration, in a cast, or inside of
-`sizeof' or `typeof'.
-
-   * This declares `y' with the type of what `x' points to.
-
-          typeof (*x) y;
-
-
-   * This declares `y' as an array of such values.
-
-          typeof (*x) y[4];
-
-
-   * This declares `y' as an array of pointers to characters:
-
-          typeof (typeof (char *)[4]) y;
-
-
-     It is equivalent to the following traditional C declaration:
-
-          char *y[4];
-
-
-     To see the meaning of the declaration using `typeof', and why it might
-     be a useful way to write, let's rewrite it with these macros:
-
-          #define pointer(T)  typeof(T *)
-          #define array(T, N) typeof(T [N])
-
-
-     Now the declaration can be rewritten this way:
-
-          array (pointer (char), 4) y;
-
-
-     Thus, `array (pointer (char), 4)' is the type of arrays of 4 pointers
-     to `char'.
 
 

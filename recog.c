@@ -217,6 +217,7 @@ address_operand (op, mode)
 }
 
 /* Return 1 if OP is a register reference of mode MODE.
+   If MODE is VOIDmode, accept a register in any mode.
 
    The main use of this function is as a predicate in match_operand
    expressions in the machine description.  */
@@ -226,7 +227,7 @@ register_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  if (GET_MODE (op) != mode)
+  if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
   while (GET_CODE (op) == SUBREG)
@@ -247,7 +248,7 @@ immediate_operand (op, mode)
 {
   return ((CONSTANT_P (op)
 	   || (GET_CODE (op) == CONST_DOUBLE
-	       && GET_MODE (op) == mode))
+	       && (GET_MODE (op) == mode || mode == VOIDmode)))
 	  && LEGITIMATE_CONSTANT_P (op));
 }
 
@@ -260,10 +261,10 @@ nonmemory_operand (op, mode)
 {
   if (CONSTANT_P (op)
       || (GET_CODE (op) == CONST_DOUBLE
-	  && GET_MODE (op) == mode))
+	  && (GET_MODE (op) == mode || mode == VOIDmode)))
     return LEGITIMATE_CONSTANT_P (op);
 
-  if (GET_MODE (op) != mode)
+  if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
   while (GET_CODE (op) == SUBREG)
@@ -865,21 +866,21 @@ reg_renumbered_fits_class_p (operand, class, offset, mode)
      int offset;
      enum machine_mode mode;
 {
-  static HARD_REG_SET class_contents[] = REG_CLASS_CONTENTS;
-
   if (GET_CODE (operand) == REG)
     {
       register int regno = REGNO (operand);
       if (reg_renumber[regno] >= 0)
 	regno = reg_renumber[regno];
       if (regno < FIRST_PSEUDO_REGISTER
-	  && TEST_HARD_REG_BIT (class_contents[(int) class], regno + offset))
+	  && TEST_HARD_REG_BIT (reg_class_contents[(int) class],
+				regno + offset))
 	{
 	  register int sr;
 	  regno += offset;
 	  for (sr = HARD_REGNO_NREGS (regno, mode) - 1;
 	       sr > 0; sr--)
-	    if (! TEST_HARD_REG_BIT (class_contents[(int) class], regno + sr))
+	    if (! TEST_HARD_REG_BIT (reg_class_contents[(int) class],
+				     regno + sr))
 	      break;
 	  return sr == 0;
 	}

@@ -408,12 +408,14 @@ try_combine (i3, i2, i1)
      and the incremented register were spilled, we would lose.  */
   if ((link = find_reg_note (i2, REG_INC, 0)) != 0
       && (GET_CODE (i3) == JUMP_INSN
-	  || reg_used_between_p (XEXP (link, 0), i2, i3)))
+	  || reg_used_between_p (XEXP (link, 0), i2, i3)
+	  || reg_mentioned_p (XEXP (link, 0), i3)))
     return 0;
 
   if (i1 && (link = find_reg_note (i1, REG_INC, 0)) != 0
       && (GET_CODE (i3) == JUMP_INSN
-	  || reg_used_between_p (XEXP (link, 0), i1, i3)))
+	  || reg_used_between_p (XEXP (link, 0), i1, i3)
+	  || reg_mentioned_p (XEXP (link, 0), i3)))
     return 0;
 
   /* See if the SETs in i1 or i2 need to be kept around in the merged
@@ -680,7 +682,11 @@ subst (x, from, to)
    If it is 0, that cannot be done because it might cause a badly aligned
    memory reference.  */
 
-#ifndef STRICT_ALIGNMENT
+/* Now we never do this for memory refs, because of the danger of
+   turning a reference to the last byte on a page into a page-crossing
+   reference that could get a spurious fault.  It could be done safely
+   for certain cases but it's hard to check for them.  */
+#if 0
 #define FAKE_EXTEND_SAFE_P(MODE, FROM)  \
    (GET_CODE (FROM) == REG ||				\
     (GET_CODE (FROM) == MEM				\

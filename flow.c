@@ -993,7 +993,10 @@ propagate_block (old, first, last, final, significant, bnum)
 	     insns that perform the library call, so that the call's
 	     arguments are not marked live.  */
 	  if (note && insn_dead_p (PATTERN (insn), old, 1))
-	    insn = XEXP (note, 0);
+	    {
+	      insn = XEXP (note, 0);
+	      prev = PREV_INSN (insn);
+	    }
 	  else
 	    {
 	      /* LIVE gets the regs used in INSN; DEAD gets those set by it.  */
@@ -1312,6 +1315,7 @@ mark_set_1 (needed, dead, x, insn, significant)
 	      REG_NOTES (insn)
 		= gen_rtx (EXPR_LIST, REG_DEAD,
 			   reg, REG_NOTES (insn));
+	      reg_n_deaths[REGNO (reg)]++;
 	    }
 	}
     }

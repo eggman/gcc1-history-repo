@@ -3,11 +3,11 @@
 
 /* Signed type of difference of two pointers.  */
 
-typedef int ptrdiff_t;
+typedef long ptrdiff_t;
 
 /* Unsigned type of `sizeof' something.  */
 
-typedef unsigned int size_t;
+typedef unsigned long size_t;
 
 /* A null pointer constant.  */
 

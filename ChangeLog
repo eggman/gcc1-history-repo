@@ -1,4 +1,326 @@
+Sun May 22 12:25:06 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* Version 1.22 released.
+
+	* reload1.c (reload): Spilling isn't finished till max_nongroups is 0.
+
+	* tm-encore.h (PRINT_OPERAND): No `$' before a CONST.
+
+Sat May 21 13:08:54 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* fold-const.c (combine): Typo in MIN_EXPR, MAX_EXPR.
+
+	* reload1.c (reload): Was counting insn_groups as total size of groups,
+	not number of groups.
+	A new spilled group counts against group-needs of superclasses.
+
+	* parse.y (parmlist{,_or_identifiers}_1): In error case,
+	return a tree list just as in the other cases.
+
+Fri May 20 02:14:51 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* config-vax.h, config-m68k.h: If __GNUC__, use builtin-alloca.
+
+	* genpeep.c (match_rtx): Generated code was testing the wrong rtx
+	when testing an int or string at a nonzero index in the rtx.
+
+	* reload.c (find_reloads): Typo checking `modified' for conflict
+	with an earlyclobber.
+
+	* reload.c (find_equiv_reg): Reject stack ptr as return value.
+
+	* expr.c (expand_builtin): Alloca must do pending stack adjust.
+
+Thu May 19 13:01:01 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* flow.c (propagate_block): Skipping back across libcall didn't happen
+	due to failing to set PREV.
+
+	* expr.c (emit_library_call): Code to increment and decrement
+	current_args_size broke since emit_call_1 was changed to restore it.
+
+	* combine.c (try_combine): When i1 or i2 auto-incs a reg, don't combine
+	if i3 uses that reg.
+
+	* config-hp9k3.h: #define bcopy, bcmp, bzero here.
+	* conf-hp9k320.h: Delete file.
+
+	* integrate.c: Don't include strings.h--no need.
+
+	* stmt.c (expand_asm_operands): Don't make zero-length vectors.
+
+	* loop.c (scan_loop): After a fcn call, maybe-trap insns can't move.
+	The fcn call might exit and that would prevent the trap.
+
+	* reload1.c (reload): Set reload_first_uid to next uid to be used.
+	* reload.c (find_equiv_reg): Use reload_first_uid to ignore insns
+	that are due to reloading--only if reload_reg_p is not 0 or 1.
+
+Wed May 18 22:11:20 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* typecheck.c (build_unary_op): Don't complain about array
+	as argument to `!'.
+
+	* decl.c (pushdecl): If locally declaring an extern function,
+	check the identifier's global value in case it's an inline function.
+
+Mon May 16 03:06:08 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* output-ns32k.c (output_shift_insn): New fn, maybe turn shift to adds.
+	(reg_or_mem_operand): Predicate for a non-immediate general_operand.
+	* tm-ns32k.h (CONST_OK_FOR_LETTER_P): Define letter K.
+	* ns32k.md: Use output_shift_insn for various addr insns that shift.
+	Don't allow nonexplicit constants in lprd, multiply or truncate insns.
+	Use reg_or_mem_operand for constraint in op1 of divide insns;
+	a constant there causes regclass to screw up.
+	Split alternative constraints on the bit-field insns to avoid
+	out-of-range operands in exts, inss.  Some cases of extraction
+	can be done faster via memory.
+
+	* flow.c (mark_set_1): When adding a REG_DEAD note, inc reg_n_deaths.
+
+	* dbxout.c (dbxout_type_def): Do nothing for {integer,char}_type_node.
+
+Sun May 15 00:56:44 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* tm-sequent.h, tm-ns32k.h, tm-encore.h (PRINT_OPERAND):
+	Was treating SF's as SI's.
+
+	* expr.c (emit_move_insn): Check all CONST_DOUBLEs for
+	LEGITIMATE_CONSTANT_P and put them in memory if not.
+
+	* local-alloc.c (combine_regs): Allow a reg to be tied to a qty
+	if the reg's class is contained in the qty's class
+	(as well as if the reg's class contains the qty's class as before).
+	Rename qty_reg_class to qty_min_class and make it the smallest
+	class of any reg tied to the qty.
+	(reg_class_subset_p, reg_meets_class_p, update_qty_class):
+	New subroutines to implement this.
+	(local_alloc): Init reg_qty to -1 for pseudos not in cur. basic block.
+	(reg_is_born): Abort if pseudo not in basic block has -2 in reg_qty.
+
+	* jump.c (rtx_renumbered_equal_p): Insist that modes of REGs match.
+
+Sat May 14 01:05:35 1988  Richard Stallman  (rms at lucky-charms.ai.mit.edu)
+
+	* stmt.c (expand_return): Empty frame frame_offset isn't nec. 0.
+
+	* expr.c (emit_call_1): Use stack_size_rtx everywhere appropriate.
+
+	* decl.c (init_decl_processing): Set sizetype to `unsigned long'
+	if `int' is less than a word.
+
+	* stddef.h (size_t, ptrdiff_t): Both are now long.
+
+Fri May 13 01:06:00 1988  Richard Stallman  (rms at lucky-charms.ai.mit.edu)
+
+	* emit-rtl.c (gen_lowpart): Handle non-lowpart subreg as arg.
+
+	* recog.c (register_operand): VOIDmode means allow any mode.
+	(immediate_operand, nonmemory_operand): Likewise.
+
+	* emit-rtl.c (classify_insn): Update for changed CALL_INSN format.
+	(emit): New function to emit an rtl pattern as the right kind of insn.
+	* jump.c (simplejump_p): No longer static.
+
+	* genemit.c (gen_expand): For match_operand at top level, call `emit'.
+	Use `emit_call_insn' when appropriate.
+	(gen_exp): Handle rtx's that contain strings.
+
+	* final.c, symout.c: If not NO_DBX_FORMAT, include stab.h to get the
+	N_... symbols.  Use their default definitions only if they're undef.
+
+	* expr.c (expand_call) [no PUSH_ROUNDING]: Always set argblock
+	if there are any stack-passed arguments.
+
+	* typecheck.c (build_unary_op): Mark all increment-exprs volatile.
+
+	* recog.c (reg_renumbered_fits_class_p): Delete private copy of
+	reg_class_contents.
+
+	* reload1.c (forget_old_reloads): Handle PARALLEL case by recursion.
+	Explicit store into a spilled reg invalidates old reloaded contents;
+	this can occur when we drop through into a basic block whose need was 0
+	(and so whose local pseudos were not spilled).
+
+	* gcc.c (main): If -v, print gcc's own version; also no error msg
+	if no input files.
+
+	* loop.c (may_trap_p): Mem ref to nonconstant address may trap.
+	(scan_loop): Check may_trap_p only when insn is in other respects ok.
+
+	* cexp.y: #include config.h (for decl of alloca on some machines).
+
+Thu May 12 17:24:19 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* regclass.c (regclass): When inserting an insn at start of block,
+	update basic_block_head.
+
+Wed May 11 00:47:09 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* stmt.c (assign_parms): DECL_OFFSET should be offset as passed
+	(not including big-endian width-change correction).
+
+	* typecheck.c (shorten_compare): Set unsignedp[01] right in case
+	where get_narrower makes no change.
+	(build_binary_op_nodefault): Likewise for shortening shifts.
+
+	* stmt.c (expand_end_case): Use type_for_size to get the type
+	to convert the index to, since `int' is wrong if -mshort.
+
+	* decl.c (grokdeclarator): Don't check PARM type for completeness.
+	(grokparms): If fn definition, check all parm types for completeness.
+	(store_parm_decls): Likewise.
+
+Tue May 10 22:42:13 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* typecheck.c (store_init): For invalid init, store error_mark_node.
+	* varasm.c (assemble_variable): Ignore error_mark as an init.
+	* stmt.c (expand_decl): If init is error_mark, init to 0 if possible.
+	This avoids a spurious "uninitialized variable" warning.
+
+Sun May  8 17:08:07 1988  Richard Stallman  (rms at lucky-charms.ai.mit.edu)
+
+	* tm-hp9k320.h: Define STRUCTURE_SIZE_BOUNDARY.
+
+	* decl.c (get_parm_info): Replaces get_parm_types.  Returns a tree_list
+	containing parmdecls and tag list as well as type list.
+	(grokparms): Accept that tree_list as argument.
+	(grokdeclarator): Calling grokparms, say "not a definition" for the
+	function declarators for arg or value types within a definition.
+
+	* parse.y: Call get_parm_info.
+	(parmlist_or_identifiers): If identifiers, make a tree_list
+	like the one get_parm_info returns.
+
+Fri May  6 16:44:19 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* m68k.md (casesi): Delete template aside from match_operand's.
+
+	* tm-encore.h: New file from Robert Brown.
+
+	* ns32k.md: Use %c in some addr insns.
+	(tst*): Use {d,f,}const0_rtx to make the constant 0; OS-independent.
+	(call, call_value): Use %? before address in a bsr.
+
+	* output-ns32k.c (print_operand_address): To output a local label,
+	use `output_asm_label'.
+	Make SEQUENT_ADDRESS_BUG conditionals happen at compile time.
+
+	* tm-ns32k.h: Delete SEQUENT_HAS_FIXED_THEIR_BUG.
+	(PRINT_OPERAND): Output nothing for `%?'.
+	* tm-sequent.h: (PRINT_OPERAND): Output nothing for `%?'.
+
+	* final.c (output_asm_label): No longer `static'.
+
+Thu May  5 09:03:37 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* explow.c (memory_address): Ignore flag_force_reg unless optimize.
+	Also ignore it for addresses of stack slots (avoid invalid REG_EQUIVs).
+
+	* typecheck.c (digest_init): If traditional, allow `char x[100]=0;'.
+
+	* tree.c (get_unwidened): Don't alter a COMPONENT_REF if
+	innerprec equals the precision of the existing type.
+	It was changing pointers to integers.
+
+	* m68k.md (movdi): Put all fpregs in separate constraint alternatives
+	and handicap them so spill reg won't be an fp reg.
+
+	* parse.y (yyerror): Use the arg as part of the error message.
+
+	* decl.c (start_function): Give the RESULT_DECL type int rather
+	than char or short.
+	* typecheck.c (c_expand_return): Convert value from fn's return type
+	to the RESULT_DECL's type.
+
+	* Avoid generating dbx xrefs to enums, since dbx loses on them.
+	Do this by outputting all types in order of definition.
+	This is done only for top-level types; problem remains for local ones.
+
+	* decl.c (finish_decl): Do rest_of_decl_compilation for TYPE_DECLs.
+	* toplev.c (rest_of_decl_compilation): Do dbxout_symbol for them.
+
+	* dbxout.c (dbxout_symbol): Check DECL_RTL only for fns and variables.
+	For a TYPE_DECL, ignore it if the type was already output
+	and its preferred name is the TYPE_DECL.  Else output type in full.
+
+	* decl.c (pushdecl): Don't prefer typedef names to type tag names.
+
+	* stor-layout.c (chain_type): Build chain in forward order.
+
+
+	* tm-3b1.h (ASM_OUTPUT_CASE_LABEL): Error getting length of table.
+
+	* tm-3b1.h: #define SGS_3B1 was missing.
+
+	* typecheck.c (build_compound_expr): Ignore non-volatile subexprs.
+
+	* fold-const.c (fold): Simplify (unsigned) foo >= 0, etc.
+
+	* stor-layout.c (layout_type): Set TYPE_PRECISION of ptr types.
+
+Wed May  4 08:06:25 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* parse.y: Don't use the Bison @ construct, since it makes parser slow.
+
+	* decl.c (finish_function): Delete FILENAME and LINE args.
+
+	* typecheck.c (digest_init): No pedantic warning for array="string".
+
+Tue May  3 09:09:30 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* toplev.c (main): Ignore `-Wcomment'.
+	* gcc.c: Pass -Wall to cpp (which treats it like -Wcomment).
+
+	* tm-isi68.h: Greatly simplified; now works only with GAS.
+
+	* tm-m68k.h (EMPTY_FIELD_BOUNDARY): now 16 (right on Sun, ISI and HP).
+	* tm-sun3.h: No need to redefine it.
+
+	* decl.c (finish_struct): Don't ever make DECL_ALIGN smaller.
+
+	* decl.c: Rename min, max to MIN, MAX.
+
+	* typecheck.c (convert_for_assignment): Avoid warning if assigning
+	a `void *' from a `const void *'.
+
+	* combine.c (FAKE_EXTEND_SAFE_P): Turn off for mem refs; avoid faults.
+
+Mon May  2 07:28:27 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* tm-vax.h: Support -mg switch to use g-float instead of d-float.
+	New macros TARGET_G_SWITCH, ASM_DOUBLE_CHAR.
+	Changes in TARGET_SWITCHES, ASM_OUTPUT_DOUBLE.
+	Define code `#' for PRINT_OPERAND.
+	* vax.md: use `#' in opcodes for doubleword float.
+
+	* tm-vax.h: Define UDIVSI3_LIBCALL and UMODSI3_LIBCALL.
+
+	* cccp.c (main, do_include): Implement -I- switch.
+
+	* jump.c (jump_optimize): When hunting NOTE_INSN_FUNCTION_END,
+	skip final RETURN (found on the vax).
+
+	* toplev.c (main): -Wall is equiv to all -W switches combined.
+
+	* stmt.c (expand_decl, expand_end_bindings,
+	expand_{start,end}_function).  The -noreg treatment of `register' vars
+	is extended to vars used as addresses of vars in memory (varying-size
+	structures).
+	(use_variable): Emit USE for regs used in specified rtx.
+
+	* cse.c (fold_cc0): Stack-frame addresses are always nonzero.
+	(fold_rtx): 0200 bit in prev_insn_cc0 means only zeroness is known.
+
+	* parse.y (parmlist): poplevel needs 3 args.
+
 Sun May  1 07:20:34 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* decl.c (start_function): typo checking for incomplete return type.
+
+	* emit-rtl.c (restore_reg_data): If a pseudo appears nowhere,
+	don't leave its slot empty; create a pseudo for that slot.
 
 	* Version 1.21 released.
 

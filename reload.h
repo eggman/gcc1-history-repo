@@ -36,6 +36,10 @@ extern rtx reload_reg_rtx[FIRST_PSEUDO_REGISTER];
 extern rtx *reg_equiv_constant;
 extern rtx *reg_equiv_address;
 
+/* First uid used by insns created by reload in this function.
+   Used in find_equiv_reg.  */
+extern int reload_first_uid;
+
 void init_reload ();
 void find_reloads ();
 void subst_reloads ();

@@ -200,7 +200,9 @@ static rtx *qty_const_insn;
    0 if previous insn didn't store in CC0.
    else 0100 + (M&7)<<3 + (N&7)
    where M is 1, 0 or -1 if result was >, == or < as signed number
-   and N is 1, 0 or -1 if result was >, == or < as unsigned number.  */
+   and N is 1, 0 or -1 if result was >, == or < as unsigned number.
+   0200 bit may also be set, meaning that only == and != comparisons
+   have known results.  */
 
 static int prev_insn_cc0;
 
@@ -1838,7 +1840,11 @@ fold_rtx (x, copyflag)
       if (XEXP (x, 0) == cc0_rtx)
 	{
 	  if (prev_insn_cc0 == 0
-	      || const_arg1 != const0_rtx)
+	      || const_arg1 != const0_rtx
+	      /* 0200 bit in prev_insn_cc0 means only zeroness is known,
+		 and sign is not known.  */
+	      || ((prev_insn_cc0 & 0200)
+		  && code != EQ && code != NE))
 	    return x;
 	  if (code == LEU || code == LTU || code == GEU || code == GTU)
 	    arg0 = prev_insn_cc0 & 7;
@@ -2263,7 +2269,17 @@ fold_cc0 (x)
     if (GET_CODE (y0) == REG)
       y0 = qty_const[reg_qty[REGNO (y0)]];
 
-    if (y0 == 0 || GET_CODE (y0) != CONST_INT)
+    /* Register had no constant equivalent?  We can't do anything.  */
+    if (y0 == 0)
+      return 0;
+
+    /* Value is frame-pointer plus a constant?
+       That isn't zero, but we don't know its sign.  */
+    if (FIXED_BASE_PLUS_P (y0))
+      return 0300 + (1<<3) + 1;
+
+    /* Otherwise, only integers enable us to optimize.  */
+    if (GET_CODE (y0) != CONST_INT)
       return 0;
 
     s0 = u0 = INTVAL (y0);

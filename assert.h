@@ -1,3 +1,5 @@
+#undef assert
+
 #ifdef NDEBUG
 #define assert(ignore)
 #else

@@ -318,6 +318,8 @@ struct directory_stack include_defaults[] =
   };
 
 struct directory_stack *include = 0;	/* First dir to search */
+	/* First dir to search for <file> */
+struct directory_stack *first_bracket_include = 0;
 struct directory_stack *last_include = 0;	/* Last in chain */
 
 /* Structure allocated for every #define.  For a simple replacement
@@ -523,6 +525,10 @@ int deps_size;
 
 /* Number of bytes since the last newline.  */
 int deps_column;
+
+/* Nonzero means -I- has been seen,
+   so don't look for #include "foo" the source-file directory.  */
+int ignore_srcdir;
 
 int
 main (argc, argv)
@@ -674,20 +680,26 @@ main (argc, argv)
 	{
 	  struct directory_stack *dirtmp;
 
-	  dirtmp = (struct directory_stack *)
-	    xmalloc (sizeof (struct directory_stack));
-	  dirtmp->next = 0;		/* New one goes on the end */
-	  if (include == 0)
-	    include = dirtmp;
-	  else
-	    last_include->next = dirtmp;
-	  last_include = dirtmp;	/* Tail follows the last one */
-	  if (argv[i][2] != 0)
-	    dirtmp->fname = argv[i] + 2;
-	  else
-	    dirtmp->fname = argv[++i];
-	  if (strlen (dirtmp->fname) > max_include_len)
-	    max_include_len = strlen (dirtmp->fname);
+	  if (! ignore_srcdir && !strcmp (argv[i] + 2, "-"))
+	    ignore_srcdir;
+	  else {
+	    dirtmp = (struct directory_stack *)
+	      xmalloc (sizeof (struct directory_stack));
+	    dirtmp->next = 0;		/* New one goes on the end */
+	    if (include == 0)
+	      include = dirtmp;
+	    else
+	      last_include->next = dirtmp;
+	    last_include = dirtmp;	/* Tail follows the last one */
+	    if (argv[i][2] != 0)
+	      dirtmp->fname = argv[i] + 2;
+	    else
+	      dirtmp->fname = argv[++i];
+	    if (strlen (dirtmp->fname) > max_include_len)
+	      max_include_len = strlen (dirtmp->fname);
+	    if (ignore_srcdir && first_bracket_include == 0)
+	      first_bracket_include = dirtmp;
+	    }
 	}
 	break;
 
@@ -2209,6 +2221,9 @@ get_filename:
       /* We have "filename".  Figure out directory this source
 	 file is coming from and put it on the front of the list. */
 
+      /* If -I- was specified, don't search current dir, only spec'd ones. */
+      if (ignore_srcdir) break;
+
       for (fp = &instack[indepth]; fp >= instack; fp--)
 	{
 	  int n;
@@ -2250,6 +2265,9 @@ get_filename:
     while (fend != limit && *fend != '>') fend++;
     if (*fend == '>' && fend + 1 == limit) {
       system_header_p = 1;
+      /* If -I-, start with the first -I dir after the -I-.  */
+      if (first_bracket_include)
+	stackp = first_bracket_include;
       break;
     }
     goto fail;

@@ -47,7 +47,7 @@ extern tree build_label ();
 extern int start_function ();
 extern void finish_function ();
 extern void store_parm_decls ();
-extern tree get_parm_types ();
+extern tree get_parm_info ();
 
 extern void pushlevel(), poplevel();
 

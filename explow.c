@@ -313,7 +313,12 @@ memory_address (mode, x)
  win2:
   x = oldx;
  win:
-  if (flag_force_addr && GET_CODE (x) != REG)
+  if (flag_force_addr && optimize && GET_CODE (x) != REG
+      /* Don't copy an addr via a reg if it is one of our stack slots.
+	 If we did, it would cause invalid REG_EQUIV notes for parms.  */
+      && ! (GET_CODE (x) == PLUS
+	    && (XEXP (x, 0) == frame_pointer_rtx
+		|| XEXP (x, 0) == arg_pointer_rtx)))
     return force_reg (Pmode, x);
   return x;
 }

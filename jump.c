@@ -205,8 +205,13 @@ jump_optimize (f, cross_jump, noop_moves)
 	 If so record that this function can drop off the end.  */
 
       insn = last_insn;
-      while (insn && GET_CODE (insn) == CODE_LABEL)
+      while (insn && (GET_CODE (insn) == CODE_LABEL
+		      /* If machine uses explicit RETURN insns, no epilogue,
+			 then this note precedes the drop-through RETURN.  */
+		      || (GET_CODE (insn) == JUMP_INSN
+			  && GET_CODE (PATTERN (insn)) == RETURN)))
 	insn = PREV_INSN (insn);
+
       if (GET_CODE (insn) == NOTE
 	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
 	  && ! insn->volatil)
@@ -581,7 +586,11 @@ jump_optimize (f, cross_jump, noop_moves)
      If so, delete it, and record that this function can drop off the end.  */
 
   insn = last_insn;
-  while (insn && GET_CODE (insn) == CODE_LABEL)
+  while (insn && (GET_CODE (insn) == CODE_LABEL
+		  /* If machine uses explicit RETURN insns, no epilogue,
+		     then this note precedes the drop-through RETURN.  */
+		  || (GET_CODE (insn) == JUMP_INSN
+		      && GET_CODE (PATTERN (insn)) == RETURN)))
     insn = PREV_INSN (insn);
   if (GET_CODE (insn) == NOTE && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
     {
@@ -792,7 +801,7 @@ reverse_condition (code)
 
 /* Return 1 if INSN is an unconditional jump and nothing else.  */
 
-static int
+int
 simplejump_p (insn)
      rtx insn;
 {
@@ -1290,6 +1299,10 @@ rtx_renumbered_equal_p (x, y)
 				  && GET_CODE (SUBREG_REG (y)) == REG)))
     {
       register int j;
+
+      if (GET_MODE (x) != GET_MODE (y))
+	return 0;
+
       if (code == SUBREG)
 	{
 	  i = REGNO (SUBREG_REG (x));

@@ -866,13 +866,15 @@ combine (code, arg1, arg2)
 	case MIN_EXPR:
 	  if (d1 < d2)
 	    t = build_real (d1);
-	  t = build_real (d2);
+	  else
+	    t = build_real (d2);
 	  break;
 
 	case MAX_EXPR:
 	  if (d1 > d2)
 	    t = build_real (d1);
-	  t = build_real (d2);
+	  else
+	    t = build_real (d2);
 	  break;
 
 	default:
@@ -1452,6 +1454,52 @@ fold (expr)
 	  }
       }
 
+      /* An unsigned comparison against 0 can be simplified.  */
+      if (integer_zerop (arg0)
+	  && (TREE_CODE (TREE_TYPE (arg0)) == INTEGER_TYPE
+	      || TREE_CODE (TREE_TYPE (arg0)) == POINTER_TYPE)
+	  && TREE_UNSIGNED (TREE_TYPE (arg0)))
+	{
+	  switch (TREE_CODE (t))
+	    {
+	    case LT_EXPR:
+	      TREE_CODE (t) = NE_EXPR;
+	      break;
+	    case GE_EXPR:
+	      TREE_CODE (t) = EQ_EXPR;
+	      break;
+	    case LE_EXPR:
+	      return build (COMPOUND_EXPR, integer_type_node,
+			    arg1, integer_one_node);
+	    case GT_EXPR:
+	      return build (COMPOUND_EXPR, integer_type_node,
+			    arg1, integer_zero_node);
+	    }
+	}
+
+      /* An unsigned comparison against 0 can be simplified.  */
+      if (integer_zerop (arg1)
+	  && (TREE_CODE (TREE_TYPE (arg1)) == INTEGER_TYPE
+	      || TREE_CODE (TREE_TYPE (arg1)) == POINTER_TYPE)
+	  && TREE_UNSIGNED (TREE_TYPE (arg1)))
+	{
+	  switch (TREE_CODE (t))
+	    {
+	    case GT_EXPR:
+	      TREE_CODE (t) = NE_EXPR;
+	      break;
+	    case LE_EXPR:
+	      TREE_CODE (t) = EQ_EXPR;
+	      break;
+	    case GE_EXPR:
+	      return build (COMPOUND_EXPR, integer_type_node,
+			    arg0, integer_one_node);
+	    case LT_EXPR:
+	      return build (COMPOUND_EXPR, integer_type_node,
+			    arg0, integer_zero_node);
+	    }
+	}
+
       /* To compute GT, swap the arguments and do LT.
 	 To compute GE, do LT and invert the result.
 	 To compute LE, swap the arguments, do LT and invert the result.
@@ -1462,6 +1510,7 @@ fold (expr)
 	  arg0 = arg1;
 	  arg1 = temp;
 	}
+
       /* Compute a result for LT or EQ if args permit.  */
       if (TREE_CODE (arg0) == INTEGER_CST
 	  && TREE_CODE (arg1) == INTEGER_CST)

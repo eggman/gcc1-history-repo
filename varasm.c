@@ -233,7 +233,8 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
     }
   /* Don't output anything when a tentative file-scope definition is seen.
      But at end of compilation, do output code for them.  */
-  if (! at_end && DECL_INITIAL (decl) == 0 && top_level)
+  if (! at_end && top_level
+      && (DECL_INITIAL (decl) == 0 || DECL_INITIAL (decl) == error_mark_node))
     return;
 
   /* If type was incomplete when the variable was declared,
@@ -280,7 +281,7 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 
   /* Handle uninitialized definitions.  */
 
-  if (DECL_INITIAL (decl) == 0)
+  if (DECL_INITIAL (decl) == 0 || DECL_INITIAL (decl) == error_mark_node)
     {
       int size = (TREE_INT_CST_LOW (DECL_SIZE (decl))
 		  * DECL_SIZE_UNIT (decl)

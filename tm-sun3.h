@@ -12,11 +12,6 @@
 
 #define CPP_PREDEFINES "-Dmc68000 -Dsun -Dunix"
 
-/* Alignment of field after `int : 0' in a structure.  */
-
-#undef EMPTY_FIELD_BOUNDARY
-#define EMPTY_FIELD_BOUNDARY 16
-
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 
 #define STRUCTURE_SIZE_BOUNDARY 16

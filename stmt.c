@@ -529,8 +529,13 @@ expand_asm_operands (string, outputs, inputs, vol)
 
   /* Make vectors for the expression-rtx and constraint strings.  */
 
-  argvec = rtvec_alloc (ninputs);
-  constraints = rtvec_alloc (ninputs);
+  if (ninputs > 0)
+    {
+      argvec = rtvec_alloc (ninputs);
+      constraints = rtvec_alloc (ninputs);
+    }
+  else
+    argvec = constraints = 0;
 
   body = gen_rtx (ASM_OPERANDS, VOIDmode,
 		  TREE_STRING_POINTER (string), "", 0, argvec, constraints);
@@ -948,7 +953,7 @@ expand_return (retval)
      has its address taken; for simplicity,
      require stack frame to be empty.  */
   if (optimize && really_for_value
-      && frame_offset == 0
+      && frame_offset == STARTING_FRAME_OFFSET
       && TREE_CODE (TREE_OPERAND (retval, 1)) == CALL_EXPR
       && TREE_CODE (TREE_OPERAND (TREE_OPERAND (retval, 1), 0)) == ADDR_EXPR
       && TREE_OPERAND (TREE_OPERAND (TREE_OPERAND (retval, 1), 0), 0) == this_function
@@ -1114,6 +1119,25 @@ expand_start_bindings (exit_flag)
   nesting_stack = thisblock;
 }
 
+/* Output a USE for any register use in RTL.
+   This is used with -noreg to mark the extent of lifespan
+   of any registers used in a user-visible variable's DECL_RTL.  */
+
+static void
+use_variable (rtl)
+     rtx rtl;
+{
+  if (GET_CODE (rtl) == REG)
+    /* This is a register variable.  */
+    emit_insn (gen_rtx (USE, VOIDmode, rtl));
+  else if (GET_CODE (rtl) == MEM
+	   && GET_CODE (XEXP (rtl, 0)) == REG
+	   && XEXP (rtl, 0) != frame_pointer_rtx
+	   && XEXP (rtl, 0) != arg_pointer_rtx)
+    /* This is a variable-sized structure.  */
+    emit_insn (gen_rtx (USE, VOIDmode, XEXP (rtl, 0)));
+}
+
 /* Generate RTL code to terminate a binding contour.
    VARS is the chain of VAR_DECL nodes
    for the variables bound in this contour.
@@ -1181,10 +1205,9 @@ before containing binding contour",
   if (obey_regdecls)
     for (decl = vars; decl; decl = TREE_CHAIN (decl))
       {
-	if (TREE_CODE (decl) == VAR_DECL
-	    && DECL_RTL (decl) != 0
-	    && GET_CODE (DECL_RTL (decl)) == REG)
-	  emit_insn (gen_rtx (USE, VOIDmode, DECL_RTL (decl)));
+	rtx rtl = DECL_RTL (decl);
+	if (TREE_CODE (decl) == VAR_DECL && rtl != 0)
+	  use_variable (rtl);
       }
 
   /* Restore block_stack level for containing block.  */
@@ -1314,13 +1337,21 @@ expand_decl (decl)
 
   if (obey_regdecls
       && TREE_CODE (decl) == VAR_DECL
-      && DECL_RTL (decl) != 0
-      && GET_CODE (DECL_RTL (decl)) == REG)
-    emit_insn (gen_rtx (USE, VOIDmode, DECL_RTL (decl)));
+      && DECL_RTL (decl) != 0)
+    use_variable (DECL_RTL (decl));
 
   /* Compute and store the initial value now.  */
 
-  if (DECL_INITIAL (decl))
+  if (DECL_INITIAL (decl) == error_mark_node)
+    {
+      enum tree_code code = TREE_CODE (TREE_TYPE (decl));
+      if (code == INTEGER_TYPE || code == REAL_TYPE || code == ENUMERAL_TYPE
+	  || code == POINTER_TYPE)
+	expand_assignment (decl, convert (TREE_TYPE (decl), integer_zero_node),
+			   0, 0);
+      emit_queue ();
+    }
+  else if (DECL_INITIAL (decl))
     {
       emit_note (DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
       expand_assignment (decl, DECL_INITIAL (decl), 0, 0);
@@ -1578,15 +1609,16 @@ expand_end_case ()
       else
 	{
 #ifdef HAVE_casesi
+	  /* Convert the index to SImode.  */
 	  if (TYPE_MODE (TREE_TYPE (index_expr)) == DImode)
 	    {
-	      index_expr = convert (integer_type_node,
-				    build (MINUS_EXPR, TREE_TYPE (index_expr),
-					   index_expr, minval));
+	      index_expr = build (MINUS_EXPR, TREE_TYPE (index_expr),
+				  index_expr, minval);
 	      minval = integer_zero_node;
 	    }
-	  else if (TYPE_MODE (TREE_TYPE (index_expr)) != SImode)
-	    index_expr = convert (integer_type_node, index_expr);
+	  if (TYPE_MODE (TREE_TYPE (index_expr)) != SImode)
+	    index_expr = convert (type_for_size (GET_MODE_BITSIZE (SImode), 0),
+				  index_expr);
 	  index = expand_expr (index_expr, 0, VOIDmode, 0);
 	  emit_queue ();
 	  index = protect_from_queue (index, 0);
@@ -1597,7 +1629,7 @@ expand_end_case ()
 				      table_label, default_label));
 #else
 #ifdef HAVE_tablejump
-	  index_expr = convert (integer_type_node,
+	  index_expr = convert (type_for_size (GET_MODE_BITSIZE (SImode), 0),
 				build (MINUS_EXPR, TREE_TYPE (index_expr),
 				       index_expr, minval));
 	  index = expand_expr (index_expr, 0, VOIDmode, 0);
@@ -2372,6 +2404,11 @@ assign_parms (fndecl)
 	  ADD_PARM_SIZE (stack_args_size, s2);
 	}
 
+      /* For a memory parm, record in DECL_OFFSET the arglist offset
+	 of the parm at the time it is passed (before conversion).  */
+      if (GET_CODE (entry_parm) != REG)
+	DECL_OFFSET (parm) = stack_offset.constant * BITS_PER_UNIT;
+
       /* Now set STACK_PARM to the place in the stack
 	 where this parameter should live during execution,
 	 if we discover that it must live in the stack during execution.
@@ -2406,8 +2443,6 @@ assign_parms (fndecl)
 
       if (GET_CODE (entry_parm) == REG)
 	stack_parm = 0;
-      else
-	DECL_OFFSET (parm) = stack_offset.constant * BITS_PER_UNIT;
 
 #if 0 /* Not needed now that `memory_address' is used above.  */
       /* If either STACK_PARM or ENTRY_PARM is a MEM whose address
@@ -2690,7 +2725,7 @@ expand_function_start (subr)
 
   if (obey_regdecls)
     for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
-      emit_insn (gen_rtx (USE, VOIDmode, regno_reg_rtx[i]));
+      use_variable (regno_reg_rtx[i]);
 
   /* After the parm initializations is where the tail-recursion label
      should go, if we end up needing one.  */
@@ -2736,7 +2771,7 @@ expand_function_end ()
 
   if (obey_regdecls)
     for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
-      emit_insn (gen_rtx (USE, VOIDmode, regno_reg_rtx[i]));
+      use_variable (regno_reg_rtx[i]);
 
   clear_pending_stack_adjust ();
   do_pending_stack_adjust ();

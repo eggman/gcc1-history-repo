@@ -277,7 +277,9 @@ This variant is used for system header files.  It searches for a file
 named @var{file} in a list of directories specified by you, then in a
 standard list of system directories.  You specify directories to
 search for header files with the command option @samp{-I}
-(@pxref{Invocation}).
+(@pxref{Invocation}).  The option @samp{-nostdinc} inhibits searching
+the standard system directories; in this case only the directories
+you specify are searched.
 
 The parsing of this form of @samp{#include} is slightly special
 because comments are not recognized within the @samp{<@dots{}>}.
@@ -292,11 +294,12 @@ however, contain a @samp{<} character.
 
 @item #include "@var{file}"
 This variant is used for header files of your own program.  It
-searches for a file named @var{file} first in the current working
+searches for a file named @var{file} first in the current
 directory, then in the same directories used for system header
-files.  The current working directory is tried first because it is
+files.  The current directory is tried first because it is
 presumed to be the location of the files of the program being
-compiled.
+compiled.  (If the @samp{-I-} option is used, the special treatment
+of the current directory is inhibited.)
 
 The argument @var{file} may not contain @samp{"} characters.  If
 backslashes occur within @var{file}, they are considered ordinary text
@@ -675,8 +678,8 @@ if a @samp{#line} command is used.  @xref{Combining Sources}.
 @findex __DATE__
 This macro expands to a string constant that describes the date on
 which the preprocessor is being run.  The string constant contains
-eleven characters and looks like @samp{"Jan 29 1987"} or @samp{"Apr
-@ 1 1905"}.
+eleven characters and looks like @samp{"Jan 29 1987"} or @w{@samp{"Apr
+1 1905"}}.
 
 @item __TIME__
 @findex __TIME__
@@ -1963,6 +1966,27 @@ own version, since these directories are searched before the system
 header file directories.  If you use more than one @samp{-I} option,
 the directories are scanned in left-to-right order; the standard
 system directories come after.
+
+@item -I-
+Any directories specified with @samp{-I} options before the @samp{-I-}
+option are searched only for the case of @samp{#include "@var{file}"};
+they are not searched for @samp{#include <@var{file}>}.
+
+If additional directories are specified with @samp{-I} options after
+the @samp{-I-}, these directories are searched for all @samp{#include}
+directives.
+
+In addition, the @samp{-I-} option inhibits the use of the current
+directory as the first search directory for @samp{#include "@var{file}"}.
+Therefore, the current directory is searched only if it is requested
+explicitly with @samp{-I.}.  Specifying both @samp{-I-} and @samp{-I.}
+allows you to control precisely which directories are searched before
+the current one and which are searched after.
+
+@item -nostdinc
+Do not search the standard system directories for header files.
+Only the directories you have specified with @samp{-I} options
+(and the current directory, if appropriate) are searched.
 
 @item -D @var{name}
 @findex -D

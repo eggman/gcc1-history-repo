@@ -240,8 +240,8 @@ int obstack_room (struct obstack *obstack);
 void obstack_1grow_fast (struct obstack *obstack, int data_char);
 void obstack_blank_fast (struct obstack *obstack, int size);
 
-void * object_base (struct obstack *obstack);
-void * object_next_free (struct obstack *obstack);
+void * obstack_base (struct obstack *obstack);
+void * obstack_next_free (struct obstack *obstack);
 int obstack_alignment_mask (struct obstack *obstack);
 int obstack_chunk_size (struct obstack *obstack);
 

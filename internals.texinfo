@@ -78,6 +78,7 @@ well as its new features and incompatibilities, and how to report bugs.
 * Contributors::    People who have contributed to GNU CC.
 * Options::         Command options supported by @samp{gcc}.
 * Installation::    How to configure, compile and install GNU CC.
+* Trouble::         If you have trouble installing GNU CC.
 * Incompatibilities:: Incompatibilities of GNU CC.
 * Extensions::      GNU extensions to the C language.
 * Bugs::            How to report bugs (if you want to get them fixed).
@@ -280,6 +281,9 @@ of the Chalmers Computer Club.  Tiemann also wrote the code for inline
 function integration.
 
 @item
+Robert Brown implemented the support for Encore 32000 systems.
+
+@item
 Michael Kashtan of SRI adapted GNU CC to the Vomit-Making System.
 
 @item
@@ -323,7 +327,7 @@ Place output in file @var{file}.  This applies regardless to whatever
 sort of output is being produced, whether it be an executable file,
 an object file, an assembler file or preprocessed C code.
 
-If @samp{-o} is not specified, the default is to put an excutable file
+If @samp{-o} is not specified, the default is to put an executable file
 in @file{a.out}, the object file @file{@var{source}.c} in
 @file{@var{source}.o}, an assembler file in @file{@var{source}.s}, and
 preprocessed C on standard output.@refill
@@ -566,6 +570,9 @@ return-value in a function whose return-type is not @code{void}.
 @item -Wcomment
 Warn whenever a comment-start sequence @samp{/*} appears in a comment.
 
+@item -Wall
+All of the above @samp{-W} options combined.
+
 @item -p
 Generate extra code to write profile information suitable for the
 analysis program @code{prof}.
@@ -574,10 +581,27 @@ analysis program @code{prof}.
 Generate extra code to write profile information suitable for the
 analysis program @code{gprof}.
 
-@item -nostdinc
-Don't search the standard directories for include files.  Only the
-directories you specify explicitly with the @samp{-I} option will be
-searched.
+@item -l@var{library}
+Search a standard list of directories for a library named
+@var{library}, which is actually a file named
+@file{lib@var{library}.a}.  The linker uses this file as if it
+had been specified precisely by name.
+
+The directories searched include several standard system directories
+plus any that you specify with @samp{-L}.
+
+Normally the files found this way are library files---archive files
+whose members are object files.  The linker handles an archive file by
+through it for members which define symbols that have so far been
+referenced but not defined.  But if the file that is found is an
+ordinary object file, it is linked in the usual fashion.  The only
+difference between an @samp{-l} option and the full file name of the
+file that is found is syntactic and the fact that several directories
+are searched.
+
+@item -L@var{dir}
+Add directory @var{dir} to the list of directories to be searched
+for @samp{-l}.
 
 @item -nostdlib
 Don't use the standard system libraries and startup files when
@@ -656,6 +680,9 @@ ranges.
 @item -mgnu
 Do output those jump instructions, on the assumption that you
 will assemble with the GNU assembler.
+
+@item -mg
+Output code for g-format floating point numbers instead of d-format.
 @end table
 
 @item -f@var{flag}
@@ -851,6 +878,32 @@ Tell the preprocessor not to discard comments.  Used with the
 @item -I@var{dir}
 Search directory @var{dir} for include files.
 
+@item -I-
+Any directories specified with @samp{-I} options before the @samp{-I-}
+option are searched only for the case of @samp{#include "@var{file}"};
+they are not searched for @samp{#include <@var{file}>}.
+
+If additional directories are specified with @samp{-I} options after
+the @samp{-I-}, these directories are searched for all @samp{#include}
+directives.  (Ordinarily @emph{all} @samp{-I} directories are used
+this way.)
+
+In addition, the @samp{-I-} option inhibits the use of the current
+directory as the first search directory for @samp{#include
+"@var{file}"}.  Therefore, the current directory is searched only if
+it is requested explicitly with @samp{-I.}.  Specifying both
+@samp{-I-} and @samp{-I.} allows you to control precisely which
+directories are searched before the current one and which are searched
+after.
+
+@item -nostdinc
+Do not search the standard system directories for header files.  Only
+the directories you have specified with @samp{-I} options (and the
+current directory, if appropriate) are searched.
+
+Between @samp{-nostdinc} and @samp{-I-}, you can eliminate all
+directories from the search path except those you specify.
+
 @item -M
 Tell the preprocessor to output a rule suitable for @code{make}
 describing the dependencies of each source file.  For each source
@@ -882,7 +935,7 @@ Support ANSI C trigraphs.  You don't want to know about this
 brain-damage.  The @samp{-ansi} option also has this effect.
 @end table
 
-@node Installation, Incompatibilities, Options, Top
+@node Installation, Trouble, Options, Top
 @chapter Installing GNU CC
 
 Here is the procedure for installing GNU CC on a Unix system.
@@ -939,10 +992,11 @@ this mode of operation are as yet in distribution; full instructions
 will appear here in the future.@refill
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
-machine; otherwise, use @file{tm-ns32k.h}.
+machine, or @file{tm-encore.h} for an Encore machine; otherwise,
+perhaps @file{tm-ns32k.h} will work for you.
 
-For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-ultrix.h}
-on Ultrix, or @file{tm-vms.h} on VMS.@refill
+For the vax, use @file{tm-vax.h} on Unix, or @file{tm-vms.h} on
+VMS.@refill
 
 @item
 Make a symbolic link named @file{md} to the machine description
@@ -1067,9 +1121,18 @@ specify @samp{-B/usr/foo/gcc/} when you run GNU CC.
 @node VMS Install,, Installation, Installation
 @section Installing GNU CC on VMS
 
-The VMS version of GNU CC is normally distributed as a Backup
-saveset, so the only installation required is to copy the files.
-But here is how to rebuild GNU CC if you change it:
+The VMS version of GNU CC is distributed in an unusual tape format which
+consists of several tape files.  The first is a command file; the second is
+an executable program which reads Unix tar format; the third is another
+command file which uses this program to read the remainder of the tape.
+
+To load the tape, it suffices to mount it @samp{/foreign} and then do
+@samp{@@mta0:} to execute the command file at the beginning of the tape.
+
+The tape contains executables and object files as well as sources, so no
+compilation is necessary unless you change the sources.  (This is a good
+thing, since you probably don't have any other C compiler.)  If you must
+recompile, here is how:
 
 @enumerate
 @item
@@ -1081,7 +1144,53 @@ to @file{aux-output.c}.@refill
 Type @samp{@@make} to do recompile everything.
 @end enumerate
 
-@node Incompatibilities, Extensions, Installation, Top
+To install the @samp{GCC} command so you can use the compiler easily, in
+the same manner as you use the VMS C compiler, you must install the VMS CLD
+file for GNU CC as follows:
+
+@enumerate
+@item
+Define the VMS logical names @samp{GNU_CC} and @samp{GNU_CC_INCLUDE}
+to point to the directories where the GNU CC executables
+(@samp{gcc-cpp}, @samp{gcc-cc1}, etc.) and the C include files are
+kept.  This should be done with the commands:@refill
+
+@example
+$ assign /super /system disk:[gcc] gnu_cc
+$ assign /super /system disk:[gcc.include] gnu_cc_include
+@end example
+
+@noindent
+with the appropriate disk and directory names.  These commands can be
+placed in your system startup file so they will be executed whenever
+the machine is rebooted.
+
+@item
+Install the @samp{GCC} command with the command line:
+
+@example
+$ set command /table=sys$library:dcltables gnu_cc:gcc
+@end example
+
+@noindent
+Now you can invoke the compiler with a command like @samp{gcc /verbose
+file.c}, which is equivalent to the command @samp{gcc -v -c file.c} in
+Unix.
+@end enumerate
+
+@node Trouble, Incompatibilities, Installation, Top
+@chapter Trouble in Installation
+
+Here are some of the things that have caused trouble for people installing
+GNU CC.
+
+@itemize
+@item
+On certain systems, defining certain environment variables such as
+@samp{CC} can interfere with the functioning of @code{make}.
+@end itemize
+
+@node Incompatibilities, Extensions, Trouble, Top
 @chapter Incompatibilities of GNU CC
 
 There are several noteworthy incompatibilities between GNU C and most
@@ -1950,8 +2059,7 @@ execute the input source code, that is a compiler bug.
 However, you must double-check to make sure, because you may have run
 into an incompatibility between GNU C and traditional C
 (@pxref{Incompatibilities}).  These incompatibilities might be considered
-bugs, but they are inescapable consequences of features valuable
-features.
+bugs, but they are inescapable consequences of valuable features.
 
 Or you may have a program whose behavior is undefined, which happened
 by chance to give the desired results with another C compiler.
@@ -3863,8 +3971,11 @@ appropriate register receives a useful value in this insn.
 
 Immediately after RTL generation, if the value of the subroutine is
 actually used, this call insn is always followed closely by an insn which
-refers to the register @var{r}.  The following insn has one of two forms.
-Either it copies the value into a pseudo-register, like this:
+refers to the register @var{r}.  This remains true through all the
+optimizer passes until cross jumping occurs.
+
+The following insn has one of two forms.  Either it copies the value into a
+pseudo-register, like this:
 
 @example
 (set (reg:@var{m} @var{p}) (reg:@var{m} @var{r}))
@@ -3879,7 +3990,7 @@ value the call produced, and no operation is needed to do this):
 @end example
 
 @noindent
-Between the call insn and this insn there may intervene only a
+Between the call insn and this following insn there may intervene only a
 stack-adjustment insn (and perhaps some @samp{note} insns).
 
 When a subroutine returns a @code{BLKmode} value, it is handled by
@@ -4692,6 +4803,32 @@ natural mode is wider than @var{m}, the effect of this instruction is
 to store the specified value in the part of the register that corresponds
 to mode @var{m}.  The effect on the rest of the register is undefined.
 
+This class of patterns is special in several ways.  First of all, each
+of these names @emph{must} be defined, because there is no other way
+to copy a datum from one place to another.
+
+Second, these patterns are not used solely in the RTL generation pass.
+Even the reload pass can generate move insns to copy values from stack
+slots into temporary registers.  When it does so, one of the operands
+is a hard register and the other is an operand that can have a reload.
+
+Therefore, when given such a pair of operands, the pattern must
+generate RTL which needs no temporary registers---no registers other
+than the operands.  For example, if you support the pattern with a
+@code{define_expand}, then in such a case you mustn't call
+@code{force_reg} or any other such function which might generate new
+pseudo registers.
+
+This requirement exists even for subword modes on a RISC machine where
+fetching those modes from memory normally requires several insns and
+some temporary registers.  Look in @file{spur.md} to see how the
+requirement is satisfied.
+
+The variety of operands that have reloads depends on the rest of the
+machine description, but typically on a RISC machine these can only be
+pseudo registers that did not get hard registers, while on other
+machines explicit memory references will get optional reloads.
+
 @item @samp{movstrict@var{m}}
 Like @samp{mov@var{m}} except that if operand 0 is a @samp{subreg}
 with mode @var{m} of a register whose natural mode is wider,
@@ -4905,8 +5042,51 @@ Subroutine return instruction.  This instruction pattern name should be
 defined only if a single instruction can do all the work of returning
 from a function.
 
+@item @samp{casesi}
+Instruction to jump through a dispatch table, including bounds checking.
+This instruction takes five operands:
+
+@enumerate
+@item
+The index to dispatch on, which has mode @code{SImode}.
+
+@item
+The lower bound for indices in the table, an integer constant.
+
+@item
+The upper bound for indices in the table, an integer constant.
+
+@item
+A label to jump to if the index has a value outside the bounds.
+(If the machine-description macro @code{CASE_DROPS_THROUGH} is defined,
+then an out-of-bounds index drops through to the code following
+the jump table instead of jumping to this label.  In that case,
+this label is not actually used by the @samp{casesi} instruction,
+but it is always provided as an operand.)
+
+@item
+A label that precedes the table itself.
+@end enumerate
+
+The table is a @samp{addr_vec} or @samp{addr_diff_vec} inside of a
+@samp{jump_insn}.  The number of elements in the table is one plus the
+difference between the upper bound and the lower bound.
+
 @item @samp{tablejump}
-@item @samp{case@var{m}}
+Instruction to jump to a variable address.  This is a low-level
+capability which can be used to implement a dispatch table when there
+is no @samp{casesi} pattern.
+
+This pattern requires two operands: the address or offset, and a label
+which should immediately precede the jump table.  If the macro
+@code{CASE_VECTOR_PC_RELATIVE} is defined then the first operand is an
+absolute address to jump to; otherwise, it is an offset which counts
+from the address of the table.
+
+The @samp{tablejump} insn is always the last insn before the jump
+table it uses.  Its assembler code normally has no need to use the
+second operand, but you should incorporate it in the RTL pattern so
+that the jump optimizer will not delete the table as unreachable code.
 @end table
 
 @node Pattern Ordering, Dependent Patterns, Standard Names, Machine Desc

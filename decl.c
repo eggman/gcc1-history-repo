@@ -41,7 +41,8 @@ enum decl_context
   TYPENAME};			/* Typename (inside cast or sizeof)  */
 
 #define NULL 0
-#define min(X,Y) ((X) < (Y) ? (X) : (Y))
+#define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
 static tree grokparms (), grokdeclarator ();
 tree pushdecl ();
@@ -604,8 +605,7 @@ pushdecl (x)
       /* If declaring a type as a typedef, and the type has no known
 	 typedef name, install this TYPE_DECL as its typedef name.  */
       if (TREE_CODE (x) == TYPE_DECL)
-	if (TYPE_NAME (TREE_TYPE (x)) == 0
-	    || TREE_CODE (TYPE_NAME (TREE_TYPE (x))) != TYPE_DECL)
+	if (TYPE_NAME (TREE_TYPE (x)) == 0)
 	  TYPE_NAME (TREE_TYPE (x)) = x;
 
       /* This name is new in its binding level.
@@ -629,20 +629,38 @@ pushdecl (x)
 	}
       else
 	{
-	  /* Here to install a non-global value.
-	     First warn if shadowing an argument.  */
-	  if (IDENTIFIER_LOCAL_VALUE (name)
-	      && TREE_CODE (IDENTIFIER_LOCAL_VALUE (name)) == PARM_DECL
+	  /* Here to install a non-global value.  */
+	  tree oldlocal = IDENTIFIER_LOCAL_VALUE (name);
+	  IDENTIFIER_LOCAL_VALUE (name) = x;
+
+	  /* If this is an extern function declaration, see if we
+	     have a global definition for the function.  */
+	  if (oldlocal == 0
+	      && IDENTIFIER_GLOBAL_VALUE (name)
+	      && TREE_CODE (x) == FUNCTION_DECL
+	      && TREE_CODE (IDENTIFIER_GLOBAL_VALUE (name)) == FUNCTION_DECL
+	      && TREE_INLINE (IDENTIFIER_GLOBAL_VALUE (name)))
+	    {
+	      /* We have one.  Their types must agree.  */
+	      if (! comptypes (TREE_TYPE (x),
+			       TREE_TYPE (IDENTIFIER_GLOBAL_VALUE (name))))
+		warning_with_decl (x, "local declaration of `%s' doesn't match global one");
+	      /* If the global one is inline, make the local one inline.  */
+	      else if (TREE_INLINE (IDENTIFIER_GLOBAL_VALUE (name)))
+		IDENTIFIER_LOCAL_VALUE (name) = IDENTIFIER_GLOBAL_VALUE (name);
+	    }
+	  /* Warn if shadowing an argument.  */
+	  if (oldlocal != 0
+	      && TREE_CODE (oldlocal) == PARM_DECL
 	      && current_binding_level->level_chain->parm_flag)
 	    warning ("shadowing parameter `%s' with a local variable",
 		     IDENTIFIER_POINTER (name));
 	  /* If storing a local value, there may already be one (inherited).
 	     If so, record it for restoration when this binding level ends.  */
-	  if (IDENTIFIER_LOCAL_VALUE (name))
+	  if (oldlocal != 0)
 	    current_binding_level->shadowed
-	      = tree_cons (name, IDENTIFIER_LOCAL_VALUE (name),
+	      = tree_cons (name, oldlocal,
 			   current_binding_level->shadowed);
-	  IDENTIFIER_LOCAL_VALUE (name) = x;
 	}
 
       /* Keep count of variables in this level with incomplete type.  */
@@ -994,16 +1012,29 @@ init_decl_processing ()
   pushdecl (build_decl (TYPE_DECL, get_identifier ("unsigned int"),
 			unsigned_type_node));
 
-  /* `unsigned int' is the type for sizeof.  */
+  long_unsigned_type_node = make_unsigned_type (BITS_PER_WORD);
+  pushdecl (build_decl (TYPE_DECL, get_identifier ("long unsigned int"),
+			long_unsigned_type_node));
+
+  /* `unsigned long' or `unsigned int' is the type for sizeof.  */
+#ifdef INT_TYPE_SIZE
+  if (INT_TYPE_SIZE != BITS_PER_WORD)
+    sizetype = long_unsigned_type_node;
+  else
+    sizetype = unsigned_type_node;
+#else
   sizetype = unsigned_type_node;
+#endif
+
   TREE_TYPE (TYPE_SIZE (integer_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (char_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (unsigned_type_node)) = sizetype;
+  TREE_TYPE (TYPE_SIZE (long_unsigned_type_node)) = sizetype;
 
   error_mark_node = make_node (ERROR_MARK);
   TREE_TYPE (error_mark_node) = error_mark_node;
 
-  short_integer_type_node = make_signed_type (BITS_PER_UNIT * min (UNITS_PER_WORD / 2, 2));
+  short_integer_type_node = make_signed_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short int"),
 			short_integer_type_node));
 
@@ -1011,13 +1042,9 @@ init_decl_processing ()
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long int"),
 			long_integer_type_node));
 
-  short_unsigned_type_node = make_unsigned_type (BITS_PER_UNIT * min (UNITS_PER_WORD / 2, 2));
+  short_unsigned_type_node = make_unsigned_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short unsigned int"),
 			short_unsigned_type_node));
-
-  long_unsigned_type_node = make_unsigned_type (BITS_PER_WORD);
-  pushdecl (build_decl (TYPE_DECL, get_identifier ("long unsigned int"),
-			long_unsigned_type_node));
 
   /* Define both `signed char' and `unsigned char'.  */
   signed_char_type_node = make_signed_type (BITS_PER_UNIT);
@@ -1050,6 +1077,11 @@ init_decl_processing ()
   TREE_TYPE (integer_zero_node) = integer_type_node;
   integer_one_node = build_int_2 (1, 0);
   TREE_TYPE (integer_one_node) = integer_type_node;
+
+  size_zero_node = build_int_2 (0, 0);
+  TREE_TYPE (size_zero_node) = sizetype;
+  size_one_node = build_int_2 (1, 0);
+  TREE_TYPE (size_one_node) = sizetype;
 
   void_type_node = make_node (VOID_TYPE);
   pushdecl (build_decl (TYPE_DECL,
@@ -1424,6 +1456,11 @@ finish_decl (decl, init, asmspec)
 	if (current_binding_level != global_binding_level)
 	  expand_decl (decl);
     }
+
+  if (TREE_CODE (decl) == TYPE_DECL)
+    rest_of_decl_compilation (decl, 0,
+			      current_binding_level == global_binding_level,
+			      0);
 
   /* Resume permanent allocation, if not within a function.  */
   if (debug_no_temp_inits && init_written
@@ -1882,7 +1919,11 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  type =
 	    build_function_type (type,
 				 grokparms (TREE_OPERAND (declarator, 1),
-					    funcdef_flag));
+					    funcdef_flag
+					    /* Say it's a definition
+					       only for the CALL_EXPR
+					       closest to the identifier.  */
+					    && TREE_CODE (TREE_OPERAND (declarator, 0)) == IDENTIFIER_NODE));
 	  declarator = TREE_OPERAND (declarator, 0);
 	}
       else if (TREE_CODE (declarator) == INDIRECT_REF)
@@ -2009,15 +2050,6 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  }
 	else if (TREE_CODE (type) == FUNCTION_TYPE)
 	  type = build_pointer_type (type);
-	else if (TYPE_SIZE (type) == 0)
-	  {
-	    if (declarator)
-	      error ("parameter `%s' has incomplete type",
-		     IDENTIFIER_POINTER (declarator));
-	    else
-	      incomplete_type_error (0, type);
-	    type = error_mark_node;
-	  }
 
 	decl = build_decl (PARM_DECL, declarator, type);
 
@@ -2153,24 +2185,34 @@ make_index_type (maxval)
   return type_hash_canon (maxint > 0 ? maxint : - maxint, itype);
 }
 
-/* Decode the list of parameter types for a function type.
-   Given the list of things declared inside the parens,
-   return a list of types.
+/* Decode the parameter-list info for a function type or function definition.
+   The argument is the value returned by `get_parm_info' (or made in parse.y
+   if there is an identifier list instead of a parameter decl list).
+   These two functions are separate because when a function returns
+   or receives functions then each is called multiple times but the order
+   of calls is different.  The last call to `grokparms' is always the one
+   that contains the formal parameter names of a function definition.
 
-   The arg is either a list of identifiers or a list of types.
-   If the former, store it in `last_function_parms' and return 0.
-   If the latter, return it; `last_function_parms' was already set
-   (in `get_parm_types') so do not change it.
+   Store in `last_function_parms' a chain of the decls of parms.
+   Also store in `last_function_parm_tags' a chain of the struct and union
+   tags declared among the parms.
+
+   Return a list of arg types to use in the FUNCTION_TYPE for this function.
 
    FUNCDEF_FLAG is nonzero for a function definition, 0 for
    a mere declaration.  A nonempty identifier-list gets an error message
    when FUNCDEF_FLAG is zero.  */
 
 static tree
-grokparms (first_parm, funcdef_flag)
-     tree first_parm;
+grokparms (parms_info, funcdef_flag)
+     tree parms_info;
      int funcdef_flag;
 {
+  tree first_parm = TREE_CHAIN (parms_info);
+
+  last_function_parms = TREE_PURPOSE (parms_info);
+  last_function_parm_tags = TREE_VALUE (parms_info);
+
   if (first_parm != 0
       && TREE_CODE (TREE_VALUE (first_parm)) == IDENTIFIER_NODE)
     {
@@ -2182,45 +2224,59 @@ grokparms (first_parm, funcdef_flag)
     }
   else
     {
+      tree t;
+      /* In a fcn definition, arg types must be complete.  */
+      if (funcdef_flag)
+	for (t = last_function_parms; t; t = TREE_CHAIN (t))
+	  {
+	    tree type = TREE_TYPE (t);
+	    if (TYPE_SIZE (type) == 0)
+	      {
+		error ("parameter `%s' has incomplete type",
+			 IDENTIFIER_POINTER (DECL_NAME (t)));
+		TREE_TYPE (t) = error_mark_node;
+	      }
+	  }
+
       return first_parm;
     }
 }
 
 
-/* Return a list of the types of the parameters just parsed.
-   Also store in `last_function_parms' a chain of the decls of those parms.
-   Both this chain and the return value must be in the proper order.
-   Also store in `last_function_parm_tags' a chain of the struct and union
-   tags declared among the parms.
+/* Return a tree_list node with info on a parameter list just parsed.
+   The TREE_PURPOSE is a chain of decls of those parms.
+   The TREE_VALUE is a list of structure, union and enum tags defined.
+   The TREE_CHAIN is a list of argument types to go in the FUNCTION_TYPE.
+   This tree_list node is later fed to `grokparms'.
 
-   VOID_AT_END nonzero means append `void' to the end of the value-list.
+   VOID_AT_END nonzero means append `void' to the end of the type-list.
    Zero means the parmlist ended with an ellipsis so don't append `void'.  */
 
 tree
-get_parm_types (void_at_end)
+get_parm_info (void_at_end)
      int void_at_end;
 {
   register tree decl;
   register tree types = 0;
   tree link;
   int erred = 0;
-
-  last_function_parm_tags = gettags ();
-  last_function_parms = nreverse (getdecls ());
+  tree tags = gettags ();
+  tree parms = nreverse (getdecls ());
 
   /* Just `void' (and no ellipsis) is special.  There are really no parms.  */
-  if (void_at_end && last_function_parms != 0
-      && TREE_CHAIN (last_function_parms) == 0
-      && TREE_TYPE (last_function_parms) == void_type_node)
+  if (void_at_end && parms != 0
+      && TREE_CHAIN (parms) == 0
+      && TREE_TYPE (parms) == void_type_node)
     {
-      last_function_parms = NULL_TREE;
+      parms = NULL_TREE;
       storedecls (NULL_TREE);
-      return tree_cons (NULL_TREE, void_type_node, NULL_TREE);
+      return tree_cons (NULL_TREE, NULL_TREE,
+			tree_cons (NULL_TREE, void_type_node, NULL_TREE));
     }
 
-  storedecls (last_function_parms);
+  storedecls (parms);
 
-  for (decl = last_function_parms; decl; decl = TREE_CHAIN (decl))
+  for (decl = parms; decl; decl = TREE_CHAIN (decl))
     {
       /* Since there is a prototype,
 	 args are passed in their declared types.  */
@@ -2235,9 +2291,10 @@ get_parm_types (void_at_end)
     }
 
   if (void_at_end)
-    return nreverse (tree_cons (NULL_TREE, void_type_node, types));
+    return tree_cons (parms, tags,
+		      nreverse (tree_cons (NULL_TREE, void_type_node, types)));
 
-  return nreverse (types);
+  return tree_cons (parms, tags, nreverse (types));
 }
 
 /* Get the struct, enum or union (CODE says which) with tag NAME.
@@ -2412,7 +2469,8 @@ finish_struct (t, fieldlist)
 	    {
 	      /* field size 0 => mark following field as "aligned" */
 	      if (TREE_CHAIN (x))
-		DECL_ALIGN (TREE_CHAIN (x)) = EMPTY_FIELD_BOUNDARY;
+		DECL_ALIGN (TREE_CHAIN (x))
+		  = MAX (DECL_ALIGN (TREE_CHAIN (x)), EMPTY_FIELD_BOUNDARY);
 	      /* field of size 0 at the end => round up the size.  */
 	      else
 		round_up_size = EMPTY_FIELD_BOUNDARY;
@@ -2431,7 +2489,7 @@ finish_struct (t, fieldlist)
 	}
       else
 	/* Non-bit-fields are aligned for their type.  */
-	DECL_ALIGN (x) = TYPE_ALIGN (TREE_TYPE (x));
+	DECL_ALIGN (x) = MAX (DECL_ALIGN (x), TYPE_ALIGN (TREE_TYPE (x)));
     }
 
   /* Now DECL_INITIAL is null on all members except for zero-width bit-fields.
@@ -2668,6 +2726,7 @@ start_function (declspecs, declarator)
      tree declarator, declspecs;
 {
   tree decl1, old_decl;
+  tree restype;
 
   current_function_returns_value = 0;  /* Assume, until we see it does. */
   current_function_returns_null = 0;
@@ -2684,7 +2743,7 @@ start_function (declspecs, declarator)
 
   announce_function (current_function_decl);
 
-  if (TYPE_SIZE (TREE_TYPE (decl1)) == 0)
+  if (TYPE_SIZE (TREE_TYPE (TREE_TYPE (decl1))) == 0)
     {
       error ("return-type is an incomplete type");
       /* Make it return void instead.  */
@@ -2734,9 +2793,13 @@ start_function (declspecs, declarator)
      of this function only.  */
   temporary_allocation ();
 
+  restype = TREE_TYPE (TREE_TYPE (current_function_decl));
+  /* Promote the value to int before returning it.  */
+  if (TREE_CODE (restype) == INTEGER_TYPE
+      && TYPE_PRECISION (restype) < TYPE_PRECISION (integer_type_node))
+    restype = integer_type_node;
   DECL_RESULT (current_function_decl)
-    = build_decl (RESULT_DECL, value_identifier,
-		  TREE_TYPE (TREE_TYPE (current_function_decl)));
+    = build_decl (RESULT_DECL, value_identifier, restype);
 
   /* Make the FUNCTION_DECL's contents appear in a local tree dump
      and make the FUNCTION_DECL itself not appear in the permanent dump.  */
@@ -2882,6 +2945,13 @@ store_parm_decls ()
 	  tree next = TREE_CHAIN (parm);
 	  TREE_CHAIN (parm) = 0;
 
+	  /* Complain about args with incomplete types.  */
+	  if (TYPE_SIZE (TREE_TYPE (parm)) == 0)
+	    {
+	      error_with_decl (parm, "parameter `%s' has incomplete type");
+	      TREE_TYPE (parm) = error_mark_node;
+	    }
+
 	  if (TREE_CODE (parm) != PARM_DECL)
 	    nonparms = chainon (nonparms, parm);
 
@@ -2967,9 +3037,7 @@ store_parm_decls ()
    STMTS is the chain of statements that makes up the function body.  */
 
 void
-finish_function (filename, line)
-     char *filename;
-     int line;
+finish_function ()
 {
   register tree fndecl = current_function_decl;
 

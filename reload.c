@@ -1327,10 +1327,14 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  {
 	    int j;
 	    for (j = 0; j < noperands; j++)
-	      if ((GET_CODE (recog_operand[j]) == MEM || ! modified[j])
-		  && refers_to_regno_p (REGNO (recog_operand[i]), recog_operand[j], 0))
+	      /* Is this an input operand or a memory ref?  */
+	      if ((GET_CODE (recog_operand[j]) == MEM
+		   || modified[j] != RELOAD_WRITE)
+		  /* Does it refer to the earlyclobber operand?  */
+		  && refers_to_regno_p (REGNO (recog_operand[i]),
+					recog_operand[j], 0))
 		break;
-	    /* If an output operand conflicts with something,
+	    /* If an earlyclobber operand conflicts with something,
 	       it must be reloaded, so request this and count the cost.  */
 	    if (j != noperands)
 	      {
@@ -2325,7 +2329,17 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
       p = PREV_INSN (p);
       if (p == 0 || GET_CODE (p) == CODE_LABEL)
 	return 0;
-      if (GET_CODE (p) == INSN)
+      if (GET_CODE (p) == INSN
+	  /* If we don't want spill regs (true for all calls in this file) */
+	  && (! (reload_reg_p != 0 && reload_reg_p != (short *)1)
+	  /* then ignore insns introduced by reload; they aren't useful
+	     and can cause results in reload_as_needed to be different
+	     from what they were when calculating the need for spills.
+	     If we notice an input-reload insn here, we will reject it below,
+	     but it might hide a usable equivalent.  That makes bad code.
+	     It may even abort: perhaps no reg was spilled for this insn
+	     because it was assumed we would find that equivalent.  */
+	      || INSN_UID (p) < reload_first_uid))
 	{
 	  pat = PATTERN (p);
 	  /* First check for something that sets some reg equal to GOAL.  */
@@ -2381,6 +2395,11 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
   if (valueno < 0)
     return 0;
 
+  /* Don't find the sp as an equiv, since pushes that we don't notice
+     would invalidate it.  */
+  if (valueno == STACK_POINTER_REGNUM)
+    return 0;
+
   /* Reject VALUE if it was loaded from GOAL
      and is also a register that appears in the address of GOAL.  */
 
@@ -2390,7 +2409,9 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 
   /* Reject VALUE if it is one of the regs reserved for reloads.
      Reload1 knows how to reuse them anyway, and it would get
-     confused if we allocated one without its knowledge.  */
+     confused if we allocated one without its knowledge.
+     (Now that insns introduced by reload are ignored above,
+     this case shouldn't happen, but I'm not positive.)  */
 
   if (reload_reg_p != 0 && reload_reg_p != (short *)1
       && reload_reg_p[valueno] >= 0)

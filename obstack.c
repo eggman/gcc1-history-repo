@@ -222,6 +222,10 @@ _obstack_free (h, obj)
     abort ();
 }
 
+#if 0
+/* These are now turned off because the applications do not use it
+   and it uses bcopy via obstack_grow, which causes trouble on sysV.  */
+
 /* Now define the functional versions of the obstack macros.
    Define them to simply use the corresponding macros to do the job.  */
 
@@ -330,3 +334,5 @@ POINTER (obstack_copy0) (obstack, pointer, length)
 }
 
 #endif /* __STDC__ */
+
+#endif /* 0 */

@@ -17,6 +17,7 @@
 
 #line 109 "cexp.y"
 
+#include "config.h"
 #include <setjmp.h>
 /* #define YYDEBUG 1 */
 
@@ -30,7 +31,7 @@
   extern unsigned char is_idstart[], is_idchar[];
 
 
-#line 124 "cexp.y"
+#line 125 "cexp.y"
 typedef union {
   long lval;
   int voidval;
@@ -58,15 +59,19 @@ typedef
 #define	YYERROR	return(1)
 #include <stdio.h>
 
+#ifndef __STDC__
+#define const
+#endif
+
 
 
 #define	YYFINAL		59
 #define	YYFLAG		-32768
 #define	YYNTBASE	33
 
-#define YYTRANSLATE(x) (yytranslate[x])
+#define YYTRANSLATE(x) ((unsigned)(x) <= 270 ? yytranslate[x] : 36)
 
-static char yytranslate[] = {     0,
+static const char yytranslate[] = {     0,
      2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
      2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
      2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
@@ -96,32 +101,32 @@ static char yytranslate[] = {     0,
      6,    10,    11,    15,    16,    19,    20,    21,    22,    28
 };
 
-static short yyrline[] = {     0,
-   153,   158,   159,   164,   166,   168,   170,   175,   177,   179,
-   181,   183,   185,   187,   189,   191,   193,   195,   197,   199,
-   201,   203,   205,   207,   209,   211,   213,   215,   217
+static const short yyrline[] = {     0,
+   154,   159,   160,   165,   167,   169,   171,   176,   178,   180,
+   182,   184,   186,   188,   190,   192,   194,   196,   198,   200,
+   202,   204,   206,   208,   210,   212,   214,   216,   218
 };
 
-static char * yytname[] = {     0,
+static const char * const yytname[] = {     0,
 "error","$illegal.","INT","CHAR","NAME","ERROR","'?'","':'","','","OR",
 "AND","'|'","'^'","'&'","EQUAL","NOTEQUAL","'<'","'>'","LEQ","GEQ",
 "LSH","RSH","'+'","'-'","'*'","'/'","'%'","UNARY","'!'","'~'",
 "'('","')'","start"
 };
 
-static short yyr1[] = {     0,
+static const short yyr1[] = {     0,
     33,    34,    34,    35,    35,    35,    35,    35,    35,    35,
     35,    35,    35,    35,    35,    35,    35,    35,    35,    35,
     35,    35,    35,    35,    35,    35,    35,    35,    35
 };
 
-static short yyr2[] = {     0,
+static const short yyr2[] = {     0,
      1,     1,     3,     2,     2,     2,     3,     3,     3,     3,
      3,     3,     3,     3,     3,     3,     3,     3,     3,     3,
      3,     3,     3,     3,     3,     5,     1,     1,     1
 };
 
-static short yydefact[] = {     0,
+static const short yydefact[] = {     0,
     27,    28,    29,     0,     0,     0,     0,     1,     2,     4,
      5,     6,     0,     0,     0,     0,     0,     0,     0,     0,
      0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
@@ -130,11 +135,11 @@ static short yydefact[] = {     0,
     12,     8,     9,    10,     0,    26,     0,     0,     0
 };
 
-static short yydefgoto[] = {    57,
+static const short yydefgoto[] = {    57,
      8,     9
 };
 
-static short yypact[] = {    28,
+static const short yypact[] = {    28,
 -32768,-32768,-32768,    28,    28,    28,    28,    -3,    74,-32768,
 -32768,-32768,    -2,    28,    28,    28,    28,    28,    28,    28,
     28,    28,    28,    28,    28,    28,    28,    28,    28,    28,
@@ -143,7 +148,7 @@ static short yypact[] = {    28,
    -22,-32768,-32768,-32768,    28,    74,     8,     9,-32768
 };
 
-static short yypgoto[] = {-32768,
+static const short yypgoto[] = {-32768,
     46,    -4
 };
 
@@ -151,7 +156,7 @@ static short yypgoto[] = {-32768,
 #define	YYLAST		182
 
 
-static short yytable[] = {    10,
+static const short yytable[] = {    10,
     11,    12,    31,    32,    33,    14,    14,    58,    59,    35,
     36,    37,    38,    39,    40,    41,    42,    43,    44,    45,
     46,    47,    48,    49,    50,    51,    52,    53,    54,    34,
@@ -173,7 +178,7 @@ static short yytable[] = {    10,
     32,    33
 };
 
-static short yycheck[] = {     4,
+static const short yycheck[] = {     4,
      5,     6,    25,    26,    27,     9,     9,     0,     0,    14,
     15,    16,    17,    18,    19,    20,    21,    22,    23,    24,
     25,    26,    27,    28,    29,    30,    31,    32,    33,    32,
@@ -201,30 +206,106 @@ static short yycheck[] = {     4,
 /* Skeleton output parser for bison,
    copyright (C) 1984 Bob Corbett and Richard Stallman
 
-   Permission is granted to anyone to make or distribute verbatim copies of this program
-   provided that the copyright notice and this permission notice are preserved;
-   and provided that the recipient is not asked to waive or limit his right to
-   redistribute copies as permitted by this permission notice;
-   and provided that anyone possessing an executable copy
-   is granted access to copy the source code, in machine-readable form,
-   in some reasonable manner.
+		       NO WARRANTY
 
-   Permission is granted to distribute derived works or enhanced versions of
-   this program under the above conditions with the additional condition
-   that the entire derivative or enhanced work
-   must be covered by a permission notice identical to this one.
+  BECAUSE THIS PROGRAM IS LICENSED FREE OF CHARGE, WE PROVIDE ABSOLUTELY
+NO WARRANTY, TO THE EXTENT PERMITTED BY APPLICABLE STATE LAW.  EXCEPT
+WHEN OTHERWISE STATED IN WRITING, FREE SOFTWARE FOUNDATION, INC,
+RICHARD M. STALLMAN AND/OR OTHER PARTIES PROVIDE THIS PROGRAM "AS IS"
+WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING,
+BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY
+AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE PROGRAM PROVE
+DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, REPAIR OR
+CORRECTION.
 
-   Anything distributed as part of a package containing portions derived
-   from this program, which cannot in current practice perform its function usefully
-   in the absense of what was derived directly from this program,
-   is to be considered as forming, together with the latter,
-   a single work derived from this program,
-   which must be entirely covered by a permission notice identical to this one
-   in order for distribution of the package to be permitted.
+ IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW WILL RICHARD M.
+STALLMAN, THE FREE SOFTWARE FOUNDATION, INC., AND/OR ANY OTHER PARTY
+WHO MAY MODIFY AND REDISTRIBUTE THIS PROGRAM AS PERMITTED BELOW, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY LOST PROFITS, LOST MONIES, OR
+OTHER SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
+USE OR INABILITY TO USE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR
+DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY THIRD PARTIES OR
+A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS) THIS
+PROGRAM, EVEN IF YOU HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGES, OR FOR ANY CLAIM BY ANY OTHER PARTY.
 
- In other words, you are welcome to use, share and improve this program.
- You are forbidden to forbid anyone else to use, share and improve
- what you give them.   Help stamp out software-hoarding!  */
+		GENERAL PUBLIC LICENSE TO COPY
+
+  1. You may copy and distribute verbatim copies of this source file
+as you receive it, in any medium, provided that you conspicuously and
+appropriately publish on each copy a valid copyright notice "Copyright
+(C) 1985 Free Software Foundation, Inc."; and include following the
+copyright notice a verbatim copy of the above disclaimer of warranty
+and of this License.  You may charge a distribution fee for the
+physical act of transferring a copy.
+
+  2. You may modify your copy or copies of this source file or
+any portion of it, and copy and distribute such modifications under
+the terms of Paragraph 1 above, provided that you also do the following:
+
+    a) cause the modified files to carry prominent notices stating
+    that you changed the files and the date of any change; and
+
+    b) cause the whole of any work that you distribute or publish,
+    that in whole or in part contains or is a derivative of this
+    program or any part thereof, to be licensed at no charge to all
+    third parties on terms identical to those contained in this
+    License Agreement (except that you may choose to grant more extensive
+    warranty protection to some or all third parties, at your option).
+
+    c) You may charge a distribution fee for the physical act of
+    transferring a copy, and you may at your option offer warranty
+    protection in exchange for a fee.
+
+Mere aggregation of another unrelated program with this program (or its
+derivative) on a volume of a storage or distribution medium does not bring
+the other program under the scope of these terms.
+
+  3. You may copy and distribute this program (or a portion or derivative
+of it, under Paragraph 2) in object code or executable form under the terms
+of Paragraphs 1 and 2 above provided that you also do one of the following:
+
+    a) accompany it with the complete corresponding machine-readable
+    source code, which must be distributed under the terms of
+    Paragraphs 1 and 2 above; or,
+
+    b) accompany it with a written offer, valid for at least three
+    years, to give any third party free (except for a nominal
+    shipping charge) a complete machine-readable copy of the
+    corresponding source code, to be distributed under the terms of
+    Paragraphs 1 and 2 above; or,
+
+    c) accompany it with the information you received as to where the
+    corresponding source code may be obtained.  (This alternative is
+    allowed only for noncommercial distribution and only if you
+    received the program in object code or executable form alone.)
+
+For an executable file, complete source code means all the source code for
+all modules it contains; but, as a special exception, it need not include
+source code for modules which are standard libraries that accompany the
+operating system on which the executable file runs.
+
+  4. You may not copy, sublicense, distribute or transfer this program
+except as expressly provided under this License Agreement.  Any attempt
+otherwise to copy, sublicense, distribute or transfer this program is void and
+your rights to use the program under this License agreement shall be
+automatically terminated.  However, parties who have received computer
+software programs from you with this License Agreement will not have
+their licenses terminated so long as such parties remain in full compliance.
+
+  5. If you wish to incorporate parts of this program into other free
+programs whose distribution conditions are different, write to the Free
+Software Foundation at 675 Mass Ave, Cambridge, MA 02139.  We have not yet
+worked out a simple rule that can be stated here, but we will often permit
+this.  We will be guided by the two goals of preserving the free status of
+all derivatives of our free software and of promoting the sharing and reuse of
+software.
+
+
+In other words, you are welcome to use, share and improve this program.
+You are forbidden to forbid anyone else to use, share and improve
+what you give them.   Help stamp out software-hoarding!  */
 
 /* This is the parser code that is written into each bison parser
   when the %semantic_parser declaration is not specified in the grammar.
@@ -262,7 +343,11 @@ YYSTYPE	yylval;			/*  the semantic value of the		*/
 YYLTYPE yylloc;			/*  location data for the lookahead	*/
 				/*  symbol				*/
 
+int yynerr;			/*  number of parse errors so far       */
+
+#ifdef YYDEBUG
 int yydebug = 0;		/*  nonzero means print parse trace	*/
+#endif
 
 #endif  /* YYIMPURE */
 
@@ -281,7 +366,7 @@ int yydebug = 0;		/*  nonzero means print parse trace	*/
 #endif
 
 
-#line 87 "bison.simple"
+#line 165 "bison.simple"
 int
 yyparse()
 {
@@ -304,13 +389,13 @@ yyparse()
   int yymaxdepth = YYMAXDEPTH;
 
 #ifndef YYPURE
-
   int yychar;
   YYSTYPE yylval;
   YYLTYPE yylloc;
+#endif
 
+#ifdef YYDEBUG
   extern int yydebug;
-
 #endif
 
 
@@ -320,11 +405,14 @@ yyparse()
 
   int yylen;
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Starting parse\n");
+#endif
 
   yystate = 0;
   yyerrstatus = 0;
+  yynerr = 0;
   yychar = YYEMPTY;		/* Cause a token to be read.  */
 
   /* Initialize stack pointers.
@@ -372,25 +460,33 @@ yynewstate:
 	yymaxdepth = YYMAXLIMIT;
       yyss = (short *) alloca (yymaxdepth * sizeof (*yyssp));
       bcopy ((char *)yyss1, (char *)yyss, size * sizeof (*yyssp));
-      yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
-      bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
       yyvs = (YYSTYPE *) alloca (yymaxdepth * sizeof (*yyvsp));
       bcopy ((char *)yyvs1, (char *)yyvs, size * sizeof (*yyvsp));
+#ifdef YYLSP_USED
+      yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
+      bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
+#endif
 #endif /* no yyoverflow */
 
       yyssp = yyss + size - 1;
-      yylsp = yyls + size - 1;
       yyvsp = yyvs + size - 1;
+#ifdef YYLSP_USED
+      yylsp = yyls + size - 1;
+#endif
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Stack size increased to %d\n", yymaxdepth);
+#endif
 
       if (yyssp >= yyss + yymaxdepth - 1)
 	YYERROR;
     }
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Entering state %d\n", yystate);
+#endif
 
 /* Do appropriate processing given the current state.  */
 /* Read a lookahead token if we need one and don't already have one.  */
@@ -409,6 +505,10 @@ yyresume:
 
   if (yychar == YYEMPTY)
     {
+#ifdef YYDEBUG
+      if (yydebug)
+	fprintf(stderr, "Reading a token: ");
+#endif
       yychar = YYLEX;
     }
 
@@ -419,15 +519,19 @@ yyresume:
       yychar1 = 0;
       yychar = YYEOF;		/* Don't call YYLEX any more */
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Now at end of input.\n");
+#endif
     }
   else
     {
       yychar1 = YYTRANSLATE(yychar);
 
+#ifdef YYDEBUG
       if (yydebug)
-	fprintf(stderr, "Parsing next token; it is %d (%s)\n", yychar, yytname[yychar1]);
+	fprintf(stderr, "Next token is %d (%s)\n", yychar, yytname[yychar1]);
+#endif
     }
 
   yyn += yychar1;
@@ -458,15 +562,19 @@ yyresume:
 
   /* Shift the lookahead token.  */
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Shifting token %d (%s), ", yychar, yytname[yychar1]);
+#endif
 
   /* Discard the token being shifted unless it is eof.  */
   if (yychar != YYEOF)
     yychar = YYEMPTY;
 
   *++yyvsp = yylval;
+#ifdef YYLSP_USED
   *++yylsp = yylloc;
+#endif
 
   /* count tokens shifted since error; after three, turn off error status.  */
   if (yyerrstatus) yyerrstatus--;
@@ -486,6 +594,7 @@ yyreduce:
   yylen = yyr2[yyn];
   yyval = yyvsp[1-yylen]; /* implement default value of the action */
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       if (yylen == 1)
@@ -495,120 +604,121 @@ yyreduce:
 	fprintf (stderr, "Reducing %d values via line %d, ",
 		 yylen, yyrline[yyn]);
     }
+#endif
 
 
   switch (yyn) {
 
 case 1:
-#line 154 "cexp.y"
+#line 155 "cexp.y"
 { expression_value = yyvsp[0].lval; ;
     break;}
 case 3:
-#line 160 "cexp.y"
+#line 161 "cexp.y"
 { yyval.lval = yyvsp[0].lval; ;
     break;}
 case 4:
-#line 165 "cexp.y"
+#line 166 "cexp.y"
 { yyval.lval = - yyvsp[0].lval; ;
     break;}
 case 5:
-#line 167 "cexp.y"
+#line 168 "cexp.y"
 { yyval.lval = ! yyvsp[0].lval; ;
     break;}
 case 6:
-#line 169 "cexp.y"
+#line 170 "cexp.y"
 { yyval.lval = ~ yyvsp[0].lval; ;
     break;}
 case 7:
-#line 171 "cexp.y"
+#line 172 "cexp.y"
 { yyval.lval = yyvsp[-1].lval; ;
     break;}
 case 8:
-#line 176 "cexp.y"
+#line 177 "cexp.y"
 { yyval.lval = yyvsp[-2].lval * yyvsp[0].lval; ;
     break;}
 case 9:
-#line 178 "cexp.y"
+#line 179 "cexp.y"
 { yyval.lval = yyvsp[-2].lval / yyvsp[0].lval; ;
     break;}
 case 10:
-#line 180 "cexp.y"
+#line 181 "cexp.y"
 { yyval.lval = yyvsp[-2].lval % yyvsp[0].lval; ;
     break;}
 case 11:
-#line 182 "cexp.y"
+#line 183 "cexp.y"
 { yyval.lval = yyvsp[-2].lval + yyvsp[0].lval; ;
     break;}
 case 12:
-#line 184 "cexp.y"
+#line 185 "cexp.y"
 { yyval.lval = yyvsp[-2].lval - yyvsp[0].lval; ;
     break;}
 case 13:
-#line 186 "cexp.y"
+#line 187 "cexp.y"
 { yyval.lval = yyvsp[-2].lval << yyvsp[0].lval; ;
     break;}
 case 14:
-#line 188 "cexp.y"
+#line 189 "cexp.y"
 { yyval.lval = yyvsp[-2].lval >> yyvsp[0].lval; ;
     break;}
 case 15:
-#line 190 "cexp.y"
+#line 191 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval == yyvsp[0].lval); ;
     break;}
 case 16:
-#line 192 "cexp.y"
+#line 193 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval != yyvsp[0].lval); ;
     break;}
 case 17:
-#line 194 "cexp.y"
+#line 195 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval <= yyvsp[0].lval); ;
     break;}
 case 18:
-#line 196 "cexp.y"
+#line 197 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval >= yyvsp[0].lval); ;
     break;}
 case 19:
-#line 198 "cexp.y"
+#line 199 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval < yyvsp[0].lval); ;
     break;}
 case 20:
-#line 200 "cexp.y"
+#line 201 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval > yyvsp[0].lval); ;
     break;}
 case 21:
-#line 202 "cexp.y"
+#line 203 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval & yyvsp[0].lval); ;
     break;}
 case 22:
-#line 204 "cexp.y"
+#line 205 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval ^ yyvsp[0].lval); ;
     break;}
 case 23:
-#line 206 "cexp.y"
+#line 207 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval | yyvsp[0].lval); ;
     break;}
 case 24:
-#line 208 "cexp.y"
+#line 209 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval && yyvsp[0].lval); ;
     break;}
 case 25:
-#line 210 "cexp.y"
+#line 211 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval || yyvsp[0].lval); ;
     break;}
 case 26:
-#line 212 "cexp.y"
+#line 213 "cexp.y"
 { yyval.lval = yyvsp[-4].lval ? yyvsp[-2].lval : yyvsp[0].lval; ;
     break;}
 case 27:
-#line 214 "cexp.y"
+#line 215 "cexp.y"
 { yyval.lval = yylval.lval; ;
     break;}
 case 28:
-#line 216 "cexp.y"
+#line 217 "cexp.y"
 { yyval.lval = yylval.lval; ;
     break;}
 case 29:
-#line 218 "cexp.y"
+#line 219 "cexp.y"
 { yyval.lval = 0; ;
     break;}
 }
@@ -616,9 +726,12 @@ case 29:
 #line 303 "bison.simple"
 
   yyvsp -= yylen;
-  yylsp -= yylen;
   yyssp -= yylen;
+#ifdef YYLSP_USED
+  yylsp -= yylen;
+#endif
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
@@ -627,9 +740,11 @@ case 29:
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
     }
+#endif
 
   *++yyvsp = yyval;
 
+#ifdef YYLSP_USED
   yylsp++;
   if (yylen == 0)
     {
@@ -644,6 +759,7 @@ case 29:
       yylsp->last_line = (yylsp+yylen-1)->last_line;
       yylsp->last_column = (yylsp+yylen-1)->last_column;
     }
+#endif
 
   /* Now "shift" the result of the reduction.
      Determine what state that goes to,
@@ -665,6 +781,7 @@ yyerrlab:   /* here on detecting error */
   if (! yyerrstatus)
     /* If not already recovering from an error, report this error.  */
     {
+      ++yynerr;
       yyerror("parse error");
     }
 
@@ -676,8 +793,10 @@ yyerrlab:   /* here on detecting error */
       if (yychar == YYEOF)
 	YYERROR;
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Discarding token %d (%s).\n", yychar, yytname[yychar1]);
+#endif
 
       yychar = YYEMPTY;
     }
@@ -702,9 +821,12 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
 
   if (yyssp == yyss) YYERROR;
   yyvsp--;
-  yylsp--;
   yystate = *--yyssp;
+#ifdef YYLSP_USED
+  yylsp--;
+#endif
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
@@ -713,6 +835,7 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
     }
+#endif
 
 yyerrhandle:
 
@@ -738,16 +861,20 @@ yyerrhandle:
   if (yyn == YYFINAL)
     YYACCEPT;
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Shifting error token, ");
+#endif
 
   *++yyvsp = yylval;
+#ifdef YYLSP_USED
   *++yylsp = yylloc;
+#endif
 
   yystate = yyn;
   goto yynewstate;
 }
-#line 220 "cexp.y"
+#line 221 "cexp.y"
 
 
 /* During parsing of a C expression, the pointer to the next character

@@ -6,13 +6,13 @@
 \initial {H}
 \entry {header file}{3}
 \initial {L}
-\entry {line control}{30}
+\entry {line control}{31}
 \initial {M}
 \entry {macro body uses macro}{24}
 \initial {N}
-\entry {null command}{31}
+\entry {null command}{32}
 \initial {O}
-\entry {options}{32}
+\entry {options}{33}
 \entry {output format}{32}
 \initial {P}
 \entry {predefined macros}{10}
@@ -20,10 +20,10 @@
 \initial {R}
 \entry {redefining macros}{17}
 \initial {S}
-\entry {self-reference}{21}
+\entry {self-reference}{22}
 \entry {semicolons (after macro calls)}{19}
-\entry {side effects (in macro arguments)}{20}
+\entry {side effects (in macro arguments)}{21}
 \entry {stringification}{13}
 \initial {U}
 \entry {undefining macros}{16}
-\entry {unsafe macros}{20}
+\entry {unsafe macros}{21}

@@ -417,43 +417,43 @@
 % Font-change commands.
 
 %% Try out Computer Modern fonts at a little bigger than \magstephalf
-\font\tenrm=amr10 scaled \magstephalf
-\font\tentt=amtt10 scaled \magstephalf
-\font\tenbf=amb10 scaled \magstephalf
-\font\tenit=amti10 scaled \magstephalf
-\font\tensl=amsl10 scaled \magstephalf
-\font\tensf=amss10 scaled \magstephalf
+\font\tenrm=cmr10 scaled \magstephalf
+\font\tentt=cmtt10 scaled \magstephalf
+\font\tenbf=cmb10 scaled \magstephalf
+\font\tenit=cmti10 scaled \magstephalf
+\font\tensl=cmsl10 scaled \magstephalf
+\font\tensf=cmss10 scaled \magstephalf
 \def\li{\sf}
-\font\tensc=amcsc10 scaled \magstephalf
+\font\tensc=cmcsc10 scaled \magstephalf
 
 % Font for title
-\font\titlerm = ambx10 scaled \magstep5
+\font\titlerm = cmbx10 scaled \magstep5
 
 % Fonts for indices
-\font\indit=amti9 \font\indrm=amr9
+\font\indit=cmti9 \font\indrm=cmr9
 \def\indbf{\indrm} \def\indsl{\indit}
 \def\indexfonts{\let\it=\indit \let\sl=\indsl \let\bf=\indbf \let\rm=\indrm}
 
 % Fonts for headings
-\font\chaprm=ambx10 scaled \magstep3
-\font\chapit=amti10 scaled \magstep3
-\font\chapsl=amsl10 scaled \magstep3
-\font\chaptt=amtt10 scaled \magstep3
-\font\chapsf=amss10 scaled \magstep3
+\font\chaprm=cmbx10 scaled \magstep3
+\font\chapit=cmti10 scaled \magstep3
+\font\chapsl=cmsl10 scaled \magstep3
+\font\chaptt=cmtt10 scaled \magstep3
+\font\chapsf=cmss10 scaled \magstep3
 \let\chapbf=\chaprm
 
-\font\secrm=ambx10 scaled \magstep2
-\font\secit=amti10 scaled \magstep2
-\font\secsl=amsl10 scaled \magstep2
-\font\sectt=amtt10 scaled \magstep2
-\font\secsf=amss10 scaled \magstep2
+\font\secrm=cmbx10 scaled \magstep2
+\font\secit=cmti10 scaled \magstep2
+\font\secsl=cmsl10 scaled \magstep2
+\font\sectt=cmtt10 scaled \magstep2
+\font\secsf=cmss10 scaled \magstep2
 \let\secbf=\secrm
 
-\font\ssecrm=ambx10 scaled \magstep1
-\font\ssecit=amti10 scaled \magstep1
-\font\ssecsl=amsl10 scaled \magstep1
-\font\ssectt=amtt10 scaled \magstep1
-\font\ssecsf=amss10 scaled \magstep1
+\font\ssecrm=cmbx10 scaled \magstep1
+\font\ssecit=cmti10 scaled \magstep1
+\font\ssecsl=cmsl10 scaled \magstep1
+\font\ssectt=cmtt10 scaled \magstep1
+\font\ssecsf=cmss10 scaled \magstep1
 \let\ssecbf=\ssecrm
 
 \def\textfonts{\let\rm=\tenrm\let\it=\tenit\let\sl=\tensl\let\bf=\tenbf%
@@ -1464,7 +1464,7 @@ July\or August\or September\or October\or November\or December\fi
 \def\pxref #1{see \xrefX [#1,,,,,,,]}
 \def\xref #1{See \xrefX [#1,,,,,,,]}
 \def\xrefX [#1,#2,#3,#4,#5,#6]{%
-\setbox1=\hbox{\losespace#5{}}%
+\setbox1=\hbox{\i{\losespace#5{}}}%
 \setbox0=\hbox{\losespace#3{}}%
 \ifdim \wd0 =0pt \setbox0=\hbox{\losespace#1{}}\fi%
 \ifdim \wd1 >0pt%
@@ -1641,7 +1641,7 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 
 \global\pagewidth=\hsize
 \global\pageheight=\vsize
-\global\font\ninett=amtt9
+\global\font\ninett=cmtt9
 
 \global\let\smalllisp=\smalllispx
 \global\let\smallexample=\smalllispx
@@ -1693,7 +1693,7 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \escapechar=`\@
 
 %% These look ok in all fonts, so just make them not special.  The @rm below
-%% makes sure that the current font starts out as the newly loaded amr10
+%% makes sure that the current font starts out as the newly loaded cmr10
 \catcode`\$=\other \catcode`\%=\other \catcode`\&=\other \catcode`\#=\other
 
 \catcode 17=0   @c Define control-q

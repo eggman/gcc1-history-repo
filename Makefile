@@ -88,8 +88,8 @@ all: gnulib gcc cc1 cpp
 
 compilations: ${OBJS}
 
-gcc: gcc.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o gccnew gcc.o $(LIBS)
+gcc: gcc.o version.o $(OBSTACK1)
+	$(CC) $(CFLAGS) -o gccnew gcc.o version.o $(LIBS)
 # Go via `gccnew' to avoid `file busy' if $(CC) is `gcc'.
 	mv gccnew gcc
 

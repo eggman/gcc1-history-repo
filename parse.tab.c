@@ -41,7 +41,7 @@
 #define	HYPERUNARY	295
 #define	POINTSAT	296
 
-#line 43 "parse.y"
+#line 44 "parse.y"
 
 #include "config.h"
 #include "tree.h"
@@ -54,9 +54,9 @@
 /* Cause the `yydebug' variable to be defined.  */
 #define YYDEBUG
 
-#line 58 "parse.y"
+#line 59 "parse.y"
 typedef union {long itype; tree ttype; enum tree_code code; char *cptr; } YYSTYPE;
-#line 142 "parse.y"
+#line 143 "parse.y"
 
 /* the declaration found for the last IDENTIFIER token read in.
    yylex must look this up to detect typedefs, which get token type TYPENAME,
@@ -143,34 +143,34 @@ static const char yytranslate[] = {     0,
 };
 
 static const short yyrline[] = {     0,
-   163,   164,   171,   173,   173,   174,   176,   178,   179,   186,
-   192,   194,   196,   198,   200,   201,   202,   205,   211,   213,
-   214,   216,   221,   223,   224,   226,   231,   233,   234,   238,
-   240,   243,   245,   247,   249,   251,   253,   255,   259,   263,
-   266,   269,   272,   276,   278,   280,   282,   285,   297,   302,
-   304,   309,   311,   313,   315,   317,   319,   321,   323,   325,
-   327,   329,   331,   333,   335,   337,   339,   341,   343,   347,
-   369,   370,   372,   374,   376,   383,   388,   390,   392,   394,
-   396,   398,   403,   405,   409,   411,   414,   416,   417,   418,
-   423,   428,   431,   433,   435,   443,   446,   450,   452,   454,
-   462,   465,   467,   469,   478,   481,   485,   487,   495,   496,
-   497,   498,   502,   510,   511,   512,   515,   517,   520,   522,
-   525,   528,   536,   541,   542,   547,   552,   553,   558,   560,
-   562,   564,   570,   573,   580,   582,   587,   590,   595,   597,
-   599,   601,   609,   615,   617,   619,   621,   627,   633,   635,
-   637,   639,   641,   644,   649,   653,   656,   658,   660,   662,
-   665,   667,   670,   673,   676,   679,   683,   685,   688,   690,
-   692,   706,   710,   713,   717,   720,   721,   725,   728,   730,
-   739,   741,   746,   749,   753,   756,   760,   763,   766,   769,
-   773,   776,   780,   784,   786,   788,   790,   792,   794,   796,
-   798,   806,   808,   809,   812,   814,   817,   820,   827,   828,
-   832,   836,   842,   847,   849,   851,   855,   858,   859,   861,
-   864,   867,   868,   871,   873,   878,   883,   887,   892,   900,
-   907,   909,   935,   935,   946,   946,   950,   954,   957,   960,
-   967,   975,   982,   987,   992,   992,   995,   997,  1000,  1003,
-  1008,  1009,  1013,  1014,  1023,  1026,  1032,  1035,  1038,  1040,
-  1041,  1045,  1047,  1053,  1055,  1057,  1061,  1064,  1070,  1073,
-  1075,  1077,  1079,  1084,  1087
+   164,   165,   172,   174,   174,   175,   177,   179,   180,   187,
+   193,   195,   197,   199,   201,   202,   203,   206,   212,   214,
+   215,   217,   222,   224,   225,   227,   232,   234,   235,   239,
+   241,   244,   246,   248,   250,   252,   254,   256,   260,   264,
+   267,   270,   273,   277,   279,   281,   283,   286,   298,   303,
+   305,   310,   312,   314,   316,   318,   320,   322,   324,   326,
+   328,   330,   332,   334,   336,   338,   340,   342,   344,   348,
+   370,   371,   373,   375,   377,   384,   389,   391,   393,   395,
+   397,   399,   404,   406,   410,   412,   415,   417,   418,   419,
+   424,   429,   432,   434,   436,   444,   447,   451,   453,   455,
+   463,   466,   468,   470,   479,   482,   486,   488,   496,   497,
+   498,   499,   503,   511,   512,   513,   516,   518,   521,   523,
+   526,   529,   537,   542,   543,   548,   553,   554,   559,   561,
+   563,   565,   571,   574,   581,   583,   588,   591,   596,   598,
+   600,   602,   610,   616,   618,   620,   622,   628,   634,   636,
+   638,   640,   642,   645,   650,   654,   657,   659,   661,   663,
+   666,   668,   671,   674,   677,   680,   684,   686,   689,   691,
+   693,   707,   711,   714,   718,   721,   722,   726,   729,   731,
+   740,   742,   747,   750,   754,   757,   761,   764,   767,   770,
+   774,   777,   781,   785,   787,   789,   791,   793,   795,   797,
+   799,   807,   809,   810,   813,   815,   818,   821,   828,   829,
+   833,   837,   843,   848,   850,   852,   856,   859,   860,   862,
+   865,   869,   870,   873,   875,   880,   885,   889,   895,   901,
+   908,   910,   936,   936,   947,   947,   951,   955,   958,   961,
+   967,   974,   980,   985,   990,   990,   993,   996,  1000,  1003,
+  1008,  1009,  1013,  1014,  1020,  1023,  1028,  1031,  1034,  1036,
+  1038,  1042,  1044,  1050,  1052,  1054,  1058,  1061,  1067,  1070,
+  1072,  1074,  1076,  1081,  1084
 };
 
 static const char * const yytname[] = {     0,
@@ -742,32 +742,40 @@ the terms of Paragraph 1 above, provided that you also do the following:
     that in whole or in part contains or is a derivative of this
     program or any part thereof, to be licensed at no charge to all
     third parties on terms identical to those contained in this
-    License Agreement (except that you may choose to grant more
-    extensive warranty protection to third parties, at your option).
+    License Agreement (except that you may choose to grant more extensive
+    warranty protection to some or all third parties, at your option).
 
     c) You may charge a distribution fee for the physical act of
     transferring a copy, and you may at your option offer warranty
     protection in exchange for a fee.
 
-  3. You may copy and distribute this program or any portion of it in
-compiled, executable or object code form under the terms of Paragraphs
-1 and 2 above provided that you do the following:
+Mere aggregation of another unrelated program with this program (or its
+derivative) on a volume of a storage or distribution medium does not bring
+the other program under the scope of these terms.
 
-    a) cause each such copy to be accompanied by the
-    corresponding machine-readable source code, which must
-    be distributed under the terms of Paragraphs 1 and 2 above; or,
+  3. You may copy and distribute this program (or a portion or derivative
+of it, under Paragraph 2) in object code or executable form under the terms
+of Paragraphs 1 and 2 above provided that you also do one of the following:
 
-    b) cause each such copy to be accompanied by a
-    written offer, with no time limit, to give any third party
-    free (except for a nominal shipping charge) a machine readable
-    copy of the corresponding source code, to be distributed
-    under the terms of Paragraphs 1 and 2 above; or,
+    a) accompany it with the complete corresponding machine-readable
+    source code, which must be distributed under the terms of
+    Paragraphs 1 and 2 above; or,
 
-    c) in the case of a recipient of this program in compiled, executable
-    or object code form (without the corresponding source code) you
-    shall cause copies you distribute to be accompanied by a copy
-    of the written offer of source code which you received along
-    with the copy you received.
+    b) accompany it with a written offer, valid for at least three
+    years, to give any third party free (except for a nominal
+    shipping charge) a complete machine-readable copy of the
+    corresponding source code, to be distributed under the terms of
+    Paragraphs 1 and 2 above; or,
+
+    c) accompany it with the information you received as to where the
+    corresponding source code may be obtained.  (This alternative is
+    allowed only for noncommercial distribution and only if you
+    received the program in object code or executable form alone.)
+
+For an executable file, complete source code means all the source code for
+all modules it contains; but, as a special exception, it need not include
+source code for modules which are standard libraries that accompany the
+operating system on which the executable file runs.
 
   4. You may not copy, sublicense, distribute or transfer this program
 except as expressly provided under this License Agreement.  Any attempt
@@ -826,7 +834,11 @@ YYSTYPE	yylval;			/*  the semantic value of the		*/
 YYLTYPE yylloc;			/*  location data for the lookahead	*/
 				/*  symbol				*/
 
+int yynerr;			/*  number of parse errors so far       */
+
+#ifdef YYDEBUG
 int yydebug = 0;		/*  nonzero means print parse trace	*/
+#endif
 
 #endif  /* YYIMPURE */
 
@@ -845,7 +857,7 @@ int yydebug = 0;		/*  nonzero means print parse trace	*/
 #endif
 
 
-#line 87 "bison.simple"
+#line 165 "bison.simple"
 int
 yyparse()
 {
@@ -868,13 +880,13 @@ yyparse()
   int yymaxdepth = YYMAXDEPTH;
 
 #ifndef YYPURE
-
   int yychar;
   YYSTYPE yylval;
   YYLTYPE yylloc;
+#endif
 
+#ifdef YYDEBUG
   extern int yydebug;
-
 #endif
 
 
@@ -884,11 +896,14 @@ yyparse()
 
   int yylen;
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Starting parse\n");
+#endif
 
   yystate = 0;
   yyerrstatus = 0;
+  yynerr = 0;
   yychar = YYEMPTY;		/* Cause a token to be read.  */
 
   /* Initialize stack pointers.
@@ -936,25 +951,33 @@ yynewstate:
 	yymaxdepth = YYMAXLIMIT;
       yyss = (short *) alloca (yymaxdepth * sizeof (*yyssp));
       bcopy ((char *)yyss1, (char *)yyss, size * sizeof (*yyssp));
-      yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
-      bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
       yyvs = (YYSTYPE *) alloca (yymaxdepth * sizeof (*yyvsp));
       bcopy ((char *)yyvs1, (char *)yyvs, size * sizeof (*yyvsp));
+#ifdef YYLSP_USED
+      yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
+      bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
+#endif
 #endif /* no yyoverflow */
 
       yyssp = yyss + size - 1;
-      yylsp = yyls + size - 1;
       yyvsp = yyvs + size - 1;
+#ifdef YYLSP_USED
+      yylsp = yyls + size - 1;
+#endif
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Stack size increased to %d\n", yymaxdepth);
+#endif
 
       if (yyssp >= yyss + yymaxdepth - 1)
 	YYERROR;
     }
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Entering state %d\n", yystate);
+#endif
 
 /* Do appropriate processing given the current state.  */
 /* Read a lookahead token if we need one and don't already have one.  */
@@ -973,6 +996,10 @@ yyresume:
 
   if (yychar == YYEMPTY)
     {
+#ifdef YYDEBUG
+      if (yydebug)
+	fprintf(stderr, "Reading a token: ");
+#endif
       yychar = YYLEX;
     }
 
@@ -983,15 +1010,19 @@ yyresume:
       yychar1 = 0;
       yychar = YYEOF;		/* Don't call YYLEX any more */
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Now at end of input.\n");
+#endif
     }
   else
     {
       yychar1 = YYTRANSLATE(yychar);
 
+#ifdef YYDEBUG
       if (yydebug)
-	fprintf(stderr, "Parsing next token; it is %d (%s)\n", yychar, yytname[yychar1]);
+	fprintf(stderr, "Next token is %d (%s)\n", yychar, yytname[yychar1]);
+#endif
     }
 
   yyn += yychar1;
@@ -1022,15 +1053,19 @@ yyresume:
 
   /* Shift the lookahead token.  */
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Shifting token %d (%s), ", yychar, yytname[yychar1]);
+#endif
 
   /* Discard the token being shifted unless it is eof.  */
   if (yychar != YYEOF)
     yychar = YYEMPTY;
 
   *++yyvsp = yylval;
+#ifdef YYLSP_USED
   *++yylsp = yylloc;
+#endif
 
   /* count tokens shifted since error; after three, turn off error status.  */
   if (yyerrstatus) yyerrstatus--;
@@ -1050,6 +1085,7 @@ yyreduce:
   yylen = yyr2[yyn];
   yyval = yyvsp[1-yylen]; /* implement default value of the action */
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       if (yylen == 1)
@@ -1059,161 +1095,162 @@ yyreduce:
 	fprintf (stderr, "Reducing %d values via line %d, ",
 		 yylen, yyrline[yyn]);
     }
+#endif
 
 
   switch (yyn) {
 
 case 3:
-#line 172 "parse.y"
-{yyval.ttype = NULL_TREE; ;
-    break;}
-case 5:
 #line 173 "parse.y"
 {yyval.ttype = NULL_TREE; ;
     break;}
+case 5:
+#line 174 "parse.y"
+{yyval.ttype = NULL_TREE; ;
+    break;}
 case 9:
-#line 180 "parse.y"
+#line 181 "parse.y"
 { if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
 		  if (TREE_CHAIN (yyvsp[-2].ttype)) yyvsp[-2].ttype = combine_strings (yyvsp[-2].ttype);
 		  assemble_asm (yyvsp[-2].ttype); ;
     break;}
 case 10:
-#line 188 "parse.y"
+#line 189 "parse.y"
 { if (pedantic)
 		    error ("ANSI C forbids data definition lacking type or storage class");
 		  else
 		    warning ("data definition lacks type or storage class"); ;
     break;}
 case 11:
-#line 193 "parse.y"
+#line 194 "parse.y"
 {;
     break;}
 case 12:
-#line 195 "parse.y"
+#line 196 "parse.y"
 {;
     break;}
 case 13:
-#line 197 "parse.y"
+#line 198 "parse.y"
 { error ("empty declaration"); ;
     break;}
 case 14:
-#line 199 "parse.y"
+#line 200 "parse.y"
 { shadow_tag (yyvsp[-1].ttype); ;
     break;}
 case 18:
-#line 207 "parse.y"
+#line 208 "parse.y"
 { if (! start_function (yyvsp[-2].ttype, yyvsp[0].ttype))
 		    YYFAIL;
 		  reinit_parse_for_function (); ;
     break;}
 case 19:
-#line 211 "parse.y"
+#line 212 "parse.y"
 { store_parm_decls (); ;
     break;}
 case 20:
-#line 213 "parse.y"
-{ finish_function (input_filename, yylsp[0].first_line); ;
+#line 214 "parse.y"
+{ finish_function (); ;
     break;}
 case 21:
-#line 215 "parse.y"
+#line 216 "parse.y"
 { ;
     break;}
 case 22:
-#line 217 "parse.y"
+#line 218 "parse.y"
 { if (! start_function (yyvsp[-2].ttype, yyvsp[0].ttype))
 		    YYFAIL;
 		  reinit_parse_for_function (); ;
     break;}
 case 23:
-#line 221 "parse.y"
+#line 222 "parse.y"
 { store_parm_decls (); ;
     break;}
 case 24:
-#line 223 "parse.y"
-{ finish_function (input_filename, yylsp[0].first_line); ;
+#line 224 "parse.y"
+{ finish_function (); ;
     break;}
 case 25:
-#line 225 "parse.y"
+#line 226 "parse.y"
 { ;
     break;}
 case 26:
-#line 227 "parse.y"
+#line 228 "parse.y"
 { if (! start_function (0, yyvsp[0].ttype))
 		    YYFAIL;
 		  reinit_parse_for_function (); ;
     break;}
 case 27:
-#line 231 "parse.y"
+#line 232 "parse.y"
 { store_parm_decls (); ;
     break;}
 case 28:
-#line 233 "parse.y"
-{ finish_function (input_filename, yylsp[0].first_line); ;
+#line 234 "parse.y"
+{ finish_function (); ;
     break;}
 case 29:
-#line 235 "parse.y"
+#line 236 "parse.y"
 { ;
     break;}
 case 32:
-#line 244 "parse.y"
+#line 245 "parse.y"
 { yyval.code = ADDR_EXPR; ;
     break;}
 case 33:
-#line 246 "parse.y"
+#line 247 "parse.y"
 { yyval.code = NEGATE_EXPR; ;
     break;}
 case 34:
-#line 248 "parse.y"
+#line 249 "parse.y"
 { yyval.code = CONVERT_EXPR; ;
     break;}
 case 35:
-#line 250 "parse.y"
+#line 251 "parse.y"
 { yyval.code = PREINCREMENT_EXPR; ;
     break;}
 case 36:
-#line 252 "parse.y"
+#line 253 "parse.y"
 { yyval.code = PREDECREMENT_EXPR; ;
     break;}
 case 37:
-#line 254 "parse.y"
+#line 255 "parse.y"
 { yyval.code = BIT_NOT_EXPR; ;
     break;}
 case 38:
-#line 256 "parse.y"
+#line 257 "parse.y"
 { yyval.code = TRUTH_NOT_EXPR; ;
     break;}
 case 39:
-#line 260 "parse.y"
+#line 261 "parse.y"
 { yyval.ttype = build_compound_expr (yyvsp[0].ttype); ;
     break;}
 case 40:
-#line 265 "parse.y"
+#line 266 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 42:
-#line 271 "parse.y"
+#line 272 "parse.y"
 { yyval.ttype = build_tree_list (NULL_TREE, yyvsp[0].ttype); ;
     break;}
 case 43:
-#line 273 "parse.y"
+#line 274 "parse.y"
 { chainon (yyvsp[-2].ttype, build_tree_list (NULL_TREE, yyvsp[0].ttype)); ;
     break;}
 case 45:
-#line 279 "parse.y"
+#line 280 "parse.y"
 { yyval.ttype = build_indirect_ref (yyvsp[0].ttype, "unary *"); ;
     break;}
 case 46:
-#line 281 "parse.y"
+#line 282 "parse.y"
 { yyval.ttype = build_unary_op (yyvsp[-1].code, yyvsp[0].ttype, 0); ;
     break;}
 case 47:
-#line 283 "parse.y"
+#line 284 "parse.y"
 { tree type = groktypename (yyvsp[-2].ttype);
 		  yyval.ttype = build_c_cast (type, yyvsp[0].ttype); ;
     break;}
 case 48:
-#line 286 "parse.y"
+#line 287 "parse.y"
 { tree type = groktypename (yyvsp[-5].ttype);
 		  if (pedantic)
 		    warning ("ANSI C forbids constructor-expressions");
@@ -1227,97 +1264,97 @@ case 48:
 		;
     break;}
 case 49:
-#line 298 "parse.y"
+#line 299 "parse.y"
 { if (TREE_CODE (yyvsp[0].ttype) == COMPONENT_REF
 		      && TREE_PACKED (TREE_OPERAND (yyvsp[0].ttype, 1)))
 		    error ("sizeof applied to a bit-field");
 		  yyval.ttype = c_sizeof (TREE_TYPE (yyvsp[0].ttype)); ;
     break;}
 case 50:
-#line 303 "parse.y"
+#line 304 "parse.y"
 { yyval.ttype = c_sizeof (groktypename (yyvsp[-1].ttype)); ;
     break;}
 case 51:
-#line 305 "parse.y"
+#line 306 "parse.y"
 { if (TREE_CODE (yyvsp[0].ttype) == COMPONENT_REF
 		      && TREE_PACKED (TREE_OPERAND (yyvsp[0].ttype, 1)))
 		    error ("__alignof applied to a bit-field");
 		  yyval.ttype = c_alignof (TREE_TYPE (yyvsp[0].ttype)); ;
     break;}
 case 52:
-#line 310 "parse.y"
+#line 311 "parse.y"
 { yyval.ttype = c_alignof (groktypename (yyvsp[-1].ttype)); ;
     break;}
 case 53:
-#line 312 "parse.y"
+#line 313 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 54:
-#line 314 "parse.y"
+#line 315 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 55:
-#line 316 "parse.y"
+#line 317 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 56:
-#line 318 "parse.y"
+#line 319 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 57:
-#line 320 "parse.y"
+#line 321 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 58:
-#line 322 "parse.y"
+#line 323 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 59:
-#line 324 "parse.y"
+#line 325 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 60:
-#line 326 "parse.y"
+#line 327 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 61:
-#line 328 "parse.y"
+#line 329 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 62:
-#line 330 "parse.y"
+#line 331 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 63:
-#line 332 "parse.y"
+#line 333 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 64:
-#line 334 "parse.y"
+#line 335 "parse.y"
 { yyval.ttype = build_binary_op (yyvsp[-1].code, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 65:
-#line 336 "parse.y"
+#line 337 "parse.y"
 { yyval.ttype = build_binary_op (TRUTH_ANDIF_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 66:
-#line 338 "parse.y"
+#line 339 "parse.y"
 { yyval.ttype = build_binary_op (TRUTH_ORIF_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 67:
-#line 340 "parse.y"
+#line 341 "parse.y"
 { yyval.ttype = build_conditional_expr (yyvsp[-4].ttype, yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 68:
-#line 342 "parse.y"
+#line 343 "parse.y"
 { yyval.ttype = build_modify_expr (yyvsp[-2].ttype, NOP_EXPR, yyvsp[0].ttype); ;
     break;}
 case 69:
-#line 344 "parse.y"
+#line 345 "parse.y"
 { yyval.ttype = build_modify_expr (yyvsp[-2].ttype, yyvsp[-1].code, yyvsp[0].ttype); ;
     break;}
 case 70:
-#line 349 "parse.y"
+#line 350 "parse.y"
 { yyval.ttype = lastiddecl;
 		  if (!yyval.ttype)
 		    {
@@ -1340,19 +1377,19 @@ case 70:
 		;
     break;}
 case 72:
-#line 371 "parse.y"
+#line 372 "parse.y"
 { yyval.ttype = combine_strings (yyvsp[0].ttype); ;
     break;}
 case 73:
-#line 373 "parse.y"
+#line 374 "parse.y"
 { yyval.ttype = yyvsp[-1].ttype; ;
     break;}
 case 74:
-#line 375 "parse.y"
+#line 376 "parse.y"
 { yyval.ttype = error_mark_node; ;
     break;}
 case 75:
-#line 377 "parse.y"
+#line 378 "parse.y"
 { if (current_function_decl == 0)
 		    {
 		      error ("braced-group within expression allowed only inside a function");
@@ -1361,131 +1398,131 @@ case 75:
 		  expand_start_stmt_expr (); ;
     break;}
 case 76:
-#line 384 "parse.y"
+#line 385 "parse.y"
 { if (pedantic)
 		    warning ("ANSI C forbids braced-groups within expressions");
 		  yyval.ttype = get_last_expr ();
 		  expand_end_stmt_expr (); ;
     break;}
 case 77:
-#line 389 "parse.y"
+#line 390 "parse.y"
 { yyval.ttype = build_function_call (yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 78:
-#line 391 "parse.y"
+#line 392 "parse.y"
 { yyval.ttype = build_array_ref (yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 79:
-#line 393 "parse.y"
+#line 394 "parse.y"
 { yyval.ttype = build_component_ref (yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 80:
-#line 395 "parse.y"
+#line 396 "parse.y"
 { yyval.ttype = build_component_ref (build_indirect_ref (yyvsp[-2].ttype, "->"), yyvsp[0].ttype); ;
     break;}
 case 81:
-#line 397 "parse.y"
+#line 398 "parse.y"
 { yyval.ttype = build_unary_op (POSTINCREMENT_EXPR, yyvsp[-1].ttype, 0); ;
     break;}
 case 82:
-#line 399 "parse.y"
+#line 400 "parse.y"
 { yyval.ttype = build_unary_op (POSTDECREMENT_EXPR, yyvsp[-1].ttype, 0); ;
     break;}
 case 84:
-#line 406 "parse.y"
+#line 407 "parse.y"
 { yyval.ttype = chainon (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 91:
-#line 424 "parse.y"
+#line 425 "parse.y"
 { current_declspecs = yyvsp[0].ttype;
 		  yyval.itype = suspend_momentary (); ;
     break;}
 case 92:
-#line 430 "parse.y"
+#line 431 "parse.y"
 { resume_momentary (yyvsp[-2].itype); ;
     break;}
 case 93:
-#line 432 "parse.y"
+#line 433 "parse.y"
 { resume_momentary (yyvsp[-2].itype); ;
     break;}
 case 94:
-#line 434 "parse.y"
+#line 435 "parse.y"
 { shadow_tag (yyvsp[-1].ttype); ;
     break;}
 case 95:
-#line 436 "parse.y"
+#line 437 "parse.y"
 { warning ("empty declaration"); ;
     break;}
 case 96:
-#line 445 "parse.y"
+#line 446 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 97:
-#line 447 "parse.y"
+#line 448 "parse.y"
 { yyval.ttype = chainon (yyvsp[0].ttype, tree_cons (NULL_TREE, yyvsp[-1].ttype, yyvsp[-2].ttype)); ;
     break;}
 case 98:
-#line 451 "parse.y"
+#line 452 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 99:
-#line 453 "parse.y"
+#line 454 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 100:
-#line 455 "parse.y"
+#line 456 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 101:
-#line 464 "parse.y"
+#line 465 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 102:
-#line 466 "parse.y"
+#line 467 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 103:
-#line 468 "parse.y"
+#line 469 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 104:
-#line 470 "parse.y"
+#line 471 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 105:
-#line 480 "parse.y"
+#line 481 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 106:
-#line 482 "parse.y"
+#line 483 "parse.y"
 { yyval.ttype = chainon (yyvsp[0].ttype, tree_cons (NULL_TREE, yyvsp[-1].ttype, yyvsp[-2].ttype)); ;
     break;}
 case 107:
-#line 486 "parse.y"
+#line 487 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 108:
-#line 488 "parse.y"
+#line 489 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 112:
-#line 499 "parse.y"
+#line 500 "parse.y"
 { yyval.ttype = TREE_TYPE (yyvsp[-1].ttype);
 		  if (pedantic)
 		    warning ("ANSI C forbids `typeof'") ;
     break;}
 case 113:
-#line 503 "parse.y"
+#line 504 "parse.y"
 { yyval.ttype = groktypename (yyvsp[-1].ttype);
 		  if (pedantic)
 		    warning ("ANSI C forbids `typeof'") ;
     break;}
 case 121:
-#line 527 "parse.y"
+#line 528 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 122:
-#line 529 "parse.y"
+#line 530 "parse.y"
 { if (TREE_CHAIN (yyvsp[-1].ttype)) yyvsp[-1].ttype = combine_strings (yyvsp[-1].ttype);
 		  yyval.ttype = yyvsp[-1].ttype;
 		  if (pedantic)
@@ -1493,411 +1530,411 @@ case 122:
 		;
     break;}
 case 123:
-#line 538 "parse.y"
+#line 539 "parse.y"
 { yyval.ttype = start_decl (yyvsp[-2].ttype, current_declspecs, 1); ;
     break;}
 case 124:
-#line 541 "parse.y"
+#line 542 "parse.y"
 { finish_decl (yyvsp[-1].ttype, yyvsp[0].ttype, yyvsp[-3].ttype); ;
     break;}
 case 125:
-#line 543 "parse.y"
+#line 544 "parse.y"
 { tree d = start_decl (yyvsp[-1].ttype, current_declspecs, 0);
 		  finish_decl (d, NULL_TREE, yyvsp[0].ttype); ;
     break;}
 case 126:
-#line 549 "parse.y"
+#line 550 "parse.y"
 { yyval.ttype = start_decl (yyvsp[-2].ttype, current_declspecs, 1); ;
     break;}
 case 127:
-#line 552 "parse.y"
+#line 553 "parse.y"
 { finish_decl (yyvsp[-1].ttype, yyvsp[0].ttype, yyvsp[-3].ttype); ;
     break;}
 case 128:
-#line 554 "parse.y"
+#line 555 "parse.y"
 { tree d = start_decl (yyvsp[-1].ttype, current_declspecs, 0);
 		  finish_decl (d, NULL_TREE, yyvsp[0].ttype); ;
     break;}
 case 130:
-#line 561 "parse.y"
+#line 562 "parse.y"
 { yyval.ttype = build_nt (CONSTRUCTOR, NULL_TREE, nreverse (yyvsp[-1].ttype)); ;
     break;}
 case 131:
-#line 563 "parse.y"
+#line 564 "parse.y"
 { yyval.ttype = build_nt (CONSTRUCTOR, NULL_TREE, nreverse (yyvsp[-2].ttype)); ;
     break;}
 case 132:
-#line 565 "parse.y"
+#line 566 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 133:
-#line 572 "parse.y"
+#line 573 "parse.y"
 { yyval.ttype = build_tree_list (NULL_TREE, yyvsp[0].ttype); ;
     break;}
 case 134:
-#line 574 "parse.y"
+#line 575 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-2].ttype); ;
     break;}
 case 137:
-#line 589 "parse.y"
+#line 590 "parse.y"
 { yyval.ttype = yyvsp[-1].ttype; ;
     break;}
 case 138:
-#line 591 "parse.y"
+#line 592 "parse.y"
 { yyval.ttype = build_nt (CALL_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 139:
-#line 596 "parse.y"
+#line 597 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 140:
-#line 598 "parse.y"
+#line 599 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-2].ttype, NULL_TREE); ;
     break;}
 case 141:
-#line 600 "parse.y"
+#line 601 "parse.y"
 { yyval.ttype = make_pointer_declarator (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 143:
-#line 611 "parse.y"
+#line 612 "parse.y"
 { yyval.ttype = build_nt (CALL_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 144:
-#line 616 "parse.y"
+#line 617 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 145:
-#line 618 "parse.y"
+#line 619 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-2].ttype, NULL_TREE); ;
     break;}
 case 146:
-#line 620 "parse.y"
+#line 621 "parse.y"
 { yyval.ttype = make_pointer_declarator (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 148:
-#line 629 "parse.y"
+#line 630 "parse.y"
 { yyval.ttype = build_nt (CALL_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 149:
-#line 634 "parse.y"
+#line 635 "parse.y"
 { yyval.ttype = yyvsp[-1].ttype; ;
     break;}
 case 150:
-#line 636 "parse.y"
+#line 637 "parse.y"
 { yyval.ttype = make_pointer_declarator (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 151:
-#line 638 "parse.y"
+#line 639 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 152:
-#line 640 "parse.y"
+#line 641 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-2].ttype, NULL_TREE); ;
     break;}
 case 154:
-#line 646 "parse.y"
+#line 647 "parse.y"
 { yyval.ttype = start_struct (RECORD_TYPE, yyvsp[-1].ttype);
 		  /* Start scope of tag before parsing components.  */
 		;
     break;}
 case 155:
-#line 650 "parse.y"
+#line 651 "parse.y"
 { yyval.ttype = finish_struct (yyvsp[-2].ttype, yyvsp[-1].ttype);
 		  /* Really define the structure.  */
 		;
     break;}
 case 156:
-#line 654 "parse.y"
+#line 655 "parse.y"
 { yyval.ttype = finish_struct (start_struct (RECORD_TYPE, NULL_TREE),
 				      yyvsp[-1].ttype); ;
     break;}
 case 157:
-#line 657 "parse.y"
+#line 658 "parse.y"
 { yyval.ttype = xref_tag (RECORD_TYPE, yyvsp[0].ttype); ;
     break;}
 case 158:
-#line 659 "parse.y"
+#line 660 "parse.y"
 { yyval.ttype = start_struct (UNION_TYPE, yyvsp[-1].ttype); ;
     break;}
 case 159:
-#line 661 "parse.y"
+#line 662 "parse.y"
 { yyval.ttype = finish_struct (yyvsp[-2].ttype, yyvsp[-1].ttype); ;
     break;}
 case 160:
-#line 663 "parse.y"
+#line 664 "parse.y"
 { yyval.ttype = finish_struct (start_struct (UNION_TYPE, NULL_TREE),
 				      yyvsp[-1].ttype); ;
     break;}
 case 161:
-#line 666 "parse.y"
+#line 667 "parse.y"
 { yyval.ttype = xref_tag (UNION_TYPE, yyvsp[0].ttype); ;
     break;}
 case 162:
-#line 668 "parse.y"
+#line 669 "parse.y"
 { yyvsp[0].itype = suspend_momentary ();
 		  yyval.ttype = start_enum (yyvsp[-1].ttype); ;
     break;}
 case 163:
-#line 671 "parse.y"
+#line 672 "parse.y"
 { yyval.ttype = finish_enum (yyvsp[-3].ttype, nreverse (yyvsp[-2].ttype));
 		  resume_momentary (yyvsp[-4].itype); ;
     break;}
 case 164:
-#line 674 "parse.y"
+#line 675 "parse.y"
 { yyvsp[0].itype = suspend_momentary ();
 		  yyval.ttype = start_enum (NULL_TREE); ;
     break;}
 case 165:
-#line 677 "parse.y"
+#line 678 "parse.y"
 { yyval.ttype = finish_enum (yyvsp[-3].ttype, nreverse (yyvsp[-2].ttype));
 		  resume_momentary (yyvsp[-4].itype); ;
     break;}
 case 166:
-#line 680 "parse.y"
+#line 681 "parse.y"
 { yyval.ttype = xref_tag (ENUMERAL_TYPE, yyvsp[0].ttype); ;
     break;}
 case 169:
-#line 689 "parse.y"
+#line 690 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 170:
-#line 691 "parse.y"
+#line 692 "parse.y"
 { yyval.ttype = chainon (yyvsp[-2].ttype, yyvsp[-1].ttype); ;
     break;}
 case 171:
-#line 693 "parse.y"
+#line 694 "parse.y"
 { if (pedantic) 
 		    warning ("extra semicolon in struct or union specified"); ;
     break;}
 case 172:
-#line 708 "parse.y"
+#line 709 "parse.y"
 { yyval.ttype = yyvsp[0].ttype;
 		  resume_momentary (yyvsp[-1].itype); ;
     break;}
 case 173:
-#line 711 "parse.y"
+#line 712 "parse.y"
 { yyval.ttype = yyvsp[0].ttype;
 		  resume_momentary (yyvsp[-1].itype); ;
     break;}
 case 174:
-#line 714 "parse.y"
+#line 715 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 175:
-#line 719 "parse.y"
+#line 720 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 177:
-#line 722 "parse.y"
+#line 723 "parse.y"
 { yyval.ttype = chainon (yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 178:
-#line 727 "parse.y"
-{ yyval.ttype = grokfield (input_filename, yylsp[0].first_line, yyvsp[0].ttype, current_declspecs, NULL_TREE); ;
+#line 728 "parse.y"
+{ yyval.ttype = grokfield (input_filename, lineno, yyvsp[0].ttype, current_declspecs, NULL_TREE); ;
     break;}
 case 179:
-#line 729 "parse.y"
-{ yyval.ttype = grokfield (input_filename, yylsp[-2].first_line, yyvsp[-2].ttype, current_declspecs, yyvsp[0].ttype); ;
+#line 730 "parse.y"
+{ yyval.ttype = grokfield (input_filename, lineno, yyvsp[-2].ttype, current_declspecs, yyvsp[0].ttype); ;
     break;}
 case 180:
-#line 731 "parse.y"
-{ yyval.ttype = grokfield (input_filename, yylsp[-1].first_line, NULL_TREE, current_declspecs, yyvsp[0].ttype); ;
+#line 732 "parse.y"
+{ yyval.ttype = grokfield (input_filename, lineno, NULL_TREE, current_declspecs, yyvsp[0].ttype); ;
     break;}
 case 182:
-#line 742 "parse.y"
+#line 743 "parse.y"
 { yyval.ttype = chainon (yyvsp[0].ttype, yyvsp[-2].ttype); ;
     break;}
 case 183:
-#line 748 "parse.y"
+#line 749 "parse.y"
 { yyval.ttype = build_enumerator (yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 184:
-#line 750 "parse.y"
+#line 751 "parse.y"
 { yyval.ttype = build_enumerator (yyvsp[-2].ttype, yyvsp[0].ttype); ;
     break;}
 case 185:
-#line 755 "parse.y"
+#line 756 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 186:
-#line 757 "parse.y"
+#line 758 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 187:
-#line 762 "parse.y"
+#line 763 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 189:
-#line 768 "parse.y"
+#line 769 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 190:
-#line 770 "parse.y"
+#line 771 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 191:
-#line 775 "parse.y"
+#line 776 "parse.y"
 { yyval.ttype = NULL_TREE; ;
     break;}
 case 192:
-#line 777 "parse.y"
+#line 778 "parse.y"
 { yyval.ttype = tree_cons (NULL_TREE, yyvsp[0].ttype, yyvsp[-1].ttype); ;
     break;}
 case 193:
-#line 782 "parse.y"
+#line 783 "parse.y"
 { yyval.ttype = yyvsp[-1].ttype; ;
     break;}
 case 194:
-#line 785 "parse.y"
+#line 786 "parse.y"
 { yyval.ttype = make_pointer_declarator (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 195:
-#line 787 "parse.y"
+#line 788 "parse.y"
 { yyval.ttype = make_pointer_declarator (yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 196:
-#line 789 "parse.y"
+#line 790 "parse.y"
 { yyval.ttype = build_nt (CALL_EXPR, yyvsp[-2].ttype, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 197:
-#line 791 "parse.y"
+#line 792 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 198:
-#line 793 "parse.y"
+#line 794 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, yyvsp[-2].ttype, NULL_TREE); ;
     break;}
 case 199:
-#line 795 "parse.y"
+#line 796 "parse.y"
 { yyval.ttype = build_nt (CALL_EXPR, NULL_TREE, yyvsp[0].ttype, NULL_TREE); ;
     break;}
 case 200:
-#line 797 "parse.y"
+#line 798 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, NULL_TREE, yyvsp[-1].ttype); ;
     break;}
 case 201:
-#line 799 "parse.y"
+#line 800 "parse.y"
 { yyval.ttype = build_nt (ARRAY_REF, NULL_TREE, NULL_TREE); ;
     break;}
 case 208:
-#line 821 "parse.y"
+#line 822 "parse.y"
 { pushlevel (0);
 		  clear_last_expr ();
 		  push_momentary ();
 		  expand_start_bindings (0); ;
     break;}
 case 210:
-#line 829 "parse.y"
+#line 830 "parse.y"
 { expand_end_bindings (getdecls (), 1);
 		  poplevel (1, 1, 0);
 		  pop_momentary (); ;
     break;}
 case 211:
-#line 833 "parse.y"
+#line 834 "parse.y"
 { expand_end_bindings (getdecls (), 0);
 		  poplevel (0, 0, 0);
 		  pop_momentary (); ;
     break;}
 case 212:
-#line 837 "parse.y"
+#line 838 "parse.y"
 { expand_end_bindings (getdecls (), 0);
 		  poplevel (0, 0, 0);
 		  pop_momentary (); ;
     break;}
 case 213:
-#line 844 "parse.y"
-{ emit_note (input_filename, yylsp[-3].first_line);
+#line 845 "parse.y"
+{ emit_note (input_filename, lineno);
 		  expand_start_cond (truthvalue_conversion (yyvsp[-1].ttype), 0); ;
     break;}
 case 216:
-#line 852 "parse.y"
-{ emit_note (input_filename, yylsp[-1].first_line);
+#line 853 "parse.y"
+{ emit_note (input_filename, lineno);
 		  expand_expr_stmt (yyvsp[-1].ttype);
 		  clear_momentary (); ;
     break;}
 case 217:
-#line 856 "parse.y"
+#line 857 "parse.y"
 { expand_start_else (); ;
     break;}
 case 218:
-#line 858 "parse.y"
+#line 859 "parse.y"
 { expand_end_else (); ;
     break;}
 case 219:
-#line 860 "parse.y"
+#line 861 "parse.y"
 { expand_end_cond (); ;
     break;}
 case 220:
-#line 862 "parse.y"
-{ emit_note (input_filename, yylsp[0].first_line);
+#line 863 "parse.y"
+{ emit_note (input_filename, lineno);
 		  expand_start_loop (1); ;
     break;}
 case 221:
-#line 865 "parse.y"
-{ expand_exit_loop_if_false (truthvalue_conversion (yyvsp[-1].ttype)); ;
+#line 866 "parse.y"
+{ emit_note (input_filename, lineno);
+		  expand_exit_loop_if_false (truthvalue_conversion (yyvsp[-1].ttype)); ;
     break;}
 case 222:
-#line 867 "parse.y"
+#line 869 "parse.y"
 { expand_end_loop (); ;
     break;}
 case 223:
-#line 869 "parse.y"
-{ emit_note (input_filename, yylsp[0].first_line);
+#line 871 "parse.y"
+{ emit_note (input_filename, lineno);
 		  expand_start_loop_continue_elsewhere (1); ;
     break;}
 case 224:
-#line 872 "parse.y"
+#line 874 "parse.y"
 { expand_loop_continue_here (); ;
     break;}
 case 225:
-#line 874 "parse.y"
-{ emit_note (input_filename, yylsp[-2].first_line);
+#line 876 "parse.y"
+{ emit_note (input_filename, lineno);
 		  expand_exit_loop_if_false (truthvalue_conversion (yyvsp[-2].ttype));
 		  expand_end_loop ();
 		  clear_momentary (); ;
     break;}
 case 226:
-#line 880 "parse.y"
-{ emit_note (input_filename, yylsp[-3].first_line);
+#line 882 "parse.y"
+{ emit_note (input_filename, lineno);
 		  if (yyvsp[-1].ttype) expand_expr_stmt (yyvsp[-1].ttype);
 		  expand_start_loop_continue_elsewhere (1); ;
     break;}
 case 227:
-#line 884 "parse.y"
-{ emit_note (input_filename, yylsp[-1].first_line);
+#line 886 "parse.y"
+{ emit_note (input_filename, lineno);
 		  if (yyvsp[-1].ttype)
 		    expand_exit_loop_if_false (truthvalue_conversion (yyvsp[-1].ttype)); ;
     break;}
 case 228:
-#line 890 "parse.y"
-{ push_momentary (); ;
+#line 892 "parse.y"
+{ push_momentary ();
+		  yyvsp[0].itype = lineno; ;
     break;}
 case 229:
-#line 892 "parse.y"
-{ emit_note (input_filename, yylsp[-3].first_line);
+#line 895 "parse.y"
+{ emit_note (input_filename, yyvsp[-2].itype);
 		  expand_loop_continue_here ();
 		  if (yyvsp[-3].ttype)
-		    {
-		      expand_expr_stmt (yyvsp[-3].ttype);
-		    }
+		    expand_expr_stmt (yyvsp[-3].ttype);
 		  pop_momentary ();
 		  expand_end_loop (); ;
     break;}
 case 230:
-#line 901 "parse.y"
-{ emit_note (input_filename, yylsp[-3].first_line);
+#line 902 "parse.y"
+{ emit_note (input_filename, lineno);
 		  c_expand_start_case (yyvsp[-1].ttype);
 		  /* Don't let the tree nodes for $3 be discarded by
 		     clear_momentary during the parsing of the next stmt.  */
 		  push_momentary (); ;
     break;}
 case 231:
-#line 907 "parse.y"
+#line 908 "parse.y"
 { expand_end_case ();
 		  pop_momentary (); ;
     break;}
 case 232:
-#line 910 "parse.y"
+#line 911 "parse.y"
 { register tree value = fold (yyvsp[-1].ttype);
 		  register tree label
 		    = build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
@@ -1924,7 +1961,7 @@ case 232:
 		;
     break;}
 case 234:
-#line 936 "parse.y"
+#line 937 "parse.y"
 {
 		  register tree label
 		    = build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
@@ -1936,32 +1973,31 @@ case 234:
 		;
     break;}
 case 236:
-#line 947 "parse.y"
-{ emit_note (input_filename, yylsp[-1].first_line);
+#line 948 "parse.y"
+{ emit_note (input_filename, lineno);
 		  if ( ! expand_exit_something ())
 		    error ("break statement not within loop or switch"); ;
     break;}
 case 237:
-#line 951 "parse.y"
-{ emit_note (input_filename, yylsp[-1].first_line);
+#line 952 "parse.y"
+{ emit_note (input_filename, lineno);
 		  if (! expand_continue_loop ())
 		    error ("continue statement not within a loop"); ;
     break;}
 case 238:
-#line 955 "parse.y"
-{ emit_note (input_filename, yylsp[-1].first_line);
+#line 956 "parse.y"
+{ emit_note (input_filename, lineno);
 		  c_expand_return (NULL_TREE); ;
     break;}
 case 239:
-#line 958 "parse.y"
-{ emit_note (input_filename, yylsp[-2].first_line);
+#line 959 "parse.y"
+{ emit_note (input_filename, lineno);
 		  c_expand_return (yyvsp[-1].ttype); ;
     break;}
 case 240:
-#line 961 "parse.y"
+#line 962 "parse.y"
 { if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, yylsp[-5].first_line);
 		  if (TREE_CHAIN (yyvsp[-2].ttype)) yyvsp[-2].ttype = combine_strings (yyvsp[-2].ttype);
 		  expand_asm (yyvsp[-2].ttype); ;
     break;}
@@ -1969,32 +2005,38 @@ case 241:
 #line 968 "parse.y"
 { if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, yylsp[-7].first_line);
 		  if (TREE_CHAIN (yyvsp[-4].ttype)) yyvsp[-4].ttype = combine_strings (yyvsp[-4].ttype);
 		  c_expand_asm_operands (yyvsp[-4].ttype, yyvsp[-2].ttype, NULL_TREE,
 					 yyvsp[-6].ttype == ridpointers[(int)RID_VOLATILE]); ;
     break;}
 case 242:
-#line 976 "parse.y"
+#line 975 "parse.y"
 { if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, yylsp[-9].first_line);
 		  if (TREE_CHAIN (yyvsp[-6].ttype)) yyvsp[-6].ttype = combine_strings (yyvsp[-6].ttype);
 		  c_expand_asm_operands (yyvsp[-6].ttype, yyvsp[-4].ttype, yyvsp[-2].ttype,
 					 yyvsp[-8].ttype == ridpointers[(int)RID_VOLATILE]); ;
     break;}
 case 243:
-#line 983 "parse.y"
+#line 981 "parse.y"
 { tree decl;
-		  emit_note (input_filename, yylsp[-2].first_line);
+		  emit_note (input_filename, lineno);
 		  decl = lookup_label (yyvsp[-1].ttype);
 		  expand_goto (decl); ;
     break;}
 case 244:
-#line 988 "parse.y"
-{ tree label = define_label (input_filename, yylsp[-1].first_line, yyvsp[-1].ttype);
+#line 986 "parse.y"
+{ tree label = define_label (input_filename, lineno, yyvsp[-1].ttype);
 		  if (label)
 		    expand_label (label); ;
+    break;}
+case 247:
+#line 995 "parse.y"
+{ emit_note (input_filename, lineno); ;
+    break;}
+case 248:
+#line 997 "parse.y"
+{ emit_note (input_filename, lineno); ;
     break;}
 case 249:
 #line 1002 "parse.y"
@@ -2009,75 +2051,79 @@ case 254:
 { yyval.ttype = build_tree_list (yyvsp[-3].ttype, yyvsp[-1].ttype); ;
     break;}
 case 255:
-#line 1024 "parse.y"
+#line 1021 "parse.y"
 { pushlevel (0); ;
     break;}
 case 256:
-#line 1026 "parse.y"
-{ yyval.ttype = yyvsp[0].ttype; poplevel (0); ;
+#line 1023 "parse.y"
+{ yyval.ttype = yyvsp[0].ttype; poplevel (0, 0, 0); ;
     break;}
 case 257:
-#line 1033 "parse.y"
+#line 1029 "parse.y"
 { pushlevel (0); ;
     break;}
 case 258:
-#line 1035 "parse.y"
+#line 1031 "parse.y"
 { yyval.ttype = yyvsp[0].ttype; poplevel (0, 0, 0); ;
     break;}
+case 260:
+#line 1037 "parse.y"
+{ yyval.ttype = tree_cons (NULL_TREE, NULL_TREE, yyvsp[-1].ttype); ;
+    break;}
 case 261:
-#line 1042 "parse.y"
-{ yyval.ttype = NULL_TREE; ;
+#line 1039 "parse.y"
+{ yyval.ttype = tree_cons (NULL_TREE, NULL_TREE, NULL_TREE); ;
     break;}
 case 263:
-#line 1048 "parse.y"
-{ yyval.ttype = NULL_TREE; ;
+#line 1045 "parse.y"
+{ yyval.ttype = tree_cons (NULL_TREE, NULL_TREE, NULL_TREE); ;
     break;}
 case 264:
-#line 1054 "parse.y"
-{ yyval.ttype = get_parm_types (0); ;
+#line 1051 "parse.y"
+{ yyval.ttype = get_parm_info (0); ;
     break;}
 case 265:
-#line 1056 "parse.y"
-{ yyval.ttype = get_parm_types (1); ;
+#line 1053 "parse.y"
+{ yyval.ttype = get_parm_info (1); ;
     break;}
 case 266:
-#line 1058 "parse.y"
-{ yyval.ttype = get_parm_types (0); ;
+#line 1055 "parse.y"
+{ yyval.ttype = get_parm_info (0); ;
     break;}
 case 267:
-#line 1063 "parse.y"
+#line 1060 "parse.y"
 { push_parm_decl (yyvsp[0].ttype); ;
     break;}
 case 268:
-#line 1065 "parse.y"
+#line 1062 "parse.y"
 { push_parm_decl (yyvsp[0].ttype); ;
     break;}
 case 269:
-#line 1072 "parse.y"
+#line 1069 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype)	; ;
     break;}
 case 270:
-#line 1074 "parse.y"
+#line 1071 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype)	; ;
     break;}
 case 271:
-#line 1076 "parse.y"
+#line 1073 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 272:
-#line 1078 "parse.y"
+#line 1075 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype)	; ;
     break;}
 case 273:
-#line 1080 "parse.y"
+#line 1077 "parse.y"
 { yyval.ttype = build_tree_list (yyvsp[-1].ttype, yyvsp[0].ttype); ;
     break;}
 case 274:
-#line 1086 "parse.y"
+#line 1083 "parse.y"
 { yyval.ttype = build_tree_list (NULL_TREE, yyvsp[0].ttype); ;
     break;}
 case 275:
-#line 1088 "parse.y"
+#line 1085 "parse.y"
 { yyval.ttype = chainon (yyvsp[-2].ttype, build_tree_list (NULL_TREE, yyvsp[0].ttype)); ;
     break;}
 }
@@ -2085,9 +2131,12 @@ case 275:
 #line 303 "bison.simple"
 
   yyvsp -= yylen;
-  yylsp -= yylen;
   yyssp -= yylen;
+#ifdef YYLSP_USED
+  yylsp -= yylen;
+#endif
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
@@ -2096,9 +2145,11 @@ case 275:
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
     }
+#endif
 
   *++yyvsp = yyval;
 
+#ifdef YYLSP_USED
   yylsp++;
   if (yylen == 0)
     {
@@ -2113,6 +2164,7 @@ case 275:
       yylsp->last_line = (yylsp+yylen-1)->last_line;
       yylsp->last_column = (yylsp+yylen-1)->last_column;
     }
+#endif
 
   /* Now "shift" the result of the reduction.
      Determine what state that goes to,
@@ -2134,6 +2186,7 @@ yyerrlab:   /* here on detecting error */
   if (! yyerrstatus)
     /* If not already recovering from an error, report this error.  */
     {
+      ++yynerr;
       yyerror("parse error");
     }
 
@@ -2145,8 +2198,10 @@ yyerrlab:   /* here on detecting error */
       if (yychar == YYEOF)
 	YYERROR;
 
+#ifdef YYDEBUG
       if (yydebug)
 	fprintf(stderr, "Discarding token %d (%s).\n", yychar, yytname[yychar1]);
+#endif
 
       yychar = YYEMPTY;
     }
@@ -2171,9 +2226,12 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
 
   if (yyssp == yyss) YYERROR;
   yyvsp--;
-  yylsp--;
   yystate = *--yyssp;
+#ifdef YYLSP_USED
+  yylsp--;
+#endif
 
+#ifdef YYDEBUG
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
@@ -2182,6 +2240,7 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
     }
+#endif
 
 yyerrhandle:
 
@@ -2207,16 +2266,20 @@ yyerrhandle:
   if (yyn == YYFINAL)
     YYACCEPT;
 
+#ifdef YYDEBUG
   if (yydebug)
     fprintf(stderr, "Shifting error token, ");
+#endif
 
   *++yyvsp = yylval;
+#ifdef YYLSP_USED
   *++yylsp = yylloc;
+#endif
 
   yystate = yyn;
   goto yynewstate;
 }
-#line 1090 "parse.y"
+#line 1087 "parse.y"
 
 
 /* Return something to represent absolute declarators containing a *.
@@ -2752,18 +2815,25 @@ readescape ()
 }
 
 void
-yyerror ()
+yyerror (string)
+     char *string;
 {
+  char buf[200];
+
+  strcpy (buf, string);
+
   /* We can't print string and character constants well
      because the token_buffer contains the result of processing escapes.  */
   if (token_buffer[0] == 0)
-    error ("parse error at end of input");
+    strcat (buf, " at end of input");
   else if (token_buffer[0] == '"')
-    error ("parse error at string constant");
+    strcat (buf, " before string constant");
   else if (token_buffer[0] == '\'')
-    error ("parse error at character constant");
+    strcat (buf, " before character constant");
   else
-    error ("parse error at `%s'", token_buffer);
+    strcat (buf, " before `%s'");
+
+  error (buf, token_buffer);
 }
 
 static int
@@ -2774,7 +2844,31 @@ yylex ()
   register int value;
   int wide_flag = 0;
 
-  token_buffer[0] = c = skip_white_space ();
+  /* Effectively do c = skip_white_space ()
+     but do it faster in the usual cases.  */
+  c = getc (finput);
+  while (1)
+    switch (c)
+      {
+      case ' ':
+      case '\t':
+      case '\f':
+      case '\r':
+      case '\b':
+	c = getc (finput);
+	break;
+
+      case '\n':
+      case '/':
+      case '\\':
+	ungetc (c, finput);
+	c = skip_white_space ();
+      default:
+	goto found_nonwhite;
+      }
+ found_nonwhite:
+
+  token_buffer[0] = c;
   token_buffer[1] = 0;
 
   yylloc.first_line = lineno;

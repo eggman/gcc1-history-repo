@@ -1,31 +1,158 @@
-Info file internals, produced by Makeinfo, -*- Text -*-
-from input file internals.texinfo.
+
+
+File: internals,  Node: Extensions,  Next: Bugs,  Prev: Incompatibilities,  Up: Top
+
+GNU Extensions to the C Language
+********************************
+
+GNU C provides several language features not found in ANSI standard C. 
+(The `-pedantic' option directs GNU CC to print a warning message if any of
+these features is used.)  To test for the availability of these features in
+conditional compilation, check for a predefined macro `__GNUC__', which is
+always defined under GNU CC.
+
+* Menu:
+
+* Statement Exprs::     Putting statements and declarations inside expressions.
+* Naming Types::        Giving a name to the type of some expression.
+* Typeof::		`typeof': referring to the type of an expression.
+* Lvalues::		Using `?:', `,' and casts in lvalues.
+* Conditionals::	Omitting the middle operand of a `?:' expression.
+* Zero-Length::		Zero-length arrays.
+* Variable-Length::	Arrays whose length is computed at run time.
+* Subscripting::	Any array can be subscripted, even if not an lvalue.
+* Pointer Arith::	Arithmetic on `void'-pointers and function pointers.
+* Constructors::	Constructor expressions give structures, unions
+			 or arrays as values.
+* Dollar Signs::        Dollar sign is allowed in identifiers.
+* Alignment::           Inquiring about the alignment of a type or variable.
+* Inline::              Defining inline functions (as fast as macros).
+* Extended Asm::	Assembler instructions with C expressions as operands.
+			 (With them you can define ``built-in'' functions.)
+* Asm Labels::		Specifying the assembler name to use for a C symbol.
 
 
+
+File: internals,  Node: Statement Exprs,  Next: Naming Types,  Prev: Extensions,  Up: Extensions
 
-This file documents the internals of the GNU compiler.
+Statements and Declarations inside of Expressions
+=================================================
 
-Copyright (C) 1988 Free Software Foundation, Inc.
+A compound statement in parentheses may appear inside an expression in GNU
+C.  This allows you to declare variables within an expression.  For example:
 
-Permission is granted to make and distribute verbatim copies of
-this manual provided the copyright notice and this permission notice
-are preserved on all copies.
+     ({ int y = foo (); int z;
+        if (y > 0) z = y;
+        else z = - y;
+        z; })
 
-Permission is granted to copy and distribute modified versions of this
-manual under the conditions for verbatim copying, provided also that the
-section entitled ``GNU CC General Public License'' is included exactly as
-in the original, and provided that the entire resulting derived work is
-distributed under the terms of a permission notice identical to this one.
+is a valid (though slightly more complex than necessary) expression for the
+absolute value of `foo ()'.
 
-Permission is granted to copy and distribute translations of this manual
-into another language, under the above conditions for modified versions,
-except that the section entitled ``GNU CC General Public License'' and
-this permission notice may be included in translations approved by the
-Free Software Foundation instead of in the original English.
+This feature is especially useful in making macro definitions ``safe'' (so
+that they evaluate each operand exactly once).  For example, the
+``maximum'' function is commonly defined as a macro in standard C as follows:
 
+     #define max(a,b) ((a) > (b) ? (a) : (b))
 
+But this definition computes either A or B twice, with bad results if the
+operand has side effects.  In GNU C, if you know the type of the operands
+(here let's assume `int'), you can define the macro safely as follows:
 
-
+     #define maxint(a,b) \
+       ({int _a = (a), _b = (b); _a > _b ? _a : _b; })
+
+Embedded statements are not allowed in constant expressions, such as the
+value of an enumeration constant, the width of a bit field, or the initial
+value of a static variable.
+
+If you don't know the type of the operand, you can still do this, but you
+must use `typeof' (*Note Typeof::.) or type naming (*Note Naming Types::.).
+
+
+File: internals,  Node: Naming Types,  Next: Typeof,  Prev: Statement Exprs,  Up: Extensions
+
+Naming an Expression's Type
+===========================
+
+You can give a name to the type of an expression using a `typedef'
+declaration with an initializer.  Here is how to define NAME as a type name
+for the type of EXP:
+
+     typedef NAME = EXP;
+
+This is useful in conjunction with the statements-within-expressions
+feature.  Here is how the two together can be used to define a safe
+``maximum'' macro that operates on any arithmetic type:
+
+     #define max(a,b) \
+       ({typedef _ta = (a), _tb = (b);  \
+         _ta _a = (a); _tb _b = (b);     \
+         _a > _b ? _a : _b; })
+
+The reason for using names that start with underscores for the local
+variables is to avoid conflicts with variable names that occur within the
+expressions that are substituted for `a' and `b'.  Eventually we hope to
+design a new form of declaration syntax that allows you to declare
+variables whose scopes start only after their initializers; this will be a
+more reliable way to prevent such conflicts.
+
+
+File: internals,  Node: Typeof,  Next: Lvalues,  Prev: Naming Types,  Up: Extensions
+
+Referring to a Type with `typeof'
+=================================
+
+Another way to refer to the type of an expression is with `typeof'.  The
+syntax of using of this keyword looks like `sizeof', but the construct acts
+semantically like a type name defined with `typedef'.
+
+There are two ways of writing the argument to `typeof': with an expression
+or with a type.  Here is an example with an expression:
+
+     typeof (x[0](1))
+
+This assumes that `x' is an array of functions; the type described is that
+of the values of the functions.
+
+Here is an example with a typename as the argument:
+
+     typeof (int *)
+
+Here the type described is that of pointers to `int'.
+
+A `typeof'-construct can be used anywhere a typedef name could be used. 
+For example, you can use it in a declaration, in a cast, or inside of
+`sizeof' or `typeof'.
+
+   * This declares `y' with the type of what `x' points to.
+
+          typeof (*x) y;
+
+   * This declares `y' as an array of such values.
+
+          typeof (*x) y[4];
+
+   * This declares `y' as an array of pointers to characters:
+
+          typeof (typeof (char *)[4]) y;
+
+     It is equivalent to the following traditional C declaration:
+
+          char *y[4];
+
+     To see the meaning of the declaration using `typeof', and why it might
+     be a useful way to write, let's rewrite it with these macros:
+
+          #define pointer(T)  typeof(T *)
+          #define array(T, N) typeof(T [N])
+
+     Now the declaration can be rewritten this way:
+
+          array (pointer (char), 4) y;
+
+     Thus, `array (pointer (char), 4)' is the type of arrays of 4 pointers
+     to `char'.
 
 
 File: internals,  Node: Lvalues,  Next: Conditionals,  Prev: Typeof,  Up: Extensions
@@ -44,13 +171,11 @@ equivalent:
      (a, b) += 5
      a, (b += 5)
 
-
 Similarly, the address of the compound expression can be taken.  These two
 expressions are equivalent:
 
      &(a, b)
      a, &b
-
 
 A conditional expression is a valid lvalue if its type is not void and the
 true and false branches are both valid lvalues.  For example, these two
@@ -58,7 +183,6 @@ expressions are equivalent:
 
      (a ? b : c) = 5
      (a ? b = 5 : (c = 5))
-
 
 A cast is a valid lvalue if its operand is valid.  Taking the address of
 the cast is the same as taking the address without a cast, except for the
@@ -69,7 +193,6 @@ the second may be valid when the type of `a' does not permit a cast to `int
      &(int *)a
      (int **)&a
 
-
 A simple assignment whose left-hand side is a cast works by converting the
 right-hand side first to the specified type, then to the type of the inner
 left-hand side expression.  After this is stored, the value is converter
@@ -79,7 +202,6 @@ back to the specified type to become the value of the assignment.  Thus, if
      (int)a = 5
      (int)(a = (char *)5)
 
-
 An assignment-with-arithmetic operation such as `+=' applied to a cast
 performs the arithmetic using the type resulting from the cast, and then
 continues as in the previous case.  Therefore, these two expressions are
@@ -87,7 +209,6 @@ equivalent:
 
      (int)a += 5
      (int)(a = (char *) ((int)a + 5))
-
 
 
 File: internals,  Node: Conditionals,  Next: Zero-Length,  Prev: Lvalues,  Up: Extensions
@@ -103,13 +224,11 @@ Therefore, the expression
 
      x ? : y
 
-
 has the value of `x' if that is nonzero; otherwise, the value of `y'.
 
 This example is perfectly equivalent to
 
      x ? x : y
-
 
 In this simple case, the ability to omit the middle operand is not
 especially useful.  When it becomes useful is when the first operand does,
@@ -138,7 +257,6 @@ element of a structure which is really a header for a variable-length object:
        thisline->length = thislength;
      }
 
-
 In standard C, you would have to give `contents' a length of 1, which means
 either you waste space or complicate the argument to `malloc'.
 
@@ -161,7 +279,6 @@ when the brace-level is exited.  For example:
        return fopen (str, mode);
      }
 
-
 You can also define structure types containing variable-length arrays, and
 use them even for arguments or function values, as shown here:
 
@@ -181,7 +298,6 @@ use them even for arguments or function values, as shown here:
          new.data[i] = arg.data[i] + 1;
        return new;
      }
-
 
 (Eventually there will be a way to say that the size of the array is
 another member of the same structure.)
@@ -225,7 +341,6 @@ valid in other C dialects:
        return f().a[index];
      }
 
-
 
 File: internals,  Node: Pointer Arith,  Next: Initializers,  Prev: Subscripting,  Up: Extensions
 
@@ -255,7 +370,6 @@ varying elements:
        ...
      }
 
-
 
 File: internals,  Node: Constructors,  Next: Dollar Signs,  Prev: Initializers,  Up: Extensions
 
@@ -271,11 +385,9 @@ Assume that `struct foo' and `structure' are declared as shown:
 
      struct foo {int a; char b[2];} structure;
 
-
 Here is an example of constructing a `struct foo' with a constructor:
 
      structure = ((struct foo) {x + y, 'a', 0});
-
 
 This is equivalent to writing the following:
 
@@ -284,14 +396,12 @@ This is equivalent to writing the following:
        structure = temp;
      }
 
-
 You can also construct an array.  If all the elements of the constructor
 are (made up of) simple constant expressions, suitable for use in
 initializers, then the constructor is an lvalue and can be coerced to a
 pointer to its first element, as shown here:
 
      char **foo = (char *[]) { "x", "y", "z" };
-
 
 Array constructors whose elements are not simple constants are not very
 useful, because the constructor is not an lvalue.  There are only two valid
@@ -300,7 +410,6 @@ The former is probably slower than a `switch' statement, while the latter
 does the same thing an ordinary C initializer would do.
 
      output = ((int[]) { 2, x, 28 }) [input];
-
 
 
 File: internals,  Node: Dollar Signs,  Next: Alignment,  Prev: Constructors,  Up: Extensions
@@ -338,7 +447,6 @@ this declaration:
 
      struct foo { int x; char y; } foo1;
 
-
 the value of `__alignof (foo1.y)' is probably 2 or 4, the same as
 `__alignof (int)', even though the data type of `foo1.y' does not itself
 demand any alignment.
@@ -364,7 +472,6 @@ like this:
      {
        (*a)++;
      }
-
 
 You can also make all ``simple enough'' functions inline with the option
 `-finline-functions'.  Note that certain usages in a function definition
@@ -404,7 +511,6 @@ For example, here is how to use the 68881's `fsinx' instruction:
 
      asm ("fsinx %1,%0" : "=f" (result) : "f" (angle));
 
-
 Here `angle' is the C expression for the input operand while `result' is
 that of the output operand.  Each has `"f"' as its operand constraint,
 saying that a floating-point register is required.  The constraints use the
@@ -436,7 +542,6 @@ as its read-write destination:
 
      asm ("combine %2,%0" : "=r" (foo) : "0" (foo), "g" (bar));
 
-
 The constraint `"0"' for operand 1 says that it must occupy the same
 location as operand 0.  Therefore it is not necessary to substitute operand
 1 into the assembler code output.
@@ -448,7 +553,6 @@ encapsulate them in macros that look like functions.  For example,
      ({ double __value, __arg = (x);   \
         asm ("fsinx %1,%0": "=f" (__value): "f" (__arg));  \
         __value; })
-
 
 Here the variable `__arg' is used to make sure that the instruction
 operates on a proper `double' value, and to accept only those arguments `x'
@@ -478,7 +582,6 @@ by writing the keyword `volatile' after the `asm'.  For example:
      asm volatile ("set_priority %1":    \
                    "=m" (*(char *)0): "g" (x))
 
-
 Note that we have supplied an output operand which is not actually used in
 the instruction.  This is because `asm' requires at least one output
 operand.  This requirement exists for internal implementation reasons and
@@ -501,7 +604,6 @@ or variable by writing the `asm' keyword after the declarator as follows:
 
      int foo asm ("myfoo") = 2;
 
-
 This specifies that the name to be used for the variable `foo' in the
 assembler code should be `myfoo' rather than the usual `_foo'.
 
@@ -518,7 +620,6 @@ definition and putting `asm' there, like this:
      func (x, y)
           int x, y;
      ...
-
 
  It is up to you to make sure that the assembler names you choose do not
 conflict with any other assembler symbols.  Also, you must not use a
@@ -541,7 +642,6 @@ reports are your contribution to the maintenance of GNU CC.
 
 In order for a bug report to serve its purpose, you must include the
 information that makes for fixing the bug.
-
 
 * Menu:
 
@@ -571,8 +671,7 @@ If you are not sure whether you have found a bug, here are some guidelines:
      However, you must double-check to make sure, because you may have run
      into an incompatibility between GNU C and traditional C (*Note
      Incompatibilities::.).  These incompatibilities might be considered
-     bugs, but they are inescapable consequences of features valuable
-     features.
+     bugs, but they are inescapable consequences of valuable features.
 
      Or you may have a program whose behavior is undefined, which happened
      by chance to give the desired results with another C compiler.
@@ -604,7 +703,6 @@ If you are not sure whether you have found a bug, here are some guidelines:
                char x;
           { ... }
 
-
      The prototype says to pass a `char', while the definition says to pass
      an `int' and treat the value as a `char'.  This is what the ANSI
      standard says, and it makes sense.
@@ -628,13 +726,11 @@ Send bug reports for GNU C to one of these addresses:
      bug-gcc@prep.ai.mit.edu
      {ucbvax|mit-eddie|uunet}!prep.ai.mit.edu!bug-gcc
 
-
 As a last resort, snail them to:
 
      GNU Compiler Bugs
      545 Tech Sq
      Cambridge, MA 02139
-
 
 The fundamental principle of reporting bugs usefully is this: *report all
 the facts*.  If you are not sure whether to mention a fact or leave it out,
@@ -838,7 +934,6 @@ just to compute it and ignore it, then the variable cannot go in a register:
        ...
      }
 
-
 Code compiled with GNU CC may call certain library routines.  The routines
 needed on the Vax and 68000 are in the file `gnulib.c'.  You must compile
 this file with the standard C compiler, not with GNU CC, and then link it
@@ -846,348 +941,5 @@ with each program you compile with GNU CC.  (In actuality, many programs
 will not need it.)  The usual function call interface is used for calling
 the library routines.  Some standard parts of the C library, such as
 `bcopy', are also called automatically.
-
-
-File: internals,  Node: Passes,  Next: RTL,  Prev: Interface,  Up: Top
-
-Passes and Files of the Compiler
-********************************
-
-The overall control structure of the compiler is in `toplev.c'.  This file
-is responsible for initialization, decoding arguments, opening and closing
-files, and sequencing the passes.
-
-The parsing pass is invoked only once, to parse the entire input.  The RTL
-intermediate code for a function is generated as the function is parsed, a
-statement at a time.  Each statement is read in as a syntax tree and then
-converted to RTL; then the storage for the tree for the statement is
-reclaimed.  Storage for types (and the expressions for their sizes),
-declarations, and a representation of the binding contours and how they
-nest, remains until the function is finished being compiled; these are all
-needed to output the debugging information.
-
-Each time the parsing pass reads a complete function definition or
-top-level declaration, it calls the function `rest_of_compilation' or
-`rest_of_decl_compilation' in `toplev.c', which are responsible for all
-further processing necessary, ending with output of the assembler language.
- All other compiler passes run, in sequence, within `rest_of_compilation'. 
-When that function returns from compiling a function definition, the
-storage used for that function definition's compilation is entirely freed,
-unless it is an inline function (*Note Inline::.).
-
-Here is a list of all the passes of the compiler and their source files. 
-Also included is a description of where debugging dumps can be requested
-with `-d' options.
-
-   * Parsing.  This pass reads the entire text of a function definition,
-     constructing partial syntax trees.  This and RTL generation are no
-     longer truly separate passes (formerly they were), but it is easier to
-     think of them as separate.
-
-     The tree representation does not entirely follow C syntax, because it
-     is intended to support other languages as well.
-
-     C data type analysis is also done in this pass, and every tree node
-     that represents an expression has a data type attached.  Variables are
-     represented as declaration nodes.
-
-     Constant folding and associative-law simplifications are also done
-     during this pass.
-
-     The source files for parsing are `parse.y', `decl.c', `typecheck.c',
-     `stor-layout.c', `fold-const.c', and `tree.c'.  The last three are
-     intended to be language-independent.  There are also header files
-     `parse.h', `c-tree.h', `tree.h' and `tree.def'.  The last two define
-     the format of the tree representation.
-
-   * RTL generation.  This is the conversion of syntax tree into RTL code. 
-     It is actually done statement-by-statement during parsing, but for
-     most purposes it can be thought of as a separate pass.
-
-     This is where the bulk of target-parameter-dependent code is found,
-     since often it is necessary for strategies to apply only when certain
-     standard kinds of instructions are available.  The purpose of named
-     instruction patterns is to provide this information to the RTL
-     generation pass.
-
-     Optimization is done in this pass for `if'-conditions that are
-     comparisons, boolean operations or conditional expressions.  Tail
-     recursion is detected at this time also.  Decisions are made about how
-     best to arrange loops and how to output `switch' statements.
-
-     The source files for RTL generation are `stmt.c', `expr.c',
-     `explow.c', `expmed.c', `optabs.c' and `emit-rtl.c'.  Also, the file
-     `insn-emit.c', generated from the machine description by the program
-     `genemit', is used in this pass.  The header files `expr.h' is used
-     for communication within this pass.
-
-     The header files `insn-flags.h' and `insn-codes.h', generated from the
-     machine description by the programs `genflags' and `gencodes', tell
-     this pass which standard names are available for use and which
-     patterns correspond to them.
-
-     Aside from debugging information output, none of the following passes
-     refers to the tree structure representation of the function (only part
-     of which is saved).
-
-     The decision of whether the function can and should be expanded inline
-     in its subsequent callers is made at the end of rtl generation.  The
-     function must meet certain criteria, currently related to the size of
-     the function and the types and number of parameters it has.  Note that
-     this function may contain loops, recursive calls to itself
-     (tail-recursive functions can be inlined!), gotos, in short, all
-     constructs supported by GNU CC.
-
-     The option `-dr' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.rtl' to the input
-     file name.
-
-   * Jump optimization.  This pass simplifies jumps to the following
-     instruction, jumps across jumps, and jumps to jumps.  It deletes
-     unreferenced labels and unreachable code, except that unreachable code
-     that contains a loop is not recognized as unreachable in this pass. 
-     (Such loops are deleted later in the basic block analysis.)
-
-     Jump optimization is performed two or three times.  The first time is
-     immediately following RTL generation.  The second time is after CSE,
-     but only if CSE says repeated jump optimization is needed.  The last
-     time is right before the final pass.  That time, cross-jumping and
-     deletion of no-op move instructions are done together with the
-     optimizations described above.
-
-     The source file of this pass is `jump.c'.
-
-     The option `-dj' causes a debugging dump of the RTL code after this
-     pass is run for the first time.  This dump file's name is made by
-     appending `.jump' to the input file name.
-
-   * Register scan.  This pass finds the first and last use of each
-     register, as a guide for common subexpression elimination.  Its source
-     is in `regclass.c'.
-
-   * Common subexpression elimination.  This pass also does constant
-     propagation.  Its source file is `cse.c'.  If constant propagation
-     causes conditional jumps to become unconditional or to become no-ops,
-     jump optimization is run again when CSE is finished.
-
-     The option `-ds' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.cse' to the input
-     file name.
-
-   * Loop optimization.  This pass moves constant expressions out of loops.
-      Its source file is `loop.c'.
-
-     The option `-dL' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.loop' to the input
-     file name.
-
-   * Stupid register allocation is performed at this point in a
-     nonoptimizing compilation.  It does a little data flow analysis as
-     well.  When stupid register allocation is in use, the next pass
-     executed is the reloading pass; the others in between are skipped. 
-     The source file is `stupid.c'.
-
-   * Data flow analysis (`flow.c').  This pass divides the program into
-     basic blocks (and in the process deletes unreachable loops); then it
-     computes which pseudo-registers are live at each point in the program,
-     and makes the first instruction that uses a value point at the
-     instruction that computed the value.
-
-     This pass also deletes computations whose results are never used, and
-     combines memory references with add or subtract instructions to make
-     autoincrement or autodecrement addressing.
-
-     The option `-df' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.flow' to the input
-     file name.  If stupid register allocation is in use, this dump file
-     reflects the full results of such allocation.
-
-   * Instruction combination (`combine.c').  This pass attempts to combine
-     groups of two or three instructions that are related by data flow into
-     single instructions.  It combines the RTL expressions for the
-     instructions by substitution, simplifies the result using algebra, and
-     then attempts to match the result against the machine description.
-
-     The option `-dc' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.combine' to the
-     input file name.
-
-   * Register class preferencing.  The RTL code is scanned to find out
-     which register class is best for each pseudo register.  The source
-     file is `regclass.c'.
-
-   * Local register allocation (`local-alloc.c').  This pass allocates hard
-     registers to pseudo registers that are used only within one basic
-     block.  Because the basic block is linear, it can use fast and
-     powerful techniques to do a very good job.
-
-     The option `-dl' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.lreg' to the input
-     file name.
-
-   * Global register allocation (`global-alloc.c').  This pass allocates
-     hard registers for the remaining pseudo registers (those whose life
-     spans are not contained in one basic block).
-
-   * Reloading.  This pass renumbers pseudo registers with the hardware
-     registers numbers they were allocated.  Pseudo registers that did not
-     get hard registers are replaced with stack slots.  Then it finds
-     instructions that are invalid because a value has failed to end up in
-     a register, or has ended up in a register of the wrong kind.  It fixes
-     up these instructions by reloading the problematical values
-     temporarily into registers.  Additional instructions are generated to
-     do the copying.
-
-     Source files are `reload.c' and `reload1.c', plus the header
-     `reload.h' used for communication between them.
-
-     The option `-dg' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.greg' to the input
-     file name.
-
-   * Jump optimization is repeated, this time including cross-jumping and
-     deletion of no-op move instructions.  Machine-specific peephole
-     optimizations are performed at the same time.
-
-     The option `-dJ' causes a debugging dump of the RTL code after this
-     pass.  This dump file's name is made by appending `.jump2' to the
-     input file name.
-
-   * Final.  This pass outputs the assembler code for the function.  It is
-     also responsible for identifying spurious test and compare
-     instructions.  The function entry and exit sequences are generated
-     directly as assembler code in this pass; they never exist as RTL.
-
-     The source files are `final.c' plus `insn-output.c'; the latter is
-     generated automatically from the machine description by the tool
-     `genoutput'.  The header file `conditions.h' is used for communication
-     between these files.
-
-   * Debugging information output.  This is run after final because it must
-     output the stack slot offsets for pseudo registers that did not get
-     hard registers.  Source files are `dbxout.c' for DBX symbol table
-     format and `symout.c' for GDB's own symbol table format.
-
-Some additional files are used by all or many passes:
-
-   * Every pass uses `machmode.def', which defines the machine modes.
-
-   * All the passes that work with RTL use the header files `rtl.h' and
-     `rtl.def', and subroutines in file `rtl.c'.  The tools `gen*' also use
-     these files to read and work with the machine description RTL.
-
-   * Several passes refer to the header file `insn-config.h' which contains
-     a few parameters (C macro definitions) generated automatically from
-     the machine description RTL by the tool `genconfig'.
-
-   * Several passes use the instruction recognizer, which consists of
-     `recog.c' and `recog.h', plus the files `insn-recog.c' and
-     `insn-extract.c' that are generated automatically from the machine
-     description by the tools `genrecog' and `genextract'.
-
-   * Several passes use the header files `regs.h' which defines the
-     information recorded about pseudo register usage, and `basic-block.h'
-     which defines the information recorded about basic blocks.
-
-   * `hard-reg-set.h' defines the type `HARD_REG_SET', a bit-vector with a
-     bit for each hard register, and some macros to manipulate it.  This
-     type is just `int' if the machine has few enough hard registers;
-     otherwise it is an array of `int' and some of the macros expand into
-     loops.
-
-
-File: internals,  Node: RTL,  Next: Machine Desc,  Prev: Passes,  Up: Top
-
-RTL Representation
-******************
-
-Most of the work of the compiler is done on an intermediate representation
-called register transfer language.  In this language, the instructions to
-be output are described, pretty much one by one, in an algebraic form that
-describes what the instruction does.
-
-RTL is inspired by Lisp lists.  It has both an internal form, made up of
-structures that point at other structures, and a textual form that is used
-in the machine description and in printed debugging dumps.  The textual
-form uses nested parentheses to indicate the pointers in the internal form.
-
-
-* Menu:
-
-* RTL Objects::       Expressions vs vectors vs strings vs integers.
-* Accessors::         Macros to access expression operands or vector elts.
-* Flags::             Other flags in an RTL expression.
-* Machine Modes::     Describing the size and format of a datum.
-* Constants::         Expressions with constant values.
-* Regs and Memory::   Expressions representing register contents or memory.
-* Arithmetic::        Expressions representing arithmetic on other expressions.
-* Comparisons::       Expressions representing comparison of expressions.
-* Bit Fields::        Expressions representing bit-fields in memory or reg.
-* Conversions::       Extending, truncating, floating or fixing.
-* RTL Declarations::  Declaring volatility, constancy, etc.
-* Side Effects::      Expressions for storing in registers, etc.
-* Incdec::            Embedded side-effects for autoincrement addressing.
-* Assembler::	      Representing `asm' with operands.
-* Insns::             Expression types for entire insns.
-* Calls::	      RTL representation of function call insns.
-* Sharing::           Some expressions are unique; others *must* be copied.
-
-
-
-File: internals,  Node: RTL Objects,  Next: Accessors,  Prev: RTL,  Up: RTL
-
-RTL Object Types
-================
-
-RTL uses four kinds of objects: expressions, integers, strings and vectors.
- Expressions are the most important ones.  An RTL expression (``RTX'', for
-short) is a C structure, but it is usually referred to with a pointer; a
-type that is given the typedef name `rtx'.
-
-An integer is simply an `int', and a string is a `char *'.  Within RTL
-code, strings appear only inside `symbol_ref' expressions, but they appear
-in other contexts in the RTL expressions that make up machine descriptions.
- Their written form uses decimal digits.
-
-A string is a sequence of characters.  In core it is represented as a `char
-*' in usual C fashion, and it is written in C syntax as well.  However,
-strings in RTL may never be null.  If you write an empty string in a
-machine description, it is represented in core as a null pointer rather
-than as a pointer to a null character.  In certain contexts, these null
-pointers instead of strings are valid.
-
-A vector contains an arbitrary, specified number of pointers to
-expressions.  The number of elements in the vector is explicitly present in
-the vector.  The written form of a vector consists of square brackets
-(`[...]') surrounding the elements, in sequence and with whitespace
-separating them.  Vectors of length zero are not created; null pointers are
-used instead.
-
-Expressions are classified by "expression codes" (also called RTX codes). 
-The expression code is a name defined in `rtl.def', which is also (in upper
-case) a C enumeration constant.  The possible expression codes and their
-meanings are machine-independent.  The code of an RTX can be extracted with
-the macro `GET_CODE (X)' and altered with `PUT_CODE (X, NEWCODE)'.
-
-The expression code determines how many operands the expression contains,
-and what kinds of objects they are.  In RTL, unlike Lisp, you cannot tell
-by looking at an operand what kind of object it is.  Instead, you must know
-from its context---from the expression code of the containing expression. 
-For example, in an expression of code `subreg', the first operand is to be
-regarded as an expression and the second operand as an integer.  In an
-expression of code `plus', there are two operands, both of which are to be
-regarded as expressions.  In a `symbol_ref' expression, there is one
-operand, which is to be regarded as a string.
-
-Expressions are written as parentheses containing the name of the
-expression type, its flags and machine mode if any, and then the operands
-of the expression (separated by spaces).
-
-Expression code names in the `md' file are written in lower case, but when
-they appear in C code they are written in upper case.  In this manual, they
-are shown as follows: `const_int'.
-
-In a few contexts a null pointer is valid where an expression is normally
-wanted.  The written form of this is `(nil)'.
 
 

@@ -23,7 +23,7 @@ and this notice must be preserved on all copies.  */
    (In other words, much of HPUX has been cast aside.)
    Undefine USE_GAS if you want GCC to feed the HP assembler.  */
 
-/* #define USE_GAS */  /* Use tm-hpgnu.h if you want this.  */
+/* #define USE_GAS */  /* Use tm-hp9k320g.h if you want this.  */
 
 /* Control assembler-syntax conditionals in m68k.md.  */
 
@@ -49,6 +49,10 @@ and this notice must be preserved on all copies.  */
 #else
 #define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dmc68000 -Dhpux -Dunix"
 #endif
+
+/* Every structure or union's size must be a multiple of 2 bytes.  */
+
+#define STRUCTURE_SIZE_BOUNDARY 16
 
 /* Generate calls to memcpy, memcmp and memset.  */
 #define TARGET_MEM_FUNCTIONS

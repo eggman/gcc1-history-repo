@@ -1653,7 +1653,7 @@ get_unwidened (op, for_type)
 	 The resulting extension to its nominal type (a fullword type)
 	 must fit the same conditions as for other extensions.  */
 
-      if (innerprec <= TYPE_PRECISION (TREE_TYPE (op))
+      if (innerprec < TYPE_PRECISION (TREE_TYPE (op))
 	  && (for_type || DECL_MODE (TREE_OPERAND (op, 1)) != BImode)
 	  && (! uns || final_prec <= innerprec
 	      || TREE_UNSIGNED (TREE_OPERAND (op, 1)))

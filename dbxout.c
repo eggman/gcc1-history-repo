@@ -467,11 +467,6 @@ dbxout_symbol (decl, local)
       dbxout_types (get_permanent_types ());
     }
 
-  /* If the decl lacks rtl representation, avoid fault below.  */
-
-  if (DECL_RTL (decl) == 0)
-    return;
-
   current_sym_code = 0;
   current_sym_value = 0;
   current_sym_addr = 0;
@@ -488,6 +483,8 @@ dbxout_symbol (decl, local)
       break;
 
     case FUNCTION_DECL:
+      if (DECL_RTL (decl) == 0)
+	return;
       if (TREE_EXTERNAL (decl))
 	break;
       if (GET_CODE (DECL_RTL (decl)) != MEM
@@ -508,13 +505,19 @@ dbxout_symbol (decl, local)
       break;
 
     case TYPE_DECL:
+      /* If this typedef name was defined by outputting the type,
+	 don't duplicate it.  */
+      if (typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED
+	  && TYPE_NAME (TREE_TYPE (decl)) == decl)
+	return;
+
       /* Output typedef name.  */
       fprintf (asmfile, ".stabs \"%s:t",
 	       IDENTIFIER_POINTER (DECL_NAME (decl)));
 
       current_sym_code = N_LSYM;
 
-      dbxout_type (TREE_TYPE (decl), 0);
+      dbxout_type (TREE_TYPE (decl), 1);
       dbxout_finish_symbol ();
       break;
       
@@ -524,6 +527,8 @@ dbxout_symbol (decl, local)
       abort ();
 
     case VAR_DECL:
+      if (DECL_RTL (decl) == 0)
+	return;
       /* Don't mention a variable that is external.
 	 Let the file that defines it describe it.  */
       if (TREE_EXTERNAL (decl))
@@ -837,12 +842,14 @@ static void
 dbxout_type_def (type)
      tree type;
 {
-#if 0  /* Incorrect; causes some type NAMES not to be defined,
-	  whose TYPES were defined already.  */
+  /* This fn is called an extra time for int and char types.  Do nothing.  */
+  /* This `if' used to reject any type already output,
+     but that caused some type NAMES not to be defined,
+     whose TYPES were defined already.  */
   if (TYPE_SYMTAB_ADDRESS (type) != 0
-      && typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED)
+      && typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED
+      && (type == integer_type_node || type == char_type_node))
     return;
-#endif
 
   current_sym_code = N_LSYM;
   current_sym_value = 0;

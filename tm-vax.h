@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler.  Vax version.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -25,7 +25,7 @@ and this notice must be preserved on all copies.  */
 
 /* Print subsidiary information on the compiler version in use.  */
 
-#define TARGET_VERSION printf ("(vax)");
+#define TARGET_VERSION printf (" (vax)");
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
@@ -39,6 +39,9 @@ extern int target_flags;
 /* Nonzero if compiling with VAX-11 "C" style structure alignment */
 #define	TARGET_VAXC_ALIGNMENT (target_flags & 2)
 
+/* Nonzero if compiling with `G'-format floating point */
+#define TARGET_G_FLOAT (target_flags & 4)
+
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
    each pair being { "NAME", VALUE }
@@ -49,6 +52,10 @@ extern int target_flags;
   { {"unix", 1},  \
     {"gnu", -1},  \
     {"vaxc-alignment", 2}, \
+    {"g", 4}, \
+    {"g-float", 4}, \
+    {"d", -4},	\
+    {"d-float", -4}, \
     { "", TARGET_DEFAULT}}
 
 /* Default target_flags if no switches specified.  */
@@ -679,6 +686,14 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
     return 3;							\
   case CONST_DOUBLE:						\
     return 5;
+
+/*
+ * We can use the BSD C library routines for the gnulib calls that are
+ * still generated, since that's what they boil down to anyways.
+ */
+
+#define UDIVSI3_LIBCALL "*udiv"
+#define UMODSI3_LIBCALL "*urem"
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -771,6 +786,10 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 #define DBX_NO_XREFS
 
+/* Vax specific: which type character is used for type double?  */
+
+#define ASM_DOUBLE_CHAR (TARGET_G_FLOAT ? 'g' : 'd')
+
 /* This is how to output the definition of a user-level label named NAME,
    such as the label on a static function or variable NAME.  */
 
@@ -802,10 +821,12 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
   sprintf (LABEL, "*%s%d", PREFIX, NUM)
 
-/* This is how to output an assembler line defining a `double' constant.  */
+/* This is how to output an assembler line defining a `double' constant.
+   It is .dfloat or .gfloat, depending.  */
 
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-  fprintf (FILE, "\t.double 0d%.20e\n", (VALUE))
+  fprintf (FILE, "\t.%cfloat 0%c%.20e\n", ASM_DOUBLE_CHAR, \
+					  ASM_DOUBLE_CHAR, (VALUE))
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
@@ -900,17 +921,20 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* Print an instruction operand X on file FILE.
    CODE is the code from the %-spec that requested printing this operand;
    if `%z3' was used to print operand 3, then CODE is 'z'.
-   On the Vax, CODE is not used.  */
+   On the Vax, the only code used is `#', indicating that either
+   `d' or `g' should be printed, depending on whether we're using dfloat
+   or gfloat.  */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
-{ if (GET_CODE (X) == REG)						\
+{ if (CODE == '#') fputc (ASM_DOUBLE_CHAR, FILE);			\
+  else if (GET_CODE (X) == REG)						\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
   else if (GET_CODE (X) == CONST_DOUBLE)				\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
-      fprintf (FILE, "$0d%.20e", u.d); }				\
+      fprintf (FILE, "$0%c%.20e", ASM_DOUBLE_CHAR, u.d); }		\
   else { putc ('$', FILE); output_addr_const (FILE, X); }}
 
 /* Print a memory operand whose address is X, on file FILE.  */

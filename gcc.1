@@ -1,8 +1,8 @@
-.\	" =====================
-.\	" This version is 1.20.
-.\	" =====================
-.TH GCC 1 "19 April 1988" "Printed 04/20/88"
-.\	".UC 4
+bg
+.\	" ======================
+.\	" This version is 1.22
+.\	" ======================
+.TH GCC 1 "17 May 1988" "Version 1.22"
 .SH NAME
 gcc \- GNU project C Compiler
 .SH SYNOPSIS
@@ -21,22 +21,20 @@ is very different from `\fB\-d\ \-r\fR'.
 When you invoke
 .I GNU\ CC
 \, it normally does preprocessing, compilation,
-assembly and linking. File names with `\fB.c\fR'
+assembly and linking. File names which end in `\fB.c\fR'
 are taken as C
 source to be preprocessed and compiled; compiler output files plus any
 input files with names ending in `\fB.s\fR'
 are assembled; then the
 resulting object files, plus any other input files, are linked together to
 produce an executable.
-.br
 Command options allow you to stop this process at an intermediate stage.
 For example, the `\fB\-c\fR'
 option says not to run the linker.
 Then the output consists of object files output by the assembler.
-.br
 Other command options are passed on to one stage.
 Some options control the preprocessor and others the compiler itself.
-.br
+.SH OPTIONS
 Here are the options to control the overall compilation process,
 including those that say whether to link, whether to assemble, and so on.
 .TP
@@ -47,8 +45,9 @@ whether it be an executable file, an object file, an assembler file or
 preprocessed C code.
 If `\fB\-o\fR'
 is not specified, the default is to put an executable file
-in `a.out', the object file `\fIsource\fR.o', and preprocessed C
-on standard output.
+in `a.out', the object file `\fIsource\fB.c\fR' in `\fIsource\fB.o\fR',
+an assembler file in `\fIsource\fB.s\fR',
+and preprocessed C on standard output.
 .TP
 .B \-c
 Compile or assemble the source files, but do not link.
@@ -111,18 +110,41 @@ Search directory
 .I dir
 for include files.
 .TP
+.B \-I\-
+Any directories specified with `\fB\-I\fR' options before the `\fB\-I\-\fR'
+option are searched only for the case of `\fB#include "\fIfile\fB"\fR';
+they are not searched for `\fB#include <\fIfile\fB>\fR'.
+If additional directories are specified with `\fB\-I\fR' options after
+the `\fB\-I\-\fR', these directories are searched for all '\fB#include\fR'
+directives. (Ordinally \fIall\fR '\fB\-I\fR' directories are used this
+way.)
+In addition, the `\fB\-I\-\fR' option inhibits the use of the current
+directory as the first search directory for `\fB#include "\fIfile\fB"\fR'.
+Therefore, the current directory is searched only if it is requested
+explicitly with `\fB\-I.\fR'.
+Specifying both `\fB\-I\-\fR' and `\fB\-I.\fR' allows you to control precisely
+which directories are searched before the current one and which are
+searched after.
+.TP
+.B \-nostdinc
+Do not search the standard system directories for header files.
+Only the directories you have specified with `\fB\-I\fR' options
+(and the current directory, if appropriate) are searched.
+Between `\fB\-nostdinc\fR' and `\fB\-I-\fR', you can eliminate all
+directories from the search path except those you specify.
+.TP
 .B \-M
 Tell the preprocessor to output a rule suitable for \fBmake\fR
 describing the dependencies of each source file.
 For each source file, the preprocessor outputs one \fBmake\fR-rule
 whose target is the object file name for that source file and
 whose dependencies are all the files `\fB#include\fR'd in it.
-This rule may be a single line or may be continued with `\fB\\\fR'-newline
-if it is long.  `\fB\-M\fR' implies `\fB\-E\fR'.
+This rule may be a single line or may be continued `\fB\\\fR'-newline
+if it is long.`\fB\-M\fR' implies `\fB\-E\fR'.
 .TP
 .B \-MM
 Like `\fB\-M\fR' but the output mentions only the user-header files included
-with `\fB#include "file"\fR'.
+with `\fB#include "\fIfile\fB"\fR'.
 System header files included with `\fB#include <\fIfile\fB>\fR'
 are omitted.`\fB\-MM\fR' implies `\fB\-E\fR'.
 .TP
@@ -149,11 +171,10 @@ This turns off certain features of GNU C that are incompatible with
 ANSI C, such as the \fBasm\fR, \fBinline\fR and \fBtypeof\fR keywords, and
 predefined macros such as \fBunix\fR and \fBvax\fR that identify
 the type of system you are using.
-It also enables the undesirable and rarely used ANSI tragraph feature.
+It also enables the undesirable and rarely used ANSI trigraph feature.
 The `\fB\-ansi\fR' option does not cause non-ANSI programs to be rejected
 gratuitously.
-For that object that, `\fB\-pedantic\fR' is required
-in addition to `\fB\-ansi\fR'.
+For that, `\fB\-pedantic\fR' is required in addition to `\fB\-ansi\fR'.
 The macro \fB__STRICT_ANSI__\fR
 is predefined when the `-ansi' option is used.
 Some header files may notice this macro and refrain from declaring
@@ -176,6 +197,16 @@ and \fBvolatile\fR are not recognized.
 .br
 \(** Integer types \fBunsigned short\fR and \fBunsigned char\fR
 promote to \fBunsigned int\fR.
+.br
+\(** In the preprocessor, comments convert to nothing at all,
+rather than to a space.
+This allows traditional token concatenation.
+.br
+\(** In the preprocessor, single and double quote characters are
+ignored when scanning macro definitions, so that macro arguments
+can be replaced even within a string or character constant.
+Quote characters are also ignored when skipping text inside
+a failing conditional directive.
 .TP
 .B \-pedantic
 Issue all the warnings demanded by strict ANSI standard C;
@@ -250,11 +281,11 @@ enough to see all the reasons why the code might be correct
 despite appearing to have an error.
 .br
 \(** A nonvolantile automatic variable might be changed
-by a call to \flongjmp\fR.
+by a call to \fBlongjmp\fR.
 These warnings as well are possible only in optimizing compilation.
-The compiler only the calls to \fBsetjmp\fR.
+The compiler sees only the calls to \fBsetjmp\fR.
 It cannot know where \fBlongjmp\fR
-will be called; in fact, a signal handler could cal it at any point
+will be called; in fact, a signal handler could call it at any point
 in the code. As a result, you may get a warning even when there is
 in fact no problem because \fBlongjmp\fR
 cannot in fact be called at the place which would cause a problem.
@@ -275,6 +306,9 @@ defaults to \fBint\fR. Also warn about any \fBreturn\fR
 statement with no return-value in a function whose return-type
 is not \fBvoid\fR.
 .TP
+.B \-Wcomment
+Warn whenever a comment-start sequence `/*' appears in a comment.
+.TP
 .B \-p
 Generate extra code to write profile information suitable for the
 analysis program \fBprof\fR.
@@ -282,6 +316,30 @@ analysis program \fBprof\fR.
 .B \-pg
 Generate extra code to write profile information suitable for the
 analysis program \fBgprof\fR.
+.TP
+.BI \-l "library"
+Search a standard list of directories for a library named \fIlibrary\fR,
+which is actually a file named `\fBlib\fIlibrary\fB.a\fR'.
+The linker uses this file as if it had been specified precisely by name.
+The directories searched include several standard system directories
+plus any that you specify with `\fB\-L\fR'.
+Normally the files found this way are library files - archive files whose
+members are object files. The linker handles an archive file by through
+it for members which define symbols that have so far been referenced
+but not defined. But if the file that is found is an ordinary
+object file, it is linked in the usual fashion. 
+The only difference between an `\fB\-l\fR' option and the full file name of
+the file that is found is syntactic and the fact that several directories
+are searched.
+.TP
+.BI \-L "dir"
+Add directory \fIdir\fR to the list of directories to be searched
+for `\fB\-l\fR'.
+.TP
+.B \-nostdlib
+Don't use the standard system libraries and startup files when
+linking. Only the files you specify (plus `\fBgnulib\fR')
+will be passed to the linker.
 .TP
 .BI \-m "machinespec"
 Machine-dependent option specifying something about the type of target machine.
@@ -349,7 +407,7 @@ and so on) that the Unix assembler
 for the VAX cannot handle across long ranges. 
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mgnu
-Do output those jump instructions; on the assumption
+Do output those jump instructions, on the assumption
 that you will assemble with the GNU assembler.
 .TP 5
 .BI \-f "flag"
@@ -359,7 +417,7 @@ Specify machine-independent flags. These are the flags:
 Do not store floating-point variables in registers.
 This prevents undesirable excess precision on machines such as the 68000
 where the floating registers (of the 68881) keep more precision
-than a \fIdouble\fR is supposed to have.
+than a \fBdouble\fR is supposed to have.
 For most programs, the excess precision does only good, but a few
 programs rely on the precise definition of IEEE floating point.
 Use `
@@ -402,8 +460,8 @@ Don't keep the frame pointer in a register for functions that don't
 need one.  This avoids the instructions to save, set up and restore
 frame pointers; it also makes an extra register available in many
 functions. \fBIt\ also\ makes\ debugging\ impossible.\fR
-On some machines, such as the VAX, this flag has no effect.  This
-is because the standard calling sequence automatically handles
+On some machines, such as the VAX, this flag has no effect,
+because the standard calling sequence automatically handles
 the frame pointer and nothing is saved by pretending it doesn't exist.
 The machine-description macro \fBFRAME_POINTER_REQUIRED\fR
 controls whether a target machine supports this flag.
@@ -435,16 +493,6 @@ calls a constant function contain the function's address explicitly.
 This option results in less efficient code, but some strange hacks
 that alter the assembler output may be confused by the optimizations
 performed when this option is not used.
-.TP 10
-.B \ \ \ \ \ \ \ \ \-fnostdinc
-Don't search the standard directories for include files.
-Only the directories you specify explicitly with the `\fB\-I\fR'
-option will be searched.
-.TP 10
-.B \ \ \ \ \ \ \ \ \-fnostdlib
-Don't use the standard system libraries and startup files
-when linking.
-Only the files you specify (plus `\fBgnulib\fR') will be passed to the linker. 
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fvolatile
 Consider all memory references through pointers to be volatile.
@@ -589,3 +637,5 @@ into another language, under the above conditions for modified versions,
 except that the section entitled "GNU CC General Public License" may be
 included in a translation approved by the author instead of in the original
 English.
+.SH AUTHORS
+Richard M. Stallman

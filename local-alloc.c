@@ -83,6 +83,12 @@ static short *qty_phys_reg;
 
 static short *qty_phys_sugg;
 
+/* Element Q is a reg class contained in (smaller than) the
+   preferred classes of all the pseudo regs that are tied in quantity Q.
+   This is the preferred class for allocating that quantity.  */
+
+static enum reg_class *qty_min_class;
+
 /* Insn number (counting from head of basic block)
    where quantity Q was born.  */
 
@@ -115,10 +121,6 @@ static enum machine_mode *qty_mode;
 /* Nonzero if any of the regs tied to qty Q lives across a CALL_INSN.  */
 
 static char *qty_crosses_call;
-
-/* Preferred reg class of qty Q.  */
-
-static enum reg_class *qty_reg_class;
 
 /* Nonzero means don't allocate qty Q if we can't get its preferred class.  */
 
@@ -174,6 +176,9 @@ static void mark_life ();
 static void post_mark_life ();
 static int qty_compare ();
 static int qty_compare_1 ();
+static int reg_meets_class_p ();
+static int reg_class_subset_p ();
+static void update_qty_class ();
 
 /* Allocate a new quantity (new within current basic block)
    for register number REGNO which is born in insn number INSN_NUMBER
@@ -192,7 +197,7 @@ alloc_qty (regno, mode, size, insn_number)
   qty_mode[qty] = mode;
   qty_birth[qty] = insn_number;
   qty_crosses_call[qty] = reg_crosses_call[regno];
-  qty_reg_class[qty] = reg_preferred_class (regno);
+  qty_min_class[qty] = reg_preferred_class (regno);
   qty_preferred_or_nothing[qty] = reg_preferred_or_nothing (regno);
 }
 
@@ -214,7 +219,7 @@ local_alloc ()
   qty_size = (int *) alloca (max_regno * sizeof (int));
   qty_mode = (enum machine_mode *) alloca (max_regno * sizeof (enum machine_mode));
   qty_crosses_call = (char *) alloca (max_regno);
-  qty_reg_class = (enum reg_class *) alloca (max_regno * sizeof (enum reg_class));
+  qty_min_class = (enum reg_class *) alloca (max_regno * sizeof (enum reg_class));
   qty_preferred_or_nothing = (char *) alloca (max_regno);
 
   reg_qty = (int *) alloca (max_regno * sizeof (int));
@@ -228,10 +233,19 @@ local_alloc ()
 
   for (b = 0; b < n_basic_blocks; b++)
     {
-      for (i = 0; i < max_regno; i++)
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 	{
-	  reg_qty[i] = -2;
 	  qty_phys_sugg[i] = -1;
+	  reg_qty[i] = -2;
+	}
+      for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
+	{
+	  qty_phys_sugg[i] = -1;
+	  /* Set reg_qty to -2 for pseudos in this block, -1 for others.  */
+	  if (reg_basic_block[i] == b && reg_n_deaths[i] == 1)
+	    reg_qty[i] = -2;
+	  else
+	    reg_qty[i] = -1;
 	}
 
       bzero (reg_offset, max_regno * sizeof (int));
@@ -240,7 +254,7 @@ local_alloc ()
       bzero (qty_death, max_regno * sizeof (int));
       bzero (qty_size, max_regno * sizeof (int));
       bzero (qty_mode, max_regno * sizeof (enum machine_mode));
-      bzero (qty_reg_class, max_regno * sizeof (enum reg_class));
+      bzero (qty_min_class, max_regno * sizeof (enum reg_class));
       bzero (qty_preferred_or_nothing, max_regno);
       bzero (qty_crosses_call, max_regno);
       bzero (qty_phys_reg, max_regno * sizeof (short));
@@ -376,7 +390,10 @@ block_alloc (b)
 	      }
 	    else if (REG_NOTE_KIND (link) == REG_EQUIV
 		     && GET_CODE (SET_DEST (body)) == REG
-		     && general_operand (XEXP (link, 0), VOIDmode))
+		     && general_operand (XEXP (link, 0), VOIDmode)
+		     /* Don't inhibit allocation of a "constant" register
+			that we have already tied to something else!  */
+		     && combined_regno < 0)
 	      {
 		/* Also, if this insn introduces a "constant" register,
 		   that could just be replaced by the value it is given here
@@ -406,7 +423,10 @@ block_alloc (b)
 		       or a static chain pointer.  Tell local-alloc
 		       as well not to allocate it.  */
 		    if (! CONSTANT_P (SET_SRC (PATTERN (insn))))
-		      reg_basic_block[i] = -2;
+		      {
+			reg_basic_block[i] = -2;
+			reg_qty[i] = -1;
+		      }
 		  }
 		else
 		  /* In any case, lower its priority for global-alloc.  */
@@ -489,7 +509,7 @@ block_alloc (b)
 	  if (N_REG_CLASSES > 1)
 	    {
 	      qty_phys_reg[q] = find_free_reg (qty_crosses_call[q],
-					       qty_reg_class[q],
+					       qty_min_class[q],
 					       qty_mode[q], q,
 					       qty_birth[q], qty_death[q]);
 	      if (qty_phys_reg[q] >= 0)
@@ -795,15 +815,18 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
      If UREG is not a hardware register, don't tie
      if it and SREG want different classes.  */
   else if (sqty == -2 && regno_dead_p (ureg, insn)
-	   && ((reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
-		|| reg_qty[ureg] < 0)
-	       ? reg_classes_fit (ureg, sreg)
+	   && (reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
+	       ? reg_meets_class_p (sreg, qty_min_class[reg_qty[ureg]])
+	       : reg_qty[ureg] < 0
+	       ? reg_meets_class_p (sreg, reg_preferred_class (ureg))
 	       : TEST_HARD_REG_BIT (reg_class_contents[(int) reg_preferred_class (sreg)],
-					reg_qty[ureg])))
+				    reg_qty[ureg])))
     {
       if (reg_qty[ureg] == -2)
 	reg_is_born (usedreg, insn_number, b);
       sqty = reg_qty[sreg] = reg_qty[ureg];
+      /* If SREG's reg class is smaller, set qty_min_class[SQTY].  */
+      update_qty_class (sqty, sreg);
       reg_offset[sreg] = reg_offset[ureg] + offset;
       if (sqty >= 0)
 	{
@@ -825,16 +848,29 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
 
   return 1;
 }
+
+/* Return 1 if the preferred class of REG allows it to be tied
+   to a quantity or register whose class is CLASS.
+   True if REG's reg class either contains or is contained in CLASS.  */
+
+static int
+reg_meets_class_p (reg, class)
+     int reg;
+     enum reg_class class;
+{
+  register enum reg_class rclass = reg_preferred_class (reg);
+  return (reg_class_subset_p (rclass, class)
+	  || reg_class_subset_p (class, rclass));
+}
 
 /* Return nonzero if R2's preferred class is the same as or contains
    R1's preferred class.  R1 and R2 are pseudo-register numbers.  */
 
-int
-reg_classes_fit (r1, r2)
-     int r1, r2;
+static int
+reg_class_subset_p (c1, c2)
+     register enum reg_class c1;
+     register enum reg_class c2;
 {
-  register enum reg_class c1 = reg_preferred_class (r1);
-  register enum reg_class c2 = reg_preferred_class (r2);
   if (c1 == c2) return 1;
 
   if (c2 == ALL_REGS)
@@ -844,6 +880,18 @@ reg_classes_fit (r1, r2)
 			 reg_class_contents[(int)c2],
 			 win);
   return 0;
+}
+
+/* Update the class of QTY assuming that REG is being tied to it.  */
+
+static void
+update_qty_class (qty, reg)
+     int qty;
+     int reg;
+{
+  enum reg_class rclass = reg_preferred_class (reg);
+  if (reg_class_subset_p (rclass, qty_min_class[qty]))
+    qty_min_class[qty] = rclass;
 }
 
 /* Handle something which alters the value of an rtx REG.
@@ -919,7 +967,8 @@ reg_is_born (reg, insn_number, blocknum)
 	   && reg_n_deaths[regno] == 1)
     alloc_qty (regno, GET_MODE (reg), PSEUDO_REGNO_SIZE (regno), insn_number);
   else
-    reg_qty[regno] = -1;
+    abort ();
+/*    reg_qty[regno] = -1;   now done before calling block_alloc.  */
 }
 
 /* Record the death in insn DEATH_INSN_NUMBER for the register REG.  */

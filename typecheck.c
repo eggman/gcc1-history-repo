@@ -1386,6 +1386,9 @@ build_binary_op_nodefault (code, op0, op1)
 
 	  final_type = result_type;
 
+	  if (arg0 == op0 && final_type == TREE_TYPE (op0))
+	    unsigned_arg = TREE_UNSIGNED (TREE_TYPE (op0));
+
 	  if (TYPE_PRECISION (TREE_TYPE (arg0)) < TYPE_PRECISION (result_type)
 	      /* If arg is sign-extended and then unsigned-shifted,
 		 we can simulate this with a signed shift in arg's type
@@ -1671,6 +1674,14 @@ shorten_compare (op0_ptr, op1_ptr, restype_ptr, rescode_ptr)
 
   primop0 = get_narrower (op0, &unsignedp0);
   primop1 = get_narrower (op1, &unsignedp1);
+
+  /* Handle the case that OP0 does not *contain* a conversion
+     but it *requires* conversion to FINAL_TYPE.  */
+
+  if (op0 == primop0 && TREE_TYPE (op0) != *restype_ptr)
+    unsignedp0 = TREE_UNSIGNED (TREE_TYPE (op0));
+  if (op1 == primop1 && TREE_TYPE (op1) != *restype_ptr)
+    unsignedp1 = TREE_UNSIGNED (TREE_TYPE (op1));
 
   /* If one of the operands must be floated, we cannot optimize.  */
   real1 = TREE_CODE (TREE_TYPE (primop0)) == REAL_TYPE;
@@ -1969,7 +1980,9 @@ build_unary_op (code, xarg, noconvert)
 
     case TRUTH_NOT_EXPR:
       if (typecode != INTEGER_TYPE
-	  && typecode != REAL_TYPE && typecode != POINTER_TYPE)
+	  && typecode != REAL_TYPE && typecode != POINTER_TYPE
+	  /* This will convert to a pointer.  */
+	  && typecode != ARRAY_TYPE)
 	{
 	  errstring = "wrong type argument to unary exclamation mark";
 	  break;
@@ -2072,6 +2085,7 @@ build_unary_op (code, xarg, noconvert)
 				       || code == POSTINCREMENT_EXPR)
 				      ? PLUS_EXPR : MINUS_EXPR),
 				     argtype, value, inc);
+		TREE_VOLATILE (incremented) = 1;
 		modify = build_modify_expr (arg, NOP_EXPR, incremented);
 		return build (COMPOUND_EXPR, TREE_TYPE (arg), modify, value);
 	      }
@@ -2083,8 +2097,9 @@ build_unary_op (code, xarg, noconvert)
 				   ? "increment" : "decrement")))
 	  return error_mark_node;
 
-	return convert (result_type, build (code, TREE_TYPE (arg),
-					    arg, inc));
+	val = build (code, TREE_TYPE (arg), arg, inc);
+	TREE_VOLATILE (val) = 1;
+	return convert (result_type, val);
       }
 
     case ADDR_EXPR:
@@ -2534,7 +2549,7 @@ build_compound_expr (list)
 
   rest = build_compound_expr (TREE_CHAIN (list));
 
-  if (TREE_LITERAL (TREE_VALUE (list)))
+  if (! TREE_VOLATILE (TREE_VALUE (list)))
     return rest;
 
   return build (COMPOUND_EXPR, TREE_TYPE (rest), TREE_VALUE (list), rest);
@@ -2762,23 +2777,27 @@ convert_for_assignment (type, rhs, errtype)
       /* Anything converts to void *.  void * converts to anything.
 	 Otherwise, the targets must be the same except that the
 	 lhs target may be const or volatile while the rhs target isn't.  */
-      if (comp_target_types (type, rhstype))
+      if (TYPE_MAIN_VARIANT (ttl) == void_type_node
+	  || TYPE_MAIN_VARIANT (ttr) == void_type_node)
+	{
+	  if (!((TYPE_MAIN_VARIANT (ttl) == void_type_node
+		 && (!pedantic
+		     || (ttl == void_type_node
+			 && TREE_CODE (ttr) != FUNCTION_TYPE)))
+		||
+		(TYPE_MAIN_VARIANT (ttr) == void_type_node
+		 && (!pedantic
+		     || (ttr == void_type_node
+			 && TREE_CODE (ttl) != FUNCTION_TYPE)))))
+	    warning ("%s between incompatible pointer types", errtype);
+	}
+      else if (comp_target_types (type, rhstype))
 	{
 	  if (! TREE_READONLY (ttl) && TREE_READONLY (ttr))
 	    warning ("%s of non-const * pointer from const *", errtype);
 	  if (! TREE_VOLATILE (ttl) && TREE_VOLATILE (ttr))
 	    warning ("%s of non-volatile * pointer from volatile *", errtype);
 	}
-      else if (!((TYPE_MAIN_VARIANT (ttl) == void_type_node
-		  && (!pedantic
-		      || (ttl == void_type_node
-			  && TREE_CODE (ttr) != FUNCTION_TYPE)))
-		 ||
-		 (TYPE_MAIN_VARIANT (ttr) == void_type_node
-		  && (!pedantic
-		      || (ttr == void_type_node
-			  && TREE_CODE (ttl) != FUNCTION_TYPE)))))
-	warning ("%s between incompatible pointer types", errtype);
       return convert (type, rhs);
     }
   else if (codel == POINTER_TYPE && coder == INTEGER_TYPE)
@@ -2861,8 +2880,9 @@ initializer_constant_valid_p (value)
 }
 
 /* Perform appropriate conversions on the initial value of a variable,
-   store it in the declaration DECL if it is valid, and print any error
-   messages that are appropriate.  */
+   store it in the declaration DECL,
+   and print any error messages that are appropriate.
+   If the init is invalid, store an ERROR_MARK.  */
 
 void
 store_init_value (decl, init)
@@ -2885,13 +2905,18 @@ store_init_value (decl, init)
   if (value == error_mark_node)
     ;
   else if (TREE_STATIC (decl) && ! TREE_LITERAL (value))
-    error ("initializer for static variable is not constant");
+    {
+      error ("initializer for static variable is not constant");
+      value = error_mark_node;
+    }
   else if (TREE_STATIC (decl)
 	   && ! initializer_constant_valid_p (value))
-    error ("initializer for static variable uses complex arithmetic");
+    {
+      error ("initializer for static variable uses complex arithmetic");
+      value = error_mark_node;
+    }
   else
     {
-      DECL_INITIAL (decl) = value;
       if (pedantic && TREE_CODE (value) == CONSTRUCTOR)
 	{
 	  if (! TREE_LITERAL (value))
@@ -2900,6 +2925,7 @@ store_init_value (decl, init)
 	    warning ("aggregate initializer uses complex arithmetic");
 	}
     }
+  DECL_INITIAL (decl) = value;
 }
 
 /* Digest the parser output INIT as an initializer for type TYPE.
@@ -2947,7 +2973,8 @@ digest_init (type, init, tail)
 	       || (code == ARRAY_TYPE && TREE_TYPE (init)
 		   && comptypes (TREE_TYPE (init), type))))
     {
-      if (pedantic && code == ARRAY_TYPE)
+      if (pedantic && code == ARRAY_TYPE
+	  && TREE_CODE (init) != STRING_CST)
 	warning ("ANSI C forbids initializing array from array expression");
       return init;
     }
@@ -3076,6 +3103,12 @@ digest_init (type, init, tail)
 	  *tail = old_tail_contents;
 	  return process_init_constructor (type, 0, tail);
 	}
+      else if (flag_traditional)
+	/* Traditionally one can say `char x[100] = 0;'.  */
+	return process_init_constructor (type,
+					 build_nt (CONSTRUCTOR, 0,
+						   tree_cons (0, init, 0)),
+					 0);
     }
 
   error ("invalid initializer");
@@ -3270,7 +3303,9 @@ c_expand_return (retval)
   else
     {
       tree t = convert_for_assignment (valtype, retval, "return");
-      t = build (MODIFY_EXPR, valtype, DECL_RESULT (current_function_decl), t);
+      tree res = DECL_RESULT (current_function_decl);
+      t = build (MODIFY_EXPR, TREE_TYPE (res),
+		 res, convert (TREE_TYPE (res), t));
       expand_return (t);
       current_function_returns_value = 1;
     }

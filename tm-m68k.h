@@ -125,7 +125,7 @@ extern int target_flags;
 #define FUNCTION_BOUNDARY 16
 
 /* Alignment of field after `int : 0' in a structure.  */
-#define EMPTY_FIELD_BOUNDARY (TARGET_SHORT ? 16 : 32)
+#define EMPTY_FIELD_BOUNDARY 16
 
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT 16

@@ -26,8 +26,15 @@ and this notice must be preserved on all copies.  */
 #include "gdbfiles.h"
 #include <stdio.h>
 
+/* Get N_SO from stab.h if we can expect the file to exist.  */
+#ifndef NO_DBX_FORMAT
+#include <stab.h>
+#endif
+
 /* .stabs code for source file name.  */
+#ifndef N_SO
 #define	N_SO 0x64
+#endif
 
 /* Unix maximum on file name length.  Needed for getwd.  */
 #define MAXNAMLEN 1024

@@ -266,11 +266,14 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
    I : Matches integers which are valid shift amounts for scaled indexing.
        These are 0, 1, 2, 3 for byte, word, double, and quadword.
-   J : Matches integers which fit a "quick" operand.   */
+   J : Matches integers which fit a "quick" operand.
+   K : Matches integers 0 to 7 (for inss and exts instructions).  */
 
 #define CONST_OK_FOR_LETTER_P(VALUE, C)  \
-  ((C) == 'I' ? (0 <= (VALUE) && (VALUE) <= 3) : \
-   (C) == 'J' ? (-8 <= (VALUE) && (VALUE) <= 7) : 0)
+  ((VALUE) < 8 && (VALUE) + 8 >= 0 ?		\
+   ((C) == 'I' ? (0 <= (VALUE) && (VALUE) <= 3) : \
+    (C) == 'J' ? (VALUE) <= 7 :			\
+    (C) == 'K' ? 0 <= (VALUE) : 0) : 0)
 
 /* Similar, but for floating constants, and defining letters G and H.
    Here VALUE is the CONST_DOUBLE rtx itself.  */
@@ -726,8 +729,6 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
  from registers which are not FP or SP (or SB or PC).  This
  makes _x(fp) valid, while _x(r0) is invalid.  */
 
-# define SEQUENT_HAS_FIXED_THEIR_BUG 0
-
 #define INDIRECTABLE_1_ADDRESS_P(X)  \
   (CONSTANT_P (X)							\
    || (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
@@ -1153,6 +1154,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (CODE == '$') fprintf (FILE, "$");					\
+  else if (CODE == '?');						\
   else if (GET_CODE (X) == REG)						\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
@@ -1162,7 +1164,9 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
 	fprintf (FILE, "$0d%.20e", u.d); }				\
-    else fprintf (FILE, "$0f%.20e", XINT (X, 0));			\
+    else { union { float f; int i; } u;					\
+	   u.i = XINT (X, 0);						\
+	   fprintf (FILE, "$0f%.20e", u.f); }				\
   else { putc ('$', FILE); output_addr_const (FILE, X); }}
 
 /* Print a memory operand whose address is X, on file FILE.  */

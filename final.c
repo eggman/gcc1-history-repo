@@ -53,6 +53,11 @@ and this notice must be preserved on all copies.  */
 #include "conditions.h"
 #include "gdbfiles.h"
 
+/* Get N_SLINE and N_SOL from stab.h if we can expect the file to exist.  */
+#ifndef NO_DBX_FORMAT
+#include <stab.h>
+#endif
+
 /* .stabd code for line number.  */
 #ifndef N_SLINE
 #define	N_SLINE	0x44
@@ -68,7 +73,7 @@ and this notice must be preserved on all copies.  */
 void output_asm_insn ();
 static void alter_subreg ();
 static int alter_cond ();
-static void output_asm_label ();
+void output_asm_label ();
 static void output_operand ();
 void output_address ();
 void output_addr_const ();
@@ -986,7 +991,9 @@ output_asm_insn (template, operands)
   putc ('\n', asm_out_file);
 }
 
-static void
+/* Output a LABEL_REF, or a bare CODE_LABEL, as an assembler symbol.  */
+
+void
 output_asm_label (x)
      rtx x;
 {

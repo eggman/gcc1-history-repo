@@ -46,6 +46,7 @@ and this notice must be preserved on all copies.  */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (CODE == '$') ;							\
+  else if (CODE == '?');						\
   else if (GET_CODE (X) == REG)						\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
@@ -87,7 +88,9 @@ and this notice must be preserved on all copies.  */
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
 	fprintf (FILE, "0d%.20e", u.d); }				\
-    else fprintf (FILE, "0f%.20e", XINT (X, 0));			\
+    else { union { float f; int i; } u;					\
+	   u.i = XINT (X, 0);						\
+	   fprintf (FILE, "0f%.20e", u.f); }				\
   else output_addr_const (FILE, X); }
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  print_operand_address(FILE, ADDR)

@@ -53,7 +53,7 @@
   [(set (cc0)
 	(match_operand:DF 0 "general_operand" "gF"))]
   ""
-  "tstd %0")
+  "tst%# %0")
 
 (define_insn "tstsf"
   [(set (cc0)
@@ -87,7 +87,7 @@
 	(minus (match_operand:DF 0 "general_operand" "gF")
 	       (match_operand:DF 1 "general_operand" "gF")))]
   ""
-  "cmpd %0,%1")
+  "cmp%# %0,%1")
 
 (define_insn "cmpsf"
   [(set (cc0)
@@ -124,8 +124,8 @@
   "*
 {
   if (operands[1] == dconst0_rtx)
-    return \"clrd %0\";
-  return \"movd %1,%0\";
+    return \"clr%# %0\";
+  return \"mov%# %1,%0\";
 }")
 
 (define_insn "movsf"
@@ -356,13 +356,13 @@
   [(set (match_operand:DF 0 "general_operand" "=g")
 	(float_extend:DF (match_operand:SF 1 "general_operand" "gF")))]
   ""
-  "cvtfd %1,%0")
+  "cvtf%# %1,%0")
 
 (define_insn "truncdfsf2"
   [(set (match_operand:SF 0 "general_operand" "=g")
 	(float_truncate:SF (match_operand:DF 1 "general_operand" "gF")))]
   ""
-  "cvtdf %1,%0")
+  "cvt%#f %1,%0")
 
 (define_insn "zero_extendhisi2"
   [(set (match_operand:SI 0 "general_operand" "=g")
@@ -399,7 +399,7 @@
   [(set (match_operand:DF 0 "general_operand" "=g")
 	(float:DF (match_operand:SI 1 "general_operand" "g")))]
   ""
-  "cvtld %1,%0")
+  "cvtl%# %1,%0")
 
 (define_insn "floathisf2"
   [(set (match_operand:SF 0 "general_operand" "=g")
@@ -411,7 +411,7 @@
   [(set (match_operand:DF 0 "general_operand" "=g")
 	(float:DF (match_operand:HI 1 "general_operand" "g")))]
   ""
-  "cvtwd %1,%0")
+  "cvtw%# %1,%0")
 
 (define_insn "floatqisf2"
   [(set (match_operand:SF 0 "general_operand" "=g")
@@ -423,7 +423,7 @@
   [(set (match_operand:DF 0 "general_operand" "=g")
 	(float:DF (match_operand:QI 1 "general_operand" "g")))]
   ""
-  "cvtbd %1,%0")
+  "cvtb%# %1,%0")
 
 ;; Float-to-fix conversion insns.
 
@@ -455,13 +455,13 @@
   [(set (match_operand:HI 0 "general_operand" "=g")
 	(fix:HI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
   ""
-  "cvtdw %1,%0")
+  "cvt%#w %1,%0")
 
 (define_insn "fix_truncdfsi2"
   [(set (match_operand:SI 0 "general_operand" "=g")
 	(fix:SI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
   ""
-  "cvtdl %1,%0")
+  "cvt%#l %1,%0")
 
 ;;- All kinds of add instructions.
 
@@ -473,10 +473,10 @@
   "*
 {
   if (rtx_equal_p (operands[0], operands[1]))
-    return \"addd2 %2,%0\";
+    return \"add%#2 %2,%0\";
   if (rtx_equal_p (operands[0], operands[2]))
-    return \"addd2 %1,%0\";
-  return \"addd3 %1,%2,%0\";
+    return \"add%#2 %1,%0\";
+  return \"add%#3 %1,%2,%0\";
 }")
 
 (define_insn "addsf3"
@@ -591,8 +591,8 @@
   "*
 {
   if (rtx_equal_p (operands[0], operands[1]))
-    return \"subd2 %2,%0\";
-  return \"subd3 %2,%1,%0\";
+    return \"sub%#2 %2,%0\";
+  return \"sub%#3 %2,%1,%0\";
 }")
 
 (define_insn "subsf3"
@@ -665,10 +665,10 @@
   "*
 {
   if (rtx_equal_p (operands[0], operands[1]))
-    return \"muld2 %2,%0\";
+    return \"mul%#2 %2,%0\";
   if (rtx_equal_p (operands[0], operands[2]))
-    return \"muld2 %1,%0\";
-  return \"muld3 %1,%2,%0\";
+    return \"mul%#2 %1,%0\";
+  return \"mul%#3 %1,%2,%0\";
 }")
 
 (define_insn "mulsf3"
@@ -737,8 +737,8 @@
   "*
 {
   if (rtx_equal_p (operands[0], operands[1]))
-    return \"divd2 %2,%0\";
-  return \"divd3 %2,%1,%0\";
+    return \"div%#2 %2,%0\";
+  return \"div%#3 %2,%1,%0\";
 }")
 
 (define_insn "divsf3"
@@ -968,7 +968,7 @@
   [(set (match_operand:DF 0 "general_operand" "=g")
 	(neg:DF (match_operand:DF 1 "general_operand" "gF")))]
   ""
-  "mnegd %1,%0")
+  "mneg%# %1,%0")
 
 (define_insn "negsf2"
   [(set (match_operand:SF 0 "general_operand" "=g")

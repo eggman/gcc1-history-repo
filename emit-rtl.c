@@ -363,8 +363,10 @@ get_first_label_num ()
   return first_label_num;
 }
 
-/* Assuming that X is an rtx (MEM or REG) for a fixed-point number,
+/* Assuming that X is an rtx (MEM, REG or SUBREG) for a fixed-point number,
    return a MEM or SUBREG rtx that refers to the least-significant part of X.
+   MODE specifies how big a part of X to return;
+   it must not be larger than a word.
    If X is a MEM whose address is a QUEUED, the value may be so also.  */
 
 rtx
@@ -372,17 +374,14 @@ gen_lowpart (mode, x)
      enum machine_mode mode;
      register rtx x;
 {
+  /* This case loses if X is a subreg.  To catch bugs early,
+     complain if an invalid MODE is used even in other cases.  */
+  if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
+    abort ();
   if (GET_CODE (x) == SUBREG)
-    {
-      /* The code we have is correct only under these conditions.  */
-      if (! subreg_lowpart_p (x))
-	abort ();
-      if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
-	abort ();
-      return (GET_MODE (SUBREG_REG (x)) == mode
-	      ? SUBREG_REG (x)
-	      : gen_rtx (SUBREG, mode, SUBREG_REG (x), SUBREG_WORD (x)));
-    }
+    return (GET_MODE (SUBREG_REG (x)) == mode && SUBREG_WORD (x) == 0
+	    ? SUBREG_REG (x)
+	    : gen_rtx (SUBREG, mode, SUBREG_REG (x), SUBREG_WORD (x)));
   if (GET_MODE (x) == mode)
     return x;
   if (GET_CODE (x) == CONST_INT)
@@ -779,43 +778,6 @@ make_jump_insn_raw (pattern, pat_formals)
   return insn;
 }
 
-#if 0
-/* No longer needed, now that SEQUENCEs contain insns rather than bodies.  */
-
-/* Return an indication of which type of insn should have X as a body.
-   The value is CODE_LABEL, INSN, CALL_INSN or JUMP_INSN.  */
-
-/* Note this is no longer correct now that a CALL can appear inside a SET.  */
-
-enum rtx_code
-classify_insn (x)
-     rtx x;
-{
-  if (GET_CODE (x) == CODE_LABEL)
-    return CODE_LABEL;
-  if (GET_CODE (x) == CALL)
-    return CALL_INSN;
-  if (GET_CODE (x) == SET)
-    {
-      if (SET_DEST (x) == pc_rtx)
-	return JUMP_INSN;
-      else
-	return INSN;
-    }
-  if (GET_CODE (x) == PARALLEL)
-    {
-      register int j;
-      for (j = XVECLEN (x, 0) - 1; j >= 0; j--)
-	if (GET_CODE (XVECEXP (x, 0, j)) == CALL)
-	  return CALL_INSN;
-	else if (GET_CODE (XVECEXP (x, 0, j)) == SET
-		 && SET_DEST (XVECEXP (x, 0, j)) == pc_rtx)
-	  return JUMP_INSN;
-    }
-  return INSN;
-}
-#endif
-
 /* Add INSN to the end of the doubly-linked list.
    INSN may be an INSN, JUMP_INSN, CALL_INSN, CODE_LABEL, BARRIER or NOTE.  */
 
@@ -1173,6 +1135,67 @@ emit_note (file, line)
   return note;
 }
 
+/* Return an indication of which type of insn should have X as a body.
+   The value is CODE_LABEL, INSN, CALL_INSN or JUMP_INSN.  */
+
+enum rtx_code
+classify_insn (x)
+     rtx x;
+{
+  if (GET_CODE (x) == CODE_LABEL)
+    return CODE_LABEL;
+  if (GET_CODE (x) == CALL)
+    return CALL_INSN;
+  if (GET_CODE (x) == RETURN)
+    return JUMP_INSN;
+  if (GET_CODE (x) == SET)
+    {
+      if (SET_DEST (x) == pc_rtx)
+	return JUMP_INSN;
+      else if (GET_CODE (SET_SRC (x)) == CALL)
+	return CALL_INSN;
+      else
+	return INSN;
+    }
+  if (GET_CODE (x) == PARALLEL)
+    {
+      register int j;
+      for (j = XVECLEN (x, 0) - 1; j >= 0; j--)
+	if (GET_CODE (XVECEXP (x, 0, j)) == CALL)
+	  return CALL_INSN;
+	else if (GET_CODE (XVECEXP (x, 0, j)) == SET
+		 && SET_DEST (XVECEXP (x, 0, j)) == pc_rtx)
+	  return JUMP_INSN;
+	else if (GET_CODE (XVECEXP (x, 0, j)) == SET
+		 && GET_CODE (SET_SRC (XVECEXP (x, 0, j))) == CALL)
+	  return CALL_INSN;
+    }
+  return INSN;
+}
+
+/* Emit the rtl pattern X as an appropriate kind of insn.
+   If X is a label, it is simply added into the insn chain.  */
+
+rtx
+emit (x)
+     rtx x;
+{
+  enum rtx_code code = classify_insn (x);
+
+  if (code == CODE_LABEL)
+    emit_label (x);
+  else if (code == INSN)
+    emit_insn (x);
+  else if (code == JUMP_INSN)
+    {
+      emit_jump_insn (x);
+      if (simplejump_p (x) || GET_CODE (x) == RETURN)
+	emit_barrier ();
+    }
+  else if (code == CALL_INSN)
+    emit_call_insn (x);
+}
+
 /* Generate a SEQUENCE rtx containing the insn-patterns in VEC
    following any insns previously placed on sequence_first_insn.
    This is how the gen_... function from a DEFINE_EXPAND
@@ -1247,8 +1270,8 @@ restore_reg_data (first)
 	  break;
 	}
     }
-
-  /* Fill in holes that need to exist.  */
+  
+  /* If any regs are missing, make them up.  */
   for (i = FIRST_PSEUDO_REGISTER; i < reg_rtx_no; i++)
     if (regno_reg_rtx[i] == 0)
       regno_reg_rtx[i] = gen_rtx (REG, SImode, i);

@@ -784,6 +784,12 @@ extern tree integer_zero_node;
 /* An integer constant with value 1 */
 extern tree integer_one_node;
 
+/* An integer constant with value 0 whose type is sizetype.  */
+extern tree size_zero_node;
+
+/* An integer constant with value 1 whose type is sizetype.  */
+extern tree size_one_node;
+
 /* A constant of type pointer-to-int and value 0 */
 extern tree null_pointer_node;
 

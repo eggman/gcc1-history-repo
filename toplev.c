@@ -315,7 +315,7 @@ gettime ()
 }
 
 #define TIMEVAR(VAR, BODY)    \
- { int otime = gettime (); BODY; VAR += gettime () - otime; }
+do { int otime = gettime (); BODY; VAR += gettime () - otime; } while (0)
 
 void
 print_time (str, total)
@@ -923,6 +923,8 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
 	     {
 	       assemble_variable (decl, asmspec, top_level, write_symbols, at_end);
 	     });
+  else if (write_symbols == 2 && TREE_CODE (decl) == TYPE_DECL)
+    TIMEVAR (varconst_time, dbxout_symbol (decl, 0));
 
   if (top_level)
     {
@@ -1446,6 +1448,14 @@ main (argc, argv, envp)
 	  warn_implicit = 1;
 	else if (!strcmp (str, "Wreturn-type"))
 	  warn_return_type = 1;
+	else if (!strcmp (str, "Wcomment"))
+	  ; /* cpp handles this one.  */
+	else if (!strcmp (str, "Wall"))
+	  {
+	    extra_warnings = 1;
+	    warn_implicit = 1;
+	    warn_return_type = 1;
+	  }
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
 	else if (!strcmp (str, "g"))

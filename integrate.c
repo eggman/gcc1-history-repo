@@ -22,7 +22,6 @@ and this notice must be preserved on all copies.  */
 
 #include <ctype.h>
 #include <stdio.h>
-#include <strings.h>
 
 #include "config.h"
 #include "rtl.h"

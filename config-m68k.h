@@ -36,3 +36,8 @@ and this notice must be preserved on all copies.  */
 /* Arguments to use with `exit'.  */
 #define SUCCESS_EXIT_CODE 0
 #define FATAL_EXIT_CODE 33
+
+/* If compiled with GNU C, use the built-in alloca */
+#ifdef __GNUC__
+#define alloca __builtin_alloca
+#endif

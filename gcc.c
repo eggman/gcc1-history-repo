@@ -194,7 +194,7 @@ struct compiler compilers[] =
   {".c",
    "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
         -undef -D__GNU__ -D__GNUC__ %{ansi:-T -D__STRICT_ANSI__} %{!ansi:%p}\
-        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{Wcomment} \
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{Wcomment} %{Wall}\
         %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
     %{!M*:%{!E:cc1 %g.cpp %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
 		   %{W*} %{w} %{pedantic} %{ansi}\
@@ -1037,7 +1037,15 @@ main (argc, argv)
      Make a table of specified input files (infiles, n_infiles).  */
 
   process_command (argc, argv);
-  
+
+  if (vflag)
+    {
+      extern char *version_string;
+      printf ("gcc version %s\n", version_string);
+      if (n_infiles == 0)
+	exit (0);
+    }
+
   if (n_infiles == 0)
     fatal ("No source or object files specified.");
 

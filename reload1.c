@@ -144,6 +144,10 @@ static char spill_indirect_ok;
 
 char *basic_block_needs;
 
+/* First uid used by insns created by reload in this function.
+   Used in find_equiv_reg.  */
+int reload_first_uid;
+
 static void reload_as_needed ();
 static rtx alter_frame_pointer_addresses ();
 static void alter_reg ();
@@ -189,6 +193,9 @@ reload (first, global, dumpfile)
 
   /* The basic block number currently being processed for INSN.  */
   int this_block;
+
+  /* Enable find_equiv_reg to distinguish insns made by reload.  */
+  reload_first_uid = get_max_uid ();
 
   basic_block_needs = 0;
 
@@ -423,10 +430,10 @@ reload (first, global, dumpfile)
 		    {
 		      /* Count number of groups needed separately from
 			 number of individual regs needed.  */
-		      insn_groups[(int) reload_reg_class[i]] += size;
+		      insn_groups[(int) reload_reg_class[i]]++;
 		      p = reg_class_superclasses[(int) reload_reg_class[i]];
 		      while (*p != LIM_REG_CLASSES)
-			insn_groups[(int) *p++] += size;
+			insn_groups[(int) *p++]++;
 		      insn_total_groups++;
 
 		      /* Record size of a group.  */
@@ -572,7 +579,8 @@ reload (first, global, dumpfile)
 	 `spill_regs' and `spill_reg_order'.  */
 
       for (class = 0; class < N_REG_CLASSES; class++)
-	while (max_needs[class] > 0 || max_groups[class] > 0)
+	while (max_needs[class] > 0 || max_groups[class] > 0
+	       || max_nongroups[class] > 0)
 	  {
 	    register enum reg_class *p;
 	    int in_a_group = 0;
@@ -605,6 +613,9 @@ reload (first, global, dumpfile)
 			/* We have found one that will complete a group,
 			   so count off one group as provided.  */
 			max_groups[class]--;
+			p = reg_class_superclasses[class];
+			while (*p != LIM_REG_CLASSES)
+			  max_groups[(int) *p++]--;
 			in_a_group = 1;
 			break;
 		      }
@@ -1187,7 +1198,17 @@ forget_old_reloads (x)
       if (regno >= FIRST_PSEUDO_REGISTER)
 	nr = 1;
       else
-	nr = HARD_REGNO_NREGS (regno, GET_MODE (SET_DEST (x)));
+	{
+	  int i;
+	  nr = HARD_REGNO_NREGS (regno, GET_MODE (SET_DEST (x)));
+	  /* Storing into a spilled-reg invalidates its contents.
+	     This can happen if a block-local pseudo is allocated to that reg
+	     and it wasn't spilled because this block's total need is 0.
+	     Then some insn might have an optional reload and use this reg.  */
+	  for (i = 0; i < nr; i++)
+	    if (spill_reg_order[regno + i] >= 0)
+	      reg_reloaded_contents[spill_reg_order[regno + i]] = -1;
+	}
       
       while (nr-- > 0) reg_last_reload_reg[regno + nr] = 0;
     }
@@ -1198,10 +1219,7 @@ forget_old_reloads (x)
 	{
 	  register rtx y = XVECEXP (x, 0, i);
 	  if (GET_CODE (y) == SET && GET_CODE (SET_DEST (y)) == REG)
-	    {
-	      register int regno = REGNO (SET_DEST (y));
-	      reg_last_reload_reg[regno] = 0;
-	    }
+	    forget_old_reloads (y);
 	}
     }
 }
@@ -1306,7 +1324,7 @@ choose_reload_targets (insn, n_spills)
       if (reload_strict_low[r])
 	reload_mode = GET_MODE (SUBREG_REG (reload_out[r]));
 
-      /* Notice reloads that got mark inoperative.  */
+      /* Ignore reloads that got marked inoperative.  */
       if (reload_out[r] == 0 && reload_in[r] == 0)
 	continue;
 

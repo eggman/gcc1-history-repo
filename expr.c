@@ -954,7 +954,8 @@ emit_move_insn (x, y)
   x = protect_from_queue (x, 1);
   y = protect_from_queue (y, 0);
 
-  if (CONSTANT_P (y) && ! LEGITIMATE_CONSTANT_P (y))
+  if ((CONSTANT_P (y) || GET_CODE (y) == CONST_DOUBLE)
+      && ! LEGITIMATE_CONSTANT_P (y))
     y = force_const_mem (mode, y);
 
   if (mode == BLKmode)
@@ -1419,11 +1420,14 @@ emit_library_call (va_alist)
   args_size = (args_size + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
 #endif
 
+  /* Don't allow popping to be deferred, since then
+     cse'ing of library calls could delete a call and leave the pop.  */
   current_args_size += 1;
   emit_call_1 (fun, get_identifier (XSTR (orgfun, 0)), args_size,
 	       FUNCTION_ARG (args_so_far, VOIDmode, void_type_node, 1),
 	       outmode != VOIDmode ? hard_libcall_value (outmode) : 0,
-	       old_args_size);
+	       old_args_size + 1);
+  current_args_size -= 1;
 }
 
 /* Expand an assignment that stores the value of FROM into TO.
@@ -2714,6 +2718,7 @@ expand_expr (exp, target, tmode, modifier)
 	  TREE_OPERAND (exp, 0) = exch;
 	}
     }
+  /* Optimize X + (Y ? Z : 0) by computing X and maybe adding Z.  */
   if (comparison_code[(int) TREE_CODE (TREE_OPERAND (exp, 1))]
       || (TREE_CODE (TREE_OPERAND (exp, 1)) == COND_EXPR
 	  && (integer_zerop (TREE_OPERAND (TREE_OPERAND (exp, 1), 1))
@@ -2728,10 +2733,17 @@ expand_expr (exp, target, tmode, modifier)
 	  tree thenexp;
 	  rtx thenv = 0;
 
+	  /* Don't store intermediate results in a fixed register.  */
+	  if (target != 0 && GET_CODE (target) == REG
+	      && REGNO (target) < FIRST_PSEUDO_REGISTER)
+	    target = 0;
 	  if (target == 0) target = gen_reg_rtx (mode);
+
+	  /* Compute X into the target.  */
 	  store_expr (TREE_OPERAND (exp, 0), target, 0);
 	  op0 = gen_label_rtx ();
 
+	  /* If other operand is a comparison COMP, treat it as COMP ? 1 : 0 */
 	  if (TREE_CODE (TREE_OPERAND (exp, 1)) != COND_EXPR)
 	    {
 	      do_jump (TREE_OPERAND (exp, 1), op0, 0);
@@ -2750,6 +2762,9 @@ expand_expr (exp, target, tmode, modifier)
 
 	  if (thenv == 0)
 	    thenv = expand_expr (thenexp, 0, VOIDmode, 0);
+
+	  /* THENV is now Z, the value to operate on, as an rtx.
+	     We have already tested that Y isn't zero, so do the operation.  */
 
 	  if (this_optab == rotl_optab || this_optab == rotr_optab)
 	    temp = expand_binop (mode, this_optab, target, thenv, target,
@@ -2817,6 +2832,7 @@ expand_builtin (exp, target, subtarget, mode)
 	    op0 = convert_to_mode (Pmode, op0);
 	}
       /* Push that much space (rounding it up).  */
+      do_pending_stack_adjust ();
       anti_adjust_stack (round_push (op0));
       /* Return a copy of current stack ptr, in TARGET if possible.  */
       if (target)
@@ -3122,7 +3138,7 @@ emit_call_1 (funexp, funtype, stack_size, next_arg_reg, valreg, old_args_size)
       if (flag_defer_pop && current_args_size == 0)
 	pending_stack_adjust += stack_size;
       else
-	adjust_stack (gen_rtx (CONST_INT, VOIDmode, stack_size));
+	adjust_stack (stack_size_rtx);
     }
 }
 
@@ -3492,8 +3508,7 @@ expand_call (exp, target, ignore)
 	  pending_stack_adjust -= needed;
 	  needed = 0;
 	}
-      if (needed > 0)
-	argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed));
+      argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed));
 #endif /* no PUSH_ROUNDING */
     }
 

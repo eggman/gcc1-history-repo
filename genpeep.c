@@ -221,11 +221,27 @@ match_rtx (x, path, fail_label)
 	}
       else if (fmt[i] == 'i')
 	{
+	  /* Make sure that at run time `x' is the RTX we want to test.  */
+	  if (i != 0)
+	    {
+	      printf ("  x = ");
+	      print_path (path);
+	      printf (";\n");
+	    }
+
 	  printf ("  if (XINT (x, %d) != %d) goto L%d;\n",
 		  i, XINT (x, i), fail_label);
 	}
       else if (fmt[i] == 's')
 	{
+	  /* Make sure that at run time `x' is the RTX we want to test.  */
+	  if (i != 0)
+	    {
+	      printf ("  x = ");
+	      print_path (path);
+	      printf (";\n");
+	    }
+
 	  printf ("  if (strcmp (XSTR (x, %d), \"%s\")) goto L%d;\n",
 		  i, XSTR (x, i), fail_label);
 	}

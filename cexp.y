@@ -107,6 +107,7 @@ software.
 /* Parse a C expression from text in a string  */
    
 %{
+#include "config.h"
 #include <setjmp.h>
 /* #define YYDEBUG 1 */
 

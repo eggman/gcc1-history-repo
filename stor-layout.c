@@ -35,6 +35,14 @@ and this notice must be preserved on all copies.  */
 
 tree sizetype;
 
+/* An integer constant with value 0 whose type is sizetype.  */
+
+tree size_zero_node;
+
+/* An integer constant with value 1 whose type is sizetype.  */
+
+tree size_one_node;
+
 #define GET_MODE_ALIGNMENT(MODE)   \
   MIN (BIGGEST_ALIGNMENT, 	   \
        MAX (1, (GET_MODE_UNIT_SIZE (MODE) * BITS_PER_UNIT)))
@@ -75,20 +83,22 @@ chain_type (t)
       /* If T is on the chain at the end, don't chain it to itself!  */
       if (t == permanent_type_end)
 	return;
+      /* Add T to the end of the chain.  */
       if (permanent_type_chain == 0)
-	permanent_type_end = t;
-      /* Add T to the front of the chain.  */
-      TREE_CHAIN (t) = permanent_type_chain;
-      permanent_type_chain = t;
+	permanent_type_chain = t;
+      else
+	TREE_CHAIN (permanent_type_end) = t;
+      permanent_type_end = t;
     }
   else
     {
       if (t == temporary_type_end)
 	return;
       if (temporary_type_chain == 0)
-	temporary_type_end = t;
-      TREE_CHAIN (t) = temporary_type_chain;
-      temporary_type_chain = t;
+	temporary_type_chain = t;
+      else
+	TREE_CHAIN (temporary_type_end) = t;
+      temporary_type_end = t;
     }
 }
 
@@ -230,7 +240,7 @@ add_vc_sizes (constant, var, coeff)
   if (constant == 0)
     return convert_units (var, coeff, BITS_PER_UNIT);
 
-  tmp1 = genop (PLUS_EXPR, genop (MULT_EXPR, var, integer_one_node),
+  tmp1 = genop (PLUS_EXPR, genop (MULT_EXPR, var, size_one_node),
 		build_int (constant)); /* add */
   return genop (CEIL_DIV_EXPR, tmp1, build_int (BITS_PER_UNIT));
 }
@@ -291,7 +301,7 @@ layout_decl (decl, known_align)
       /* Mode is "integer bit field".  */
       DECL_MODE (decl) = BImode;
       /* Size is specified number of bits.  */
-      DECL_SIZE (decl) = integer_one_node;
+      DECL_SIZE (decl) = size_one_node;
       DECL_SIZE_UNIT (decl) = spec_size;
     }
   /* Force alignment required for the data type.
@@ -553,7 +563,7 @@ layout_type (type)
   switch (TREE_CODE (type))
     {
     case VOID_TYPE:
-      TYPE_SIZE (type) = integer_zero_node;
+      TYPE_SIZE (type) = size_zero_node;
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
       TYPE_ALIGN (type) = 1;
       TYPE_MODE (type) = VOIDmode;
@@ -591,6 +601,7 @@ layout_type (type)
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
       TYPE_ALIGN (type) = POINTER_BOUNDARY;
       TREE_UNSIGNED (type) = 1;
+      TYPE_PRECISION (type) = POINTER_SIZE;
       break;
 
     case ARRAY_TYPE:
@@ -605,7 +616,7 @@ layout_type (type)
 	if (index == 0)
 	  length = 0;
 	else
-	  length = genop (PLUS_EXPR, integer_one_node,
+	  length = genop (PLUS_EXPR, size_one_node,
 			  genop (MINUS_EXPR, TYPE_MAX_VALUE (index),
 				 TYPE_MIN_VALUE (index)));
 

@@ -229,6 +229,9 @@ scan_loop (loop_start, end, nregs)
   register rtx p = NEXT_INSN (loop_start);
   /* 1 if we are scanning insns that could be executed zero times.  */
   int maybe_never = 0;
+  /* 1 if we are scanning insns that might never be executed
+     due to a subroutine call which might exit before they are reached.  */
+  int call_passed = 0;
   /* For a rotated loop that is entered near the bottom,
      this is the label at the top.  Otherwise it is zero.  */
   rtx loop_top = 0;
@@ -248,7 +251,7 @@ scan_loop (loop_start, end, nregs)
      0 indicates an invariant register; -1 a conditionally invariant one.  */
   short *n_times_set;
   /* Indexed by register number, contains the number of times the reg
-     was set during the loop being scanned, not counting changes due
+     was used during the loop being scanned, not counting changes due
      to moving these insns out of the loop.  */
   short *n_times_used;
   /* Indexed by register number, contains 1 for a register whose
@@ -393,14 +396,17 @@ scan_loop (loop_start, end, nregs)
 	      && (maybe_never
 		  || loop_reg_used_before_p (p, loop_start, scan_start, end)))
 	    ;
-	  /* If this can cause a trap (such as divide by zero), can't move it
-	     unless it's guaranteed to be executed once loop is entered.  */
-	  else if (maybe_never && may_trap_p (SET_SRC (PATTERN (p))))
-	    ;
 	  else if ((tem = invariant_p (SET_SRC (PATTERN (p)), n_times_set))
 		   && (n_times_set[REGNO (SET_DEST (PATTERN (p)))] == 1
 		       || consec_sets_invariant_p (SET_DEST (PATTERN (p)),
-						   p, n_times_set)))
+						   p, n_times_set))
+		   /* If the insn can cause a trap (such as divide by zero),
+		      can't move it unless it's guaranteed to be executed
+		      once loop is entered.  Even a function call might
+		      prevent the trap insn from being reached
+		      (since it might exit!)  */
+		   && ! ((maybe_never || call_passed)
+			 && may_trap_p (SET_SRC (PATTERN (p)))))
 	    {
 	      register struct movable *m;
 	      register int regno = REGNO (SET_DEST (PATTERN (p)));
@@ -494,6 +500,10 @@ scan_loop (loop_start, end, nregs)
 		}
 	    }
 	}
+      /* Past a call insn, we get to insns which might not be executed
+	 because the call might exit.  This matters for insns that trap.  */
+      else if (GET_CODE (p) == CALL_INSN)
+	call_passed = 1;
       /* Past a label or a jump, we get to insns for which we
 	 can't count on whether or how many times they will be
 	 executed during each iteration.  Therefore, we can
@@ -1432,14 +1442,30 @@ loop_reg_used_before_p (insn, loop_start, scan_start, loop_end)
     return reg_used_between_p (reg, scan_start, insn);
 }
 
-/* Return nonzero if X is a division that might trap.  */
+/* Return nonzero if evaluating rtx X might cause a trap.  */
 
 static int
 may_trap_p (x)
      rtx x;
 {
-  switch (GET_CODE (x))
+  int i;
+  enum rtx_code code = GET_CODE (x);
+  char *fmt;
+
+  switch (code)
     {
+      /* Handle these cases fast.  */
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case SYMBOL_REF:
+    case LABEL_REF:
+    case CONST:
+    case PC:
+    case CC0:
+    case REG:
+      return 0;
+
+      /* Division by a non-constant might trap.  */
     case DIV:
     case MOD:
     case UDIV:
@@ -1447,6 +1473,28 @@ may_trap_p (x)
       if (! CONSTANT_P (XEXP (x, 1))
 	  && GET_CODE (XEXP (x, 1)) != CONST_DOUBLE)
 	return 1;
+      break;
+
+      /* Memory ref can trap unless it's a static var or a stack slot.  */
+    case MEM:
+      return rtx_varies_p (XEXP (x, 0));
+    }
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	{
+	  if (may_trap_p (XEXP (x, i)))
+	    return 1;
+	}
+      else if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = 0; j < XVECLEN (x, i); j++)
+	    if (may_trap_p (XVECEXP (x, i, j)))
+	      return 1;
+	}
     }
   return 0;
 }

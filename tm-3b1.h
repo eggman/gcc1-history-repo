@@ -23,6 +23,8 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
+#define SGS_3B1
+
 #include "tm-hp9k320.h"
 
 /* See tm-m68k.h.  7 means 680[01]0 with no 68881.  */
@@ -269,7 +271,8 @@ do { union { float f; long l;} tem;			\
     fprintf (FILE, "%s%d:\n", PREFIX, NUM)
 
 #define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)	\
-    fprintf (FILE, "\tswbeg &%d\n%s%d:\n\tshort 0", XVECLEN (TABLE, 1) + 1, PREFIX, NUM)
+    fprintf (FILE, "\tswbeg &%d\n%s%d:\n\tshort 0",	\
+	     XVECLEN (PATTERN (TABLE), 1) + 1, PREFIX, NUM)
 
 #define ASM_OUTPUT_OPCODE(FILE, PTR)			\
 { if ((PTR)[0] == 'j' && (PTR)[1] == 'b')		\
