@@ -322,16 +322,20 @@ convert_move (to, from, unsignedp)
 
   if (to_mode == DImode)
     {
-      emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
-
       if (unsignedp)
 	{
+	  emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
 	  convert_move (gen_lowpart (SImode, to), from, unsignedp);
 	  emit_clr_insn (gen_highpart (SImode, to));
 	}
+#ifdef HAVE_extendsidi2
+      else if (HAVE_extendsidi2)
+        emit_insn (gen_extendsidi2 (to, from));
+#endif
 #ifdef HAVE_slt
       else if (HAVE_slt && insn_operand_mode[(int) CODE_FOR_slt][0] == SImode)
 	{
+	  emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
 	  convert_move (gen_lowpart (SImode, to), from, unsignedp);
 	  emit_insn (gen_slt (gen_highpart (SImode, to)));
 	}
@@ -340,6 +344,7 @@ convert_move (to, from, unsignedp)
 	{
 	  register rtx label = gen_label_rtx ();
 
+	  emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
 	  emit_clr_insn (gen_highpart (SImode, to));
 	  convert_move (gen_lowpart (SImode, to), from, unsignedp);
 	  emit_cmp_insn (gen_lowpart (SImode, to),
@@ -765,7 +770,7 @@ move_by_pieces_1 (genfun, mode, data)
 				  gen_rtx (CONST_INT, VOIDmode, size)));
 #endif
 
-      emit_insn (genfun (to1, from1));
+      emit_insn ((*genfun) (to1, from1));
 #ifdef HAVE_POST_INCREMENT
       if (data->explicit_inc_to > 0)
 	emit_insn (gen_add2_insn (data->to_addr,
@@ -830,9 +835,19 @@ emit_block_move (x, y, size, align)
       if (HAVE_movstrhi
 	  && GET_CODE (size) == CONST_INT
 	  && ((unsigned) INTVAL (size)
-	      < (1 << (GET_MODE_SIZE (HImode) * BITS_PER_UNIT - 1))))
+	      < (1 << (GET_MODE_BITSIZE (HImode) - 1))))
 	{
 	  emit_insn (gen_movstrhi (x, y, size));
+	  return;
+	}
+#endif
+#ifdef HAVE_movstrqi
+      if (HAVE_movstrqi
+	  && GET_CODE (size) == CONST_INT
+	  && ((unsigned) INTVAL (size)
+	      < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
+	{
+	  emit_insn (gen_movstrqi (x, y, size));
 	  return;
 	}
 #endif
@@ -1171,9 +1186,20 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	  if (HAVE_movstrhi
 	      && GET_CODE (size) == CONST_INT
 	      && ((unsigned) INTVAL (size)
-		  < (1 << (GET_MODE_SIZE (HImode) * BITS_PER_UNIT - 1))))
+		  < (1 << (GET_MODE_BITSIZE (HImode) - 1))))
 	    {
 	      emit_insn (gen_movstrhi (gen_rtx (MEM, BLKmode, temp),
+				       x, size));
+	      return;
+	    }
+#endif
+#ifdef HAVE_movstrqi
+	  if (HAVE_movstrqi
+	      && GET_CODE (size) == CONST_INT
+	      && ((unsigned) INTVAL (size)
+		  < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
+	    {
+	      emit_insn (gen_movstrqi (gen_rtx (MEM, BLKmode, temp),
 				       x, size));
 	      return;
 	    }
@@ -1183,10 +1209,13 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	    {
 	      /* Correct TEMP so it holds what will be a description of
 		 the address to copy to, valid after one arg is pushed.  */
-	      int xsize = ((PUSH_ROUNDING (GET_MODE_SIZE (Pmode))
-			    + PARM_BOUNDARY / BITS_PER_UNIT - 1)
-			   / (PARM_BOUNDARY / BITS_PER_UNIT)
-			   * (PARM_BOUNDARY / BITS_PER_UNIT));
+	      int xsize = GET_MODE_SIZE (Pmode);
+#ifdef PUSH_ROUNDING
+	      xsize = PUSH_ROUNDING (xsize);
+#endif
+	      xsize = ((xsize + PARM_BOUNDARY / BITS_PER_UNIT - 1)
+		       / (PARM_BOUNDARY / BITS_PER_UNIT)
+		       * (PARM_BOUNDARY / BITS_PER_UNIT));
 #ifdef STACK_GROWS_DOWNWARD
 	      temp = plus_constant (temp, xsize);
 #else
@@ -1957,8 +1986,12 @@ expand_expr (exp, target, tmode, modifier)
     case SAVE_EXPR:
       if (SAVE_EXPR_RTL (exp) == 0)
 	{
-	  SAVE_EXPR_RTL (exp) = gen_reg_rtx (mode);
-	  store_expr (TREE_OPERAND (exp, 0), SAVE_EXPR_RTL (exp), 0);
+	  rtx reg = gen_reg_rtx (mode);
+	  SAVE_EXPR_RTL (exp) = reg;
+	  store_expr (TREE_OPERAND (exp, 0), reg, 0);
+	  if (!optimize)
+	    save_expr_regs = gen_rtx (EXPR_LIST, VOIDmode, reg,
+				      save_expr_regs);
 	}
       /* Don't let the same rtl node appear in two places.  */
       return SAVE_EXPR_RTL (exp);
@@ -2159,7 +2192,8 @@ expand_expr (exp, target, tmode, modifier)
       /* Check for a built-in function.  */
       if (TREE_CODE (TREE_OPERAND (exp, 0)) == ADDR_EXPR
 	  && TREE_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0)) == FUNCTION_DECL
-	  && DECL_FUNCTION_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0)))
+	  && (DECL_FUNCTION_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0))
+	      != NOT_BUILT_IN))
 	return expand_builtin (exp, target, subtarget, tmode);
       /* If this call was expanded already by preexpand_calls,
 	 just return the result we got.  */
@@ -3024,7 +3058,8 @@ preexpand_calls (exp)
       /* Do nothing to built-in functions.  */
       if (TREE_CODE (TREE_OPERAND (exp, 0)) == ADDR_EXPR
 	  && TREE_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0)) == FUNCTION_DECL
-	  && DECL_FUNCTION_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0)))
+	  && (DECL_FUNCTION_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0))
+	      != NOT_BUILT_IN))
 	return;
       if (CALL_EXPR_RTL (exp) == 0
 	  && TYPE_MODE (TREE_TYPE (exp)) != BLKmode)

@@ -668,7 +668,7 @@ final (first, file, write_symbols, optimize)
 
 	    template = insn_template[insn_code_number];
 	    if (template == 0)
-	      template = insn_outfun[insn_code_number] (recog_operand, insn);
+	      template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
 
 	    /* Output assembler code from the template.  */
 

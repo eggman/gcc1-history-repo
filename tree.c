@@ -92,6 +92,10 @@ char *maybepermanent_firstobj;
 char *temporary_firstobj;
 char *momentary_firstobj;
 
+/* Nonzero means all ..._TYPE nodes should be allocated permanently.  */
+
+int all_types_permanent;
+
 /* Stack of places to restore the momentary obstack back to.  */
    
 struct momentary_level
@@ -194,6 +198,15 @@ resume_temporary_allocation ()
   current_obstack = &temporary_obstack;
   expression_obstack = &temporary_obstack;
   rtl_obstack = saveable_obstack = &maybepermanent_obstack;
+}
+
+/* Nonzero if temporary allocation is currently in effect.
+   Zero if currently doing permanent allocation.  */
+
+int
+allocation_temporary_p ()
+{
+  return current_obstack == &temporary_obstack;
 }
 
 /* Go back to allocating on the permanent obstack
@@ -350,7 +363,7 @@ make_node (code)
       length = sizeof (struct tree_type);
       /* All data types are put where we can preserve them if nec.  */
       if (obstack != &permanent_obstack)
-	obstack = saveable_obstack;
+	obstack = all_types_permanent ? &permanent_obstack : saveable_obstack;
       break;
 
     case 's':  /* a stmt node */
@@ -477,7 +490,7 @@ copy_node (node)
 
   t = (tree) obstack_alloc (current_obstack, length);
 
-  for (i = (length / sizeof (int)) - 1;
+  for (i = ((length + sizeof (int) - 1) / sizeof (int)) - 1;
        i >= 0;
        i--)
     ((int *) t)[i] = ((int *) node)[i];

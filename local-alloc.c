@@ -545,16 +545,16 @@ block_alloc (b)
 
   if (next_qty == 2 + FIRST_PSEUDO_REGISTER)
     {
-      if (qty_compare (FIRST_PSEUDO_REGISTER + 1, FIRST_PSEUDO_REGISTER) > 0)
+      if (qty_compare (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1) > 0)
 	EXCHANGE (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1);
     }
   else if (next_qty == 3 + FIRST_PSEUDO_REGISTER)
     {
-      if (qty_compare (FIRST_PSEUDO_REGISTER + 1, FIRST_PSEUDO_REGISTER) > 0)
+      if (qty_compare (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1) > 0)
 	EXCHANGE (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1);
-      if (qty_compare (FIRST_PSEUDO_REGISTER + 2, FIRST_PSEUDO_REGISTER + 1) > 0)
+      if (qty_compare (FIRST_PSEUDO_REGISTER + 1, FIRST_PSEUDO_REGISTER + 2) > 0)
 	EXCHANGE (FIRST_PSEUDO_REGISTER + 2, FIRST_PSEUDO_REGISTER + 1);
-      if (qty_compare (FIRST_PSEUDO_REGISTER + 1, FIRST_PSEUDO_REGISTER) > 0)
+      if (qty_compare (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1) > 0)
 	EXCHANGE (FIRST_PSEUDO_REGISTER, FIRST_PSEUDO_REGISTER + 1);
     }
   else if (next_qty > 3 + FIRST_PSEUDO_REGISTER)
@@ -1029,19 +1029,28 @@ find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
   /* If that doesn't find one, test each hard reg.  */
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    if (! TEST_HARD_REG_BIT (used, i)
-	&& HARD_REGNO_MODE_OK (i, mode))
-      {
-	register int j;
-	register int size1 = HARD_REGNO_NREGS (i, mode);
-	for (j = 1; j < size1 && ! TEST_HARD_REG_BIT (used, i + j); j++);
-	if (j == size1)
-	  {
-	    post_mark_life (i, mode, 1, born_insn, dead_insn);
-	    return i;
-	  }
-	i += j;			/* Skip starting points we know will lose */
-      }
+    {
+#ifdef REG_ALLOC_ORDER
+      int regno = reg_alloc_order[i];
+#else
+      int regno = i;
+#endif
+      if (! TEST_HARD_REG_BIT (used, regno)
+	  && HARD_REGNO_MODE_OK (regno, mode))
+	{
+	  register int j;
+	  register int size1 = HARD_REGNO_NREGS (regno, mode);
+	  for (j = 1; j < size1 && ! TEST_HARD_REG_BIT (used, regno + j); j++);
+	  if (j == size1)
+	    {
+	      post_mark_life (regno, mode, 1, born_insn, dead_insn);
+	      return regno;
+	    }
+#ifndef REG_ALLOC_ORDER
+	  regno += j;		/* Skip starting points we know will lose */
+#endif
+	}
+    }
   return -1;
 }
 

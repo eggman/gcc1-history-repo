@@ -157,6 +157,8 @@ typedef unsigned char U_CHAR;
 #endif __GNUC__
 #endif /* VMS */
 
+#define max(a,b) ((a) > (b) ? (a) : (b))
+
 /* External declarations.  */
 
 void bcopy (), bzero ();
@@ -167,7 +169,7 @@ extern char *version_string;
 
 int do_define (), do_line (), do_include (), do_undef (), do_error (),
   do_pragma (), do_if (), do_xifdef (), do_else (),
-  do_elif (), do_endif (), do_sccs ();
+  do_elif (), do_endif (), do_sccs (), do_ident ();
 
 struct hashnode *install ();
 struct hashnode *lookup ();
@@ -201,10 +203,15 @@ U_CHAR *skip_quoted_string ();
 
 char *progname;
 
+/* Nonzero means handle C++ comment syntax and use
+   extra default include directories for C++.  */
+
+int cplusplus;
+
 /* Current maximum length of directory names in the search path
    for include files.  (Altered as we get more of them.)  */
 
-int max_include_len = sizeof("/usr/local/lib/gcc-include");
+int max_include_len;
 
 /* Nonzero means copy comments into the output file.  */
 
@@ -307,20 +314,30 @@ struct directory_stack
 struct directory_stack include_defaults[] =
   {
 #ifndef VMS
-#ifdef CPLUSPLUS
-    /* Pick up GNU C++ specific include files.  */
-    { &include_defaults[1], "/usr/local/lib/g++-include" },
-    /* Borrow AT&T C++ head files, if available.  */
-    { &include_defaults[2], "/usr/include/CC" },
-    /* Use GNU CC specific header files.  */
-    { &include_defaults[3], "/usr/local/lib/gcc-include" },
-#else
-    { &include_defaults[1], "/usr/local/lib/gcc-include" },
-#endif
+    { &include_defaults[1], GCC_INCLUDE_DIR },
     { 0, "/usr/include" }
 #else
     { &include_defaults[1], "GNU_CC_INCLUDE:" },       /* GNU includes */
     { &include_defaults[2], "SYS$SYSROOT:[SYSLIB.]" }, /* VAX-11 "C" includes */
+    { 0, "" },	/* This makes normal VMS filespecs work OK */
+#endif /* VMS */
+  };
+
+/* These are used instead of the above, for C++.  */
+struct directory_stack cplusplus_include_defaults[] =
+  {
+#ifndef VMS
+    /* Pick up GNU C++ specific include files.  */
+    { &cplusplus_include_defaults[1], GPLUSPLUS_INCLUDE_DIR },
+    /* Borrow AT&T C++ head files, if available.  */
+    { &cplusplus_include_defaults[2], "/usr/include/CC" },
+    /* Use GNU CC specific header files.  */
+    { &cplusplus_include_defaults[3], GCC_INCLUDE_DIR },
+    { 0, "/usr/include" }
+#else
+    { &cplusplus_include_defaults[1], "GNU_CC_INCLUDE:" },
+    /* VAX-11 C includes */
+    { &cplusplus_include_defaults[2], "SYS$SYSROOT:[SYSLIB.]" },
     { 0, "" },	/* This makes normal VMS filespecs work OK */
 #endif /* VMS */
   };
@@ -461,13 +478,14 @@ struct directive {
   int (*func)();		/* Function to handle directive */
   char *name;			/* Name of directive */
   enum node_type type;		/* Code which describes which directive. */
-  char angle_brackets;		/* Nonzero => don't delete comments.  */
+  char angle_brackets;		/* Nonzero => <...> is special.  */
+  char traditional_comments;	/* Nonzero: keep comments if -traditional.  */
 };
 
 /* Here is the actual list of #-directives, most-often-used first.  */
 
 struct directive directive_table[] = {
-  {  6, do_define, "define", T_DEFINE},
+  {  6, do_define, "define", T_DEFINE, 0, 1},
   {  2, do_if, "if", T_IF},
   {  5, do_xifdef, "ifdef", T_IFDEF},
   {  6, do_xifdef, "ifndef", T_IFNDEF},
@@ -589,13 +607,19 @@ main (argc, argv)
   initialize_char_syntax ();
   dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
 
-  /* Install __LINE__, etc.  Must follow initialize_char_syntax.  */
-  initialize_builtins ();
-
   no_line_commands = 0;
   no_trigraphs = 1;
   dump_macros = 0;
   no_output = 0;
+  cplusplus = 0;
+#ifdef CPLUSPLUS
+  cplusplus = 1;
+#endif
+
+  max_include_len
+    = max (max (sizeof (GCC_INCLUDE_DIR),
+		sizeof (GPLUSPLUS_INCLUDE_DIR)),
+	   sizeof ("/usr/include/CC"));
 
   bzero (pend_files, argc * sizeof (char *));
   bzero (pend_defs, argc * sizeof (char *));
@@ -640,6 +664,10 @@ main (argc, argv)
 	dollars_in_ident = 1;
 	break;
 
+      case '+':
+	cplusplus = 1;
+	break;
+
       case 'W':
 	if (!strcmp (argv[i], "-Wtrigraphs"))
 	  {
@@ -675,9 +703,7 @@ main (argc, argv)
 	break;
 
       case 'v':
-	{
-	  fprintf (stderr, "GNU CPP version %s\n", version_string);
-	}
+	fprintf (stderr, "GNU CPP version %s\n", version_string);
 	break;
 
       case 'D':
@@ -778,6 +804,10 @@ main (argc, argv)
   /* Now that dollars_in_ident is known, initialize is_idchar.  */
   initialize_char_syntax ();
 
+  /* Install __LINE__, etc.  Must follow initialize_char_syntax
+     and option processing.  */
+  initialize_builtins ();
+
   /* Do standard #defines that identify processor type.  */
 
   if (!inhibit_predefs) {
@@ -809,9 +839,10 @@ main (argc, argv)
      tack on the standard include file dirs to the specified list */
   if (!no_standard_includes) {
     if (include == 0)
-      include = include_defaults;
+      include = (cplusplus ? cplusplus_include_defaults : include_defaults);
     else
-      last_include->next = include_defaults;
+      last_include->next
+	= (cplusplus ? cplusplus_include_defaults : include_defaults);
   }
 
   /* Initialize output buffer */
@@ -1279,12 +1310,10 @@ do { ip = &instack[indepth];		\
 	      bp++;
 	    bp += 2;
 	  }
-#ifdef CPLUSPLUS
-	  else if (*bp == '/' && bp[1] == '/') {
+	  else if (cplusplus && *bp == '/' && bp[1] == '/') {
 	    bp += 2;
 	    while (*bp++ != '\n') ;
 	  }
-#endif
 	  else break;
 	}
 	if (bp + 1 != ibp)
@@ -1392,8 +1421,7 @@ do { ip = &instack[indepth];		\
     case '/':
       if (*ibp == '\\' && ibp[1] == '\n')
 	newline_fix (ibp);
-#ifdef CPLUSPLUS
-      if (*ibp == '/')
+      if (cplusplus && *ibp == '/')
 	{
 	  /* C++ style comment... */
 	  start_line = ip->lineno;
@@ -1425,7 +1453,6 @@ do { ip = &instack[indepth];		\
 	    break;
 	  }
 	}
-#endif
       if (*ibp != '*')
 	goto randomchar;
       if (ip->macro != 0)
@@ -1960,6 +1987,10 @@ handle_directive (ip, op)
       register U_CHAR *limit = ip->buf + ip->length;
       int unterminated = 0;
 
+      /* Nonzero means do not delete comments within the directive.
+	 #define needs this when -traditional.  */
+      int keep_comments = traditional && kt->traditional_comments;
+
       /* Find the end of this command (first newline not backslashed
 	 and not in a string or comment).
 	 Set COPY_COMMAND if the command must be copied
@@ -2005,10 +2036,7 @@ handle_directive (ip, op)
 	  if (*bp == '\\' && bp[1] == '\n')
 	    newline_fix (bp);
 	  if (*bp == '*'
-#ifdef CPLUSPLUS
-	      || *bp == '/'
-#endif
-	      ) {
+	      || (cplusplus && *bp == '/')) {
 	    U_CHAR *obp = bp - 1;
 	    ip->bufp = bp + 1;
 	    skip_to_end_of_comment (ip, &ip->lineno);
@@ -2019,7 +2047,9 @@ handle_directive (ip, op)
 	      bp = obp;
 	      goto endloop1;
 	    }
-	    copy_command++;
+	    /* Don't remove the comments if -traditional.  */
+	    if (! keep_comments)
+	      copy_command++;
 	  }
 	  break;
 
@@ -2060,7 +2090,10 @@ handle_directive (ip, op)
 	  case '<':
 	    if (!kt->angle_brackets)
 	      break;
-	    while (*bp && *bp != '>') bp++;
+	    while (xp < bp && c != '>') {
+	      c = *xp++;
+	      *cp++ = c;
+	    }
 	    break;
 
 	  case '\\':
@@ -2090,11 +2123,10 @@ handle_directive (ip, op)
 	    break;
 
 	  case '/':
+	    if (keep_comments)
+	      break;
 	    if (*xp == '*'
-#ifdef CPLUSPLUS
-		|| *xp == '/'
-#endif
-		) {
+		|| (cplusplus && *xp == '/')) {
 	      if (traditional)
 		cp--;
 	      else
@@ -2803,6 +2835,20 @@ collect_expansion (buf, end, nargs, arglist)
       }
       break;
 
+    case '/':
+      if (*p == '*') {
+	/* If we find a comment that wasn't removed by handle_directive,
+	   this must be -traditional.  So replace the comment with
+	   nothing at all.  */
+	exp_p--;
+	p += 1;
+	while (p < limit && !(p[-2] == '*' && p[-1] == '/'))
+	  p++;
+	/* Mark this as a concatenation-point, as if it had been ##.  */
+	concat = p;
+      }
+      break;
+
     case '#':
       if (traditional)
 	break;
@@ -3290,10 +3336,7 @@ skip_if_group (ip, any)
       if (*bp == '\\' && bp[1] == '\n')
 	newline_fix (bp);
       if (*bp == '*'
-#ifdef CPLUSPLUS
-	  || *bp == '/'
-#endif
-	  ) {
+	  || (cplusplus && *bp == '/')) {
 	ip->bufp = ++bp;
 	bp = skip_to_end_of_comment (ip, &ip->lineno);
       }
@@ -3328,12 +3371,10 @@ skip_if_group (ip, any)
 	    bp++;
 	  bp += 2;
 	}
-#ifdef CPLUSPLUS
-	else if (*bp == '/' && bp[1] == '/') {
+	else if (cplusplus && *bp == '/' && bp[1] == '/') {
 	  bp += 2;
 	  while (*bp++ != '\n') ;
         }
-#endif
 	else break;
       }
       if (bp != ip->bufp) {
@@ -3521,12 +3562,10 @@ validate_else (p)
 	  p++;
 	}
       }
-#ifdef CPLUSPLUS
-      else if (p[1] == '/') {
+      else if (cplusplus && p[1] == '/') {
 	p += 2;
 	while (*p && *p++ != '\n') ;
       }
-#endif
     } else break;
   }
   if (*p && *p != '\n')
@@ -3557,8 +3596,7 @@ skip_to_end_of_comment (ip, line_counter)
     *op->bufp++ = '/';
     *op->bufp++ = '*';
   }
-#ifdef CPLUSPLUS
-  if (bp[-1] == '/') {
+  if (cplusplus && bp[-1] == '/') {
     if (output)
       {
 	while (bp < limit)
@@ -3584,7 +3622,6 @@ skip_to_end_of_comment (ip, line_counter)
     ip->bufp = bp;
     return bp;
   }
-#endif
   while (bp < limit) {
     if (output)
       *op->bufp++ = *bp;
@@ -4151,15 +4188,13 @@ macarg1 (start, limit, depthptr, newlines, comments)
     case '/':
       if (bp[1] == '\\' && bp[2] == '\n')
 	newline_fix (bp + 1);
-#ifdef CPLUSPLUS
-      if (bp[1] == '/') {
+      if (cplusplus && bp[1] == '/') {
 	*comments = 1;
 	bp += 2;
 	while (bp < limit && *bp++ != '\n') ;
 	++*newlines;
 	break;
       }
-#endif
       if (bp[1] != '*' || bp + 1 >= limit)
 	break;
       *comments = 1;
@@ -4253,14 +4288,12 @@ discard_comments (start, length, newlines)
       if (*ibp == '\\' && ibp[1] == '\n')
 	newline_fix (ibp);
       /* Delete any comment.  */
-#ifdef CPLUSPLUS
-      if (ibp[0] == '/') {
+      if (cplusplus && ibp[0] == '/') {
 	obp--;
 	ibp++;
 	while (ibp < limit && *ibp++ != '\n') ;
 	break;
       }
-#endif
       if (ibp[0] != '*' || ibp + 1 >= limit)
 	break;
       obp--;
@@ -4738,7 +4771,8 @@ initialize_builtins ()
   install ("__FILE__", -1, T_FILE, 0, -1);
   install ("__VERSION__", -1, T_VERSION, 0, -1);
   install ("__TIME__", -1, T_TIME, 0, -1);
-  install ("__STDC__", -1, T_CONST, 1, -1);
+  if (!traditional)
+    install ("__STDC__", -1, T_CONST, 1, -1);
 /*  install ("__GNU__", -1, T_CONST, 1, -1);  */
 /*  This is supplied using a -D by the compiler driver
     so that it is present only when truly compiling with GNU C.  */

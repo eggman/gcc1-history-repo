@@ -324,16 +324,19 @@ allocno_compare (v1, v2)
 {
   register int r1 = allocno_reg[*v1];
   register int r2 = allocno_reg[*v2];
-  register double v 
-    = ((double) (floor_log2 (reg_n_refs[r1]) * reg_n_refs[r1])
-       / (reg_live_length[r1] * allocno_size[*v1]))
-      - ((double) (floor_log2 (reg_n_refs[r2]) * reg_n_refs[r2])
-	 / (reg_live_length[r2] * allocno_size[*v2]));
-  if (v < 0)
-    return 1;
-  if (v > 0)
-    return -1;
-  return 0;
+  /* Note that the quotient will never be bigger than
+     the value of floor_log2 times the maximum number of
+     times a register can occur in one insn (surely less than 100).
+     Multiplying this by 10000 can't overflow.  */
+  register int pri1
+    = (((double) (floor_log2 (reg_n_refs[r1]) * reg_n_refs[r1])
+	/ (reg_live_length[r1] * allocno_size[*v1]))
+       * 10000);
+  register int pri2
+    = (((double) (floor_log2 (reg_n_refs[r2]) * reg_n_refs[r2])
+	/ (reg_live_length[r2] * allocno_size[*v2]))
+       * 10000);
+  return pri2 - pri1;
 }
 
 /* Scan the rtl code and record all conflicts in the conflict matrices.  */
@@ -554,21 +557,30 @@ find_reg (allocno, losers, all_regs_p, prefreg)
 
   if (i < 0)
     for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-      if (! TEST_HARD_REG_BIT (used, i)
-	  && (losers == 0 || losers[i] < 0)
-	  && HARD_REGNO_MODE_OK (i, mode))
-	{
-	  register int j;
-	  register int lim = i + HARD_REGNO_NREGS (i, mode);
-	  for (j = i + 1;
-	       (j < lim
-		&& ! TEST_HARD_REG_BIT (used, j)
-		&& (losers == 0 || losers[j] < 0));
-	       j++);
-	  if (j == lim)
-	    break;
-	  i = j;			/* Skip starting points we know will lose */
-	}
+      {
+#ifdef REG_ALLOC_ORDER
+	int regno = reg_alloc_order[i];
+#else
+	int regno = i;
+#endif
+	if (! TEST_HARD_REG_BIT (used, regno)
+	    && (losers == 0 || losers[regno] < 0)
+	    && HARD_REGNO_MODE_OK (regno, mode))
+	  {
+	    register int j;
+	    register int lim = regno + HARD_REGNO_NREGS (regno, mode);
+	    for (j = regno + 1;
+		 (j < lim
+		  && ! TEST_HARD_REG_BIT (used, j)
+		  && (losers == 0 || losers[j] < 0));
+		 j++);
+	    if (j == lim)
+	      break;
+#ifndef REG_ALLOC_ORDER
+	    regno = j;			/* Skip starting points we know will lose */
+#endif
+	  }
+      }
 
   /* Did we find a register?  */
 

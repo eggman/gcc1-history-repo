@@ -945,7 +945,8 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
   if (TREE_STATIC (decl) || TREE_EXTERNAL (decl))
     TIMEVAR (varconst_time,
 	     {
-	       assemble_variable (decl, asmspec, top_level, write_symbols, at_end);
+	       assemble_variable (decl, asmspec, top_level,
+				  write_symbols, at_end);
 	     });
 #ifdef DBX_DEBUGGING_INFO
   else if (write_symbols == DBX_DEBUG && TREE_CODE (decl) == TYPE_DECL)

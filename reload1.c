@@ -1143,9 +1143,16 @@ order_regs_for_reload ()
       potential_reload_regs[o++] = i;
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    if (regs_ever_live[i] == 0 && ! call_used_regs[i]
-	&& i != FRAME_POINTER_REGNUM)
-      potential_reload_regs[o++] = i;
+    {
+#ifdef REG_ALLOC_ORDER
+      int regno = reg_alloc_order[i];
+#else
+      int regno = i;
+#endif
+      if (regs_ever_live[regno] == 0 && ! call_used_regs[regno]
+	  && regno != FRAME_POINTER_REGNUM)
+	potential_reload_regs[o++] = regno;
+    }
 
   /* Now add the regs that are already used,
      preferring those used less often.  */

@@ -729,7 +729,7 @@ write_tree (tree, prevpos, afterward, afterpos, initial)
 	    }
 	  printf (" && ");
 	}
-      if (p->mode && !ignmode && in_switch != MODE_SWITCH)
+      if (p->mode != VOIDmode && !ignmode && in_switch != MODE_SWITCH)
 	printf ("GET_MODE (x%d) == %smode && ",
 		depth, GET_MODE_NAME (p->mode));
       if (p->test_elt_zero_int)

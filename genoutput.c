@@ -185,7 +185,7 @@ output_epilogue ()
   for (d = insn_data; d; d = d->next)
     {
       if (d->outfun)
-	printf ("    output_%d,", d->code_number);
+	printf ("    output_%d,\n", d->code_number);
       else
 	printf ("    0,\n");
     }

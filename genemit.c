@@ -182,7 +182,7 @@ gen_exp (x)
 	  printf ("gen_rtvec (%d", XVECLEN (x, i));
 	  for (j = 0; j < XVECLEN (x, i); j++)
 	    {
-	      printf (", ");
+	      printf (",\n\t\t");
 	      gen_exp (XVECEXP (x, i, j));
 	    }
 	  printf (")");

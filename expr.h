@@ -51,6 +51,10 @@ enum expand_modifier {EXPAND_NORMAL, EXPAND_SUM, EXPAND_CONST_ADDRESS};
    the same indirect address eventually.  */
 extern int cse_not_expected;
 
+/* List (chain of EXPR_LISTs) of pseudo-regs of SAVE_EXPRs.
+   So we can mark them all live at the end of the function, if stupid.  */
+extern rtx save_expr_regs;
+
 #ifdef TREE_CODE /* Don't lose if tree.h not included.  */
 /* Structure to record the size of a sequence of arguments
    as the sum of a tree-expression and a constant.  */

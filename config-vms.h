@@ -39,3 +39,13 @@ and this notice must be preserved on all copies.  */
 #ifndef VMS
 #define VMS
 #endif
+
+#ifndef __GNUC__
+/* not present, at least in VAX-11 C (VMS) v2.2 */
+#define R_OK 4
+#define W_OK 2
+#define X_OK 1
+#define F_OK 0
+
+#define unlink delete
+#endif

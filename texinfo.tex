@@ -416,7 +416,7 @@
 
 % Font-change commands.
 
-%% Try out Computer Modern fonts at a little bigger than \magstephalf
+%% Try out Computer Modern fonts at \magstephalf
 \font\tenrm=cmr10 scaled \magstephalf
 \font\tentt=cmtt10 scaled \magstephalf
 \font\tenbf=cmb10 scaled \magstephalf
@@ -427,7 +427,7 @@
 \font\tensc=cmcsc10 scaled \magstephalf
 
 % Fonts for @defun, etc.
-\font\defbf=cmbx7 scaled \magstep2
+\font\defbf=cmbx10 scaled \magstep1 %was 1314
 \let\deftt=\tentt
 \def\df{\let\tt=\deftt \defbf}
 
@@ -1556,7 +1556,7 @@ July\or August\or September\or October\or November\or December\fi
 
 % So much for the things common to all kinds of definitions.
 
-% Define \defun.
+% Define @defun.
 
 % First, define the processing that is wanted for arguments of \defun
 % Use this to expand the args and terminate the paragraph they make up
@@ -1566,128 +1566,99 @@ July\or August\or September\or October\or November\or December\fi
 \interlinepenalty=10000
 \endgraf\vskip -\parskip \penalty 10000}
 
-% \lastfunction is always defined to the name in the most recennt @defun
-% It is used by @kitem as the subtopic to index the keyword under
-
-\def\lastfunction{}
-
 % Do complete processing of one @defun or @defunx line already parsed.
 
-\def\defunheader #1#2{\doind {fn}{#1} % Make entry in function index
-\gdef\lastfunction{#1}%
-\dosetq {#1-fun}{page}%
-{\defname {#1}{Function}\defunargs {#2}}%
+% @deffn Command forward-char nchars
+
+\def\deffn{\defmethparsebody\Edeffn\deffnx\deffnheader}
+
+\def\deffnheader #1#2#3{\doind {fn}{#2}%
+\begingroup\defname {#2}{#1}\defunargs{#3}\endgroup}
+
+% @defun == @deffn Function
+
+\def\defun{\defparsebody\Edefun\defunx\defunheader}
+
+\def\defunheader #1#2{\doind {fn}{#1}% Make entry in function index
+\begingroup\defname {#1}{Function}%
+\defunargs {#2}\endgroup %
 }
 
-\def\defmacheader #1#2{\doind {fn}{#1} % Make entry in function index
-\gdef\lastfunction{#1}%
-\dosetq {#1-fun}{page}%
+% @defmac == @deffn Macro
+
+\def\defmac{\defparsebody\Edefmac\defmacx\defmacheader}
+
+\def\defmacheader #1#2{\doind {fn}{#1}% Make entry in function index
 \begingroup\defname {#1}{Macro}%
 \defunargs {#2}\endgroup %
 }
 
-\def\defspecheader #1#2{\doind {fn}{#1} % Make entry in function index
-\gdef\lastfunction{#1}%
-\dosetq {#1-fun}{page}%
+% @defspec == @deffn Special Form
+
+\def\defspec{\defparsebody\Edefspec\defspecx\defspecheader}
+
+\def\defspecheader #1#2{\doind {fn}{#1}% Make entry in function index
 \begingroup\defname {#1}{Special form}%
 \defunargs {#2}\endgroup %
 }
 
-\def\defmessageheader #1#2{\doind {op}{#1} % Make entry in operation index
-\gdef\lastfunction{#1}%
-\dosetq {#1-message}{page}%
-\begingroup\defname {#1}{Operation}%
-\defunargs {#2}\endgroup %
-}
-
-% Now we can define @defun itself.
-
-\def\defun{\defparsebody\Edefun\defunx\defunheader}
-\def\defmac{\defparsebody\Edefmac\defmacx\defmacheader}
-\def\defspec{\defparsebody\Edefspec\defspecx\defspecheader}
-\def\defmessage{\defparsebody\Edefmessage\defmessagex\defmessageheader}
-
 % This definition is run if you use @defunx
 % anywhere other than immediately after a @defun or @defunx.
 
+\def\deffnx #1 {\errmessage{@deffnx in invalid context}}
 \def\defunx #1 {\errmessage{@defunx in invalid context}}
 \def\defmacx #1 {\errmessage{@defmacx in invalid context}}
 \def\defspecx #1 {\errmessage{@defspecx in invalid context}}
-\def\defmessagex #1 {\errmessage{@defmessagex in invalid context}}
 
-% @defmethod, @defmetamethod, and so on
+% @defmethod, and so on
 
-% Do complete processing of one @defmethod line already parsed.
+% @defop {Funny Method} foo-class frobnicate argument
 
-\def\defmethodheader #1#2#3{\dosubind {op}{#2}{on {\bf #1}}% Make entry in operation index
-\gdef\lastfunction{#2}%
-\dosetqflushcolon {#1-}#2-method {page}%
-\begingroup\defname {#2}{Operation on {\bf #1}}%
+\def\defop #1 {\def\defoptype{#1}%
+\defmethparsebody\Edefop\defopx\defopheader}
+
+\def\defopheader #1#2#3{\dosubind {fn}{#2}{on #1}% Make entry in function index
+\begingroup\defname {#2}{\defoptype{} on #1}%
 \defunargs {#3}\endgroup %
 }
 
-\def\defmetamethodheader #1#2#3{\dosubind {op}{#2}{on #1}% Make entry in operation index
-\gdef\lastfunction{#2}%
-\dosetqflushcolon {#1-}#2-method {page}%
+% @defmethod == @defop Method
+
+\def\defmethod{\defmethparsebody\Edefmethod\defmethodx\defmethodheader}
+
+\def\defmethodheader #1#2#3{\dosubind {fn}{#2}{on #1}% entry in function index
 \begingroup\defname {#2}{Operation on #1}%
 \defunargs {#3}\endgroup %
 }
 
-\def\defivarheader #1#2#3{%
-\gdef\lastfunction{#2}%
-\dosubind {iv}{#2}{of {\bf #1}}% Make entry in instance variable index
-\dosetq {#1-#2-ivar}{page}%
-\begingroup\defname {#2}{Instance variable of {\bf #1}}%
+% @defcv {Class Option} foo-class foo-flag
+
+\def\defcv #1 {\def\defcvtype{#1}%
+\defmethparsebody\Edefcv\defcvx\defcvheader}
+
+\def\defcvarheader #1#2#3{%
+\dosubind {vr}{#2}{of #1}% Make entry in var index
+\begingroup\defname {#2}{\defcvtype of #1}%
 \defvarargs {#3}\endgroup %
 }
 
-\def\defmetaivarheader #1#2#3{%
-\gdef\lastfunction{#2}%
-\dosubind {iv}{#2}{of #1}% Make entry in ivar index
-\dosetq {#1-#2-ivar}{page}%
+% @defivar == @defcv {Instance Variable}
+
+\def\defivar{\defmethparsebody\Edefivar\defivarx\defivarheader}
+
+\def\defivarheader #1#2#3{%
+\dosubind {vr}{#2}{of #1}% Make entry in var index
 \begingroup\defname {#2}{Instance variable of #1}%
 \defvarargs {#3}\endgroup %
 }
 
-\def\definitheader #1#2#3{%
-\gdef\lastfunction{#2}%
-\dosubind {io}{#2}{for {\bf #1}}% Make entry in init option index
-\dosetqflushcolon {#1-}#2-init-option {page}%
-\begingroup\defname {#2}{Init keyword for {\bf #1}}%
-\defvarargs {#3}\endgroup %
-}
-
-\def\defmetainitheader #1#2#3{%
-\gdef\lastfunction{#2}%
-\dosubind {io}{#2}{for #1}% Make entry in init option index
-\dosetqflushcolon {#1-}#2-init-option {page}%
-\begingroup\defname {#2}{Init keyword for #1}%
-\defvarargs {#3}\endgroup %
-}
-
-\def\defmethod{\defmethparsebody\Edefmethod\defmethodx\defmethodheader}
-\def\defmetamethod{%
-\defmethparsebody\Edefmetamethod\defmetamethodx\defmetamethodheader}
-
-\def\defivar{\defmethparsebody\Edefivar\defivarx\defivarheader}
-\def\defmetaivar{%
-\defmethparsebody\Edefmetaivar\defmetaivarx\defmetaivarheader}
-
-\def\definit{\defmethparsebody\Edefinit\definitx\definitheader}
-\def\defmetainit{%
-\defmethparsebody\Edefmetainit\defmetainitx\defmetainitheader}
-
 % These definitions are run if you use @defmethodx, etc.,
 % anywhere other than immediately after a @defmethod, etc.
 
+\def\defopx #1 {\errmessage{@defopx in invalid context}}
 \def\defmethodx #1 {\errmessage{@defmethodx in invalid context}}
-\def\defmetamethodx #1 {\errmessage{@defmetamethodx in invalid context}}
-
+\def\defcvx #1 {\errmessage{@defcvx in invalid context}}
 \def\defivarx #1 {\errmessage{@defivarx in invalid context}}
-\def\defmetaivarx #1 {\errmessage{@defmetaivarx in invalid context}}
-
-\def\definitx #1 {\errmessage{@definitx in invalid context}}
-\def\defmetainitx #1 {\errmessage{@defmetainitx in invalid context}}
 
 % Now @defvar
 
@@ -1698,96 +1669,54 @@ July\or August\or September\or October\or November\or December\fi
 \interlinepenalty=10000
 \endgraf\vskip -\parskip \penalty 10000}
 
-% Do complete processing of one @defvar or @defvarx line already parsed.
+% @defvr Counter foo-count
+
+\def\defvr{\defmethparsebody\Edefvr\defvrx\defvrheader}
+
+\def\defvrheader #1#2#3{\doind {vr}{#2}%
+\begingroup\defname {#2}{#1}\defvarargs{#3}\endgroup}
+
+% @defvar == @defvr Variable
+
+\def\defvar{\defparsebody\Edefvar\defvarx\defvarheader}
 
 \def\defvarheader #1#2{\doind {vr}{#1}% Make entry in var index
-\gdef\lastfunction{#1}%
-\dosetq {#1-var}{page}%
 \begingroup\defname {#1}{Variable}%
 \defvarargs {#2}\endgroup %
 }
 
-\def\defconstheader #1#2{\doind {vr}{#1}% Make entry in var index
-\gdef\lastfunction{#1}%
-\dosetq {#1-var}{page}%
-\begingroup\defname {#1}{Constant}%
+% @defopt == @defvr {User Option}
+
+\def\defopt{\defparsebody\Edefopt\defoptx\defoptheader}
+
+\def\defoptheader #1#2{\doind {vr}{#1}% Make entry in var index
+\begingroup\defname {#1}{User Option}%
 \defvarargs {#2}\endgroup %
 }
-
-\def\defmeterheader #1#2{\doind {mt}{#1}% Make entry in meter index
-\gdef\lastfunction{#1}%
-\dosetq {#1-meter}{page}%
-\begingroup\defname {#1}{Meter}%
-\defvarargs {#2}\endgroup %
-}
-
-\def\defresourceheader #1#2{\doind {rs}{#1}% Make entry in resource index
-\gdef\lastfunction{#1}%
-\dosetq {#1-resource}{page}%
-\begingroup\defname {#1}{Resource}%
-\defvarargs {#2}\endgroup %
-}
-
-% Now we can define @defvar itself.  Also @defconst.
-
-\def\defvar{\defparsebody\Edefvar\defvarx\defvarheader}
-\def\defconst{\defparsebody\Edefconst\defconstx\defconstheader}
-\def\defmeter{\defparsebody\Edefmeter\defmeterx\defmeterheader}
-\def\defresource{\defparsebody\Edefresource\defresourcex\defresourceheader}
 
 % This definition is run if you use @defvarx
 % anywhere other than immediately after a @defvar or @defvarx.
 
+\def\defvrx #1 {\errmessage{@defvrx in invalid context}}
 \def\defvarx #1 {\errmessage{@defvarx in invalid context}}
-\def\defconstx #1 {\errmessage{@defconstx in invalid context}}
-\def\defmeterx #1 {\errmessage{@defmeterx in invalid context}}
-\def\defresourcex #1 {\errmessage{@defresourcex in invalid context}}
+\def\defoptx #1 {\errmessage{@defoptx in invalid context}}
 
-% Now define @defflavor
+% Now define @deftp
 % Args are printed in bold, a slight difference from @defvar.
 
-\def\defflavargs #1{\bf \defvarargs{#1}}
+\def\deftpargs #1{\bf \defvarargs{#1}}
 
-% Do complete processing of one @defflavor (or similar construct) line.
+% @deftp Class window height width ...
 
-\def\defflavorheader #1#2{\doind {fl}{#1}% Make entry in flavor index
-\gdef\lastfunction{#1}%
-\dosetq {#1-flavor}{page}%
-\begingroup\defname {#1}{Flavor}%
-\defflavargs {#2}\endgroup %
-}
+\def\deftp{\defmethparsebody\Edeftp\deftpx\deftpheader}
 
-\def\defconditionheader #1#2{\doind {cn}{#1}% Make entry in condition index
-\gdef\lastfunction{#1}%
-\dosetq {#1-condition}{page}%
-\begingroup\defname {#1}{Condition}%
-\defflavargs {#2}\endgroup %
-}
+\def\deftpheader #1#2#3{\doind {tp}{#2}%
+\begingroup\defname {#2}{#1}\deftpargs{#3}\endgroup}
 
-\def\defconditionflavorheader #1#2{%
-\gdef\lastfunction{#1}%
-\doind {cn}{#1}% Make entry in condition index
-\doind {fl}{#1}% Make entry in flavor index
-\dosetq {#1-condition}{page}%
-\dosetq {#1-flavor}{page}%
-\dosetq {#1-condition-flavor}{page}%
-\doind {fl}{#1}% Make entry in flavor index
-\begingroup\defname {#1}{Condition flavor}%
-\defflavargs {#2}\endgroup %
-}
+% This definition is run if you use @deftpx, etc
+% anywhere other than immediately after a @deftp, etc.
 
-\def\defflavor{\defparsebody\Edefflavor\defflavorx\defflavorheader}
-\def\defcondition{%
-\defparsebody\Edefcondition\defconditionx\defconditionheader}
-\def\defconditionflavor{%
-\defparsebody\Edefconditionflavor\defconditionflavorx\defconditionflavorheader}
-
-% This definition is run if you use @defflavorx, etc
-% anywhere other than immediately after a @defflavor, etc.
-
-\def\defflavorx #1 {\errmessage{@defflavorx in invalid context}}
-\def\defconditionx #1 {\errmessage{@defconditionx in invalid context}}
-\def\defconditionflavorx #1 {\errmessage{@defconditionflavorx in invalid context}}
+\def\deftpx #1 {\errmessage{@deftpx in invalid context}}
 
 \message{cross reference,}
 % Define cross-reference macros

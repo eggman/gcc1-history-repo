@@ -88,6 +88,13 @@ char *current_function_name;
 
 rtx return_label;
 
+/* List (chain of EXPR_LISTs) of pseudo-regs of SAVE_EXPRs.
+   So we can mark them all live at the end of the function, if nonopt.  */
+rtx save_expr_regs;
+
+/* Insn after which register parms and SAVE_EXPRs are born, if nonopt.  */
+static rtx parm_birth_insn;
+
 /* The FUNCTION_DECL node for the function being compiled.  */
 
 static tree this_function;
@@ -575,6 +582,11 @@ expand_asm_operands (string, outputs, inputs, vol)
       emit_insn (gen_rtx (SET, VOIDmode,
 			  expand_expr (val, 0, VOIDmode, 0),
 			  body));
+    }
+  else if (noutputs == 0)
+    {
+      /* No output operands: put in a raw ASM_OPERANDS rtx.  */
+      emit_insn (body);
     }
   else
     {
@@ -2739,6 +2751,9 @@ expand_function_start (subr)
   /* No stack slots allocated yet.  */
   frame_offset = STARTING_FRAME_OFFSET;
 
+  /* No SAVE_EXPRs in this function yet.  */
+  save_expr_regs = 0;
+
   /* Within function body, compute a type's size as soon it is laid out.  */
   immediate_size_expand++;
 
@@ -2761,8 +2776,11 @@ expand_function_start (subr)
   /* If doing stupid allocation, mark parms as born here.  */
 
   if (obey_regdecls)
-    for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
-      use_variable (regno_reg_rtx[i]);
+    {
+      parm_birth_insn = get_last_insn ();
+      for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
+	use_variable (regno_reg_rtx[i]);
+    }
 
   /* After the parm initializations is where the tail-recursion label
      should go, if we end up needing one.  */
@@ -2815,8 +2833,22 @@ expand_function_end ()
      mark register parms as dying here.  */
 
   if (obey_regdecls)
-    for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
-      use_variable (regno_reg_rtx[i]);
+    {
+      rtx tem;
+      for (i = FIRST_PSEUDO_REGISTER; i < max_parm_reg; i++)
+	use_variable (regno_reg_rtx[i]);
+
+      /* Likewise for the regs of all the SAVE_EXPRs in the function.  */
+
+      for (tem = save_expr_regs; tem; tem = XEXP (tem, 1))
+	emit_insn (gen_rtx (USE, VOIDmode, XEXP (tem, 0)));
+
+      /* Also mark those as borm at the beginning of the function.
+	 (This was done in expand_function_start for parms).  */
+      for (tem = save_expr_regs; tem; tem = XEXP (tem, 1))
+	emit_insn_after (gen_rtx (USE, VOIDmode, XEXP (tem, 0)),
+			 parm_birth_insn);
+    }
 
   clear_pending_stack_adjust ();
   do_pending_stack_adjust ();

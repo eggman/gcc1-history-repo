@@ -207,7 +207,7 @@ push_reload (in, out, inloc, outloc, class,
      int optional;
 {
   register int i;
-  int noshare = 0;
+  int dont_share = 0;
 
   /* Compare two RTX's.  */
 #define MATCHES(x, y) (x == y || (x != 0 && GET_CODE (x) != REG && rtx_equal_p (x, y)))
@@ -250,7 +250,7 @@ push_reload (in, out, inloc, outloc, class,
 
   /* If IN appears in OUT, we can't share any input-only reload for IN.  */
   if (in != 0 && out != 0 && reg_mentioned_p (in, out))
-    noshare = 1;
+    dont_share = 1;
 
   if (class == NO_REGS)
     abort ();
@@ -267,7 +267,7 @@ push_reload (in, out, inloc, outloc, class,
   for (i = 0; i < n_reloads; i++)
     if (reload_reg_class[i] == class
 	&& reload_strict_low[i] == strict_low
-	&& ((in != 0 && MATCHES (reload_in[i], in) && ! noshare
+	&& ((in != 0 && MATCHES (reload_in[i], in) && ! dont_share
 	     && (out == 0 || reload_out[i] == 0 || MATCHES (reload_out[i], out)))
 	    ||
 	    (out != 0 && MATCHES (reload_out[i], out)
@@ -896,6 +896,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  && REGNO (SET_SRC (body)) < FIRST_PSEUDO_REGISTER)
 	return;
     case PARALLEL:
+    case ASM_OPERANDS:
       noperands = asm_noperands (body);
       if (noperands > 0)
 	{

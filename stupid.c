@@ -311,25 +311,34 @@ stupid_find_reg (call_preserved, class, mode,
   IOR_COMPL_HARD_REG_SET (used, reg_class_contents[(int) class]);
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    if (! TEST_HARD_REG_BIT (used, i)
-	&& HARD_REGNO_MODE_OK (i, mode))
-      {
-	register int j;
-	register int size1 = HARD_REGNO_NREGS (i, mode);
-	for (j = 1; j < size1 && ! TEST_HARD_REG_BIT (used, i + j); j++);
-	if (j == size1)
-	  {
-	    CLEAR_HARD_REG_SET (this_reg);
-	    while (--j >= 0)
-	      SET_HARD_REG_BIT (this_reg, i + j);
-	    for (ins = born_insn; ins < dead_insn; ins++)
-	      {
-		IOR_HARD_REG_SET (after_insn_hard_regs[ins], this_reg);
-	      }
-	    return i;
-	  }
-	i += j;			/* Skip starting points we know will lose */
-      }
+    {
+#ifdef REG_ALLOC_ORDER
+      int regno = reg_alloc_order[i];
+#else
+      int regno = i;
+#endif
+      if (! TEST_HARD_REG_BIT (used, regno)
+	  && HARD_REGNO_MODE_OK (regno, mode))
+	{
+	  register int j;
+	  register int size1 = HARD_REGNO_NREGS (regno, mode);
+	  for (j = 1; j < size1 && ! TEST_HARD_REG_BIT (used, regno + j); j++);
+	  if (j == size1)
+	    {
+	      CLEAR_HARD_REG_SET (this_reg);
+	      while (--j >= 0)
+		SET_HARD_REG_BIT (this_reg, regno + j);
+	      for (ins = born_insn; ins < dead_insn; ins++)
+		{
+		  IOR_HARD_REG_SET (after_insn_hard_regs[ins], this_reg);
+		}
+	      return regno;
+	    }
+#ifndef REG_ALLOC_ORDER
+	  regno += j;			/* Skip starting points we know will lose */
+#endif
+	}
+    }
   return -1;
 }
 

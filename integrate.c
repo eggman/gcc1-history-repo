@@ -1384,6 +1384,8 @@ output_inline_function (fndecl)
 
   temporary_allocation ();
 
+  current_function_decl = fndecl;
+
   /* This call is only used to initialize global variables.
      The rtl code it emits will be discarded below.  */
   expand_function_start (fndecl);
@@ -1402,6 +1404,8 @@ output_inline_function (fndecl)
 
   /* Compile this function all the way down to assembly code.  */
   rest_of_compilation (fndecl);
+
+  current_function_decl = 0;
 
   permanent_allocation ();
 }

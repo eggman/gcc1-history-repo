@@ -66,6 +66,11 @@ HARD_REG_SET call_used_reg_set;
 /* Data for initializing the above.  */
 
 static char initial_call_used_regs[] = CALL_USED_REGISTERS;
+  
+/* Table of register numbers in the order in which to try to use them.  */
+#ifdef REG_ALLOC_ORDER
+int reg_alloc_order[FIRST_PSEUDO_REGISTER] = REG_ALLOC_ORDER;
+#endif
 
 /* For each reg class, a HARD_REG_SET saying which registers are in it.  */
 

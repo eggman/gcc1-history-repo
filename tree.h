@@ -825,6 +825,10 @@ extern int immediate_size_expand;
 /* Points to the FUNCTION_DECL of the function whose body we are reading. */
 
 extern tree current_function_decl;
+
+/* Nonzero means all ..._TYPE nodes should be allocated permanently.  */
+
+extern int all_types_permanent;
 
 /* In stmt.c */
 

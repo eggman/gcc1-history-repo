@@ -29,7 +29,12 @@ and this notice must be preserved on all copies.  */
 #define CPP_PREDEFINES "-Dsparc -Dsun -Dunix"
 
 /* Print subsidiary information on the compiler version in use.  */
+
 #define TARGET_VERSION printf (" (sparc)");
+
+/* Generate DBX debugging information.  */
+
+#define DBX_DEBUGGING_INFO
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
@@ -951,7 +956,7 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START ""
+#define ASM_FILE_START(file)
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */

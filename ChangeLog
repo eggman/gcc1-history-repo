@@ -1,3 +1,102 @@
+Sat Jul  2 10:35:17 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.24 released.
+
+	* stmt.c (expand_asm_operands): Produce proper no-outputs insn.
+	* recog.c (asm_noperands): Detect no-outputs insns.
+	(decode_asm_operands): Likewise.
+	* reload.c (find_reloads): Likewise (add case ASM_OPERANDS:).
+
+	* local-alloc.c (block_alloc): Tests of qty_compare were backwards.
+
+	* flow.c (life_analysis): Turn off code that finds regs live at
+	function start and marks them not local to any basic block.
+
+	* cse.c (insert_regs): Fix typo (UNITS_PER_WORD).
+
+	* cccp.c: Define max.
+
+	* expr.c (expand_expr): Put each SAVE_EXPR's reg on save_expr_regs,
+	if not optimizing.
+	* stmt.c (expand_function_end): Mark each of those regs live
+	at the end and also retroactively at the beginning of the function.
+
+	* output-vax.c (print_operand_address): New function from old macro.
+	* tm-vax.h (PRINT_OPERAND_ADDRESS): Call that function.
+
+	* config-vms.h: If not under GNU C, define X_OK, etc.
+
+	* expr.c (move_by_pieces_1): Use * to call GENFUN.
+	(expand_expr): Compare DECL_FUNCTION_CODE against an enum const.
+	(preexpand_calls): Likewise.
+	* genrecog.c (write_tree): Likewise.
+	* final.c (final): Use * to call the output function.
+	* reload.c (push_reload): Rename `noshare' to `dont_share'.
+
+	* genoutput.c (output_epilogue): Put more newlines in insn_outfun.
+	* genemit (gen_exp): Put in more newlines.
+
+Fri Jul  1 00:23:57 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* global-alloc.c (allocno_compare): Avoid comparisons of floats
+	since that is sensitive to roundoff errors.
+
+Thu Jun 30 09:25:40 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* sdbout.c (PUT_SDB_{DEF,TAG}): Use ASM_OUTPUT_LABELREF.
+	(PUT_SDB_PLAIN_DEF): New name for old defn of PUT_SDB_DEF
+	(sdbout_one_type): Use PUT_SDB_PLAIN_DEF for `.eos'.
+
+	* tree.c (allocation_temporary_p): New fcn.
+	(all_types_permanent): New variable.
+	(make_node): If that's set, make each ...TYPE node permanent.
+	* decl.c (grokdeclarator): If traditional, make decl data permanent.
+	(finish_decl): Make the rtl permanent too.
+	* stor-layout.c (layout_type): If type is permanent,
+	make its layout data permanent too.
+
+	* cccp.c: Choose C++ or C at run time via var `cplusplus'.
+	Separate cplusplus_include_default from include_default.
+	Get GNU-specific include directory names from macros
+	GCC_INCLUDE_DIR and GPLUSPLUS_INCLUDE_DIR.
+	(main): Initialize based on CPLUSPLUS; `-+' sets it.
+	* Makefile: Set *_INCLUDE_DIR based on $(libdir).
+
+Tue Jun 28 09:25:49 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tree.c (copy_node): Round LENGTH up to multiple of sizeof (int).
+
+	* expr.c (emit_push_insn): Avoid using PUSH_ROUNDING if not defined.
+
+	* sparc.md (floatsisf2): Insert missing brace.
+	(mulsi3): Replace reg_o0_rtx, reg_o1_rtx.
+
+	* tm-sparc.h: Define DBX_DEBUGGING_INFO.
+
+	* parse.y (yylex): If traditional, no error for out-of-range float.
+
+	* Makefile: Comment saying how to compile on an Apollo.
+
+	* tm-sparc.h (ASM_FILE_START): Switch to new calling convention.
+
+	* decl.c (init_decl_processing): Create type nodes for 64-bit ints.
+	(grokdeclarator): use them for `long long'.  Warn only if pedantic.
+
+	* optabs.c (init_optabs): Add missing DImode insn names.
+
+	* expr.c (emit_block_move, emit_push_insn): Use movstrqi if appro.
+
+	* expr.c (convert_move): use extendsidi if appropriate.
+
+	* cccp.c (initialize_builtins): Don't install __STDC__ if traditional.
+	(main): Call initialize_builtins after option processing.
+
+	* integrate.c (output_inline_function): Set current_function_decl.
+
+	* cse.c (fold_rtx): Typo in avoiding 32-bit shifts.
+
+	* cccp.c: Add forward-decl.
+
 Mon Jun 27 18:06:42 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 
 	* hard-reg-set.h (reg_alloc_order): New variable

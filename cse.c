@@ -661,7 +661,7 @@ insert_regs (x, classp, modified)
      does not make them equivalent.  */
   else if (GET_CODE (x) == SUBREG
 	   && GET_CODE (SUBREG_REG (x)) == REG
-	   && GET_MODE_SIZE (GET_MODE (SUBREG_REG (x))) <= BITS_PER_WORD
+	   && GET_MODE_SIZE (GET_MODE (SUBREG_REG (x))) <= UNITS_PER_WORD
 	   && (modified
 	       || reg_qty[REGNO (SUBREG_REG (x))] == REGNO (SUBREG_REG (x))))
     {
@@ -1993,7 +1993,7 @@ fold_rtx (x, copyflag)
 		    || GET_MODE (x) == SImode))
 	      {
 		arg0 = INTVAL (const_arg0);
-		if (GET_MODE_BITSIZE (GET_MODE (x)) == 32)
+		if (GET_MODE_BITSIZE (GET_MODE (x)) != 32)
 		  arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
 		if (arg0 == INTVAL (const_arg0))
 		  new = const_arg0;

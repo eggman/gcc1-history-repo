@@ -568,6 +568,7 @@ layout_type (type)
      tree type;
 {
   int old;
+  int temporary = 0;
 
   if (type == 0)
     abort ();
@@ -579,6 +580,11 @@ layout_type (type)
   /* Make sure all nodes we allocate are not momentary;
      they must last past the current statement.  */
   old  = suspend_momentary ();
+  if (TREE_PERMANENT (type) && allocation_temporary_p ())
+    {
+      temporary = 1;
+      end_temporary_allocation ();
+    }
 
   chain_type (type);
 
@@ -715,6 +721,8 @@ layout_type (type)
   if (TYPE_SIZE (type) != 0 && ! TREE_LITERAL (TYPE_SIZE (type)))
     TYPE_SIZE (type) = variable_size (TYPE_SIZE (type));
 	
+  if (temporary)
+    resume_temporary_allocation ();
   resume_momentary (old);
 }
 

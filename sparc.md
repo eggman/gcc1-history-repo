@@ -834,7 +834,7 @@
       output_asm_insn (\"ld [%%fp+%0],%1\;fitos %1,%1\", xoperands);
       return \"\";
     }
-")
+}")
 
 ;(define_insn "floatsidf2"
 ;  [(set (match_operand:DF 0 "general_operand" "=f")
@@ -1012,8 +1012,8 @@
     emit_insn (gen_rtx (PARALLEL, VOIDmode, gen_rtvec (5,
 	       gen_rtx (SET, VOIDmode, operands[0],
 			gen_rtx (MULT, SImode, operands[1], operands[2])),
-	       gen_rtx (CLOBBER, VOIDmode, reg_o0_rtx),
-	       gen_rtx (CLOBBER, VOIDmode, reg_o1_rtx),
+	       gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, SImode, 8)),
+	       gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, SImode, 9)),
 	       gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, SImode, 12)),
 	       gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, SImode, 13)))));
   DONE;

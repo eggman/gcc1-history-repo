@@ -1526,6 +1526,10 @@ init_optabs ()
   if (HAVE_andsi3)
     and_optab->handlers[(int) SImode].insn_code = CODE_FOR_andsi3;
 #endif
+#ifdef HAVE_anddi3
+  if (HAVE_anddi3)
+    and_optab->handlers[(int) DImode].insn_code = CODE_FOR_anddi3;
+#endif
   and_optab->handlers[(int) DImode].lib_call = "_anddi3";
 
 #ifdef HAVE_andcbqi3
@@ -1539,6 +1543,10 @@ init_optabs ()
 #ifdef HAVE_andcbsi3
   if (HAVE_andcbsi3)
     andcb_optab->handlers[(int) SImode].insn_code = CODE_FOR_andcbsi3;
+#endif
+#ifdef HAVE_andcbdi3
+  if (HAVE_andcbdi3)
+    andcb_optab->handlers[(int) DImode].insn_code = CODE_FOR_andcbdi3;
 #endif
   andcb_optab->handlers[(int) DImode].lib_call = "_andcbdi3";
 
@@ -1554,6 +1562,10 @@ init_optabs ()
   if (HAVE_iorsi3)
     ior_optab->handlers[(int) SImode].insn_code = CODE_FOR_iorsi3;
 #endif
+#ifdef HAVE_iordi3
+  if (HAVE_iordi3)
+    ior_optab->handlers[(int) DImode].insn_code = CODE_FOR_iordi3;
+#endif
   ior_optab->handlers[(int) DImode].lib_call = "_iordi3";
 
 #ifdef HAVE_xorqi3
@@ -1567,6 +1579,10 @@ init_optabs ()
 #ifdef HAVE_xorsi3
   if (HAVE_xorsi3)
     xor_optab->handlers[(int) SImode].insn_code = CODE_FOR_xorsi3;
+#endif
+#ifdef HAVE_xordi3
+  if (HAVE_xordi3)
+    xor_optab->handlers[(int) DImode].insn_code = CODE_FOR_xordi3;
 #endif
   xor_optab->handlers[(int) DImode].lib_call = "_xordi3";
 
@@ -1696,6 +1712,10 @@ init_optabs ()
   if (HAVE_negsi2)
     neg_optab->handlers[(int) SImode].insn_code = CODE_FOR_negsi2;
 #endif
+#ifdef HAVE_negdi2
+  if (HAVE_negdi2)
+    neg_optab->handlers[(int) DImode].insn_code = CODE_FOR_negdi2;
+#endif
 #ifdef HAVE_negsf2
   if (HAVE_negsf2)
     neg_optab->handlers[(int) SFmode].insn_code = CODE_FOR_negsf2;
@@ -1721,6 +1741,10 @@ init_optabs ()
   if (HAVE_abssi2)
     abs_optab->handlers[(int) SImode].insn_code = CODE_FOR_abssi2;
 #endif
+#ifdef HAVE_absdi2
+  if (HAVE_absdi2)
+    abs_optab->handlers[(int) DImode].insn_code = CODE_FOR_absdi2;
+#endif
 #ifdef HAVE_abssf2
   if (HAVE_abssf2)
     abs_optab->handlers[(int) SFmode].insn_code = CODE_FOR_abssf2;
@@ -1744,6 +1768,10 @@ init_optabs ()
   if (HAVE_one_cmplsi2)
     one_cmpl_optab->handlers[(int) SImode].insn_code = CODE_FOR_one_cmplsi2;
 #endif
+#ifdef HAVE_one_cmpldi2
+  if (HAVE_one_cmpldi2)
+    one_cmpl_optab->handlers[(int) DImode].insn_code = CODE_FOR_one_cmpldi2;
+#endif
   one_cmpl_optab->handlers[(int) SImode].lib_call = "_one_cmplsi2"; 
   one_cmpl_optab->handlers[(int) DImode].lib_call = "_one_cmpldi2";
 
@@ -1758,6 +1786,10 @@ init_optabs ()
 #ifdef HAVE_ffssi2
   if (HAVE_ffssi2)
     ffs_optab->handlers[(int) SImode].insn_code = CODE_FOR_ffssi2;
+#endif
+#ifdef HAVE_ffsdi2
+  if (HAVE_ffsdi2)
+    ffs_optab->handlers[(int) DImode].insn_code = CODE_FOR_ffsdi2;
 #endif
   ffs_optab->handlers[(int) SImode].lib_call = "ffs"; 
 
@@ -1815,6 +1847,10 @@ init_optabs ()
   if (HAVE_cmpsi)
     cmp_optab->handlers[(int) SImode].insn_code = CODE_FOR_cmpsi;
 #endif
+#ifdef HAVE_cmpdi
+  if (HAVE_cmpdi)
+    cmp_optab->handlers[(int) DImode].insn_code = CODE_FOR_cmpdi;
+#endif
 #ifdef HAVE_cmpsf
   if (HAVE_cmpsf)
     cmp_optab->handlers[(int) SFmode].insn_code = CODE_FOR_cmpsf;
@@ -1834,6 +1870,10 @@ init_optabs ()
 #ifdef HAVE_tstsi
   if (HAVE_tstsi)
     tst_optab->handlers[(int) SImode].insn_code = CODE_FOR_tstsi;
+#endif
+#ifdef HAVE_tstdi
+  if (HAVE_tstdi)
+    tst_optab->handlers[(int) DImode].insn_code = CODE_FOR_tstdi;
 #endif
 #ifdef HAVE_tstsf
   if (HAVE_tstsf)

@@ -292,7 +292,7 @@ These warnings are made optional because GNU CC is not smart
 enough to see all the reasons why the code might be correct
 despite appearing to have an error.
 .br
-\(** A nonvolantile automatic variable might be changed
+\(** A nonvolatile automatic variable might be changed
 by a call to \fBlongjmp\fR.
 These warnings as well are possible only in optimizing compilation.
 The compiler sees only the calls to \fBsetjmp\fR.
@@ -436,7 +436,7 @@ Use `
 .B \-ffloat-store'
 for such programs.
 .TP 10
-.B \ \ \ \ \ \ \ \ \-frno-asm
+.B \ \ \ \ \ \ \ \ \-fno-asm
 Do not recognize \fBasm\fR, \fBinline\fR or \fBtypeof\fR
 as a keyword. These words may then be used as identifiers.
 .TP 10
@@ -534,7 +534,7 @@ macro in the machine description macro file.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fcall-used-\fIreg\fR
 Treat the register named \fIreg\fR
-as an allocatable register that is clobberred by function calls.
+as an allocatable register that is clobbered by function calls.
 It may be allocated for temporaries or variables
 that do not live across a call.
 Functions compiled this way will not save and restore the
@@ -613,19 +613,6 @@ a.out	loaded output
 /usr/include	standard directory for `#include' files
 .br
 .SH "SEE ALSO"
-B. W. Kernighan and D. M. Ritchie,
-.I The C Programming Language,
-Prentice-Hall,
-1978
-.br
-B. W. Kernighan,
-.I
-Programming in C
-.br
-D. M. Ritchie,
-.I
-C Reference Manual
-.br
 adb(1), ld(1), dbx(1), as(1)
 .SH BUGS
 Bugs should be reported to bug-gcc@prep.ai.mit.edu. Bugs tend actually to be

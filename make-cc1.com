@@ -1,5 +1,10 @@
 $!
 $!	Build the GNU "C" compiler on VMS
+$!   (To try to build with VAX C, replace `gcc' with `cc/noopt'
+$!    and delete `cc1_options="-mpcc-alignment"'.
+$!    Also add `/sel' after `gcclib/lib' except in the last link.
+$!    You also need to get alloca.mar from Bison
+$!    and to make definitions for bzero, bcopy and bcmp.)
 $!
 $ if "''p1'" .eqs. "LINK" then goto Link
 $ gcc/debug/cc1_options="-mpcc-alignment" rtl.c

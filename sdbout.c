@@ -61,11 +61,22 @@ static void sdbout_one_type ();
 ( fputs (".val\t", asm_out_file),		\
   output_addr_const (asm_out_file, (a)),	\
   fputc (';', asm_out_file))
-#define PUT_SDB_DEF(a) fprintf(asm_out_file, "\t.def\t%s;", a)
+
+#define PUT_SDB_DEF(a)				\
+do { fprintf (asm_out_file, "\t.def\t");	\
+     ASM_OUTPUT_LABELREF (asm_out_file, a); 	\
+     fprintf (asm_out_file, ";"); } while (0)
+
+#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\t.def\t%s;",a)
 #define PUT_SDB_ENDEF fputs("\t.endef\n", asm_out_file)
 #define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\t.type\t0%o;", a)
 #define PUT_SDB_TAG(a) fprintf(asm_out_file, "\t.tag\t%s;", a)
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\t.size\t%d;", a)
+
+#define PUT_SDB_TAG(a)				\
+do { fprintf (asm_out_file, "\t.tag\t");	\
+     ASM_OUTPUT_LABELREF (asm_out_file, a);	\
+     fprintf (asm_out_file, ";"); } while (0)
 
 /* Return the sdb tag identifier string for TYPE
    if TYPE has already been defined; otherwise return a null pointer.   */
@@ -543,7 +554,7 @@ sdbout_one_type (type, name)
 	      }
 	/* output end of a structure,union, or enumeral definition */
    
-	PUT_SDB_DEF (".eos");
+	PUT_SDB_PLAIN_DEF (".eos");
 	PUT_SDB_INT_VAL (size);
 	PUT_SDB_SCL (C_EOS);
 	PUT_SDB_TAG (name);

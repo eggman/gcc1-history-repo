@@ -51,6 +51,9 @@ libdir = /usr/local/lib
 # For System V based systems, you will also have to comment out the `ranlib'
 # command below.
 
+# If you are running GCC on an Apollo, you will need this:
+# CFLAGS = -g -O -M 3000 -U__STDC__ -DSHORT_ENUM_BUG
+
 # How to link with obstack
 OBSTACK=obstack.o
 # Dependency on obstack
@@ -298,6 +301,8 @@ cexp.c: cexp.y
 	$(BISON) cexp.y
 	mv cexp.tab.c cexp.c
 cccp.o: cccp.c
+	$(CC) $(CFLAGS) -DGCC_INCLUDE_DIR=\"$(libdir)/gcc-include\" \
+          -DGPLUSPLUS_INCLUDE_DIR=\"$(libdir)/g++-include\" -c cccp.c
 
 cpp.info: cpp.texinfo
 	makeinfo $<

@@ -1969,7 +1969,7 @@ yylex ()
 	    errno = 0;
 	    value = atof (token_buffer);
 #ifdef ERANGE
-	    if (errno == ERANGE)
+	    if (errno == ERANGE && !flag_traditional)
 	      error ("floating point number exceeds range of `double'");
 #endif
 

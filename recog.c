@@ -363,6 +363,9 @@ asm_noperands (body)
 {
   int noperands;
 
+  if (GET_CODE (body) == ASM_OPERANDS)
+    /* No output operands: return number of input operands.  */
+    return XVECLEN (body, 3);
   if (GET_CODE (body) == SET && GET_CODE (SET_SRC (body)) == ASM_OPERANDS)
     /* Single output operand: BODY is (set OUTPUT (asm_operands ...)).  */
     return XVECLEN (SET_SRC (body), 3) + 1;
@@ -429,6 +432,28 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
 	constraints[0] = XSTR (asmop, 1);
       if (modes)
 	modes[0] = GET_MODE (SET_DEST (body));
+      template = XSTR (asmop, 0);
+    }
+  else if (GET_CODE (body) == ASM_OPERANDS)
+    {
+      rtx asmop = body;
+      /* No output operands: BODY is (asm_operands ....).  */
+
+      noperands = XVECLEN (asmop, 3);
+
+      /* The input operands are found in the 1st element vector.  */
+      /* Constraints for inputs are in the 2nd element vector.  */
+      for (i = 0; i < noperands; i++)
+	{
+	  if (operand_locs)
+	    operand_locs[i] = &XVECEXP (asmop, 3, i);
+	  if (operands)
+	    operands[i] = XVECEXP (asmop, 3, i);
+	  if (constraints)
+	    constraints[i] = XSTR (XVECEXP (asmop, 4, i), 0);
+	  if (modes)
+	    modes[i] = GET_MODE (XVECEXP (asmop, 4, i));
+	}
       template = XSTR (asmop, 0);
     }
   else

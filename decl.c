@@ -67,10 +67,12 @@ tree error_mark_node;
 tree short_integer_type_node;
 tree integer_type_node;
 tree long_integer_type_node;
+tree long_long_integer_type_node;
 
 tree short_unsigned_type_node;
 tree unsigned_type_node;
 tree long_unsigned_type_node;
+tree long_long_unsigned_type_node;
 
 tree unsigned_char_type_node;
 tree signed_char_type_node;
@@ -1067,9 +1069,17 @@ init_decl_processing ()
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long int"),
 			long_integer_type_node));
 
+  long_long_integer_type_node = make_signed_type (2 * BITS_PER_WORD);
+  pushdecl (build_decl (TYPE_DECL, get_identifier ("long long int"),
+			long_long_integer_type_node));
+
   short_unsigned_type_node = make_unsigned_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short unsigned int"),
 			short_unsigned_type_node));
+
+  long_long_unsigned_type_node = make_unsigned_type (2 * BITS_PER_WORD);
+  pushdecl (build_decl (TYPE_DECL, get_identifier ("long long unsigned int"),
+			long_long_unsigned_type_node));
 
   /* Define both `signed char' and `unsigned char'.  */
   signed_char_type_node = make_signed_type (BITS_PER_UNIT);
@@ -1474,9 +1484,18 @@ finish_decl (decl, init, asmspec)
 
   if (TREE_CODE (decl) == VAR_DECL || TREE_CODE (decl) == FUNCTION_DECL)
     {
-      rest_of_decl_compilation (decl, asmspec,
-				current_binding_level == global_binding_level,
-				0);
+      if (flag_traditional && allocation_temporary_p ())
+	{
+	  end_temporary_allocation ();
+	  rest_of_decl_compilation (decl, asmspec,
+				    current_binding_level == global_binding_level,
+				    0);
+	  resume_temporary_allocation ();
+	}
+      else
+	rest_of_decl_compilation (decl, asmspec,
+				  current_binding_level == global_binding_level,
+				  0);
       if (TYPE_SIZE (TREE_TYPE (decl)) != 0
 	  || TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE)
 	if (current_binding_level != global_binding_level)
@@ -1608,10 +1627,17 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
   char *name;
   tree typedef_type = 0;
   int funcdef_flag = 0;
+  int resume_temporary = 0;
   enum tree_code innermost_code = ERROR_MARK;
 
   if (decl_context == FUNCDEF)
     funcdef_flag = 1, decl_context = NORMAL;
+
+  if (flag_traditional && allocation_temporary_p ())
+    {
+      resume_temporary = 1;
+      end_temporary_allocation ();
+    }
 
   /* Look inside a declarator for the name being declared
      and get it as a string, for an error message.  */
@@ -1685,8 +1711,13 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	    if (ridpointers[i] == id)
 	      {
 		if (i == (int) RID_LONG && specbits & (1<<i))
-		  longlong = 1;
-		if (specbits & (1 << i))
+		  {
+		    if (pedantic)
+		      warning ("duplicate `%s'", IDENTIFIER_POINTER (id));
+		    else
+		      longlong = 1;
+		  }
+		else if (specbits & (1 << i))
 		  warning ("duplicate `%s'", IDENTIFIER_POINTER (id));
 		specbits |= 1 << i;
 		goto found;
@@ -1752,7 +1783,9 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	{
 	  if (specbits & 1 << (int) RID_UNSIGNED)
 	    {
-	      if (specbits & 1 << (int) RID_LONG)
+	      if (longlong)
+		type = long_long_unsigned_type_node;
+	      else if (specbits & 1 << (int) RID_LONG)
 	        type = long_unsigned_type_node;
 	      else if (specbits & 1 << (int) RID_SHORT)
 		type = short_unsigned_type_node;
@@ -1764,6 +1797,8 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  else if ((specbits & 1 << (int) RID_SIGNED)
 		   && type == char_type_node)
 	    type = signed_char_type_node;
+	  else if (longlong)
+	    type = long_long_integer_type_node;
 	  else if (specbits & 1 << (int) RID_LONG)
 	    type = long_integer_type_node;
 	  else if (specbits & 1 << (int) RID_SHORT)
@@ -2017,6 +2052,8 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	 in typenames, fields or parameters */
       if (constp || volatilep)
 	type = build_type_variant (type, constp, volatilep);
+      if (resume_temporary)
+	resume_temporary_allocation ();
       return build_decl (TYPE_DECL, declarator, type);
     }
 
@@ -2041,6 +2078,8 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	 in typenames, fields or parameters */
       if (constp || volatilep)
 	type = build_type_variant (type, constp, volatilep);
+      if (resume_temporary)
+	resume_temporary_allocation ();
       return type;
     }
 
@@ -2123,6 +2162,7 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  warning ("invalid storage class for function `%s'",
 		   IDENTIFIER_POINTER (declarator));
 	decl = build_decl (FUNCTION_DECL, declarator, type);
+
 	TREE_EXTERNAL (decl) = 1;
 	/* Record presence of `static'.  */
 	TREE_PUBLIC (decl) = !(specbits & (1 << (int) RID_STATIC));
@@ -2184,6 +2224,9 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	TREE_VOLATILE (decl) = 1;
 	TREE_THIS_VOLATILE (decl) = 1;
       }
+
+    if (resume_temporary)
+      resume_temporary_allocation ();
 
     return decl;
   }

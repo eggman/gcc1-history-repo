@@ -417,6 +417,9 @@ Integer types @code{unsigned short} and @code{unsigned char} promote
 to @code{unsigned int}.
 
 @item
+Out-of-range floating point literals are not an error.
+
+@item
 In the preprocessor, comments convert to nothing at all, rather than to
 a space.  This allows traditional token concatenation.
 
@@ -998,7 +1001,8 @@ will appear here in the future.@refill
 For the vax, use @file{tm-vax.h} on Unix, or @file{tm-vms.h} on
 VMS.@refill
 
-For the sparc, use @file{tm-sparc.h}.
+For the SPARC, use @file{tm-sparc.h}.  Note that the SPARC support
+@strong{has a fatal bug}; to use it, you will have to debug it.
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
 machine, or @file{tm-encore.h} for an Encore machine; otherwise,
@@ -1122,12 +1126,12 @@ the system's own C preprocessor.  To do so, make the file
 
 Alternatively, on Sun systems and 4.3BSD at least, you can correct the
 include files by running the shell script @file{fixincludes}.  This
-installs modified, corrected copies of the files @file{ioctl.h} and
-@file{ttychars.h} in a special directory where only GNU CC will
-normally look for them.
+installs modified, corrected copies of the files @file{ioctl.h},
+@file{ttychars.h} and many others, in a special directory where only
+GNU CC will normally look for them.
 
-The file @file{/usr/include/vaxuba/qvioctl.h} used in the X window
-system needs a similar correction.
+See the file @file{fixincludes} for a list of all the files we know to
+require correction.
 @end enumerate
 
 If you cannot install the compiler's passes and run-time support in
@@ -1940,20 +1944,23 @@ from the first input, if any.  Commas separate output operands and separate
 inputs.  The number of operands is limited to the maximum number of
 operands in any instruction pattern in the machine description.
 
-Output operand expressions must be lvalues, and there must be at least one
-of them.  The compiler can check this.  The input operands need not be
-lvalues, and there need not be any.  The compiler cannot check whether the
-operands have data types that are reasonable for the instruction being
+Output operand expressions must be lvalues; the compiler can check this.
+The input operands need not be lvalues.  The compiler cannot check whether
+the operands have data types that are reasonable for the instruction being
 executed.
+
+If there are no output operands, and there are input operands, then you
+should write two colons in a row where the output operands would go.
 
 The output operands must be write-only; GNU CC will assume that the values
 in these operands before the instruction are dead and need not be
-generated.  For an operand that is read-write, you must logically split its
-function into two separate operands, one input operand and one write-only
-output operand.  The connection between them is expressed by constraints
-which say they need to be in the same location when the instruction
-executes.  You can use the same C expression for both operands, or
-different expressions.  For example, here we write the (fictitious)
+generated.  For an operand that is read-write, or in which not all bits are
+written and the other bits contain useful information, you must logically
+split its function into two separate operands, one input operand and one
+write-only output operand.  The connection between them is expressed by
+constraints which say they need to be in the same location when the
+instruction executes.  You can use the same C expression for both operands,
+or different expressions.  For example, here we write the (fictitious)
 @samp{combine} instruction with @code{bar} as its read-only source operand
 and @code{foo} as its read-write destination:
 
@@ -1963,8 +1970,14 @@ asm ("combine %2,%0" : "=r" (foo) : "0" (foo), "g" (bar));
 
 @noindent
 The constraint @samp{"0"} for operand 1 says that it must occupy the same
-location as operand 0.  Therefore it is not necessary to substitute operand
-1 into the assembler code output.
+location as operand 0.
+
+Unless an output operand has the @samp{&} constraint modifier, GNU CC may
+allocate it in the same register as an unrelated input operand, on the
+assumption that the inputs are consumed before the outputs are produced.
+This assumption may be false if the assembler code actually consists of
+more than one instruction.  In such a case, use @samp{&} for each output
+operand that may not overlap an input.  @xref{Modifiers}.
 
 Usually the most convenient way to use these @code{asm} instructions is to
 encapsulate them in macros that look like functions.  For example,
@@ -6003,6 +6016,20 @@ returned according to @code{FUNCTION_VALUE}.  Instead, the caller
 passes the address of a block of memory in which the value should be
 stored.  @code{STRUCT_VALUE_REGNUM} is the register in which this
 address is passed.
+
+@item REG_ALLOC_ORDER
+If defined, an initializer for a vector of integers, containing the
+numbers of hard registers in the order in which the GNU CC should
+prefer to use them (from most preferred to least).
+
+If this macro is not defined, registers are used lowest numbered first
+(all else being equal).
+
+One use of this macro is on the 360, where the highest numbered
+registers must always be saved and the save-multiple-registers
+instruction supports only sequences of consecutive registers.  This
+macro is defined to cause the highest numbered allocatable registers
+to be used first.
 @end table
 
 @node Register Classes, Stack Layout, Registers, Machine Macros

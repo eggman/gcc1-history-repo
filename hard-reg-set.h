@@ -184,6 +184,10 @@ extern char call_used_regs[FIRST_PSEUDO_REGISTER];
 
 extern HARD_REG_SET call_used_reg_set;
 
+/* Table of register numbers in the order in which to try to use them.  */
+
+extern int reg_alloc_order[FIRST_PSEUDO_REGISTER];
+
 /* For each reg class, a HARD_REG_SET saying which registers are in it.  */
 
 extern HARD_REG_SET reg_class_contents[];

@@ -743,6 +743,9 @@ life_analysis (f, nregs)
       first_pass = 0;
     }
 
+#if 0 /* This seems unnecessary; life at start of function shouldn't
+	 mean that the reg is live in more than one basic block.  */
+
   /* Process the regs live at the beginning of the function.
      Mark them as not local to any one basic block.  */
 
@@ -751,6 +754,7 @@ life_analysis (f, nregs)
       if (basic_block_live_at_start[0][i / REGSET_ELT_BITS]
 	  & (1 << (i % REGSET_ELT_BITS)))
 	reg_basic_block[i] = REG_BLOCK_GLOBAL;
+#endif
 
   /* Now the life information is accurate.
      Make one more pass over each basic block

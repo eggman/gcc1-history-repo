@@ -57,7 +57,8 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           For the vax, use `tm-vax.h' on Unix, or `tm-vms.h' on VMS.
 
-          For the sparc, use `tm-sparc.h'.
+          For the SPARC, use `tm-sparc.h'.  Note that the SPARC support
+          *has a fatal bug*; to use it, you will have to debug it.
 
           For the 32000, use `tm-sequent.h' if you are using a Sequent
           machine, or `tm-encore.h' for an Encore machine; otherwise,
@@ -132,7 +133,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      report (*Note Bugs::.).
 
  10. Install the compiler driver, the compiler's passes and run-time support.
-      You can use the following command:
+     You can use the following command:
 
           make install
 
@@ -156,12 +157,12 @@ Here is the procedure for installing GNU CC on a Unix system.
 
      Alternatively, on Sun systems and 4.3BSD at least, you can correct the
      include files by running the shell script `fixincludes'.  This
-     installs modified, corrected copies of the files `ioctl.h' and
-     `ttychars.h' in a special directory where only GNU CC will normally
-     look for them.
+     installs modified, corrected copies of the files `ioctl.h',
+     `ttychars.h' and many others, in a special directory where only GNU CC
+     will normally look for them.
 
-     The file `/usr/include/vaxuba/qvioctl.h' used in the X window system
-     needs a similar correction.
+     See the file `fixincludes' for a list of all the files we know to
+     require correction.
 
 If you cannot install the compiler's passes and run-time support in
 `/usr/local/lib', you can alternatively use the `-B' option to specify a
