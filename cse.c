@@ -1,5 +1,5 @@
 /* Common subexpression elimination for GNU compiler.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -24,6 +24,7 @@ and this notice must be preserved on all copies.  */
 #include "regs.h"
 #include "hard-reg-set.h"
 #include "flags.h"
+#include "real.h"
 
 /* The basic idea of common subexpression elimination is to go
    through the code, keeping a record of expressions that would
@@ -412,10 +413,14 @@ rtx_cost (x)
      rtx x;
 {
   register int i, j;
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
   register int total;
 
+  if (x == 0)
+    return 0;
+
+  code = GET_CODE (x);
   switch (code)
     {
     case REG:
@@ -596,10 +601,14 @@ static void
 mention_regs (x)
      rtx x;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register int i, j;
   register char *fmt;
 
+  if (x == 0)
+    return;
+
+  code = GET_CODE (x);
   if (code == REG)
     {
       register int regno = REGNO (x);
@@ -949,7 +958,7 @@ insert (x, classp, hash, mode)
   else
     elt->first_same_value = elt;
 
-  if ((CONSTANT_P (x) || FIXED_BASE_PLUS_P (x))
+  if ((CONSTANT_P (x) || GET_CODE (x) == CONST_DOUBLE || FIXED_BASE_PLUS_P (x))
       && GET_CODE (elt->first_same_value->exp) == REG)
     {
       qty_const[reg_qty[REGNO (elt->first_same_value->exp)]] = x;
@@ -960,12 +969,14 @@ insert (x, classp, hash, mode)
     {
       if (elt->next_same_value != 0
 	  && (CONSTANT_P (elt->next_same_value->exp)
+	      || GET_CODE (elt->next_same_value->exp) == CONST_DOUBLE
 	      || FIXED_BASE_PLUS_P (elt->next_same_value->exp)))
 	{
 	  qty_const[reg_qty[REGNO (x)]] = elt->next_same_value->exp;
 	  qty_const_insn[reg_qty[REGNO (x)]] = this_insn;
 	}
       if (CONSTANT_P (elt->first_same_value->exp)
+	  || GET_CODE (elt->first_same_value->exp) == CONST_DOUBLE
 	  || FIXED_BASE_PLUS_P (elt->first_same_value->exp))
 	{
 	  qty_const[reg_qty[REGNO (x)]] = elt->first_same_value->exp;
@@ -1269,11 +1280,14 @@ canon_hash (x, mode)
 {
   register int i, j;
   register int hash = 0;
-  register RTX_CODE code;
+  register enum rtx_code code;
   register char *fmt;
 
   /* repeat is used to turn tail-recursion into iteration.  */
  repeat:
+  if (x == 0)
+    return hash;
+
   code = GET_CODE (x);
   switch (code)
     {
@@ -1285,7 +1299,8 @@ canon_hash (x, mode)
 	   since it can be changed "mysteriously".  */
 
 	register int regno = REGNO (x);
-	if (regno == STACK_POINTER_REGNUM)
+	if (regno == STACK_POINTER_REGNUM
+	    || (regno < FIRST_PSEUDO_REGISTER && global_regs[regno]))
 	  {
 	    do_not_record = 1;
 	    return 0;
@@ -1303,19 +1318,24 @@ canon_hash (x, mode)
 	 the first two elements.  */
       hash += (int) code + (int) GET_MODE (x);
       {
-	int tem = XINT (x, 0);
-	hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
-	tem = XINT (x, 1);
-	hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
+	int i;
+	for (i = 2; i < GET_RTX_LENGTH (CONST_DOUBLE); i++)
+	  {
+	    int tem = XINT (x, i);
+	    hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
+	  }
       }
       return hash;
 
       /* Assume there is only one rtx object for any given label.  */
     case LABEL_REF:
-      return hash + ((int) LABEL_REF << 7) + (int) XEXP (x, 0);
+      /* Use `and' to ensure a positive number.  */
+      return (hash + ((int) LABEL_REF << 7)
+	      + ((int) XEXP (x, 0) & ((1 << HASHBITS) - 1)));
 
     case SYMBOL_REF:
-      return hash + ((int) SYMBOL_REF << 7) + (int) XEXP (x, 0);
+      return (hash + ((int) SYMBOL_REF << 7)
+	      + ((int) XEXP (x, 0) & ((1 << HASHBITS) - 1)));
 
     case MEM:
       if (MEM_VOLATILE_P (x))
@@ -1420,13 +1440,16 @@ exp_equiv_p (x, y, validate)
      int validate;
 {
   register int i;
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
 
   /* Note: it is incorrect to assume an expression is equivalent to itself
      if VALIDATE is nonzero.  */
   if (x == y && !validate)
     return 1;
+  if (x == 0 || y == 0)
+    return x == y;
+  code = GET_CODE (x);
   if (code != GET_CODE (y))
     return 0;
 
@@ -1495,7 +1518,7 @@ refers_to_p (x, y)
      rtx x, y;
 {
   register int i;
-  register RTX_CODE code;
+  register enum rtx_code code;
   register char *fmt;
 
  repeat:
@@ -1556,7 +1579,7 @@ refers_to_mem_p (x, reg, start, end)
      int start, end;
 {
   register int i;
-  register RTX_CODE code;
+  register enum rtx_code code;
   register char *fmt;
 
  repeat:
@@ -1639,9 +1662,13 @@ canon_reg (x)
      rtx x;
 {
   register int i;
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
 
+  if (x == 0)
+    return x;
+
+  code = GET_CODE (x);
   switch (code)
     {
     case PC:
@@ -1706,12 +1733,12 @@ fold_rtx (x, copyflag)
      rtx x;
      int copyflag;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
   register int i, val;
   rtx new = 0;
   int copied = ! copyflag;
-  int width = GET_MODE_BITSIZE (GET_MODE (x));
+  int width;
 
   /* Constant equivalents of first three operands of X;
      0 when no such equivalent is known.  */
@@ -1719,6 +1746,11 @@ fold_rtx (x, copyflag)
   rtx const_arg1;
   rtx const_arg2;
 
+  if (x == 0)
+    return x;
+
+  width = GET_MODE_BITSIZE (GET_MODE (x));
+  code = GET_CODE (x);
   switch (code)
     {
     case CONST:
@@ -1729,6 +1761,10 @@ fold_rtx (x, copyflag)
     case PC:
     case CC0:
     case REG:
+      /* No use simplifying an EXPR_LIST
+	 since they are used only for lists of args
+	 in a function call's REG_EQUAL note.  */
+    case EXPR_LIST:
       return x;
 
   /* We must be careful when folding a memory address
@@ -1840,64 +1876,81 @@ fold_rtx (x, copyflag)
     }
 
   /* Now decode the kind of rtx X is
-     and either return X (if nothing can be done)
+     and then return X (if nothing can be done)
+     or return a folded rtx
      or store a value in VAL and drop through
      (to return a CONST_INT for the integer VAL).  */
 
   if (GET_RTX_LENGTH (code) == 1)
     {
-      register int arg0;
-
-      if (const_arg0 == 0 || GET_CODE (const_arg0) != CONST_INT)
+      if (const_arg0 == 0)
 	return x;
 
-      arg0 = INTVAL (const_arg0);
-
-      switch (GET_CODE (x))
+      if (GET_CODE (const_arg0) == CONST_INT)
 	{
-	case NOT:
-	  val = ~ arg0;
-	  break;
+	  register int arg0 = INTVAL (const_arg0);
 
-	case NEG:
-	  val = - arg0;
-	  break;
+	  switch (GET_CODE (x))
+	    {
+	    case NOT:
+	      val = ~ arg0;
+	      break;
 
-	case TRUNCATE:
-	  val = arg0;
-	  break;
+	    case NEG:
+	      val = - arg0;
+	      break;
 
-	case ZERO_EXTEND:
-	  {
-	    enum machine_mode mode = GET_MODE (XEXP (x, 0));
-	    if (mode == VOIDmode)
-	      return x;
-	    if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
-	      val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
-	    else
-	      return x;
-	    break;
-	  }
+	    case TRUNCATE:
+	      val = arg0;
+	      break;
 
-	case SIGN_EXTEND:
-	  {
-	    enum machine_mode mode = GET_MODE (XEXP (x, 0));
-	    if (mode == VOIDmode)
-	      return x;
-	    if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+	    case ZERO_EXTEND:
 	      {
-		val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
-		if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
-		  val -= 1 << GET_MODE_BITSIZE (mode);
+		enum machine_mode mode = GET_MODE (XEXP (x, 0));
+		if (mode == VOIDmode)
+		  return x;
+		if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+		  val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
+		else
+		  return x;
+		break;
 	      }
-	    else
-	      return x;
-	    break;
-	  }
 
-	default:
-	  return x;
+	    case SIGN_EXTEND:
+	      {
+		enum machine_mode mode = GET_MODE (XEXP (x, 0));
+		if (mode == VOIDmode)
+		  return x;
+		if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+		  {
+		    val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
+		    if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
+		      val -= 1 << GET_MODE_BITSIZE (mode);
+		  }
+		else
+		  return x;
+		break;
+	      }
+
+	    default:
+	      return x;
+	    }
 	}
+#if ! defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+      else if (GET_CODE (const_arg0) == CONST_DOUBLE
+	       && GET_CODE (x) == NEG)
+	{
+	  union real_extract u;
+	  register REAL_VALUE_TYPE arg0;
+	  bcopy (&CONST_DOUBLE_LOW (const_arg0), &u, sizeof u);
+	  arg0 = u.d;
+
+	  u.d = REAL_VALUE_NEGATE (arg0);
+	  return immed_real_const_1 (u.d, GET_MODE (x));
+	}
+#endif
+      else
+	return x;
     }
   else if (GET_RTX_LENGTH (code) == 2)
     {
@@ -1960,7 +2013,10 @@ fold_rtx (x, copyflag)
 		return XEXP (x, 0);
 
 	      /* Handle both-operands-constant cases.  */
-	      if (const_arg0 != 0 && const_arg1 != 0)
+	      if (const_arg0 != 0 && const_arg1 != 0
+		  && GET_CODE (const_arg0) != CONST_DOUBLE
+		  && GET_CODE (const_arg1) != CONST_DOUBLE
+		  && GET_MODE_CLASS (GET_MODE (x)))
 	        {
 		  if (GET_CODE (const_arg1) == CONST_INT)
 		    new = plus_constant (const_arg0, INTVAL (const_arg1));
@@ -2001,8 +2057,15 @@ fold_rtx (x, copyflag)
 		    return const0_rtx;
 		}
 
+	      /* MINUS with VOIDmode is an overflowless subtraction
+		 for comparison purposes.  It's incorrect to fold it
+		 at all unless we can determine the comparison results.
+		 Leave that to fold_cc0.  */
+	      if (GET_MODE (x) == VOIDmode)
+		return x;
+
 	      /* Change subtraction from zero into negation.  */
-	      if (GET_MODE (x) != VOIDmode && const_arg0 == const0_rtx)
+	      if (const_arg0 == const0_rtx)
 		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 1));
 
 	      /* Don't let a relocatable value get a negative coeff.  */
@@ -2018,15 +2081,19 @@ fold_rtx (x, copyflag)
 		  /* Don't do this in the case of widening multiplication.  */
 		  && GET_MODE (XEXP (x, 0)) == GET_MODE (x))
 		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 0));
-	      if (const_arg1 == const0_rtx)
+	      if (const_arg1 == const0_rtx || const_arg0 == const0_rtx)
 		new = const0_rtx;
 	      if (const_arg1 == const1_rtx)
 		return XEXP (x, 0);
+	      if (const_arg0 == const1_rtx)
+		return XEXP (x, 1);
 	      break;
 
 	    case IOR:
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
+	      if (const_arg0 == const0_rtx)
+		return XEXP (x, 1);
 	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
 		      == GET_MODE_MASK (GET_MODE (x)))
@@ -2036,6 +2103,8 @@ fold_rtx (x, copyflag)
 	    case XOR:
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
+	      if (const_arg0 == const0_rtx)
+		return XEXP (x, 1);
 	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
 		      == GET_MODE_MASK (GET_MODE (x)))
@@ -2043,7 +2112,7 @@ fold_rtx (x, copyflag)
 	      break;
 
 	    case AND:
-	      if (const_arg1 == const0_rtx)
+	      if (const_arg1 == const0_rtx || const_arg0 == const0_rtx)
 		new = const0_rtx;
 	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
@@ -2073,6 +2142,8 @@ fold_rtx (x, copyflag)
 	    case ROTATERT:
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
+	      if (const_arg0 == const0_rtx)
+		new = const_arg0;
 	      break;
 	    }
 
@@ -2368,14 +2439,35 @@ fold_cc0 (x)
       if (tem != 0)
 	y0 = tem;
 
-      if (y0 == 0 || GET_CODE (y0) != CONST_INT)
+      if (y0 == 0)
 	return 0;
 
       tem = equiv_constant (y1);
       if (tem != 0)
 	y1 = tem;
 
-      if (y1 == 0 || GET_CODE (y1) != CONST_INT)
+      if (y1 == 0)
+	return 0;
+
+      /* Compare floats; report the result only for signed compares
+	 since that's all there are for floats.  */
+      if (GET_CODE (y0) == CONST_DOUBLE
+	  && GET_CODE (y1) == CONST_DOUBLE
+	  && GET_MODE_CLASS (GET_MODE (y0)) == MODE_FLOAT)
+	{
+	  union real_extract u0, u1;
+	  bcopy (&CONST_DOUBLE_LOW (y0), &u0, sizeof u0);
+	  bcopy (&CONST_DOUBLE_LOW (y1), &u1, sizeof u1);
+	  return 0100 + (REAL_VALUES_LESS (u0.d, u1.d) ? 7 << 3
+			 : REAL_VALUES_LESS (u1.d, u0.d) ? 1 << 3 : 0);
+	}
+
+      /* Aside from that, demand explicit integers.  */
+
+      if (GET_CODE (y0) != CONST_INT)
+	return 0;
+
+      if (GET_CODE (y1) != CONST_INT)
 	return 0;
 
       s0 = u0 = INTVAL (y0);
@@ -2765,6 +2857,14 @@ cse_insn (insn)
       hash_arg_in_memory = 0;
       hash_arg_in_struct = 0;
       src = fold_rtx (src, 0);
+      /* If SRC is a subreg of a reg with a known value,
+	 perform the truncation now.  */
+      if (GET_CODE (src) == SUBREG)
+	{
+	  rtx temp = equiv_constant (src);
+	  if (temp)
+	    src = temp;
+	}
       /* If we have (NOT Y), see if Y is known to be (NOT Z).
 	 If so, (NOT Y) simplifies to Z.  */
       if (GET_CODE (src) == NOT || GET_CODE (src) == NEG)
@@ -3470,7 +3570,7 @@ cse_basic_block (from, to)
 
   for (insn = from; insn != to; insn = NEXT_INSN (insn))
     {
-      register RTX_CODE code = GET_CODE (insn);
+      register enum rtx_code code = GET_CODE (insn);
       if (code == INSN || code == JUMP_INSN || code == CALL_INSN)
 	cse_insn (insn);
       /* Memory, and some registers, are invalidate by subroutine calls.  */

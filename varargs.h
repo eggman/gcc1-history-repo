@@ -2,30 +2,32 @@
 /* Use the system's macros with the system's compiler.  */
 #include <varargs.h>
 #else
-#ifdef sparc
-#include "va-sparc.h"
-#else
-#ifdef spur
+#ifdef __spur__
 #include "va-spur.h"
 #else
 
 /* These macros implement traditional (non-ANSI) varargs
    for GNU C.  */
 
-#define va_alist  _varargs
-#define va_dcl    int _varargs;
+#define va_alist  __builtin_va_alist
+#define va_dcl    int __builtin_va_alist;
 #define va_list   char *
 
-#define va_start(AP)  AP=(char *) &_varargs
+#ifdef __sparc__
+#define va_start(AP) 						\
+ (__builtin_saveregs (),					\
+  AP = ((void *) &__builtin_va_alist))
+#else
+#define va_start(AP)  AP=(char *) &__builtin_va_alist
+#endif
 #define va_end(AP)
 
-#define _va_rounded_size(TYPE)  \
+#define __va_rounded_size(TYPE)  \
   (((sizeof (TYPE) + sizeof (int) - 1) / sizeof (int)) * sizeof (int))
 
 #define va_arg(AP, TYPE)						\
- (AP += _va_rounded_size (TYPE),					\
-  *((TYPE *) (AP - _va_rounded_size (TYPE))))
+ (AP += __va_rounded_size (TYPE),					\
+  *((TYPE *) (AP - __va_rounded_size (TYPE))))
 
 #endif /* not spur */
-#endif /* not sparc */
 #endif /* __GNUC__ */

@@ -226,7 +226,7 @@ and this notice must be preserved on all copies.  */
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       u1.f = u.d;							\
       if (CODE == 'f')							\
         fprintf (FILE, "#0f%.9e", u1.f);				\
@@ -234,7 +234,7 @@ and this notice must be preserved on all copies.  */
         fprintf (FILE, "#0x%x", u1.i); }				\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       fprintf (FILE, "#0d%.20e", u.d); }				\
   else if (CODE == 'b') output_addr_const (FILE, X);			\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}

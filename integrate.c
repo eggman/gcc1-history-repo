@@ -81,6 +81,18 @@ static char *fp_addr_p;
    frame of the function being compiled.  */
 static int fp_delta;
 
+/* When an insn is being copied by copy_rtx_and_substitute,
+   this is nonzero if we have copied an ASM_OPERANDS.
+   In that case, it is the original input-operand vector.
+   Likewise in copy_for_inline.  */
+static rtvec orig_asm_operands_vector;
+
+/* When an insn is being copied by copy_rtx_and_substitute,
+   this is nonzero if we have copied an ASM_OPERANDS.
+   In that case, it is the copied input-operand vector.
+   Likewise in copy_for_inline.  */
+static rtvec copy_asm_operands_vector;
+
 /* Return a copy of an rtx (as needed), substituting pseudo-register,
    labels, and frame-pointer offsets as necessary.  */
 static rtx copy_rtx_and_substitute ();
@@ -122,6 +134,13 @@ function_cannot_inline_p (fndecl)
   if (get_max_uid () > 2 * max_insns)
     return "function too large to be inline";
 
+  /* If the structure value address comes in the stack,
+     we can't handle it.  */
+#if defined (STRUCT_VALUE) || defined (STRUCT_VALUE_INCOMING)
+  if (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))) == BLKmode)
+    return "function returning large aggregate cannot be inline";
+#endif
+
   /* Don't inline functions which have BLKmode arguments.
      Don't inline functions that take the address of
        a parameter and do not specify a function prototype.  */
@@ -131,6 +150,15 @@ function_cannot_inline_p (fndecl)
 	return "function with large aggregate parameter cannot be inline";
       if (last == NULL_TREE && TREE_ADDRESSABLE (parms))
 	return "no prototype, and parameter address used; cannot be inline";
+      /* If an aggregate is thought of as "in memory"
+	 then its components are referred to by narrower memory refs.
+	 If the actual parameter is a reg, these refs can't be translated,
+	 esp. since copy_rtx_and_substitute doesn't know whether it is
+	 reading or writing.  */
+      if ((TREE_CODE (TREE_TYPE (parms)) == RECORD_TYPE
+	   || TREE_CODE (TREE_TYPE (parms)) == UNION_TYPE)
+	  && GET_CODE (DECL_RTL (parms)) == MEM)
+	return "address of an aggregate parameter is used; cannot be inline";
     }
 
   if (get_max_uid () > max_insns)
@@ -315,6 +343,9 @@ save_for_inline (fndecl)
 
   for (insn = NEXT_INSN (insn); insn; insn = NEXT_INSN (insn))
     {
+      orig_asm_operands_vector = 0;
+      copy_asm_operands_vector = 0;
+
       switch (GET_CODE (insn))
 	{
 	case NOTE:
@@ -401,6 +432,22 @@ copy_for_inline (orig)
     case CC0:
       return x;
 
+    case ASM_OPERANDS:
+      /* If a single asm insn contains multiple output operands
+	 then it contains multiple ASM_OPERANDS rtx's that share operand 3.
+	 We must make sure that the copied insn continues to share it.  */
+      if (orig_asm_operands_vector == XVEC (orig, 3))
+	{
+	  x = rtx_alloc (ASM_OPERANDS);
+	  XSTR (x, 0) = XSTR (orig, 0);
+	  XSTR (x, 1) = XSTR (orig, 1);
+	  XINT (x, 2) = XINT (orig, 2);
+	  XVEC (x, 3) = copy_asm_operands_vector;
+	  XVEC (x, 4) = XVEC (orig, 4);
+	  return x;
+	}
+      break;
+
     case MEM:
       /* A MEM is allowed to be shared if its address is constant
 	 or is a constant plus one of the special registers.  */
@@ -484,6 +531,13 @@ copy_for_inline (orig)
 	  break;
 	}
     }
+
+  if (code == ASM_OPERANDS && orig_asm_operands_vector == 0)
+    {
+      orig_asm_operands_vector = XVEC (orig, 3);
+      copy_asm_operands_vector = XVEC (x, 3);
+    }
+
   return x;
 }
 
@@ -747,6 +801,9 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   for (insn = insns; insn; insn = NEXT_INSN (insn))
     {
       rtx copy, pattern, next = 0;
+
+      orig_asm_operands_vector = 0;
+      copy_asm_operands_vector = 0;
 
       switch (GET_CODE (insn))
 	{
@@ -1069,6 +1126,22 @@ copy_rtx_and_substitute (orig)
     case SYMBOL_REF:
       return orig;
 
+    case ASM_OPERANDS:
+      /* If a single asm insn contains multiple output operands
+	 then it contains multiple ASM_OPERANDS rtx's that share operand 3.
+	 We must make sure that the copied insn continues to share it.  */
+      if (orig_asm_operands_vector == XVEC (orig, 3))
+	{
+	  copy = rtx_alloc (ASM_OPERANDS);
+	  XSTR (copy, 0) = XSTR (orig, 0);
+	  XSTR (copy, 1) = XSTR (orig, 1);
+	  XINT (copy, 2) = XINT (orig, 2);
+	  XVEC (copy, 3) = copy_asm_operands_vector;
+	  XVEC (copy, 4) = XVEC (orig, 4);
+	  return copy;
+	}
+      break;
+
     case CALL:
       /* This is given special treatment because the first
 	 operand of a CALL is a (MEM ...) which may get
@@ -1228,7 +1301,7 @@ copy_rtx_and_substitute (orig)
 
 		      copy = parm_map[index];
 
-#ifdef BITS_BIG_ENDIAN
+#ifdef BYTES_BIG_ENDIAN
 		      /* Subtract from OFFSET the offset of where
 			 the actual parm value would start.  */
 		      if (GET_MODE_SIZE (GET_MODE (copy)) < UNITS_PER_WORD)
@@ -1242,11 +1315,29 @@ copy_rtx_and_substitute (orig)
 		      if ((GET_MODE (copy) != mode
 			   && GET_MODE (copy) != VOIDmode))
 			{
-			  if (GET_CODE (copy) != MEM)
-			    abort ();
-			  return change_address (copy, mode,
-						 plus_constant (XEXP (copy, 0),
-								offset));
+			  if (GET_CODE (copy) == MEM)
+			    return change_address (copy, mode,
+						   plus_constant (XEXP (copy, 0),
+								  offset));
+			  if (GET_CODE (copy) == REG)
+			    {
+			      /* Crash if the portion of the arg wanted
+				 is not the least significant.
+				 Functions with refs to other parts of a
+				 parameter should not be inline--
+				 see function_cannot_inline_p. */
+#ifdef BYTES_BIG_ENDIAN
+			      if (offset + GET_MODE_SIZE (mode)
+				  != GET_MODE_SIZE (GET_MODE (copy)))
+				abort ();
+#else
+			      if (offset != 0)
+				abort ();
+#endif
+			      return gen_rtx (SUBREG, mode, copy, 0);
+			    }
+
+			  abort ();
 			}
 		      return copy;
 		    }
@@ -1356,6 +1447,13 @@ copy_rtx_and_substitute (orig)
 	  abort ();
 	}
     }
+
+  if (code == ASM_OPERANDS && orig_asm_operands_vector == 0)
+    {
+      orig_asm_operands_vector = XVEC (orig, 3);
+      copy_asm_operands_vector = XVEC (copy, 3);
+    }
+
   return copy;
 }
 

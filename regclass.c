@@ -66,6 +66,13 @@ HARD_REG_SET call_used_reg_set;
 /* Data for initializing the above.  */
 
 static char initial_call_used_regs[] = CALL_USED_REGISTERS;
+
+/* Indexed by hard register number, contains 1 for registers
+   that are being used for global register decls.
+   These must be exempt from ordinary flow analysis
+   and are also considered fixed.  */
+
+char global_regs[FIRST_PSEUDO_REGISTER];
   
 /* Table of register numbers in the order in which to try to use them.  */
 #ifdef REG_ALLOC_ORDER
@@ -108,6 +115,7 @@ init_reg_sets ()
 
   bcopy (initial_fixed_regs, fixed_regs, sizeof fixed_regs);
   bcopy (initial_call_used_regs, call_used_regs, sizeof call_used_regs);
+  bzero (global_regs, sizeof global_regs);
 
   /* Compute number of hard regs in each class.  */
 
@@ -198,6 +206,16 @@ init_reg_sets_1 ()
 #ifdef CONDITIONAL_REGISTER_USAGE
   CONDITIONAL_REGISTER_USAGE;
 #endif
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (global_regs[i])
+      {
+	if (call_used_regs[i] && ! fixed_regs[i])
+	  warning ("call-clobbered register used for global register variable");
+	fixed_regs[i] = 1;
+	/* Prevent saving/restoring of this reg.  */
+	call_used_regs[i] = 1;
+      }
 
   /* Initialize "constant" tables.  */
 

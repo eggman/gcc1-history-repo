@@ -1,5 +1,5 @@
 /* Compiler driver program that can handle many languages.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987,1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -90,6 +90,8 @@ or with constant text in a single argument.
 	including the space; thus, two arguments would be generated.
  %{S:X} substitutes X, but only if the -S switch was given to CC.
  %{!S:X} substitutes X, but only if the -S switch was NOT given to CC.
+ %{|S:X} like %{S:X}, but if no S switch, substitute `-'.
+ %{|!S:X} like %{!S:X}, but if there is an S switch, substitute `-'.
 
 The conditional text X in a %{S:X} or %{!S:X} construct may contain
 other nested % constructs or spaces, or even newlines.
@@ -129,7 +131,7 @@ position among the other output files.
 #define W_OK 2
 #define X_OK 1
 #define vfork fork
-#endif
+#endif /* USG */
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -151,6 +153,7 @@ char *concat ();
 int do_spec ();
 int do_spec_1 ();
 char *find_file ();
+static char *find_exec_file ();
 
 /* config.h can define ASM_SPEC to provide extra args to the assembler
    or extra switch-translations.  */
@@ -213,37 +216,49 @@ struct compiler compilers[] =
         -undef -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
-    %{!M*:%{!E:cc1 %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
+        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+    %{!M*:%{!E:cc1 %{!pipe:%g.cpp} %1 \
+		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
-		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
+		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-                      %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+                      %{!pipe:%g.s}\
+		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
   {".cc",
    "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
         -undef -D__GNUC__ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
-    %{!M*:%{!E:cc1plus %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
+        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+    %{!M*:%{!E:cc1plus %{!pipe:%g.cpp} %1\
+		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
-		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
+		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-                      %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+                      %{!pipe:%g.s}\
+		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
   {".i",
    "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*}\
 	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 	%{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
-	%{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
+	%{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
     %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-            %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
+            %{!pipe:%g.s} %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
   {".s",
    "%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
             %i %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
+  {".S",
+   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
+        -undef -D__GNUC__ -$ %p %P\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
+	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
+        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+    %{!M*:%{!E:%{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{!pipe:%g.s} \
+                    %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
   /* Mark end of table */
   {0, 0}
 };
@@ -278,18 +293,23 @@ struct temp_file
   struct temp_file *next;
   int success_only;		/* Nonzero means delete this file
 				   only if compilation succeeds fully.  */
+  int fail_only;		/* Nonzero means delete this file
+				   only if compilation fails.  */
 };
 
 struct temp_file *temp_file_queue;
 
 /* Record FILENAME as a file to be deleted automatically.
    SUCCESS_ONLY nonzero means delete it only if all compilation succeeds;
+   otherwise delete it in any case.
+   FAIL_ONLY nonzero means delete it only if a compilation step fails;
    otherwise delete it in any case.  */
 
 void
-record_temp_file (filename, success_only)
+record_temp_file (filename, success_only, fail_only)
      char *filename;
      int success_only;
+     int fail_only;
 {
   register struct temp_file *temp;
   register char *name;
@@ -299,11 +319,14 @@ record_temp_file (filename, success_only)
   temp->next = temp_file_queue;
   temp->name = name;
   temp->success_only = success_only;
+  temp->fail_only = fail_only;
   temp_file_queue = temp;
 }
 
 /* Delete all the temporary files whose names we previously recorded.
-   SUCCESS nonzero means "delete on success only" files should be deleted.  */
+   SUCCESS nonzero means "delete on success only" files should be deleted.
+   When we use -pipe option, delete all tempoarry
+   without checking of success flag.  */
 
 void
 delete_temp_files (success)
@@ -311,7 +334,7 @@ delete_temp_files (success)
 {
   register struct temp_file *temp;
   for (temp = temp_file_queue; temp; temp = temp->next)
-    if (success || ! temp->success_only)
+    if (success ? !temp->fail_only : !temp->success_only)
       {
 #ifdef DEBUG
 	int i;
@@ -358,10 +381,15 @@ int argbuf_index;
 
 unsigned char vflag;
 
-/* User-specified prefix to attach to command names,
+/* User-specified -B prefix to attach to command names,
    or 0 if none specified.  */
 
 char *user_exec_prefix = 0;
+
+/* Environment-specified prefix to attach to command names,
+   or 0 if none specified.  */
+
+char *env_exec_prefix = 0;
 
 /* Default prefixes to attach to command names.  */
 
@@ -390,8 +418,11 @@ clear_args ()
 /* Add one argument to the vector at the end.
    This is done when a space is seen or at the end of the line.
    If TEMPNAMEP is nonzero, this arg is a file that should be deleted
-   at the end of compilation.  (If TEMPNAMEP is 2, delete the file
-   only if compilation is fully successful.)  */
+   at the end of compilation.
+   If TEMPNAMEP is 2, delete the file
+   only if compilation is fully successful.
+   If TEMPNAMEP is 3, delete the file
+   only if a compilation step fails.  */
 
 void
 store_arg (arg, tempnamep)
@@ -407,42 +438,50 @@ store_arg (arg, tempnamep)
   argbuf[argbuf_index] = 0;
 
   if (tempnamep)
-    record_temp_file (arg, tempnamep == 2);
+    record_temp_file (arg, tempnamep == 2, tempnamep == 3);
 }
+
+/* Search for an execute file through our search path.
+   Return 0 if not found, otherwise return its name, allocated with malloc.  */
 
-/* Execute the command specified by the arguments on the current line of spec.
-   Returns 0 if successful, -1 if failed.  */
-
-int
-execute ()
+static char *
+find_exec_file (prog)
+     char *prog;
 {
-  int pid;
-  int status;
-  int size;
-  char *temp;
   int win = 0;
+  char *temp;
+  int size;
 
   size = strlen (standard_exec_prefix);
   if (user_exec_prefix != 0 && strlen (user_exec_prefix) > size)
     size = strlen (user_exec_prefix);
+  if (env_exec_prefix != 0 && strlen (env_exec_prefix) > size)
+    size = strlen (env_exec_prefix);
   if (strlen (standard_exec_prefix_1) > size)
     size = strlen (standard_exec_prefix_1);
-  size += strlen (argbuf[0]) + 1;
-  temp = (char *) alloca (size);
+  size += strlen (prog) + 1;
+  temp = (char *) xmalloc (size);
 
   /* Determine the filename to execute.  */
 
   if (user_exec_prefix)
     {
       strcpy (temp, user_exec_prefix);
-      strcat (temp, argbuf[0]);
+      strcat (temp, prog);
+      win = (access (temp, X_OK) == 0);
+    }
+
+  if (!win && env_exec_prefix)
+    {
+      strcpy (temp, env_exec_prefix);
+      strcat (temp, prog);
       win = (access (temp, X_OK) == 0);
     }
 
   if (!win)
     {
       strcpy (temp, standard_exec_prefix);
-      strcat (temp, argbuf[0]);
+      strcat (temp, prog);
       win = (access (temp, X_OK) == 0);
     }
 
@@ -453,53 +492,236 @@ execute ()
       win = (access (temp, X_OK) == 0);
     }
 
+  if (win)
+    return temp;
+  else
+    return 0;
+}
+
+/* stdin file number.  */
+#define STDIN_FILE_NO 0
+
+/* stdout file number.  */
+#define STDOUT_FILE_NO 1
+
+/* value of `pipe': port index for reading.  */
+#define READ_PORT 0
+
+/* value of `pipe': port index for writing.  */
+#define WRITE_PORT 1
+
+/* Pipe waiting from last process, to be used as input for the next one.
+   Value is STDIN_FILE_NO if no pipe is waiting
+   (i.e. the next command is the first of a group).  */
+
+int last_pipe_input;
+
+/* Fork one piped subcommand.  FUNC is the system call to use
+   (either execv or execvp).  ARGV is the arg vector to use.
+   NOT_LAST is nonzero if this is not the last subcommand
+   (i.e. its output should be piped to the next one.)  */
+
+static int
+pexecute (func, program, argv, not_last)
+     char *program;
+     int (*func)();
+     char *argv[];
+     int not_last;
+{
+  int pid;
+  int pdes[2];
+  int input_desc = last_pipe_input;
+  int output_desc = STDOUT_FILE_NO;
+
+  /* If this isn't the last process, make a pipe for its output,
+     and record it as waiting to be the input to the next process.  */
+
+  if (not_last)
+    {
+      if (pipe (pdes) < 0)
+	pfatal_with_name ("pipe");
+      output_desc = pdes[WRITE_PORT];
+      last_pipe_input = pdes[READ_PORT];
+    }
+  else
+    last_pipe_input = STDIN_FILE_NO;
+
+  pid = vfork ();
+
+  switch (pid)
+    {
+    case -1:
+      pfatal_with_name ("vfork");
+      break;
+
+    case 0: /* child */
+      /* Move the input and output pipes into place, if nec.  */
+      if (input_desc != STDIN_FILE_NO)
+	{
+	  close (STDIN_FILE_NO);
+	  dup (input_desc);
+	  close (input_desc);
+	}
+      if (output_desc != STDOUT_FILE_NO)
+	{
+	  close (STDOUT_FILE_NO);
+	  dup (output_desc);
+	  close (output_desc);
+	}
+
+      /* Close the parent's descs that aren't wanted here.  */
+      if (last_pipe_input != STDIN_FILE_NO)
+	close (last_pipe_input);
+
+      /* Exec the program.  */
+      (*func) (program, argv);
+      exit (-1);
+      /* NOTREACHED */
+
+    default:
+      /* In the parent, after forking.
+	 Close the descriptors that we made for this child.  */
+      if (input_desc != STDIN_FILE_NO)
+	close (input_desc);
+      if (output_desc != STDOUT_FILE_NO)
+	close (output_desc);
+
+      /* Return child's process number.  */
+      return pid;
+    }
+}
+
+/* Execute the command specified by the arguments on the current line of spec.
+   When using pipes, this includes several piped-together commands
+   with `|' between them.
+
+   Return 0 if successful, -1 if failed.  */
+
+int
+execute ()
+{
+  int i, j;
+  int n_commands;		/* # of command.  */
+  char *string;
+  struct command
+    {
+      char *prog;		/* program name.  */
+      char **argv;		/* vector of args.  */
+      int pid;			/* pid of process for this command.  */
+    };
+
+  struct command *commands;	/* each command buffer with above info.  */
+
+  /* Count # of piped commands.  */
+  for (n_commands = 1, i = 0; i < argbuf_index; i++)
+    if (strcmp (argbuf[i], "|") == 0)
+      n_commands++;
+
+  /* Get storage for each command.  */
+  commands
+    = (struct command *) alloca (n_commands * sizeof (struct command));
+
+  /* Split argbuf into its separate piped processes,
+     and record info about each one.
+     Also search for the programs that are to be run.  */
+
+  commands[0].prog = argbuf[0]; /* first command.  */
+  commands[0].argv = &argbuf[0];
+  string = find_exec_file (commands[0].prog);
+  if (string)
+    commands[0].argv[0] = string;
+
+  for (n_commands = 1, i = 0; i < argbuf_index; i++)
+    if (strcmp (argbuf[i], "|") == 0)
+      {				/* each command.  */
+	argbuf[i] = 0;	/* termination of command args.  */
+	commands[n_commands].prog = argbuf[i + 1];
+	commands[n_commands].argv = &argbuf[i + 1];
+	string = find_exec_file (commands[n_commands].prog);
+	if (string)
+	  commands[n_commands].argv[0] = string;
+	n_commands++;
+      }
+
+  argbuf[argbuf_index] = 0;
+
+  /* If -v, print what we are about to do, and maybe query.  */
+
   if (vflag)
     {
-      int i;
-      for (i = 0; argbuf[i]; i++)
+      /* Print each piped command as a separate line.  */
+      for (i = 0; i < n_commands ; i++)
 	{
-	  if (i == 0 && win)
-	    fprintf (stderr, " %s", temp);
-	  else
-	    fprintf (stderr, " %s", argbuf[i]);
+	  char **j;
+
+	  for (j = commands[i].argv; *j; j++)
+	    fprintf (stderr, " %s", *j);
+
+	  /* Print a pipe symbol after all but the last command.  */
+	  if (i + 1 != n_commands)
+	    fprintf (stderr, " |");
+	  fprintf (stderr, "\n");
 	}
-      fprintf (stderr, "\n");
       fflush (stderr);
 #ifdef DEBUG
       fprintf (stderr, "\nGo ahead? (y or n) ");
       fflush (stderr);
-      i = getchar ();
-      if (i != '\n')
+      j = getchar ();
+      if (j != '\n')
 	while (getchar () != '\n') ;
-      if (i != 'y' && i != 'Y')
+      if (j != 'y' && j != 'Y')
 	return 0;
-#endif				/* DEBUG */
+#endif /* DEBUG */
     }
 
-#ifdef USG
-  pid = fork ();
-  if (pid < 0)
-    pfatal_with_name ("fork");
-#else
-  pid = vfork ();
-  if (pid < 0)
-    pfatal_with_name ("vfork");
-#endif
-  if (pid == 0)
+  /* Run each piped subprocess.  */
+
+  last_pipe_input = STDIN_FILE_NO;
+  for (i = 0; i < n_commands; i++)
     {
-      if (win)
-	execv (temp, argbuf);
-      else
-	execvp (argbuf[0], argbuf);
-      perror_with_name (argbuf[0]);
-      _exit (65);
+      extern int execv(), execvp();
+      char *string = commands[i].argv[0];
+
+      commands[i].pid = pexecute ((string != commands[i].prog ? execv : execvp),
+				  string, commands[i].argv,
+				  i + 1 < n_commands);
+
+      if (string != commands[i].prog)
+	free (string);
     }
-  wait (&status);
-  if ((status & 0x7F) != 0)
-    fatal ("Program %s got fatal signal %d.", argbuf[0], (status & 0x7F));
-  if (((status & 0xFF00) >> 8) >= MIN_FATAL_STATUS)
-    return -1;
-  return 0;
+
+  /* Wait for all the subprocesses to finish.
+     We don't care what order they finish in;
+     we know that N_COMMANDS waits will get them all.  */
+
+  {
+    int ret_code = 0;
+
+    for (i = 0; i < n_commands; i++)
+      {
+	int status;
+	int pid;
+	char *prog;
+
+	pid = wait (&status);
+	if (pid < 0)
+	  abort ();
+
+	if (status != 0)
+	  {
+	    int j;
+	    for (j = 0; j < n_commands; j++)
+	      if (commands[j].pid == pid)
+		prog = commands[j].prog;
+
+	    if ((status & 0x7F) != 0)
+	      fatal ("Program %s got fatal signal %d.", prog, (status & 0x7F));
+	    if (((status & 0xFF00) >> 8) >= MIN_FATAL_STATUS)
+	      ret_code = -1;
+	  }
+      }
+    return ret_code;
+  }
 }
 
 /* Find all the switches given to us
@@ -557,9 +779,12 @@ process_command (argc, argv)
      int argc;
      char **argv;
 {
+  extern char *getenv ();
   register int i;
   n_switches = 0;
   n_infiles = 0;
+
+  env_exec_prefix = getenv ("GCC_EXEC_PREFIX");
 
   /* Scan argv twice.  Here, the first time, just count how many switches
      there will be in their vector, and how many input files in theirs.
@@ -680,8 +905,18 @@ do_spec (spec)
   this_is_library_file = 0;
 
   value = do_spec_1 (spec, 0);
+
+  /* Force out any unfinished command.
+     If -pipe, this forces out the last command if it ended in `|'.  */
   if (value == 0)
-    value = do_spec_1 ("\n", 0);
+    {
+      if (argbuf_index > 0 && !strcmp (argbuf[argbuf_index - 1], "|"))
+	argbuf_index--;
+
+      if (argbuf_index > 0)
+	value = execute ();
+    }
+
   return value;
 }
 
@@ -720,12 +955,32 @@ do_spec_1 (spec, inswitch)
 	    string = obstack_finish (&obstack);
 	    if (this_is_library_file)
 	      string = find_file (string);
-	    store_arg (string, delete_this_arg);
+	    if (this_is_output_file)
+	      store_arg (string, 3);
+	    else
+	      store_arg (string, delete_this_arg);
 	    if (this_is_output_file)
 	      outfiles[input_file_number] = string;
 	  }
 	arg_going = 0;
-	if (argbuf_index)
+
+	if (argbuf_index > 0 && !strcmp (argbuf[argbuf_index - 1], "|"))
+	  {
+	    int i;
+	    for (i = 0; i < n_switches; i++)
+	      if (!strcmp (switches[i].part1, "pipe"))
+		break;
+
+	    /* A `|' before the newline means use a pipe here,
+	       but only if -pipe was specified.
+	       Otherwise, execute now and don't pass the `|' as an arg.  */
+	    if (i < n_switches)
+	      break;
+	    else
+	      argbuf_index--;
+	  }
+
+	if (argbuf_index > 0)
 	  {
 	    int value = execute ();
 	    if (value)
@@ -739,6 +994,27 @@ do_spec_1 (spec, inswitch)
 	this_is_library_file = 0;
 	break;
 
+      case '|':
+	/* End any pending argument.  */
+	if (arg_going)
+	  {
+	    obstack_1grow (&obstack, 0);
+	    string = obstack_finish (&obstack);
+	    if (this_is_library_file)
+	      string = find_file (string);
+	    if (this_is_output_file)
+	      store_arg (string, 3);
+	    else
+	      store_arg (string, delete_this_arg);
+	    if (this_is_output_file)
+	      outfiles[input_file_number] = string;
+	  }
+
+	/* Use pipe */
+	obstack_1grow (&obstack, c);
+	arg_going = 1;
+	break;
+
       case '\t':
       case ' ':
 	/* Space or tab ends an argument if one is pending.  */
@@ -748,7 +1024,10 @@ do_spec_1 (spec, inswitch)
 	    string = obstack_finish (&obstack);
 	    if (this_is_library_file)
 	      string = find_file (string);
-	    store_arg (string, delete_this_arg);
+	    if (this_is_output_file)
+	      store_arg (string, 3);
+	    else
+	      store_arg (string, delete_this_arg);
 	    if (this_is_output_file)
 	      outfiles[input_file_number] = string;
 	  }
@@ -916,10 +1195,20 @@ handle_braces (p)
      register char *p;
 {
   register char *q;
-  int negate = *p == '!';
   char *filter;
+  int pipe = 0;
+  int negate = 0;
 
-  if (negate) ++p;
+  if (*p == '|')
+    /* A `|' after the open-brace means,
+       if the test fails, output a single minus sign rather than nothing.
+       This is used in %{|!pipe:...}.  */
+    pipe = 1, ++p;
+
+  if (*p == '!')
+    /* A `!' after the open-brace negates the condition:
+       succeed if the specified switch is not present.  */
+    negate = 1, ++p;
 
   filter = p;
   while (*p != ':' && *p != '}') p++;
@@ -1000,6 +1289,12 @@ handle_braces (p)
 		return 0;
 	    }
 	}
+      else if (pipe)
+	{
+	  /* Here if a %{|...} conditional fails: output a minus sign,
+	     which means "standard output" or "standard input".  */
+	  do_spec_1 ("-");
+	}
     }
 
   return q;
@@ -1041,6 +1336,8 @@ find_file (name)
   size = strlen (standard_exec_prefix);
   if (user_exec_prefix != 0 && strlen (user_exec_prefix) > size)
     size = strlen (user_exec_prefix);
+  if (env_exec_prefix != 0 && strlen (env_exec_prefix) > size)
+    size = strlen (env_exec_prefix);
   if (strlen (standard_exec_prefix_1) > size)
     size = strlen (standard_exec_prefix_1);
   if (strlen (standard_startfile_prefix) > size)
@@ -1054,6 +1351,13 @@ find_file (name)
   if (user_exec_prefix)
     {
       strcpy (temp, user_exec_prefix);
+      strcat (temp, name);
+      win = (access (temp, R_OK) == 0);
+    }
+
+  if (!win && env_exec_prefix)
+    {
+      strcpy (temp, env_exec_prefix);
       strcat (temp, name);
       win = (access (temp, R_OK) == 0);
     }
@@ -1155,7 +1459,7 @@ main (argc, argv)
     }
 
   if (n_infiles == 0)
-    fatal ("No source or object files specified.");
+    fatal ("No input files specified.");
 
   /* Make a place to record the compiler output file names
      that correspond to the input files.  */

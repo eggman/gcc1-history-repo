@@ -214,6 +214,11 @@ int warn_return_type;
 
 int warn_write_strings;
 
+/* Nonzero means warn about pointer casts that can drop a type qualifier
+   from the pointer target type.  */
+
+int warn_cast_qual;
+
 /* Nonzero means `$' can be in an identifier.
    See cccp.c for reasons why this breaks some obscure ANSI C programs.  */
 
@@ -259,6 +264,8 @@ lang_decode_option (p)
     warn_return_type = 1;
   else if (!strcmp (p, "-Wwrite-strings"))
     warn_write_strings = 1;
+  else if (!strcmp (p, "-Wcast-qual"))
+    warn_cast_qual = 1;
   else if (!strcmp (p, "-Wcomment"))
     ; /* cpp handles this one.  */
   else if (!strcmp (p, "-Wtrigraphs"))
@@ -636,14 +643,32 @@ duplicate_decls (new, old)
 		  || TYPE_ARG_TYPES (TREE_TYPE (new)) == 0)
 	      && DECL_INITIAL (old) == 0 && DECL_INITIAL (new) == 0)
 	    {
-	      /* It's a parm type mismatch
-		 between a prototype and a non-prototype *declaration*.
-		 This is always due to an argument type 
-		 that doesn't self-promote.  */
-	      error ("an argument type that has a default promotion");
-	      error ("can't match an empty parameter list declaration");
+	      /* Classify the problem.  */
+	      register tree t = TYPE_ARG_TYPES (TREE_TYPE (old));
+	      if (t == 0)
+		t = TYPE_ARG_TYPES (TREE_TYPE (new));
+	      for (; t; t = TREE_CHAIN (t))
+		{
+		  register tree type = TREE_VALUE (t);
+
+		  if (TREE_CHAIN (t) == 0 && type != void_type_node)
+		    {
+		      error ("A parameter list with an ellipsis can't match");
+		      error ("an empty parameter name list declaration.");
+		      break;
+		    }
+
+		  if (type == float_type_node
+		      || (TREE_CODE (type) == INTEGER_TYPE
+			  && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)))
+		    {
+		      error ("An argument type that has a default promotion");
+		      error ("can't match an empty parameter name list declaration.");
+		      break;
+		    }
+		}
 	    }
-	  error_with_decl (old, "here is the previous declaration of `%s'");
+	  error_with_decl (old, "previous declaration of `%s'");
 	}
       else
 	{
@@ -893,7 +918,8 @@ pushdecl (x)
 	     then if we later have a file-scope decl it must not be static.  */
 	  if (oldlocal == 0
 	      && IDENTIFIER_GLOBAL_VALUE (name) == 0
-	      && TREE_EXTERNAL (x))
+	      && TREE_EXTERNAL (x)
+	      && TREE_PUBLIC (x))
 	    {
 	      TREE_PUBLIC (name) = 1;
 	    }
@@ -1419,6 +1445,7 @@ init_decl_processing ()
   builtin_function ("__builtin_fabs", double_ftype_double, BUILT_IN_FABS);
   builtin_function ("__builtin_labs", long_ftype_long, BUILT_IN_LABS);
   builtin_function ("__builtin_ffs", int_ftype_int, BUILT_IN_FFS);
+  builtin_function ("__builtin_saveregs", default_function_type, BUILT_IN_SAVEREGS);
 #if 0
   /* Support for these has not been written in either expand_builtin
      or build_function_call.  */
@@ -1451,7 +1478,7 @@ builtin_function (name, type, function_code)
   tree decl = build_decl (FUNCTION_DECL, get_identifier (name), type);
   TREE_EXTERNAL (decl) = 1;
   TREE_PUBLIC (decl) = 1;
-  make_function_rtl (decl);
+  make_decl_rtl (decl, 0, 1);
   pushdecl (decl);
   DECL_SET_FUNCTION_CODE (decl, function_code);
 }
@@ -1597,6 +1624,19 @@ start_decl (declarator, declspecs, initialized)
   /* Add this decl to the current binding level.  */
   tem = pushdecl (decl);
 
+  /* For a local variable, define the RTL now.  */
+  if (current_binding_level != global_binding_level
+      /* But not if this is a duplicate decl
+	 and we prefer the previous decl.  */
+      && DECL_RTL (decl) == 0)
+    {
+      if (TYPE_SIZE (TREE_TYPE (decl)) != 0)
+	expand_decl (decl, NULL_TREE);
+      else if (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
+	       && DECL_INITIAL (decl) != 0)
+	expand_decl (decl, NULL_TREE);
+    }
+
   if (init_written)
     {
       /* When parsing and digesting the initializer,
@@ -1619,6 +1659,7 @@ finish_decl (decl, init, asmspec)
      tree asmspec;
 {
   register tree type = TREE_TYPE (decl);
+  int was_incomplete = (DECL_SIZE (decl) == 0);
 
   /* If `start_decl' didn't like having an initialization, ignore it now.  */
 
@@ -1718,10 +1759,23 @@ finish_decl (decl, init, asmspec)
 	rest_of_decl_compilation (decl, asmspec,
 				  current_binding_level == global_binding_level,
 				  0);
-      if (TYPE_SIZE (TREE_TYPE (decl)) != 0
-	  || TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE)
-	if (current_binding_level != global_binding_level)
-	  expand_decl (decl, NULL_TREE);
+      if (current_binding_level != global_binding_level)
+	{
+	  /* Recompute the RTL of a local array now
+	     if it used to be an incomplete type.  */
+	  if (was_incomplete
+	      && ! TREE_STATIC (decl) && ! TREE_EXTERNAL (decl))
+	    {
+	      /* If we used it already as memory, it must stay in memory.  */
+	      TREE_ADDRESSABLE (decl) = TREE_USED (decl);
+	      /* If it's still incomplete now, no init will save it.  */
+	      if (DECL_SIZE (decl) == 0)
+		DECL_INITIAL (decl) = 0;
+	      expand_decl (decl, NULL_TREE);
+	    }
+	  /* Compute and store the initial value.  */
+	  expand_decl_init (decl);
+	}
     }
 
   if (TREE_CODE (decl) == TYPE_DECL)
@@ -2078,8 +2132,6 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
       {
 	if (specbits & (1 << (int) RID_AUTO))
 	  error ("top-level declaration of `%s' specifies `auto'", name);
-	if (specbits & (1 << (int) RID_REGISTER))
-	  error ("top-level declaration of `%s' specifies `register'", name);
       }
   }
 
@@ -2142,6 +2194,11 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 
 	  if (size)
 	    {
+	      /* might be a cast */
+	      if (TREE_CODE (size) == NOP_EXPR
+		  && TREE_TYPE (size) == TREE_TYPE (TREE_OPERAND (size, 0)))
+		size = TREE_OPERAND (size, 0);
+
 	      if (TREE_CODE (TREE_TYPE (size)) != INTEGER_TYPE
 		  && TREE_CODE (TREE_TYPE (size)) != ENUMERAL_TYPE)
 		{
@@ -2187,11 +2244,8 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  if (type == error_mark_node)
 	    continue;
 
-	  /* Is this an error?  Should they be merged into TYPE here?  */
-          if (constp || volatilep)
+          if (pedantic && (constp || volatilep))
             warning ("function declared to return const or volatile result");
-	  constp = 0;
-	  volatilep = 0;
 
 	  /* Warn about some types functions can't return.  */
 
@@ -2435,6 +2489,7 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	else
 	  {
 	    TREE_STATIC (decl) = (specbits & (1 << (int) RID_STATIC)) != 0;
+	    TREE_PUBLIC (decl) = TREE_EXTERNAL (decl);
 	    /* `extern' with initialization is invalid if not at top level.  */
 	    if ((specbits & (1 << (int) RID_EXTERN)) && initialized)
 	      error ("`%s' has both `extern' and initializer", name);
@@ -2517,40 +2572,43 @@ grokparms (parms_info, funcdef_flag)
 #endif
 	for (parm = last_function_parms, typelt = first_parm;
 	     parm;
-	     parm = TREE_CHAIN (parm), typelt = TREE_CHAIN (typelt))
-	  {
-	    /* Barf if the parameter itself has an incomplete type.  */
-	    tree type = TREE_VALUE (typelt);
-	    if (TYPE_SIZE (type) == 0)
-	      {
-		TREE_VALUE (typelt) = error_mark_node;
-		if (parm != 0 && DECL_NAME (parm) != 0)
-		  error ("parameter `%s' has incomplete type",
-			 IDENTIFIER_POINTER (DECL_NAME (parm)));
-		else
-		  error ("parameter has incomplete type");
-		if (parm != 0)
-		  TREE_TYPE (parm) = error_mark_node;
-	      }
-	    else
-	      {
-		/* Now warn if is a pointer to an incomplete type.  */
-		while (TREE_CODE (type) == POINTER_TYPE
-		       || TREE_CODE (type) == REFERENCE_TYPE)
-		  type = TREE_TYPE (type);
-		if (TYPE_SIZE (type) == 0)
-		  {
-		    TREE_VALUE (typelt) = error_mark_node;
-		    if (parm != 0 && DECL_NAME (parm) != 0)
-		      warning ("parameter `%s' points to incomplete type",
-			       IDENTIFIER_POINTER (DECL_NAME (parm)));
-		    else
-		      warning ("parameter points to incomplete type");
-		    if (parm != 0)
-		      TREE_TYPE (parm) = error_mark_node;
-		  }
-	      }
-	  }
+	     parm = TREE_CHAIN (parm))
+	  /* Skip over any enumeration constants declared here.  */
+	  if (TREE_CODE (parm) == PARM_DECL)
+	    {
+	      /* Barf if the parameter itself has an incomplete type.  */
+	      tree type = TREE_VALUE (typelt);
+	      if (TYPE_SIZE (type) == 0)
+		{
+		  if (funcdef_flag && parm != 0 && DECL_NAME (parm) != 0)
+		    error ("parameter `%s' has incomplete type",
+			   IDENTIFIER_POINTER (DECL_NAME (parm)));
+		  else
+		    warning ("parameter has incomplete type");
+		  if (funcdef_flag)
+		    {
+		      TREE_VALUE (typelt) = error_mark_node;
+		      if (parm != 0)
+			TREE_TYPE (parm) = error_mark_node;
+		    }
+		}
+	      else
+		{
+		  /* Now warn if is a pointer to an incomplete type.  */
+		  while (TREE_CODE (type) == POINTER_TYPE
+			 || TREE_CODE (type) == REFERENCE_TYPE)
+		    type = TREE_TYPE (type);
+		  if (TYPE_SIZE (type) == 0)
+		    {
+		      if (parm != 0 && DECL_NAME (parm) != 0)
+			warning ("parameter `%s' points to incomplete type",
+				 IDENTIFIER_POINTER (DECL_NAME (parm)));
+		      else
+			warning ("parameter points to incomplete type");
+		    }
+		}
+	      typelt = TREE_CHAIN (typelt);
+	    }
 
       return first_parm;
     }
@@ -3193,25 +3251,45 @@ store_parm_decls ()
 	 and complain if any redundant old-style parm decls were written.  */
 
       register tree next;
+      tree others = 0;
 
       if (parmdecls != 0)
 	error_with_decl (fndecl,
 			 "parm types given both in parmlist and separately");
 
-      for (parm = nreverse (specparms); parm; parm = next)
+      specparms = nreverse (specparms);
+      for (parm = specparms; parm; parm = next)
 	{
 	  next = TREE_CHAIN (parm);
 	  if (DECL_NAME (parm) == 0)
 	    error_with_decl (parm, "parameter name omitted");
 	  else if (TREE_TYPE (parm) == void_type_node)
 	    error_with_decl (parm, "parameter `%s' declared void");
-	  else
+	  else if (TREE_CODE (parm) == PARM_DECL)
 	    pushdecl (parm);
+	  else
+	    {
+	      /* If we find an enum constant, put it aside for the moment.  */
+	      TREE_CHAIN (parm) = 0;
+	      others = chainon (others, parm);
+	    }
 	}
 
       /* Get the decls in their original chain order
 	 and record in the function.  */
       DECL_ARGUMENTS (fndecl) = getdecls ();
+
+      /* Now pushdecl the enum constants.  */
+      for (parm = others; parm; parm = next)
+	{
+	  next = TREE_CHAIN (parm);
+	  if (DECL_NAME (parm) == 0)
+	    ;
+	  else if (TREE_TYPE (parm) == void_type_node)
+	    ;
+	  else if (TREE_CODE (parm) != PARM_DECL)
+	    pushdecl (parm);
+	}
 
       storetags (chainon (parmtags, gettags ()));
     }
@@ -3422,15 +3500,16 @@ finish_function ()
   /* Generate rtl for function exit.  */
   expand_function_end (input_filename, lineno);
 
-  if (warn_return_type)
-    /* So we can tell if jump_optimize sets it to 1.  */
-    current_function_returns_null = 0;
+  /* So we can tell if jump_optimize sets it to 1.  */
+  current_function_returns_null = 0;
 
   /* Run the optimizers and output the assembler code for this function.  */
   rest_of_compilation (fndecl);
 
-  if (warn_return_type && current_function_returns_null
-      && TREE_TYPE (TREE_TYPE (fndecl)) != void_type_node)
+  if (TREE_THIS_VOLATILE (fndecl) && current_function_returns_null)
+    warning ("`volatile' function does return");
+  else if (warn_return_type && current_function_returns_null
+	   && TREE_TYPE (TREE_TYPE (fndecl)) != void_type_node)
     /* If this function returns non-void and control can drop through,
        complain.  */
     warning ("control reaches end of non-void function");

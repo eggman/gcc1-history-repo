@@ -36,19 +36,19 @@ bindir = $(prefix)/usr/local/bin
 libdir = $(prefix)/usr/local/lib
 # Directory in which to put man pages.
 mandir = $(prefix)/usr/local/man/man1
+# Number to put in man-page filename.
+manext = 1
 
 # These are what you would need on HPUX:
 # CFLAGS = -Wc,-Ns2000 -Wc,-Ne700 -Wc,-Np300
+# If you are using the GNU assembler and linker on HPUX,
+# add -I../hp-include to CFLAGS.
 # -g is desirable in CFLAGS, but a compiler bug in HPUX version 5
 # bites whenever tree.def, rtl.def or machmode.def is included
 # (ie., on every source file).
 # CCLIBFLAGS = -Wc,-Ns2000 -Wc,-Ne700
 # For CCLIBFLAGS you might want to specify the switch that
 # forces only 68000 instructions to be used.
-
-# If you are using gas on hp-ux you need the following to fake up some
-# system file definitions:
-# CFLAGS = -g -I../hp-include
 
 # If you are making gcc for the first time, and if you are compiling it with
 # a non-gcc compiler, and if your system doesn't have a working alloca() in any
@@ -121,7 +121,7 @@ USER_H = stddef.h stdarg.h assert.h varargs.h va-*.h limits.h
 # CONFIG_H = config.h tm.h
 CONFIG_H =
 RTL_H = rtl.h rtl.def machmode.def
-TREE_H = tree.h tree.def machmode.def
+TREE_H = tree.h real.h tree.def machmode.def
 CPLUS_TREE_H = $(TREE_H) cplus-tree.h c-tree.h
 
 all: gnulib gcc cc1 cpp # cc1plus
@@ -165,10 +165,10 @@ gnulib: gnulib.c
 	rm -rf libtemp
 	if [ -f /usr/bin/ranlib ] ; then  ranlib gnulib ;fi
 # On HPUX, if you are working with the GNU assembler and linker,
-# the previous line must be replaced with
+# the previous line must be replaced with the following two lines.
 # No change is needed here if you are using the HPUX assembler and linker.
 #	mv gnulib gnulib-hp
-#	hpxt gnulib-hp gnulib
+#	../hp-bin/hpxt gnulib-hp gnulib
 
 
 # C language specific files.
@@ -210,7 +210,8 @@ toplev.o : toplev.c $(CONFIG_H) $(TREE_H) flags.h
 
 rtl.o : rtl.c $(CONFIG_H) $(RTL_H)
 
-varasm.o : varasm.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h expr.h insn-codes.h
+varasm.o : varasm.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h expr.h \
+   insn-codes.h hard-reg-set.h
 stmt.o : stmt.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h expr.h insn-config.h regs.h insn-codes.h
 expr.o : expr.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
@@ -224,7 +225,7 @@ symout.o : symout.c $(CONFIG_H) $(TREE_H) $(RTL_H) symseg.h gdbfiles.h
 dbxout.o : dbxout.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h
 sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H) c-tree.h
 
-emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h
+emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h real.h
 
 integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h \
    insn-flags.h insn-codes.h
@@ -232,8 +233,9 @@ integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h \
 jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
-cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h
-loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h flags.h expr.h
+cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h real.h
+loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h insn-codes.h \
+   regs.h recog.h flags.h expr.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
    insn-config.h regs.h basic-block.h recog.h
@@ -249,7 +251,7 @@ reload.o : reload.c $(CONFIG_H) $(RTL_H)  \
 reload1.o : reload1.c $(CONFIG_H) $(RTL_H) flags.h  \
    reload.h regs.h hard-reg-set.h insn-config.h basic-block.h
 final.o : final.c $(CONFIG_H) $(RTL_H) regs.h recog.h conditions.h gdbfiles.h \
-   insn-config.h
+   insn-config.h real.h
 recog.o : recog.c $(CONFIG_H) $(RTL_H)  \
    regs.h recog.h hard-reg-set.h insn-config.h
 
@@ -272,28 +274,28 @@ alloca.o:	alloca.c
 
 # Each of the other insn-* files is handled by a similar pair of rules.
 
-insn-config.h: stamp-config.h
+insn-config.h: stamp-config.h ;
 stamp-config.h : md genconfig
 	./genconfig md > tmp-insn-config.h
 	./move-if-change tmp-insn-config.h insn-config.h
 	touch stamp-config.h
 
-insn-flags.h: stamp-flags.h
+insn-flags.h: stamp-flags.h ;
 stamp-flags.h : md genflags
 	./genflags md > tmp-insn-flags.h
 	./move-if-change tmp-insn-flags.h insn-flags.h
 	touch stamp-flags.h
 
-insn-codes.h: stamp-codes.h
+insn-codes.h: stamp-codes.h ;
 stamp-codes.h : md gencodes
 	./gencodes md > tmp-insn-codes.h
 	./move-if-change tmp-insn-codes.h insn-codes.h
 	touch stamp-codes.h
 
-insn-emit.o : insn-emit.c $(CONFIG_H) $(RTL_H) expr.h insn-config.h
+insn-emit.o : insn-emit.c $(CONFIG_H) $(RTL_H) expr.h insn-config.h real.h
 	$(CC) $(CFLAGS) -c insn-emit.c
 
-insn-emit.c: stamp-emit.c
+insn-emit.c: stamp-emit.c ;
 stamp-emit.c : md genemit
 	./genemit md > tmp-insn-emit.c
 	./move-if-change tmp-insn-emit.c insn-emit.c
@@ -302,7 +304,7 @@ stamp-emit.c : md genemit
 insn-recog.o : insn-recog.c $(CONFIG_H) $(RTL_H) insn-config.h
 	$(CC) $(CFLAGS) -c insn-recog.c
 
-insn-recog.c: stamp-recog.c
+insn-recog.c: stamp-recog.c ;
 stamp-recog.c : md genrecog
 	./genrecog md > tmp-insn-recog.c
 	./move-if-change tmp-insn-recog.c insn-recog.c
@@ -311,25 +313,26 @@ stamp-recog.c : md genrecog
 insn-extract.o : insn-extract.c $(RTL_H)
 	$(CC) $(CFLAGS) -c insn-extract.c
 
-insn-extract.c: stamp-extract.c
+insn-extract.c: stamp-extract.c ;
 stamp-extract.c : md genextract
 	./genextract md > tmp-insn-extract.c
 	./move-if-change tmp-insn-extract.c insn-extract.c
 	touch stamp-extract.c
 
-insn-peep.o : insn-peep.c $(CONFIG_H) $(RTL_H) regs.h
+insn-peep.o : insn-peep.c $(CONFIG_H) $(RTL_H) regs.h real.h
 	$(CC) $(CFLAGS) -c insn-peep.c
 
-insn-peep.c: stamp-peep.c
+insn-peep.c: stamp-peep.c ;
 stamp-peep.c : md genpeep
 	./genpeep md > tmp-insn-peep.c
 	./move-if-change tmp-insn-peep.c insn-peep.c
 	touch stamp-peep.c
 
-insn-output.o : insn-output.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h insn-flags.h conditions.h output.h aux-output.c
+insn-output.o : insn-output.c $(CONFIG_H) $(RTL_H) regs.h real.h conditions.h \
+    insn-config.h insn-flags.h output.h aux-output.c
 	$(CC) $(CFLAGS) -c insn-output.c
 
-insn-output.c: stamp-output.c
+insn-output.c: stamp-output.c ;
 stamp-output.c : md genoutput
 	./genoutput md > tmp-insn-output.c
 	./move-if-change tmp-insn-output.c insn-output.c
@@ -427,21 +430,21 @@ realclean: clean
 
 # Like realclean but also delete the links made to configure gcc.
 cleanlinks: realclean
-	-rm tm.h aux-output.c config.h md config.status
+	-rm -f tm.h aux-output.c config.h md config.status
 
 # Copy the files into directories where they will be run.
 install: all
-	if [ -f cc1 ] ; then $(INSTALL) cc1 $(libdir)/gcc-cc1 ;fi
-	if [ -f cc1plus ] ; then $(INSTALL) cc1plus $(libdir)/gcc-cc1plus ;fi
+	-mkdir $(libdir)
+	-if [ -f cc1 ] ; then $(INSTALL) cc1 $(libdir)/gcc-cc1 ;fi
+	-if [ -f cc1plus ] ; then $(INSTALL) cc1plus $(libdir)/gcc-cc1plus ;fi
 	$(INSTALL) gnulib $(libdir)/gcc-gnulib
-	if [ -f /usr/bin/ranlib ] ; then (cd $(libdir); ranlib /gcc-gnulib) ;fi
+	-if [ -f /usr/bin/ranlib ] ; then (cd $(libdir); ranlib gcc-gnulib) ;fi
 	$(INSTALL) cpp $(libdir)/gcc-cpp
 	$(INSTALL) gcc $(bindir)
 	-mkdir $(libdir)/gcc-include
 	chmod ugo+rx $(libdir)/gcc-include
-	cd $(libdir)/gcc-include; rm -f $(USER_H)
-	cp $(USER_H) $(libdir)/gcc-include
-	cp gcc.1 mandir
+	for file in $(USER_H); do $(INSTALL) $${file} $(libdir)/gcc-include; done
+	$(INSTALL) gcc.1 $(mandir)/gcc.$(manext)
 
 # do make -f ../gcc/Makefile maketest DIR=../gcc
 # in the intended test directory to make it a suitable test directory.
@@ -463,6 +466,14 @@ bootstrap: all force
 	$(MAKE) stage1
 	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)"
 	$(MAKE) stage2
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+
+bootstrap2: force
+	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) stage2
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+
+bootstrap3: force
 	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
 
 # Copy the object files from a particular stage into a subdirectory.

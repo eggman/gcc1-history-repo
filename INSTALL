@@ -6,8 +6,6 @@ GCC manual:
   TeX output  gcc.dvi
   TeX source  gcc.texinfo
 
-File: gcc.info,  Node: Installation,  Next: Trouble,  Prev: Options,  Up: Top
-
 Installing GNU CC
 *****************
 
@@ -41,6 +39,10 @@ Here is the procedure for installing GNU CC on a Unix system.
     `i386-sysv'
           Intel 386 PCs running system V.
 
+    `i386-sysv-gas'
+          Intel 386 PCs running system V, using the GNU assembler and
+          GNU linker.
+
     `sequent-386'
           Sequent with Intel 386 processors.
 
@@ -48,7 +50,13 @@ Here is the procedure for installing GNU CC on a Unix system.
           Sun 2 running system version 2 or 3.
 
     `sun3'
-          Sun 3 running system version 2 or 3.
+          Sun 3 running system version 2 or 3, with 68881.
+
+    `sun3-nfp'
+          Sun 3 running system version 2 or 3, without 68881.
+
+    `sun3-fpa'
+          Sun 3 running system version 2 or 3, with 68881 and fpa.
 
     `sun4'
           Sun 4 running system version 2 or 3.
@@ -57,7 +65,13 @@ Here is the procedure for installing GNU CC on a Unix system.
           Sun 2 running system version 4.
 
     `sun3-os4'
-          Sun 3 running system version 4.
+          Sun 3 running system version 4, with 68881.
+
+    `sun3-nfp-os4'
+          Sun 3 running system version 4, without 68881.
+
+    `sun3-fpa-os4'
+          Sun 3 running system version 4, with 68881 and fpa.
 
     `sun4-os4'
           Sun 4 running system version 4.
@@ -65,13 +79,25 @@ Here is the procedure for installing GNU CC on a Unix system.
     `sun386'
           Sun 386 (``roadrunner'').
 
+    `alliant'
+          Alliant FX/8 computer.  Currently, there are bugs in the
+          support for floating point.  Also note that Alliant's
+          version of dbx does not manage to work with the output from
+          GNU CC.
+
+    `convex-c1'
+          Convex C1 computer.
+
+    `convex-c2'
+          Convex C2 computer.
+
     `hp9k320'
           HP 9000 series 300 using HPUX assembler.
 
     `kp9k320g'
           HP 9000 series 300 using GNU assembler, linker and debugger.
           This requires the HP-adapt package which is or will soon be
-          available in the same places as GNU CC.
+          available along with the linker.
 
     `isi68'
           ISI 68000 or 68020 system.
@@ -140,7 +166,13 @@ Here is the procedure for installing GNU CC on a Unix system.
           directly.  Instead, use one of these files:
 
          `tm-sun3.h'
-               for Sun 3 machines.
+               for Sun 3 machines with 68881.
+
+         `tm-sun3-fpa.h'
+               for Sun 3 machines with floating point accelerator.
+
+         `tm-sun3-nfp.h'
+               for Sun 3 machines with no hardware floating point.
 
          `tm-sun2.h'
                for Sun 2 machines.
@@ -176,8 +208,10 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           For the 80386, don't use `tm-i386.h' directly.  Use
           `tm-i386v.h' if the target machine is running system V,
-          `tm-seq386.h' for a Sequent 386 system, or `tm-compaq.h'
-          for a Compaq, or `tm-sun386i.h' for a Sun 386 system.
+          `tm-i386gas.h' if it is running system V but you are using
+          the GNU assembler and linker, `tm-seq386.h' for a Sequent
+          386 system, or `tm-compaq.h' for a Compaq, or
+          `tm-sun386i.h' for a Sun 386 system.
 
           For the 32000, use `tm-sequent.h' if you are using a
           Sequent machine, or `tm-encore.h' for an Encore machine, or
@@ -221,7 +255,12 @@ Here is the procedure for installing GNU CC on a Unix system.
      operating system, and should be investigated and reported (*note
      Bugs::.).
 
-  7. Move the first-stage object files and executables into a
+  7. If you are using COFF-encapsulation, you must convert `gnulib'
+     to a GNU-format library at this point.  See the file
+     `README-ENCAP' in the directory containing the GNU binary file
+     utilities, for directions.
+
+  8. Move the first-stage object files and executables into a
      subdirectory with this command:
 
           make stage1
@@ -230,7 +269,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      installation is complete, you may wish to delete these files
      with `rm -r stage1'.
 
-  8. Recompile the compiler with itself, with this command:
+  9. Recompile the compiler with itself, with this command:
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
 
@@ -240,7 +279,7 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
 
-  9. If you wish to test the compiler by compiling it with itself one
+ 10. If you wish to test the compiler by compiling it with itself one
      more time, do this:
 
           make stage2
@@ -258,7 +297,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      Aside from the `-B' option, the options should be the same as
      when you made stage 2.
 
- 10. Install the compiler driver, the compiler's passes and run-time
+ 11. Install the compiler driver, the compiler's passes and run-time
      support.  You can use the following command:
 
           make install
@@ -308,6 +347,7 @@ Also, you can specify an alternative default directory for these
 files by setting the Make variable `libdir' when you make GNU CC.
 
 
+
 File: gcc.info,  Node: VMS Install,  Prev: Installation,  Up: Installation
 
 Installing GNU CC on VMS
@@ -325,6 +365,13 @@ If you must recompile, here is how:
      `vax.md' to `md.' and `output-vax.c' to `aux-output.c'.
 
   2. Type `@make' to do recompile everything.
+
+     If you are compiling with a version of GCC older than 1.33,
+     specify `/DEFINE=("inline=")' as an option in all the
+     compilations.  This requires editing all the `gcc' commands in
+     `make-cc1.com'.  (The older versions had problems supporting
+     `inline'.)  Once you have a working 1.33 or newer GCC, you can
+     change this file back.
 
 To install the `GCC' command so you can use the compiler easily, in
 the same manner as you use the VMS C compiler, you must install the
@@ -349,3 +396,7 @@ VMS CLD file for GNU CC as follows:
      Now you can invoke the compiler with a command like `gcc
      /verbose file.c', which is equivalent to the command `gcc -v -c
      file.c' in Unix.
+
+There is a known problem on VMS: `const' global variables don't work
+compatibly with the VMS C compiler; we don't know a way to get them
+to the linker properly.

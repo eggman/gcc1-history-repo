@@ -1406,7 +1406,7 @@ do { union { float f; long l;} tem;			\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       u1.f = u.d;							\
       if (CODE == 'f')							\
 	ASM_OUTPUT_FLOAT_OPERAND (FILE, u1.f);				\
@@ -1414,7 +1414,7 @@ do { union { float f; long l;} tem;			\
         fprintf (FILE, "#0x%x", u1.i); }				\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       ASM_OUTPUT_DOUBLE_OPERAND (FILE, u.d); }				\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
 

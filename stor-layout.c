@@ -281,6 +281,7 @@ layout_decl (decl, known_align)
   register tree type = TREE_TYPE (decl);
   register enum tree_code code = TREE_CODE (decl);
   int spec_size = DECL_SIZE_UNIT (decl);
+  int bitsize;
 
   if (code == CONST_DECL)
     return;
@@ -328,6 +329,9 @@ layout_decl (decl, known_align)
   else if (TYPE_ALIGN (type) > DECL_ALIGN (decl))
     DECL_ALIGN (decl) = TYPE_ALIGN (type);
 
+  if (DECL_SIZE (decl))
+    bitsize = TREE_INT_CST_LOW (DECL_SIZE (decl)) * DECL_SIZE_UNIT (decl);
+
   /* See if we can use a scalar mode such as QImode or SImode
      in place of BLKmode or a packed byte mode.  */
   /* Conditions are: a fixed size that is correct for another mode
@@ -339,9 +343,7 @@ layout_decl (decl, known_align)
       && TYPE_SIZE (type) != 0
       && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
     {
-      register unsigned packed_size 
-	= TREE_INT_CST_LOW (DECL_SIZE (decl)) * DECL_SIZE_UNIT (decl);
-      register enum machine_mode xmode = agg_mode (packed_size);
+      register enum machine_mode xmode = agg_mode (bitsize);
 
       if (xmode != BLKmode
 	  && known_align % GET_MODE_ALIGNMENT (xmode) == 0)
@@ -351,7 +353,26 @@ layout_decl (decl, known_align)
 	  DECL_MODE (decl) = xmode;
 	  DECL_SIZE (decl) = build_int (GET_MODE_SIZE (xmode));
 	  DECL_SIZE_UNIT (decl) = BITS_PER_UNIT;
+	  bitsize = GET_MODE_BITSIZE (xmode);
 	}
+    }
+
+  /* Don't let more than one word of an aggregate occupy one register,
+     since then the SUBREG used to access the high part would malfunction.
+     Check that the expected # of registers is big enough that they
+     seem to hold this variable with just a word per register.  */
+  if (DECL_SIZE (decl) != 0
+      && (TREE_CODE (type) == RECORD_TYPE
+	  || TREE_CODE (type) == UNION_TYPE
+	  || TREE_CODE (type) == ARRAY_TYPE))
+    {
+      /* This test is not exactly right, since we really want the minimum
+	 number of regs in any class that can hold this mode.
+	 But it does distinguish the machines we need to distinguish,
+	 for now.  */
+      if (CLASS_MAX_NREGS (ALL_REGS, TYPE_MODE (type)) * BITS_PER_WORD
+	  < bitsize)
+	TREE_ADDRESSABLE (decl) = 1;
     }
 
   /* Evaluate nonconstant size only once, either now or as soon as safe.  */
@@ -753,7 +774,10 @@ layout_type (type)
 	TYPE_ALIGN (type) = MAX (TYPE_ALIGN (element), BITS_PER_UNIT);
 	TYPE_MODE (type) = BLKmode;
 	if (TYPE_SIZE (type) != 0
-	    && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
+	    && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
+	    /* BLKmode elements force BLKmode aggregate;
+	       else extract/store fields may lose.  */
+	    && TYPE_MODE (TREE_TYPE (type)) != BLKmode)
 	  {
 	    TYPE_MODE (type) 
 	      = agg_mode (TREE_INT_CST_LOW (TYPE_SIZE (type))
@@ -765,7 +789,16 @@ layout_type (type)
     case RECORD_TYPE:
       layout_record (type);
       TYPE_MODE (type) = BLKmode;
-      if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
+      if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
+	  /* If structure's known alignment is less than
+	     what the scalar mode would need, and it matters,
+	     then stick with BLKmode.  */
+#ifdef STRICT_ALIGNMENT
+	  && (TYPE_ALIGN (type) >= BIGGEST_ALIGNMENT
+	      || TYPE_ALIGN (type) >= (TREE_INT_CST_LOW (TYPE_SIZE (type))
+				       * TYPE_SIZE_UNIT (type)))
+#endif
+	  )
 	{
 	  tree field;
 	  /* A record which has any BLKmode members must itself be BLKmode;
@@ -784,7 +817,16 @@ layout_type (type)
     case UNION_TYPE:
       layout_union (type);
       TYPE_MODE (type) = BLKmode;
-      if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
+      if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
+	  /* If structure's known alignment is less than
+	     what the scalar mode would need, and it matters,
+	     then stick with BLKmode.  */
+#ifdef STRICT_ALIGNMENT
+	  && (TYPE_ALIGN (type) >= BIGGEST_ALIGNMENT
+	      || TYPE_ALIGN (type) >= (TREE_INT_CST_LOW (TYPE_SIZE (type))
+				       * TYPE_SIZE_UNIT (type)))
+#endif
+	  )
 	{
 	  tree field;
 	  /* A union which has any BLKmode members must itself be BLKmode;

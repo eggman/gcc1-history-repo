@@ -123,3 +123,6 @@ be faster (and in some cases shorter) to push each alternative rather
 than compute in a register and push that.  This would require
 being able to specify "push this" as a target for expand_expr.
 
+124. On the 386, bad code results from foo (bar ()) when bar
+returns a double, because the pseudo used fails to get preferenced
+into an fp reg because of the distinction between regs 8 and 9.

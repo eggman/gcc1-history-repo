@@ -432,6 +432,7 @@ extern rtx gen_sequence ();
 extern rtx expand_expr ();
 extern rtx output_constant_def ();
 extern rtx immed_real_const ();
+extern rtx immed_real_const_1 ();
 extern rtx immed_double_const ();
 extern rtx force_const_double_mem ();
 extern rtx force_const_mem ();

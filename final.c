@@ -53,11 +53,16 @@ and this notice must be preserved on all copies.  */
 #include "conditions.h"
 #include "gdbfiles.h"
 #include "flags.h"
+#include "real.h"
 
 /* Get N_SLINE and N_SOL from stab.h if we can expect the file to exist.  */
 #ifdef DBX_DEBUGGING_INFO
-#include <stab.h>
-#endif
+#ifdef USG
+#include "stab.h"  /* If doing DBX on sysV, use our own stab.h.  */
+#else
+#include <stab.h>  /* On BSD, use the system's stab.h.  */
+#endif /* not USG */
+#endif /* DBX_DEBUGGING_INFO */
 
 /* .stabd code for line number.  */
 #ifndef N_SLINE
@@ -399,6 +404,7 @@ final (first, file, write_symbols, optimize, prescan)
 {
   register rtx insn;
   register int i;
+  rtx last_ignored_compare = 0;
 
   init_recog ();
 
@@ -655,10 +661,15 @@ final (first, file, write_symbols, optimize, prescan)
 		    if (! find_reg_note (insn, REG_INC, 0)
 			/* or if anything in it is volatile.  */
 			&& ! volatile_refs_p (PATTERN (insn)))
-		      /* We don't really delete the insn; just ignore it.  */
-		      break;
+		      {
+			/* We don't really delete the insn; just ignore it.  */
+			last_ignored_compare = insn;
+			break;
+		      }
 		  }
 	      }
+
+	  reinsert_compare:
 
 	    /* If this is a conditional branch, maybe modify it
 	       if the cc's are in a nonstandard state
@@ -735,6 +746,16 @@ final (first, file, write_symbols, optimize, prescan)
 		}
 #endif /* STORE_FLAG_VALUE */
 
+	    /* Do machine-specific peephole optimizations if desired.  */
+
+	    if (optimize && !flag_no_peephole)
+	      {
+		peephole (insn);
+
+		/* PEEPHOLE might have changed this.  */
+		body = PATTERN (insn);
+	      }
+
 	    /* Try to recognize the instruction.
 	       If successful, verify that the operands satisfy the
 	       constraints for the instruction.  Crash if they don't,
@@ -775,7 +796,21 @@ final (first, file, write_symbols, optimize, prescan)
 
 	    template = insn_template[insn_code_number];
 	    if (template == 0)
-	      template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
+	      {
+		template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
+
+		/* If the C code returns 0, it means that it is a jump insn
+		   which follows a deleted test insn, and that test insn
+		   needs to be reinserted.  */
+		if (template == 0)
+		  {
+		    if (PREV_INSN (insn) != last_ignored_compare)
+		      abort ();
+		    insn = PREV_INSN (insn);
+		    body = PATTERN (insn);
+		    goto reinsert_compare;
+		  }
+	      }
 
 	    if (prescan > 0)
 	      break;
@@ -783,6 +818,9 @@ final (first, file, write_symbols, optimize, prescan)
 	    /* Output assembler code from the template.  */
 
 	    output_asm_insn (template, recog_operand);
+
+	    /* Mark this insn as having been output.  */
+	    INSN_DELETED_P (insn) = 1;
 	  }
 	}
     }
@@ -1322,10 +1360,11 @@ output_addr_const (file, x)
       if (GET_MODE (x) == DImode)
 	{
 	  /* We can use %d if the number is <32 bits and positive.  */
-	  if (XINT (x, 1) || XINT (x, 0) < 0)
-	    fprintf (file, "0x%x%08x", XINT (x, 1), XINT (x, 0));
+	  if (CONST_DOUBLE_HIGH (x) || CONST_DOUBLE_LOW (x) < 0)
+	    fprintf (file, "0x%x%08x",
+		     CONST_DOUBLE_HIGH (x), CONST_DOUBLE_LOW (x));
 	  else
-	    fprintf (file, "%d", XINT (x, 0));
+	    fprintf (file, "%d", CONST_DOUBLE_LOW (x));
 	}
       else
 	/* We can't handle floating point constants;

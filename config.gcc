@@ -78,6 +78,11 @@ case $# in
 		configuration_file=xm-${machine}.h
 		target_machine=tm-${machine}.h
 		;;
+	i386-sysv-gas | i386g)
+		cpu_type=i386
+		configuration_file=xm-i386v.h
+		target_machine=tm-i386gas.h
+		;;		
 	sun4 | sun-4)
 		cpu_type=sparc
 		configuration_file=xm-sparc.h
@@ -87,6 +92,16 @@ case $# in
 		cpu_type=m68k
 		configuration_file=xm-m68k.h
 		target_machine=tm-sun3.h
+		;;
+	sun3-nfp | sun-3-nfp)
+		cpu_type=m68k
+		configuration_file=xm-m68k.h
+		target_machine=tm-sun3-nfp.h
+		;;
+	sun3-fpa | sun-3-fpa)
+		cpu_type=m68k
+		configuration_file=xm-m68k.h
+		target_machine=tm-sun3-fpa.h
 		;;
 	sun2 | sun-2)
 		cpu_type=m68k
@@ -101,12 +116,22 @@ case $# in
 	sun4-os4 | sun-4-os4)
 		cpu_type=sparc
 		configuration_file=xm-sunos4.h
-		target_machine=tm-${cpu_type}.h
+		target_machine=tm-sparc.h
 		;;
 	sun3-os4 | sun-3-os4)
 		cpu_type=m68k
 		configuration_file=xm-sunos4.h
 		target_machine=tm-sun3.h
+		;;
+	sun3-nfp-os4 | sun-3-nfp-os4)
+		cpu_type=m68k
+		configuration_file=xm-sunos4.h
+		target_machine=tm-sun3-nfp.h
+		;;
+	sun3-fpa-os4 | sun-3-fpa-os4)
+		cpu_type=m68k
+		configuration_file=xm-sunos4.h
+		target_machine=tm-sun3-fpa.h
 		;;
 	sun2-os4 |sun-2-os4)
 		cpu_type=m68k
@@ -147,6 +172,14 @@ case $# in
 	88000)
 		cpu_type=m88k
 		target_machine=tm-${cpu_type}.h
+		;;
+	alliant)				# Alliant FX/8
+		;;
+	convex-c1)				# Convex C1
+		cpu_type = convex
+		;;
+	convex-c2)				# Convex C2
+		cpu_type = convex
 		;;
 #	370)
 #		machine=370

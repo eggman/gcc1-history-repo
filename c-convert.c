@@ -27,15 +27,24 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include "tree.h"
 
-/* Subroutines of `convert'.  */
-
 /* Change of width--truncation and extension of integers or reals--
    is represented with NOP_EXPR.  Proper functioning of many things
    assumes that no other conversions can be NOP_EXPRs.
 
    Conversion between integer and pointer is represented with CONVERT_EXPR.
    Converting integer to real uses FLOAT_EXPR
-   and real to integer uses FIX_TRUNC_EXPR.  */
+   and real to integer uses FIX_TRUNC_EXPR.
+
+   Here is a list of all the functions that assume that widening and
+   narrowing is always done with a NOP_EXPR:
+     In c-convert.c, convert_to_integer.
+     In c-typeck.c, build_binary_op_nodefault (boolean ops),
+        and truthvalue_conversion.
+     In expr.c: expand_expr, for operands of a MULT_EXPR.
+     In fold-const.c: fold.
+     In tree.c: get_narrower and get_unwidened.  */
+
+/* Subroutines of `convert'.  */
 
 static tree
 convert_to_pointer (type, expr)
@@ -71,6 +80,33 @@ convert_to_pointer (type, expr)
   return null_pointer_node;
 }
 
+static tree
+convert_to_real (type, expr)
+     tree type, expr;
+{
+  register enum tree_code form = TREE_CODE (TREE_TYPE (expr));
+  extern int flag_float_store;
+
+  if (form == REAL_TYPE)
+    return build (flag_float_store ? CONVERT_EXPR : NOP_EXPR,
+		  type, expr);
+
+  if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
+    return build (FLOAT_EXPR, type, expr);
+
+  if (form == POINTER_TYPE)
+    error ("pointer value used where a float was expected");
+  else
+    error ("aggregate value used where a float was expected");
+
+  {
+    register tree tem = make_node (REAL_CST);
+    TREE_TYPE (tem) = type;
+    TREE_REAL_CST (tem) = 0;
+    return tem;
+  }
+}
+
 /* The result of this is always supposed to be a newly created tree node
    not in use in any existing structure.  */
 
@@ -292,33 +328,6 @@ convert_to_integer (type, expr)
   {
     register tree tem = build_int_2 (0, 0);
     TREE_TYPE (tem) = type;
-    return tem;
-  }
-}
-
-static tree
-convert_to_real (type, expr)
-     tree type, expr;
-{
-  register enum tree_code form = TREE_CODE (TREE_TYPE (expr));
-  extern int flag_float_store;
-
-  if (form == REAL_TYPE)
-    return build (flag_float_store ? CONVERT_EXPR : NOP_EXPR,
-		  type, expr);
-
-  if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    return build (FLOAT_EXPR, type, expr);
-
-  if (form == POINTER_TYPE)
-    error ("pointer value used where a float was expected");
-  else
-    error ("aggregate value used where a float was expected");
-
-  {
-    register tree tem = make_node (REAL_CST);
-    TREE_TYPE (tem) = type;
-    TREE_REAL_CST (tem) = 0;
     return tem;
   }
 }

@@ -635,13 +635,19 @@ emit_0_to_1_insn (x)
 
 /* Generate code to compare X with Y
    so that the condition codes are set.
-   If they have mode BLKmode, then SIZE specifies the size of block.  */
+
+   UNSIGNEDP nonzero says that X and Y are unsigned;
+   this matters if they need to be widened.
+
+   If they have mode BLKmode, then SIZE specifies the size of both X and Y,
+   and ALIGN specifies the known shared alignment of X and Y.  */
 
 void
-emit_cmp_insn (x, y, size, unsignedp)
+emit_cmp_insn (x, y, size, unsignedp, align)
      rtx x, y;
      rtx size;
      int unsignedp;
+     int align;
 {
   enum machine_mode mode = GET_MODE (x);
   if (mode == VOIDmode) mode = GET_MODE (y);
@@ -668,12 +674,22 @@ emit_cmp_insn (x, y, size, unsignedp)
       if (HAVE_cmpstrqi
 	  && GET_CODE (size) == CONST_INT
 	  && INTVAL (size) < (1 << BITS_PER_UNIT))
-	emit_insn (gen_cmpstrqi (x, y, size));
+	emit_insn (gen_cmpstrqi (x, y, size,
+				 gen_rtx (CONST_INT, VOIDmode, align)));
+      else
+#endif
+#ifdef HAVE_cmpstrhi
+      if (HAVE_cmpstrhi
+	  && GET_CODE (size) == CONST_INT
+	  && INTVAL (size) < (1 << BITS_PER_UNIT))
+	emit_insn (gen_cmpstrhi (x, y, size,
+				 gen_rtx (CONST_INT, VOIDmode, align)));
       else
 #endif
 #ifdef HAVE_cmpstrsi
       if (HAVE_cmpstrsi)
-	emit_insn (gen_cmpstrsi (x, y, convert_to_mode (SImode, size, 1)));
+	emit_insn (gen_cmpstrsi (x, y, convert_to_mode (SImode, size, 1),
+				 gen_rtx (CONST_INT, VOIDmode, align)));
       else
 #endif
 	{
@@ -684,7 +700,7 @@ emit_cmp_insn (x, y, size, unsignedp)
 	  emit_library_call (gen_rtx (SYMBOL_REF, Pmode, "bcmp"),
 			     SImode, 3, x, Pmode, y, Pmode, size, Pmode);
 #endif
-	  emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0);
+	  emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0, 0);
 	}
     }
   else if ((y == const0_rtx || y == fconst0_rtx || y == dconst0_rtx)
@@ -727,21 +743,21 @@ emit_cmp_insn (x, y, size, unsignedp)
     {
       x = convert_to_mode (SImode, x, unsignedp);
       y = convert_to_mode (SImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
+      emit_cmp_insn (x, y, 0, unsignedp, 0);
     }
   else if ((mode == QImode || mode == HImode || mode == SImode)
 	   && cmp_optab->handlers[(int) DImode].insn_code != CODE_FOR_nothing)
     {
       x = convert_to_mode (DImode, x, unsignedp);
       y = convert_to_mode (DImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
+      emit_cmp_insn (x, y, 0, unsignedp, 0);
     }
   else if (mode == SFmode
 	   && cmp_optab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing)
     {
       x = convert_to_mode (DFmode, x, unsignedp);
       y = convert_to_mode (DFmode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
+      emit_cmp_insn (x, y, 0, unsignedp, 0);
     }
   else if (cmp_optab->handlers[(int) mode].lib_call)
     {
@@ -758,9 +774,9 @@ emit_cmp_insn (x, y, size, unsignedp)
 	 so that even if we do an unsigned compare afterward,
 	 there is still a value that can represent the result "less than".  */
       if (GET_MODE_CLASS (mode) == MODE_INT)
-	emit_cmp_insn (hard_libcall_value (SImode), const1_rtx, 0, unsignedp);
+	emit_cmp_insn (hard_libcall_value (SImode), const1_rtx, 0, unsignedp, 0);
       else
-	emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0);
+	emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0, 0);
     }
   else if (mode == SFmode
 	   && (cmp_optab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing
@@ -768,7 +784,7 @@ emit_cmp_insn (x, y, size, unsignedp)
     {
       x = convert_to_mode (DFmode, x, unsignedp);
       y = convert_to_mode (DFmode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
+      emit_cmp_insn (x, y, 0, unsignedp, 0);
     }
   else
     abort ();
@@ -1112,14 +1128,13 @@ expand_float (real_to, from, unsignedp)
     {
       rtx label = gen_label_rtx ();
       rtx temp;
-      double offset;
-      double ldexp ();
+      REAL_VALUE_TYPE offset;
 
       do_pending_stack_adjust ();
       emit_cmp_insn (to, GET_MODE (to) == DFmode ? dconst0_rtx : fconst0_rtx,
-		     0, 0);
+		     0, 0, 0);
       emit_jump_insn (gen_bge (label));
-      offset = ldexp (1.0, GET_MODE_BITSIZE (GET_MODE (from)));
+      offset = REAL_VALUE_LDEXP (1.0, GET_MODE_BITSIZE (GET_MODE (from)));
       temp = expand_binop (GET_MODE (to), add_optab, to,
 			   immed_real_const_1 (offset, GET_MODE (to)),
 			   to, 0, OPTAB_LIB_WIDEN);
@@ -1365,7 +1380,12 @@ init_optabs ()
   if (HAVE_muldf3)
     smul_optab->handlers[(int) DFmode].insn_code = CODE_FOR_muldf3;
 #endif
+
+#ifdef MULSI3_LIBCALL
+  smul_optab->handlers[(int) SImode].lib_call = MULSI3_LIBCALL;
+#else
   smul_optab->handlers[(int) SImode].lib_call = "__mulsi3";
+#endif
   smul_optab->handlers[(int) DImode].lib_call = "__muldi3";
   smul_optab->handlers[(int) SFmode].lib_call = "__mulsf3";
   smul_optab->handlers[(int) DFmode].lib_call = "__muldf3";
@@ -1407,7 +1427,12 @@ init_optabs ()
   if (HAVE_umuldf3)
     umul_optab->handlers[(int) DFmode].insn_code = CODE_FOR_umuldf3;
 #endif
+
+#ifdef UMULSI3_LIBCALL
+  umul_optab->handlers[(int) SImode].lib_call = UMULSI3_LIBCALL;
+#else
   umul_optab->handlers[(int) SImode].lib_call = "__umulsi3";
+#endif
   umul_optab->handlers[(int) DImode].lib_call = "__umuldi3";
   umul_optab->handlers[(int) SFmode].lib_call = "__umulsf3";
   umul_optab->handlers[(int) DFmode].lib_call = "__umuldf3";
@@ -1441,7 +1466,12 @@ init_optabs ()
   if (HAVE_divdi3)
     sdiv_optab->handlers[(int) DImode].insn_code = CODE_FOR_divdi3;
 #endif
+
+#ifdef DIVSI3_LIBCALL
+  sdiv_optab->handlers[(int) SImode].lib_call = DIVSI3_LIBCALL;
+#else
   sdiv_optab->handlers[(int) SImode].lib_call = "__divsi3";
+#endif
   sdiv_optab->handlers[(int) DImode].lib_call = "__divdi3";
 
 #ifdef HAVE_udivqi3
@@ -1460,6 +1490,7 @@ init_optabs ()
   if (HAVE_udivdi3)
     udiv_optab->handlers[(int) DImode].insn_code = CODE_FOR_udivdi3;
 #endif
+
 #ifdef UDIVSI3_LIBCALL
   udiv_optab->handlers[(int) SImode].lib_call = UDIVSI3_LIBCALL;
 #else
@@ -1517,7 +1548,12 @@ init_optabs ()
   if (HAVE_moddi3)
     smod_optab->handlers[(int) DImode].insn_code = CODE_FOR_moddi3;
 #endif
+
+#ifdef MODSI3_LIBCALL
+  smod_optab->handlers[(int) SImode].lib_call = MODSI3_LIBCALL;
+#else
   smod_optab->handlers[(int) SImode].lib_call = "__modsi3";
+#endif
   smod_optab->handlers[(int) DImode].lib_call = "__moddi3";
 
 #ifdef HAVE_umodqi3
@@ -1536,6 +1572,7 @@ init_optabs ()
   if (HAVE_umoddi3)
     umod_optab->handlers[(int) DImode].insn_code = CODE_FOR_umoddi3;
 #endif
+
 #ifdef UMODSI3_LIBCALL
   umod_optab->handlers[(int) SImode].lib_call = UMODSI3_LIBCALL;
 #else

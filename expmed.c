@@ -1,6 +1,6 @@
 /* Medium-level subroutines: convert bit-field store and extract
    and shifts, multiplies and divides to rtl instructions.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -47,9 +47,14 @@ negate_rtx (mode, x)
   if (GET_CODE (x) == CONST_INT)
     {
       int val = - INTVAL (x);
-      /* Avoid setting an extraneous bits.  */
       if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
-	val &= (1 << GET_MODE_BITSIZE (mode)) - 1;
+	{
+	  /* Sign extend the value from the bits that are significant.  */
+	  if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
+	    val |= (-1) << GET_MODE_BITSIZE (mode);
+	  else
+	    val &= (1 << GET_MODE_BITSIZE (mode)) - 1;
+	}
       return gen_rtx (CONST_INT, VOIDmode, val);
     }
   else
@@ -59,19 +64,21 @@ negate_rtx (mode, x)
 /* Generate code to store value from rtx VALUE
    into a bit-field within structure STR_RTX
    containing BITSIZE bits starting at bit BITNUM.
-   FIELDMODE is the machine-mode of the FIELD_DECL node for this field.  */
+   FIELDMODE is the machine-mode of the FIELD_DECL node for this field.
+   ALIGN is the alignment that STR_RTX is known to have, measured in bytes.  */
 
 /* ??? This should really have the ability to copy a word into a register
    in order to store the bit-field into it, on machines whose insv insns
    work that way.  */
 
 rtx
-store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value)
+store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align)
      rtx str_rtx;
      register int bitsize;
      int bitnum;
      enum machine_mode fieldmode;
      rtx value;
+     int align;
 {
   int unit = (GET_CODE (str_rtx) == MEM) ? BITS_PER_UNIT : BITS_PER_WORD;
   register int offset = bitnum / unit;
@@ -224,13 +231,13 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value)
       else
         {
 	  delete_insns_since (last);
-	  store_fixed_bit_field (op0, offset, bitsize, bitpos, value);
+	  store_fixed_bit_field (op0, offset, bitsize, bitpos, value, align);
 	}
     }
   else
 #endif
     /* Insv is not available; store using shifts and boolean ops.  */
-    store_fixed_bit_field (op0, offset, bitsize, bitpos, value);
+    store_fixed_bit_field (op0, offset, bitsize, bitpos, value, align);
   return value;
 }
 
@@ -242,14 +249,16 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value)
     (If OP0 is a register, it may be SImode or a narrower mode,
      but BITPOS still counts within a full word,
      which is significant on bigendian machines.)
+   STRUCT_ALIGN is the alignment the structure is known to have (in bytes).
 
    Note that protect_from_queue has already been done on OP0 and VALUE.  */
 
 static void
-store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
+store_fixed_bit_field (op0, offset, bitsize, bitpos, value, struct_align)
      register rtx op0;
      register int offset, bitsize, bitpos;
      register rtx value;
+     int struct_align;
 {
   register enum machine_mode mode;
   int total_bits = BITS_PER_WORD;
@@ -261,6 +270,13 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
      and if a single byte contains the whole bit field
      change OP0 to a byte.  */
 
+  /* There is a case not handled here:
+     a structure with a known alignment of just a halfword
+     and a field split across two aligned halfwords within the structure.
+     Or likewise a structure with a known alignment of just a byte
+     and a field split across two bytes.
+     Such cases are not supposed to be able to occur.  */
+
   if (GET_CODE (op0) == REG || GET_CODE (op0) == SUBREG)
     {
       if (offset != 0)
@@ -268,20 +284,43 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
       /* Special treatment for a bit field split across two registers.  */
       if (bitsize + bitpos > BITS_PER_WORD)
 	{
-	  store_split_bit_field (op0, bitsize, bitpos, value);
+	  store_split_bit_field (op0, bitsize, bitpos, value, BITS_PER_WORD);
 	  return;
 	}
     }
   else if (bitsize + bitpos <= BITS_PER_UNIT
-	   && ! SLOW_BYTE_ACCESS)
+	   && (! SLOW_BYTE_ACCESS
+	       || (struct_align == 1
+		   && BIGGEST_ALIGNMENT > 1)))
     {
+      /* It fits in one byte, and either bytes are fast
+	 or the alignment won't let us use anything bigger.  */
       total_bits = BITS_PER_UNIT;
       op0 = change_address (op0, QImode, 
 			    plus_constant (XEXP (op0, 0), offset));
     }
+  else if ((bitsize + bitpos + (offset % GET_MODE_SIZE (HImode)) * BITS_PER_UNIT
+	    <= GET_MODE_BITSIZE (HImode))
+	   /* If halfwords are fast, use them whenever valid.  */
+	   && (! SLOW_BYTE_ACCESS
+	       /* Use halfwords if larger is invalid due to alignment.  */
+	       || (struct_align == GET_MODE_SIZE (HImode)
+		   && BIGGEST_ALIGNMENT > GET_MODE_SIZE (HImode))))
+    {
+      /* It fits in an aligned halfword within the structure,
+	 and either halfwords are fast
+	 or the alignment won't let us use anything bigger.  */
+      total_bits = GET_MODE_BITSIZE (HImode);
+
+      /* Get ref to halfword containing the field.  */
+      bitpos += (offset % (total_bits / BITS_PER_UNIT)) * BITS_PER_UNIT;
+      offset -= (offset % (total_bits / BITS_PER_UNIT));
+      op0 = change_address (op0, HImode, 
+			    plus_constant (XEXP (op0, 0), offset));
+    }
   else
     {
-      /* Get ref to word containing the field.  */
+      /* Get ref to an aligned word containing the field.  */
       /* Adjust BITPOS to be position within a word,
 	 and OFFSET to be the offset of that word.
 	 Then alter OP0 to refer to that word.  */
@@ -289,30 +328,32 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
       offset -= (offset % (BITS_PER_WORD / BITS_PER_UNIT));
       op0 = change_address (op0, SImode,
 			    plus_constant (XEXP (op0, 0), offset));
-      /* Special treatment for a bit field split across two words.  */
+
+      /* Special treatment for a bit field split across two aligned words.  */
       if (bitsize + bitpos > BITS_PER_WORD)
 	{
-	  store_split_bit_field (op0, bitsize, bitpos, value);
+	  store_split_bit_field (op0, bitsize, bitpos, value, struct_align);
 	  return;
 	}
     }
 
   mode = GET_MODE (op0);
 
-  /* Now OP0 is either a byte or a word, and the bit field is contained
-     entirely within it.  TOTAL_BITS and MODE say which one (byte or word).
-     BITPOS is the starting bit number within the byte or word.
-     (If OP0 is a word, it may actually have a mode narrower than SImode.)  */
+  /* Now MODE is either QImode, HImode or SImode for a MEM as OP0,
+     or is SImode for a REG as OP0.  TOTAL_BITS corresponds.
+     The bit field is contained entirely within OP0.
+     BITPOS is the starting bit number within OP0.
+     (OP0's mode may actually be narrower than MODE.)  */
 
 #ifdef BYTES_BIG_ENDIAN
   /* BITPOS is the distance between our msb
-     and that of the containing byte or word.
+     and that of the containing datum.
      Convert it to the distance from the lsb.  */
 
   bitpos = total_bits - bitsize - bitpos;
 #endif
   /* Now BITPOS is always the distance between our lsb
-     and that of the containing byte or word.  */
+     and that of OP0.  */
 
   /* Shift VALUE left by BITPOS bits.  If VALUE is not constant,
      we must first convert its mode to MODE.  */
@@ -338,7 +379,7 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
       if (GET_MODE (value) != mode)
 	{
 	  if ((GET_CODE (value) == REG || GET_CODE (value) == SUBREG)
-	      && mode == QImode)
+	      && GET_MODE_SIZE (mode) < GET_MODE_SIZE (GET_MODE (value)))
 	    value = gen_lowpart (mode, value);
 	  else
 	    value = convert_to_mode (mode, value, 1);
@@ -386,10 +427,11 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
    VALUE is the value to store.  */
 
 static void
-store_split_bit_field (op0, bitsize, bitpos, value)
+store_split_bit_field (op0, bitsize, bitpos, value, align)
      rtx op0;
      int bitsize, bitpos;
      rtx value;
+     int align;
 {
   /* BITSIZE_1 is size of the part in the first word.  */
   int bitsize_1 = BITS_PER_WORD - bitpos;
@@ -438,7 +480,7 @@ store_split_bit_field (op0, bitsize, bitpos, value)
 #endif
 
   /* Store PART1 into the first word.  */
-  store_fixed_bit_field (op0, 0, bitsize_1, bitpos, part1);
+  store_fixed_bit_field (op0, 0, bitsize_1, bitpos, part1, align);
 
   /* Offset op0 to get to the following word.  */
   if (GET_CODE (op0) == MEM)
@@ -450,7 +492,7 @@ store_split_bit_field (op0, bitsize, bitpos, value)
     op0 = gen_rtx (SUBREG, SImode, SUBREG_REG (op0), SUBREG_WORD (op0) + 1);
 
   /* Store PART2 into the second word.  */
-  store_fixed_bit_field (op0, 0, bitsize_2, 0, part2);
+  store_fixed_bit_field (op0, 0, bitsize_2, 0, part2, align);
 }
 
 /* Generate code to extract a byte-field from STR_RTX
@@ -465,19 +507,23 @@ store_split_bit_field (op0, bitsize, bitpos, value)
    TMODE is the mode the caller would like the value to have;
    but the value may be returned with type MODE instead.
 
+   ALIGN is the alignment that STR_RTX is known to have, measured in bytes.
+
    If a TARGET is specified and we can store in it at no extra cost,
    we do so, and return TARGET.
    Otherwise, we return a REG of mode TMODE or MODE, with TMODE preferred
    if they are equally easy.  */
 
 rtx
-extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
+extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
+		   target, mode, tmode, align)
      rtx str_rtx;
      register int bitsize;
      int bitnum;
      int unsignedp;
      rtx target;
      enum machine_mode mode, tmode;
+     int align;
 {
   int unit = (GET_CODE (str_rtx) == MEM) ? BITS_PER_UNIT : BITS_PER_WORD;
   register int offset = bitnum / unit;
@@ -643,13 +689,13 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	    {
 	      delete_insns_since (last);
 	      target = extract_fixed_bit_field (tmode, op0, offset, bitsize,
-						bitpos, target, 1);
+						bitpos, target, 1, align);
 	    }
 	}
       else
 #endif
 	target = extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos,
-					  target, 1);
+					  target, 1, align);
     }
   else
     {
@@ -734,13 +780,13 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	    {
 	      delete_insns_since (last);
 	      target = extract_fixed_bit_field (tmode, op0, offset, bitsize,
-						bitpos, target, 1);
+						bitpos, target, 0, align);
 	    }
 	} 
       else
 #endif
 	target = extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos,
-					  target, 0);
+					  target, 0, align);
     }
   if (target == spec_target)
     return target;
@@ -765,14 +811,18 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
    UNSIGNEDP is nonzero for an unsigned bit field (don't sign-extend value).
    If TARGET is nonzero, attempts to store the value there
    and return TARGET, but this is not guaranteed.
-   If TARGET is not used, create a pseudo-reg of mode TMODE for the value.  */
+   If TARGET is not used, create a pseudo-reg of mode TMODE for the value.
+
+   ALIGN is the alignment that STR_RTX is known to have, measured in bytes.  */
 
 static rtx
-extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
+extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos,
+			 target, unsignedp, align)
      enum machine_mode tmode;
      register rtx op0, target;
      register int offset, bitsize, bitpos;
      int unsignedp;
+     int align;
 {
   int total_bits = BITS_PER_WORD;
   enum machine_mode mode;
@@ -781,28 +831,40 @@ extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
     {
       /* Special treatment for a bit field split across two registers.  */
       if (bitsize + bitpos > BITS_PER_WORD)
-	return extract_split_bit_field (op0, bitsize, bitpos, unsignedp);
+	return extract_split_bit_field (op0, bitsize, bitpos,
+					unsignedp, align);
     }
-  else if (bitsize + bitpos <= BITS_PER_UNIT && ! SLOW_BYTE_ACCESS)
+  else if (bitsize + bitpos <= BITS_PER_UNIT
+	   && (! SLOW_BYTE_ACCESS
+	       || (align == 1
+		   && BIGGEST_ALIGNMENT > 1)))
     {
-      /* If the bit field fits entirely in one byte of memory,
-	 let OP0 be that byte.  We must add OFFSET to its address.  */
+      /* It fits in one byte, and either bytes are fast
+	 or the alignment won't let us use anything bigger.  */
       total_bits = BITS_PER_UNIT;
-      op0 = change_address (op0, QImode,
+      op0 = change_address (op0, QImode, 
+			    plus_constant (XEXP (op0, 0), offset));
+    }
+  else if ((bitsize + bitpos + (offset % GET_MODE_SIZE (HImode)) * BITS_PER_UNIT
+	    <= GET_MODE_BITSIZE (HImode))
+	   /* If halfwords are fast, use them whenever valid.  */
+	   && (! SLOW_BYTE_ACCESS
+	       /* Use halfwords if larger is invalid due to alignment.  */
+	       || (align == GET_MODE_SIZE (HImode)
+		   && BIGGEST_ALIGNMENT > GET_MODE_SIZE (HImode))))
+    {
+      /* It fits in an aligned halfword, and either halfwords are fast
+	 or the alignment won't let us use anything bigger.  */
+      total_bits = GET_MODE_BITSIZE (HImode);
+
+      /* Get ref to halfword containing the field.  */
+      bitpos += (offset % (total_bits / BITS_PER_UNIT)) * BITS_PER_UNIT;
+      offset -= (offset % (total_bits / BITS_PER_UNIT));
+      op0 = change_address (op0, HImode, 
 			    plus_constant (XEXP (op0, 0), offset));
     }
   else
     {
-#ifdef STRICT_ALIGNMENT
-#ifndef STRUCTURE_SIZE_BOUNDARY
-      /* The following code assumes that OP0 is aligned
-	 such that a word can be fetched there.
-	 This could be because words don't need to be aligned,
-	 or because all structures are suitably aligned.  */
-      abort ();
-#endif
-#endif
-
       /* Get ref to word containing the field.  */
       /* Adjust BITPOS to be position within a word,
 	 and OFFSET to be the offset of that word.  */
@@ -813,20 +875,19 @@ extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
 
       /* Special treatment for a bit field split across two words.  */
       if (bitsize + bitpos > BITS_PER_WORD)
-	return extract_split_bit_field (op0, bitsize, bitpos, unsignedp);
+	return extract_split_bit_field (op0, bitsize, bitpos,
+					unsignedp, align);
     }
 
   mode = GET_MODE (op0);
 
 #ifdef BYTES_BIG_ENDIAN
-  /* BITPOS is the distance between our msb
-     and that of the containing byte or word.
+  /* BITPOS is the distance between our msb and that of OP0.
      Convert it to the distance from the lsb.  */
 
   bitpos = total_bits - bitsize - bitpos;
 #endif
-  /* Now BITPOS is always the distance between our lsb
-     and that of the containing byte or word.
+  /* Now BITPOS is always the distance between the field's lsb and that of OP0.
      We have reduced the big-endian case to the little-endian case.  */
 
   if (unsignedp)
@@ -903,9 +964,9 @@ extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
    UNSIGNEDP is 1 if should zero-extend the contents; else sign-extend.  */
 
 static rtx
-extract_split_bit_field (op0, bitsize, bitpos, unsignedp)
+extract_split_bit_field (op0, bitsize, bitpos, unsignedp, align)
      rtx op0;
-     int bitsize, bitpos, unsignedp;
+     int bitsize, bitpos, unsignedp, align;
 {
   /* BITSIZE_1 is size of the part in the first word.  */
   int bitsize_1 = BITS_PER_WORD - bitpos;
@@ -914,7 +975,8 @@ extract_split_bit_field (op0, bitsize, bitpos, unsignedp)
   rtx part1, part2, result;
 
   /* Get the part of the bit field from the first word.  */
-  part1 = extract_fixed_bit_field (SImode, op0, 0, bitsize_1, bitpos, 0, 1);
+  part1 = extract_fixed_bit_field (SImode, op0, 0, bitsize_1, bitpos,
+				   0, 1, align);
 
   /* Offset op0 by 1 word to get to the following one.  */
   if (GET_CODE (op0) == MEM)
@@ -926,7 +988,7 @@ extract_split_bit_field (op0, bitsize, bitpos, unsignedp)
     op0 = gen_rtx (SUBREG, SImode, SUBREG_REG (op0), SUBREG_WORD (op0) + 1);
 
   /* Get the part of the bit field from the second word.  */
-  part2 = extract_fixed_bit_field (SImode, op0, 0, bitsize_2, 0, 0, 1);
+  part2 = extract_fixed_bit_field (SImode, op0, 0, bitsize_2, 0, 0, 1, align);
 
   /* Shift the more significant part up to fit above the other part.  */
 #ifdef BYTES_BIG_ENDIAN
@@ -1260,12 +1322,15 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
   if (target && REG_P (target) && REG_FUNCTION_VALUE_P (target))
     target = 0;
 
-  if (target == 0)
-    target = gen_reg_rtx (mode);
-
   /* Don't clobber an operand while doing a multi-step calculation.  */
-  if ((rem_flag && rtx_equal_p (target, op0))
-      || rtx_equal_p (target, op1))
+  if (target)
+    if ((rem_flag && (reg_mentioned_p (target, op0)
+		      || (GET_CODE (op0) == MEM && GET_CODE (target) == MEM)))
+	|| reg_mentioned_p (target, op1)
+	|| (GET_CODE (op1) == MEM && GET_CODE (target) == MEM))
+      target = 0;
+
+  if (target == 0)
     target = gen_reg_rtx (mode);
 
   can_clobber_op0 = (GET_CODE (op0) == REG && op0 == target);
@@ -1291,7 +1356,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
 	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
-	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
+	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	  emit_jump_insn (gen_bge (label));
 	  expand_inc (adjusted_op0, plus_constant (op1, -1));
 	  emit_label (label);
@@ -1306,7 +1371,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
 	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
-	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
+	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	  emit_jump_insn (gen_bge (label));
 	  expand_dec (adjusted_op0, op1);
 	  expand_inc (adjusted_op0, const1_rtx);
@@ -1325,7 +1390,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	  if (! unsignedp)
 	    {
 	      label = gen_label_rtx ();
-	      emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
+	      emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	      emit_jump_insn (gen_ble (label));
 	    }
 	  expand_inc (adjusted_op0, op1);
@@ -1352,7 +1417,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	  if (! unsignedp)
 	    {
 	      rtx label = gen_label_rtx ();
-	      emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
+	      emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	      emit_jump_insn (gen_bge (label));
 	      expand_unop (mode, neg_optab, op1, op1, 0);
 	      emit_label (label);

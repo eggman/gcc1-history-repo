@@ -142,18 +142,21 @@ static int last_call_cuid;
 static rtx subst_insn;
 
 /* Record one modification to rtl structure
-   to be undone by storing old_contents into *where.  */
+   to be undone by storing old_contents into *where.
+   is_int is 1 if the contents are an int.  */
 
 struct undo
 {
   rtx *where;
   rtx old_contents;
+  int is_int;
 };
 
 struct undo_int
 {
   int *where;
   int old_contents;
+  int is_int;
 };
 
 /* Record a bunch of changes to be undone, up to MAX_UNDO of them.
@@ -191,7 +194,6 @@ static void copy_substitutions ();
 static void add_links ();
 static void remove_links ();
 static void add_incs ();
-static int insn_has_inc_p ();
 static int adjacent_insns_p ();
 static int check_asm_operands ();
 static rtx simplify_and_const_int ();
@@ -714,7 +716,8 @@ copy_substitutions ()
   if (undobuf.num_undo > 1)
     {
       for (i = undobuf.num_undo - 1; i >= 1; i--)
-	*undobuf.undo[i].where = copy_rtx (*undobuf.undo[i].where);
+	if (! undobuf.undo[i].is_int)
+	  *undobuf.undo[i].where = copy_rtx (*undobuf.undo[i].where);
     }
 }
 
@@ -746,6 +749,7 @@ subst (x, from, to)
 	{								\
 	  undobuf.undo[undobuf.num_undo].where = &INTO;			\
 	  undobuf.undo[undobuf.num_undo].old_contents = INTO;		\
+	  undobuf.undo[undobuf.num_undo].is_int = 0;			\
 	  INTO = NEWVAL;						\
 	}								\
       undobuf.num_undo++; } while (0)
@@ -756,6 +760,7 @@ subst (x, from, to)
 	  struct undo_int *u = (struct undo_int *)&undobuf.undo[undobuf.num_undo];\
 	  u->where = &INTO;						\
 	  u->old_contents = INTO;					\
+	  u->is_int = 1;						\
 	  INTO = NEWVAL;						\
 	}								\
       undobuf.num_undo++; } while (0)
@@ -879,13 +884,21 @@ subst (x, from, to)
       if (SUBREG_REG (x) == to
 	  && GET_CODE (to) == MEM)
 	{
+	  int endian_offset = 0;
+#ifdef BYTES_BIG_ENDIAN
+	  if (GET_MODE_SIZE (GET_MODE (x)) < UNITS_PER_WORD)
+	    endian_offset += UNITS_PER_WORD - GET_MODE_SIZE (GET_MODE (x));
+	  if (GET_MODE_SIZE (GET_MODE (to)) < UNITS_PER_WORD)
+	    endian_offset -= UNITS_PER_WORD - GET_MODE_SIZE (GET_MODE (to));
+#endif
 	  if (!undobuf.storage)
 	    undobuf.storage = (char *) oballoc (0);
 	  /* Note if the plus_constant doesn't make a valid address
 	     then this combination won't be accepted.  */
 	  return gen_rtx (MEM, GET_MODE (x),
 			  plus_constant (XEXP (to, 0),
-					 SUBREG_WORD (x) * UNITS_PER_WORD));
+					 (SUBREG_WORD (x) * UNITS_PER_WORD
+					  + endian_offset)));
 	}
       break;
 
@@ -1030,25 +1043,6 @@ subst (x, from, to)
 			      offset);
 	    }
 	}
-      break;
-
-    case MINUS:
-      /* Can simplify (minus:VOIDmode (zero/sign_extend FOO) CONST)
-	 (which is a compare instruction, not a subtract instruction)
-	 to (minus FOO CONST) if CONST fits in FOO's mode
-	 and we are only testing equality.
-	 In fact, this is valid for zero_extend if what follows is an
-	 unsigned comparison, and for sign_extend with a signed comparison.  */
-      if (GET_MODE (x) == VOIDmode
-	  && was_replaced[0]
-	  && (GET_CODE (to) == ZERO_EXTEND || GET_CODE (to) == SIGN_EXTEND)
-	  && next_insn_tests_no_inequality (subst_insn)
-	  && GET_CODE (XEXP (x, 1)) == CONST_INT
-	  /* This is overly cautious by one bit, but saves worrying about
-	     whether it is zero-extension or sign extension.  */
-	  && ((unsigned) INTVAL (XEXP (x, 1))
-	      < (1 << (GET_MODE_BITSIZE (GET_MODE (XEXP (to, 0))) - 1))))
-	SUBST (XEXP (x, 0), XEXP (to, 0));
       break;
 
     case EQ:
@@ -1321,6 +1315,23 @@ subst (x, from, to)
 					  ? (1 << shiftcount) - 1
 					  : 0))));
 	}
+      /* Can simplify (set (cc0) (minus:VOIDmode (zero/sign_extend FOO) CONST))
+	 to (set (cc0) (minus:VOIDmode FOO CONST)) if CONST fits in FOO's mode
+	 and we are only testing equality.
+	 In fact, this is valid for zero_extend if what follows is an
+	 unsigned comparison, and for sign_extend with a signed comparison.  */
+      if (SET_DEST (x) == cc0_rtx
+	  && GET_CODE (SET_SRC (x)) == MINUS
+	  && GET_MODE (SET_SRC (x)) == VOIDmode
+	  && (GET_CODE (XEXP (SET_SRC (x), 0)) == ZERO_EXTEND
+	      || GET_CODE (XEXP (SET_SRC (x), 0)) == SIGN_EXTEND)
+	  && next_insn_tests_no_inequality (subst_insn)
+	  && GET_CODE (XEXP (SET_SRC (x), 1)) == CONST_INT
+	  /* This is overly cautious by one bit, but saves worrying about
+	     whether it is zero-extension or sign extension.  */
+	  && ((unsigned) INTVAL (XEXP (SET_SRC (x), 1))
+	      < (1 << (GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (SET_SRC (x), 0), 0))) - 1))))
+	SUBST (XEXP (SET_SRC (x), 0), XEXP (XEXP (SET_SRC (x), 0), 0));
       break;
 
     case AND:

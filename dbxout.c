@@ -84,7 +84,11 @@ and this notice must be preserved on all copies.  */
 #define FORCE_TEXT
 #endif
 
-#include <stab.h>
+#ifdef USG
+#include "stab.h"  /* If doing DBX on sysV, use our own stab.h.  */
+#else
+#include <stab.h>  /* On BSD, use the system's stab.h.  */
+#endif /* not USG */
 
 /* Stream for writing to assembler file.  */
 

@@ -74,6 +74,9 @@ gen_peephole (peep)
   n_operands = 0;
 
   printf ("  insn = ins1;\n");
+#if 0
+  printf ("  want_jump = 0;\n");
+#endif
 
   for (i = 0; i < ninsns; i++)
     {
@@ -83,12 +86,19 @@ gen_peephole (peep)
 	  printf ("       if (insn == 0) goto L%d; }\n",
 		  insn_code_number);
 	  printf ("  while (GET_CODE (insn) == NOTE);\n");
+
+	  printf ("  if (GET_CODE (insn) == CODE_LABEL\n\
+      || GET_CODE (insn) == BARRIER)\n    goto L%d;\n",
+  		  insn_code_number);
 	}
 
-      printf ("  if (GET_CODE (insn) == CODE_LABEL) goto L%d;\n",
-	      insn_code_number);
+#if 0
+      printf ("  if (GET_CODE (insn) == JUMP_INSN)\n");
+      printf ("    want_jump = JUMP_LABEL (insn);\n");
+#endif
 
       printf ("  pat = PATTERN (insn);\n");
+
       /* Walk the insn's pattern, remembering at all times the path
 	 down to the walking point.  */
 
@@ -109,26 +119,24 @@ gen_peephole (peep)
      of all the operands.  */
 
   printf ("  PATTERN (ins1) = gen_rtx (PARALLEL, VOIDmode, gen_rtvec_v (%d, operands));\n", n_operands);
-  printf ("  insn = ins1;\n");
 
-  /* Make sure that labels referred to by the insns
-     don't get deleted because of their counts' going to zero.  */
-  printf ("  for (i = 0; i < %d; i++)\n", n_operands);
-  printf ("    if (GET_CODE (operands[i]) == CODE_LABEL)\n");
-  printf ("      LABEL_NUSES (operands[i])++;\n");
+#if 0
+  printf ("  if (want_jump && GET_CODE (ins1) != JUMP_INSN)\n");
+  printf ("    {\n");
+  printf ("      rtx insn2 = emit_jump_insn_before (PATTERN (ins1), ins1);\n");
+  printf ("      delete_insn (ins1);\n");
+  printf ("      ins1 = ins2;\n");
+  printf ("    }\n");
+#endif
 
   /* Record this define_peephole's insn code in the insn,
      as if it had been recognized to match this.  */
-  printf ("  INSN_CODE (insn) = %d;\n",
+  printf ("  INSN_CODE (ins1) = %d;\n",
 	  insn_code_number);
 
   /* Delete the remaining insns.  */
-  for (i = 1; i < ninsns; i++)
-    {
-      printf ("  do insn = NEXT_INSN (insn);\n");
-      printf ("  while (GET_CODE (insn) == NOTE);\n");
-      printf ("  delete_insn (insn);\n");
-    }
+  if (ninsns > 1)
+    printf ("  delete_for_peephole (NEXT_INSN (ins1), insn);\n");
 
   printf ("  return 1;\n");
 
@@ -181,6 +189,11 @@ match_rtx (x, path, fail_label)
       return;
 
     case MATCH_OPERATOR:
+      if (XINT (x, 0) > max_opno)
+	max_opno = XINT (x, 0);
+      if (XINT (x, 0) >= n_operands)
+	n_operands = 1 + XINT (x, 0);
+
       printf ("  x = (rtx)");
       print_path (path);
       printf (";\n");
@@ -356,16 +369,22 @@ main (argc, argv)
   printf ("/* Generated automatically by the program `genpeep'\n\
 from the machine description file `md'.  */\n\n");
 
-  printf ("#include \"config.h\"\n\n");
-  printf ("#include \"rtl.h\"\n\n");
-  printf ("#include \"regs.h\"\n\n");
+  printf ("#include \"config.h\"\n");
+  printf ("#include \"rtl.h\"\n");
+  printf ("#include \"regs.h\"\n");
+  printf ("#include \"real.h\"\n\n");
 
   printf ("extern rtx peep_operand[];\n\n");
   printf ("#define operands peep_operand\n\n");
 
   printf ("int\npeephole (ins1)\n     rtx ins1;\n{\n");
   printf ("  rtx insn, x, pat;\n");
-  printf ("  int i;\n");
+  printf ("  int i;\n\n");
+
+  /* Early out: no peepholes for insns followed by barriers.  */
+  printf ("  if (NEXT_INSN (ins1)\n");
+  printf ("      && GET_CODE (NEXT_INSN (ins1)) == BARRIER)\n");
+  printf ("    return 0;\n\n");
 
   /* Read the machine description.  */
 

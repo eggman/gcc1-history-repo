@@ -119,6 +119,11 @@ extern int warn_return_type;
 
 extern int warn_write_strings;
 
+/* Nonzero means warn about pointer casts that can drop a type qualifier
+   from the pointer target type.  */
+
+extern int warn_cast_qual;
+
 /* Nonzero means do some things the same way PCC does.  */
 
 extern int flag_traditional;

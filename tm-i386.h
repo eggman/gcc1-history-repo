@@ -260,7 +260,7 @@ enum reg_class {
 
 
 #define REG_CLASS_CONTENTS {0, 0x1, 0x2, 0x3, 0x4, 0x8, 0xf,\
-			    0x30, 0xff, 0x300, 0x3ff}
+			    0x7f, 0xff, 0x300, 0x3ff}
 
 /* The same information, inverted:
    Return the class number of the smallest class containing
@@ -272,9 +272,8 @@ enum reg_class {
   (REGNO) == 1 ? DREG : \
   (REGNO) == 2 ? CREG : \
   (REGNO) == 3 ? BREG : \
-  (REGNO) == 4 ? INDEX_REGS : \
-  (REGNO) == 5 ? INDEX_REGS : \
-  (REGNO) < 8 ? GENERAL_REGS : \
+  (REGNO) == 7 ? GENERAL_REGS : \
+  (REGNO) < 8 ? INDEX_REGS : \
   FLOAT_REGS)
 
 #define NON_QI_REG_P(X) \
@@ -306,7 +305,6 @@ enum reg_class {
   ((C) == 'r' ? GENERAL_REGS :		\
    (C) == 'q' ? Q_REGS :		\
    (C) == 'f' ? FLOAT_REGS :		\
-   (C) == 'x' ? INDEX_REGS :		\
    (C) == 'a' ? AREG : (C) == 'b' ? BREG :	\
    (C) == 'c' ? CREG : (C) == 'd' ? DREG :	\
    (C) == 'A' ? ADREG : NO_REGS)
@@ -499,7 +497,7 @@ enum reg_class {
    THIS DEFINITION FOR THE 80386 IS A GUESS.  IT HAS NOT BEEN TESTED.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   fprintf (FILE, "\tlea LP%d,%%eax\n\tcall mcount\n", (LABELNO));
+   fprintf (FILE, "\tlea %sP%d,%%eax\n\tcall mcount\n", LPREFIX, (LABELNO));
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -856,17 +854,19 @@ enum reg_class {
 
 /* Output a signed jump insn.  Use template NORMAL ordinarily, or
    FLOAT following a floating point comparison.
-   We ought to use NO_OV if following an arithmetic insn that set the
-   cc's based on its result; but (1) the NO_OV templates written
-   in i386.md are incorrect and (2) notice_update_cc never records
-   cc settings from arithmetic insns.  */
+   Use NO_OV following an arithmetic insn that set the cc's
+   before a test insn that was deleted.
+   NO_OV may be zero, meaning final should reinsert the test insn
+   because the jump cannot be handled properly without it.  */
 
-#define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)  \
-{ if (cc_status.flags & CC_IN_80387)				\
+#define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)			\
+{								\
+  if (cc_status.flags & CC_IN_80387)				\
     return FLOAT;						\
   if (cc_status.flags & CC_NO_OVERFLOW)				\
-    abort ();							\
-  return NORMAL; }
+    return NO_OV;						\
+  return NORMAL;						\
+}
 
 /* Control the assembler format that we output.  */
 

@@ -1074,7 +1074,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       u1.f = u.d;							\
       if (CODE == 'f')							\
 	fprintf (FILE, "0r%.9g", u1.f);					\
@@ -1082,7 +1082,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 	fprintf (FILE, "0x%x", u1.i); }					\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       fprintf (FILE, "0r%.20g", u.d); }					\
   else if ((CODE) == 'r' && (X) == const0_rtx)				\
     fprintf (FILE, "r0");						\

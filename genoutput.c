@@ -111,6 +111,7 @@ extern int xmalloc ();
 extern void free ();
 
 void fatal ();
+void error ();
 void mybcopy ();
 void mybzero ();
 
@@ -168,6 +169,7 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"config.h\"\n");
   printf ("#include \"rtl.h\"\n");
   printf ("#include \"regs.h\"\n");
+  printf ("#include \"real.h\"\n");
   printf ("#include \"conditions.h\"\n");
   printf ("#include \"insn-flags.h\"\n");
   printf ("#include \"insn-config.h\"\n\n");
@@ -250,9 +252,8 @@ output_epilogue ()
 		if (n == 0)
 		  n = d->op_n_alternatives[start];
 		else if (n != d->op_n_alternatives[start])
-		  fatal ("wrong number of alternatives in operand %d of insn number %d",
+		  error ("wrong number of alternatives in operand %d of insn number %d",
 			 start, d->code_number);
-		break;
 	      }
 	  /* Record the insn's overall number of alternatives.  */
 	  d->n_alternatives = n;
@@ -385,7 +386,7 @@ scan_operands (part, this_address_p, this_strict_low)
       if (opno > max_opno)
 	max_opno = opno;
       if (max_opno >= MAX_MAX_OPERANDS)
-	fatal ("Too many operands (%d) in one instruction pattern.\n",
+	error ("Too many operands (%d) in one instruction pattern.\n",
 	       max_opno + 1);
       modes[opno] = GET_MODE (part);
       strict_low[opno] = this_strict_low;
@@ -406,7 +407,7 @@ scan_operands (part, this_address_p, this_strict_low)
       if (opno > max_opno)
 	max_opno = opno;
       if (max_opno >= MAX_MAX_OPERANDS)
-	fatal ("Too many operands (%d) in one instruction pattern.\n",
+	error ("Too many operands (%d) in one instruction pattern.\n",
 	       max_opno + 1);
       modes[opno] = GET_MODE (part);
       strict_low[opno] = 0;
@@ -698,6 +699,14 @@ fatal (s, a1, a2)
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
   exit (FATAL_EXIT_CODE);
+}
+
+void
+error (s, a1, a2)
+{
+  fprintf (stderr, "genoutput: ");
+  fprintf (stderr, s, a1, a2);
+  fprintf (stderr, "\n");
 }
 
 int

@@ -31,6 +31,10 @@ and this notice must be preserved on all copies.  */
 
 #define SDB_DEBUGGING_INFO
 
+/* Cause long-jump assembler to be used,
+   since otherwise some files fail to be assembled right.  */
+#define ASM_SPEC "-j"
+
 #undef ASM_FILE_START
 #undef ASM_GENERATE_INTERNAL_LABEL
 #undef ASM_OUTPUT_ADDR_DIFF_ELT
@@ -179,10 +183,10 @@ and this notice must be preserved on all copies.  */
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     if (GET_MODE (X) == DFmode)						\
       { union { double d; int i[2]; } u;				\
-	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
 	fprintf (FILE, "$0l%.20e", u.d); }				\
     else { union { double d; int i[2]; } u;				\
-	   u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	   u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X); \
 	   fprintf (FILE, "$0f%.20e", u.d); }				\
   else if (GET_CODE (X) == CONST)					\
     output_addr_const (FILE, X);					\

@@ -1187,7 +1187,8 @@ insn_dead_p (x, needed, strict_low_ok)
 	  register int regno = REGNO (r);
 	  register int offset = regno / REGSET_ELT_BITS;
 	  register int bit = 1 << (regno % REGSET_ELT_BITS);
-	  return (needed[offset] & bit) == 0;
+	  return (! (regno < FIRST_PSEUDO_REGISTER && global_regs[regno])
+		  && (needed[offset] & bit) == 0);
 	}
     }
   /* If performing several activities,
@@ -1250,6 +1251,9 @@ int
 regno_uninitialized (regno)
      int regno;
 {
+  if (n_basic_blocks == 0)
+    return 0;
+
   return (basic_block_live_at_start[0][regno / REGSET_ELT_BITS]
 	  & (1 << (regno % REGSET_ELT_BITS)));
 }
@@ -1331,7 +1335,8 @@ mark_set_1 (needed, dead, x, insn, significant)
 
   if (GET_CODE (reg) == REG
       && (regno = REGNO (reg), regno != FRAME_POINTER_REGNUM)
-      && regno != ARG_POINTER_REGNUM)
+      && regno != ARG_POINTER_REGNUM
+      && ! (regno < FIRST_PSEUDO_REGISTER && global_regs[regno]))
     /* && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
     {
       register int offset = regno / REGSET_ELT_BITS;
@@ -1673,7 +1678,8 @@ mark_used_regs (needed, live, x, final, insn)
 
 	if (GET_CODE (testreg) == REG
 	    && (regno = REGNO (testreg), regno != FRAME_POINTER_REGNUM)
-	    && regno != ARG_POINTER_REGNUM)
+	    && regno != ARG_POINTER_REGNUM
+	    && ! (regno < FIRST_PSEUDO_REGISTER && global_regs[regno]))
 #if 0 /* This was added in 1.25, but screws up death notes for hard regs.
 	 It probably isn't really needed anyway.  */
 	    && (regno >= FIRST_PSEUDO_REGISTER

@@ -178,11 +178,13 @@ static void alter_reg ();
 static int new_spill_reg();
 static int spill_hard_reg ();
 static void choose_reload_targets ();
+static void delete_output_reload ();
 static void forget_old_reloads ();
 static void order_regs_for_reload ();
 static void eliminate_frame_pointer ();
 static void inc_for_reload ();
 static int constraint_accepts_reg_p ();
+static int count_occurrences ();
 
 extern void remove_death ();
 extern rtx adj_offsetable_operand ();
@@ -1348,7 +1350,15 @@ reload_as_needed (first, live_known)
       /* Notice when we move to a new basic block.  */
       if (basic_block_needs && this_block + 1 < n_basic_blocks
 	  && insn == basic_block_head[this_block+1])
-	++this_block;
+	{
+	  ++this_block;
+	  /* When we enter a basic block which had no spilling,
+	     forget any inherited reloads, since we might use those
+	     same registers for allocated pseudos.  */
+	  if (basic_block_needs != 0
+	      && basic_block_needs[this_block] == 0)
+	    bzero (reg_last_reload_reg, max_regno * sizeof (rtx));
+	}
 
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	  || GET_CODE (insn) == CALL_INSN)
@@ -2026,6 +2036,9 @@ choose_reload_targets (insn)
 		  /* This is unsafe if prev insn rejects our reload reg.  */
 		  && constraint_accepts_reg_p (insn_operand_constraint[recog_memoized (insn)][0],
 					       reloadreg)
+		  /* This is unsafe if operand occurs more than once in current
+		     insn.  Perhaps some occurrences aren't reloaded.  */
+		  && count_occurrences (PATTERN (insn), old) == 1
 		  /* Don't risk splitting a matching pair of operands.  */
 		  && ! reg_mentioned_p (old, SET_SRC (PATTERN (temp))))
 		{
@@ -2102,78 +2115,11 @@ choose_reload_targets (insn)
 	  && GET_CODE (reload_in[j]) == REG
 	  && REGNO (reload_in[j]) >= FIRST_PSEUDO_REGISTER
 	  && spill_reg_store[reload_spill_index[j]] != 0
-	  && dead_or_set_p (insn, reload_in[j]))
-	{
-	  register rtx i1;
-	  /* If the pseudo-reg we are reloading is no longer referenced
-	     anywhere between the store into it and here,
-	     and no jumps or labels intervene, then the value can get
-	     here through the reload reg alone.  */
-	  for (i1 = NEXT_INSN (spill_reg_store[reload_spill_index[j]]);
-	       i1 != insn; i1 = NEXT_INSN (i1))
-	    {
-	      if (GET_CODE (i1) == CODE_LABEL || GET_CODE (i1) == JUMP_INSN)
-		break;
-	      if ((GET_CODE (i1) == INSN || GET_CODE (i1) == CALL_INSN)
-		  && reg_mentioned_p (reload_in[j], PATTERN (i1)))
-		break;
-	    }
-	  if (i1 == insn)
-	    {
-	      /* If this insn will store in the pseudo again,
-		 the previous store can be removed.  */
-	      if (reload_out[j] == reload_in[j])
-		delete_insn (spill_reg_store[reload_spill_index[j]]);
-
-	      /* See if the pseudo reg has been completely replaced
-		 with reload regs.  If so, delete the store insn
-		 and forget we had a stack slot for the pseudo.  */
-	      else if (reg_n_deaths[REGNO (reload_in[j])] == 1
-		       && reg_basic_block[REGNO (reload_in[j])] >= 0
-		       && find_regno_note (insn, REG_DEAD, REGNO (reload_in[j])))
-		{
-		  rtx i2;
-		  /* We know that it was used only between here
-		     and the beginning of the current basic block.
-		     Search that range; see if any ref remains.  */
-		  for (i2 = PREV_INSN (insn); i2; i2 = PREV_INSN (i2))
-		    {
-/*		      if (i2 == spill_reg_store[reload_spill_index[j]]) */
-		      /* Uses which just store in the pseudo don't count,
-			 since if they are the only uses, they are dead.  */
-		      if (GET_CODE (i2) == INSN
-			  && GET_CODE (PATTERN (i2)) == SET
-			  && SET_DEST (PATTERN (i2)) == reload_in[j])
-			continue;
-		      if (GET_CODE (i2) == CODE_LABEL
-			  || GET_CODE (i2) == JUMP_INSN)
-			break;
-		      if ((GET_CODE (i2) == INSN || GET_CODE (i2) == CALL_INSN)
-			  && reg_mentioned_p (reload_in[j], PATTERN (i2)))
-			goto still_used;
-		    }
-		  /* Delete the now-dead stores into this pseudo.  */
-/*		  delete_insn (spill_reg_store[reload_spill_index[j]]); */
-		  for (i2 = PREV_INSN (insn); i2; i2 = PREV_INSN (i2))
-		    {
-		      /* Uses which just store in the pseudo don't count,
-			 since if they are the only uses, they are dead.  */
-		      if (GET_CODE (i2) == INSN
-			  && GET_CODE (PATTERN (i2)) == SET
-			  && SET_DEST (PATTERN (i2)) == reload_in[j])
-			delete_insn (i2);
-		      if (GET_CODE (i2) == CODE_LABEL
-			  || GET_CODE (i2) == JUMP_INSN)
-			break;
-		    }
-		  /* For the debugging info,
-		     say the pseudo lives in this reload reg.  */
-		  reg_renumber[REGNO (old)] = REGNO (reload_reg_rtx[j]);
-		  alter_reg (REGNO (old), -1);
-		still_used: ;
-		}
-	    }
-	}
+	  && dead_or_set_p (insn, reload_in[j])
+	  /* This is unsafe if operand occurs more than once in current
+	     insn.  Perhaps some occurrences weren't reloaded.  */
+	  && count_occurrences (PATTERN (insn), reload_in[j]) == 1)
+	delete_output_reload (insn, j, reload_spill_index[j]);
 
       /* Input-reloading is done.  Now do output-reloading,
 	 storing the value from the reload-register after the main insn
@@ -2236,6 +2182,103 @@ choose_reload_targets (insn)
 	spill_reg_store[reload_spill_index[j]] = store_insn;
     }
 }
+
+/* Delete a previously made output-reload
+   whose result we now believe is not needed.
+   First we double-check.
+
+   INSN is the insn now being processed.
+   J is the reload-number for this insn,
+   and SPILL_INDEX is the index in spill_regs of the reload-reg
+   being used for the reload.  */
+
+static void
+delete_output_reload (insn, j, spill_index)
+     rtx insn;
+     int j;
+     int spill_index;
+{
+  register rtx i1;
+
+  /* Get the raw pseudo-register referred to.  */
+
+  rtx reg = reload_in[j];
+  while (GET_CODE (reg) == SUBREG)
+    reg = SUBREG_REG (reg);
+
+  /* If the pseudo-reg we are reloading is no longer referenced
+     anywhere between the store into it and here,
+     and no jumps or labels intervene, then the value can get
+     here through the reload reg alone.
+     Otherwise, give up--return.  */
+  for (i1 = NEXT_INSN (spill_reg_store[spill_index]);
+       i1 != insn; i1 = NEXT_INSN (i1))
+    {
+      if (GET_CODE (i1) == CODE_LABEL || GET_CODE (i1) == JUMP_INSN)
+	return;
+      if ((GET_CODE (i1) == INSN || GET_CODE (i1) == CALL_INSN)
+	  && reg_mentioned_p (reg, PATTERN (i1)))
+	return;
+    }
+
+  /* If this insn will store in the pseudo again,
+     the previous store can be removed.  */
+  if (reload_out[j] == reload_in[j])
+    delete_insn (spill_reg_store[spill_index]);
+
+  /* See if the pseudo reg has been completely replaced
+     with reload regs.  If so, delete the store insn
+     and forget we had a stack slot for the pseudo.  */
+  else if (reg_n_deaths[REGNO (reg)] == 1
+	   && reg_basic_block[REGNO (reg)] >= 0
+	   && find_regno_note (insn, REG_DEAD, REGNO (reg)))
+    {
+      rtx i2;
+
+      /* We know that it was used only between here
+	 and the beginning of the current basic block.
+	 (We also know that the last use before INSN was
+	 the output reload we are thinking of deleting, but never mind that.)
+	 Search that range; see if any ref remains.  */
+      for (i2 = PREV_INSN (insn); i2; i2 = PREV_INSN (i2))
+	{
+	  /* Uses which just store in the pseudo don't count,
+	     since if they are the only uses, they are dead.  */
+	  if (GET_CODE (i2) == INSN
+	      && GET_CODE (PATTERN (i2)) == SET
+	      && SET_DEST (PATTERN (i2)) == reg)
+	    continue;
+	  if (GET_CODE (i2) == CODE_LABEL
+	      || GET_CODE (i2) == JUMP_INSN)
+	    break;
+	  if ((GET_CODE (i2) == INSN || GET_CODE (i2) == CALL_INSN)
+	      && reg_mentioned_p (reg, PATTERN (i2)))
+	    /* Some other ref remains;
+	       we can't do anything.  */
+	    return;
+	}
+
+      /* Delete the now-dead stores into this pseudo.  */
+      for (i2 = PREV_INSN (insn); i2; i2 = PREV_INSN (i2))
+	{
+	  /* Uses which just store in the pseudo don't count,
+	     since if they are the only uses, they are dead.  */
+	  if (GET_CODE (i2) == INSN
+	      && GET_CODE (PATTERN (i2)) == SET
+	      && SET_DEST (PATTERN (i2)) == reg)
+	    delete_insn (i2);
+	  if (GET_CODE (i2) == CODE_LABEL
+	      || GET_CODE (i2) == JUMP_INSN)
+	    break;
+	}
+
+      /* For the debugging info,
+	 say the pseudo lives in this reload reg.  */
+      reg_renumber[REGNO (reg)] = REGNO (reload_reg_rtx[j]);
+      alter_reg (REGNO (reg), -1);
+    }
+}
+
 
 /* Output reload-insns around INSN to reload VALUE into RELOADREG. 
    VALUE is a autoincrement or autodecrement RTX whose operand
@@ -2365,4 +2408,58 @@ constraint_accepts_reg_p (string, reg)
       case 'r':
 	value = 1;
       }
+}
+
+/* Return the number of places FIND appears within X.  */
+
+static int
+count_occurrences (x, find)
+     register rtx x, find;
+{
+  register int i, j;
+  register enum rtx_code code;
+  register char *format_ptr;
+  int count;
+
+  if (x == find)
+    return 1;
+  if (x == 0)
+    return 0;
+
+  code = GET_CODE (x);
+
+  switch (code)
+    {
+    case REG:
+    case QUEUED:
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case SYMBOL_REF:
+    case CODE_LABEL:
+    case PC:
+    case CC0:
+      return 0;
+    }
+
+  format_ptr = GET_RTX_FORMAT (code);
+  count = 0;
+
+  for (i = 0; i < GET_RTX_LENGTH (code); i++)
+    {
+      switch (*format_ptr++)
+	{
+	case 'e':
+	  count += count_occurrences (XEXP (x, i), find);
+	  break;
+
+	case 'E':
+	  if (XVEC (x, i) != NULL)
+	    {
+	      for (j = 0; j < XVECLEN (x, i); j++)
+		count += count_occurrences (XVECEXP (x, i, j), find);
+	    }
+	  break;
+	}
+    }
+  return count;
 }

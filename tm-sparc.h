@@ -53,6 +53,10 @@ extern int target_flags;
    analysis for this case. */
 #define TARGET_SUN_ASM (target_flags & 4)
 
+/* Nonzero if we should do eager peepholes for conditional branch
+   scheduling.  */
+#define TARGET_EAGER (target_flags & 8)
+
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
    each pair being { "NAME", VALUE }
@@ -65,6 +69,7 @@ extern int target_flags;
     {"epilogue", 2},		\
     {"no-epilogue", -2},	\
     {"sun-asm", 4},		\
+    {"eager", 8},		\
     { "", TARGET_DEFAULT}}
 
 #define TARGET_DEFAULT 3
@@ -778,41 +783,42 @@ extern union tree_node *current_function_decl;
    function's constant-pool, because such addresses can actually
    be output as REG+SMALLINT.
 
-   Try making SYMBOL_REF a legitimate address, regardless.  Because the
-   only insns which can use memory are load or store insns, the
-   added hair in the machine description is not that bad.  It should
-   also speed up the compiler by halving the number of insns it must
-   manage for each (MEM (SYMBOL_REF ...)) involved.  */
+   Try making SYMBOL_REF (and other things which are CONSTANT_ADDRESS_P)
+   a legitimate address, regardless.  Because the only insns which can use
+   memory are load or store insns, the added hair in the machine description
+   is not that bad.  It should also speed up the compiler by halving the number
+   of insns it must manage for each (MEM (SYMBOL_REF ...)) involved.  */
 
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
-{ if (GET_CODE (X) == REG				\
-      && REG_OK_FOR_BASE_P (X))				\
+{ if (GET_CODE (X) == REG)				\
+    { if (REG_OK_FOR_BASE_P (X)) goto ADDR; }		\
+  else if (GET_CODE (X) == PLUS)			\
+    {							\
+      if (GET_CODE (XEXP (X, 0)) == REG			\
+	  && REG_OK_FOR_BASE_P (XEXP (X, 0)))		\
+	{						\
+	  if (GET_CODE (XEXP (X, 1)) == REG		\
+	      && REG_OK_FOR_INDEX_P (XEXP (X, 1)))	\
+	    goto ADDR;					\
+	  if (GET_CODE (XEXP (X, 1)) == CONST_INT	\
+	      && INTVAL (XEXP (X, 1)) >= -0x1000	\
+	      && INTVAL (XEXP (X, 1)) < 0x1000)		\
+	    goto ADDR;					\
+	}						\
+      else if (GET_CODE (XEXP (X, 1)) == REG		\
+	  && REG_OK_FOR_BASE_P (XEXP (X, 1)))		\
+	{						\
+	  if (GET_CODE (XEXP (X, 0)) == REG		\
+	      && REG_OK_FOR_INDEX_P (XEXP (X, 0)))	\
+	    goto ADDR;					\
+	  if (GET_CODE (XEXP (X, 0)) == CONST_INT	\
+	      && INTVAL (XEXP (X, 0)) >= -0x1000	\
+	      && INTVAL (XEXP (X, 0)) < 0x1000)		\
+	    goto ADDR;					\
+	}						\
+    }							\
+  else if (CONSTANT_ADDRESS_P (X))			\
     goto ADDR;						\
-  if (GET_CODE (X) == SYMBOL_REF /* && CONSTANT_POOL_ADDRESS_P(X) */)	\
-    goto ADDR;						\
-  if (GET_CODE (X) == PLUS)				\
-    if (GET_CODE (XEXP (X, 0)) == REG			\
-	&& REG_OK_FOR_BASE_P (XEXP (X, 0)))		\
-      {							\
-	if (GET_CODE (XEXP (X, 1)) == REG		\
-	    && REG_OK_FOR_INDEX_P (XEXP (X, 1)))	\
-	  goto ADDR;					\
-	if (GET_CODE (XEXP (X, 1)) == CONST_INT		\
-	    && INTVAL (XEXP (X, 1)) >= -0x1000		\
-	    && INTVAL (XEXP (X, 1)) < 0x1000)		\
-	  goto ADDR;					\
-      }							\
-    else if (GET_CODE (XEXP (X, 1)) == REG		\
-	&& REG_OK_FOR_BASE_P (XEXP (X, 1)))		\
-      {							\
-	if (GET_CODE (XEXP (X, 0)) == REG		\
-	    && REG_OK_FOR_INDEX_P (XEXP (X, 0)))	\
-	  goto ADDR;					\
-	if (GET_CODE (XEXP (X, 0)) == CONST_INT		\
-	    && INTVAL (XEXP (X, 0)) >= -0x1000		\
-	    && INTVAL (XEXP (X, 0)) < 0x1000)		\
-	  goto ADDR;					\
-      }							\
 }
 
 /* Try machine-dependent ways of modifying an illegitimate address
@@ -879,14 +885,13 @@ extern union tree_node *current_function_decl;
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS 0
 
-/* On Sun 4, this limit is 2048.  We use 1500 to be safe,
-   since the length can run past this up to a continuation point.  */
-#define DBX_CONTIN_LENGTH 1500
-
 /* We assume that the store-condition-codes instructions store 0 for false
    and some other value for true.  This is the value stored for true.  */
 
 #define STORE_FLAG_VALUE 1
+
+/* When a prototype says `char' or `short', really pass an `int'.  */
+#define PROMOTE_PROTOTYPES
 
 /* Define if shifts truncate the shift count
    which implies one can omit a sign-extension or zero-extension
@@ -912,6 +917,17 @@ extern union tree_node *current_function_decl;
    Desirable on machines where ordinary constants are expensive
    but a CALL with constant address is cheap.  */
 #define NO_FUNCTION_CSE
+
+/* Define subroutines to call to handle multiply and divide.
+   Use the subroutines that Sun's library provides.
+   The `*' prevents an underscore from being prepended by the compiler.  */
+
+#define DIVSI3_LIBCALL "*.div"
+#define UDIVSI3_LIBCALL "*.udiv"
+#define MODSI3_LIBCALL "*.rem"
+#define UMODSI3_LIBCALL "*.urem"
+#define MULSI3_LIBCALL "*.mul"
+#define UMULSI3_LIBCALL "*.umul"
 
 /* Compute the cost of computing a constant rtl expression RTX
    whose rtx-code is CODE.  The body of this macro is a portion
@@ -980,7 +996,11 @@ extern union tree_node *current_function_decl;
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (EXP)) == MEM)		\
-	{ CC_STATUS_INIT; }					\
+	{ rtx x = cc_status.mdep; int know = cc_status.flags & CC_KNOW_HI_G1;	\
+	  CC_STATUS_INIT;					\
+	  if (x && know)					\
+	    { cc_status.mdep = x; cc_status.flags |= CC_KNOW_HI_G1; }		\
+	}							\
     }								\
   else if (GET_CODE (EXP) == PARALLEL				\
 	   && GET_CODE (XVECEXP (EXP, 0, 0)) == SET)		\
@@ -1000,10 +1020,13 @@ extern union tree_node *current_function_decl;
 	    cc_status.value2 = 0;				\
 	}							\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
-	{ CC_STATUS_INIT; }					\
+	{ rtx x = cc_status.mdep; int know = cc_status.flags & CC_KNOW_HI_G1;	\
+	  CC_STATUS_INIT;					\
+	  if (x && know)					\
+	    { cc_status.mdep = x; cc_status.flags |= CC_KNOW_HI_G1; }		\
+	}							\
     }								\
-  else if (GET_CODE (EXP) == PARALLEL				\
-	   && GET_CODE (XVECEXP (EXP, 0, 0)) == REG)		\
+  else if (GET_CODE (EXP) == PARALLEL)				\
   /* insn-peep has changed this insn beyond recognition
      by NOTICE_UPDATE_CC.  However, we know it is either
      a call or a branch with a delay slot filled, so we can
@@ -1053,6 +1076,10 @@ extern union tree_node *current_function_decl;
 /* How to renumber registers for dbx and gdb.  */
 
 #define DBX_REGISTER_NUMBER(REGNO) (REGNO)
+
+/* On Sun 4, this limit is 2048.  We use 1500 to be safe,
+   since the length can run past this up to a continuation point.  */
+#define DBX_CONTIN_LENGTH 1500
 
 /* This is how to output a note to DBX telling it the line number
    to which the following sequence of instructions corresponds.
@@ -1221,6 +1248,42 @@ extern union tree_node *current_function_decl;
     abort ();							\
   else if ((CODE) == 'r' && (X) == const0_rtx)			\
     fprintf (FILE, "%%g0");					\
+  else if ((CODE) == 'C') switch (GET_CODE (X))			\
+    {								\
+    case EQ: fputs ("e", FILE); break;				\
+    case NE: fputs ("ne", FILE); break;				\
+    case GT: fputs ("g", FILE); break;				\
+    case GE: fputs ("ge", FILE); break;				\
+    case LT: fputs ("l", FILE); break;				\
+    case LE: fputs ("le", FILE); break;				\
+    case GTU: fputs ("gu", FILE); break;			\
+    case GEU: fputs ("geu", FILE); break;			\
+    case LTU: fputs ("lu", FILE); break;			\
+    case LEU: fputs ("leu", FILE); break;			\
+    }								\
+  else if ((CODE) == 'N') switch (GET_CODE (X))			\
+    {								\
+    case EQ: fputs ("ne", FILE); break;				\
+    case NE: fputs ("e", FILE); break;				\
+    case GT: fputs ("le", FILE); break;				\
+    case GE: fputs ("l", FILE); break;				\
+    case LT: fputs ("ge", FILE); break;				\
+    case LE: fputs ("g", FILE); break;				\
+    case GTU: fputs ("leu", FILE); break;			\
+    case GEU: fputs ("lu", FILE); break;			\
+    case LTU: fputs ("geu", FILE); break;			\
+    case LEU: fputs ("gu", FILE); break;			\
+    }								\
+  else if ((CODE) == 'F') switch (GET_CODE (X))			\
+    {								\
+    case EQ: fputs ("ne", FILE); break;				\
+    case NE: fputs ("e", FILE); break;				\
+    case GT: fputs ("ule", FILE); break;			\
+    case GE: fputs ("ul", FILE); break;				\
+    case LT: fputs ("uge", FILE); break;			\
+    case LE: fputs ("ug", FILE); break;				\
+    default: abort ();						\
+    }								\
   else { output_addr_const (FILE, X); }}
 
 /* Print a memory address as an operand to reference that memory location.  */
@@ -1252,3 +1315,4 @@ extern union tree_node *current_function_decl;
       output_addr_const (FILE, addr);				\
     }								\
 }
+

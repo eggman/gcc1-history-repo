@@ -27,7 +27,7 @@ and this notice must be preserved on all copies.  */
 
 #include "tm-hp9k320.h"
 
-/* See tm-m68k.h.  7 means 680[01]0 with no 68881.  */
+/* See tm-m68k.h.  0 means 680[01]0 with no 68881.  */
 
 #undef TARGET_DEFAULT
 #define	TARGET_DEFAULT 0
@@ -345,10 +345,10 @@ do { union { float f; long l;} tem;			\
 /* ihnp4!lmayk!lgm says that `short 0' triggers assembler bug;
    `short L%nn-L%nn' supposedly works.  */
 #define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)			\
-  if (RTX_INTEGRATED_P (TABLE))						\
+  if (! RTX_INTEGRATED_P (TABLE))					\
     fprintf (FILE, "\tswbeg &%d\n%s%%%d:\n",				\
-	     XVECLEN (PATTERN (TABLE), 1), (PREFIX), (NUM))
-  else
+	     XVECLEN (PATTERN (TABLE), 1), (PREFIX), (NUM));		\
+  else									\
     fprintf (FILE, "\tswbeg &%d\n%s%%%d:\n\tshort %s%%%d-%s%%%d\n",	\
 	     XVECLEN (PATTERN (TABLE), 1) + 1, (PREFIX), (NUM),		\
 	     (PREFIX), (NUM), (PREFIX), (NUM))

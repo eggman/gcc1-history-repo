@@ -720,6 +720,14 @@ float_signal ()
   float_handled = 0;
   longjmp (float_handler, 1);
 }
+
+/* Handler for SIGPIPE.  */
+
+static void
+pipe_closed ()
+{
+  fatal ("output pipe has been closed");
+}
 
 /* Compile an entire file of output from cpp, named NAME.
    Write a file of assembly output and various debugging dumps.  */
@@ -987,6 +995,12 @@ compile_file (name)
 	    && DECL_INITIAL (decl) != 0
 	    && TREE_ADDRESSABLE (decl))
 	  output_inline_function (decl);
+	if (warn_unused
+	    && TREE_CODE (decl) == FUNCTION_DECL
+	    && DECL_INITIAL (decl) == 0
+	    && TREE_EXTERNAL (decl)
+	    && ! TREE_PUBLIC (decl))
+	  warning_with_decl (decl, "`%s' declared but never defined");
       }
   }
 
@@ -1220,7 +1234,9 @@ rest_of_compilation (decl)
      Also do it if -W, but in that case it doesn't change the rtl code,
      it only computes whether control can drop off the end of the function.  */
 
-  if (optimize || extra_warnings || warn_return_type)
+  if (optimize || extra_warnings || warn_return_type
+      /* If function is `volatile', we should warn if it tries to return.  */
+      || TREE_THIS_VOLATILE (decl))
     TIMEVAR (jump_time, jump_optimize (insns, 0, 0));
 
   /* Dump rtl code after jump, if we are doing that.  */
@@ -1508,6 +1524,8 @@ main (argc, argv, envp)
 
   signal (SIGFPE, float_signal);
 
+  signal (SIGPIPE, pipe_closed);
+
   /* Initialize whether `char' is signed.  */
   flag_signed_char = DEFAULT_SIGNED_CHAR;
 
@@ -1521,7 +1539,7 @@ main (argc, argv, envp)
   set_target_switch ("");
 
   for (i = 1; i < argc; i++)
-    if (argv[i][0] == '-')
+    if (argv[i][0] == '-' && argv[i][1] != 0)
       {
 	register char *str = argv[i] + 1;
 	if (str[0] == 'Y')
@@ -1595,7 +1613,7 @@ main (argc, argv, envp)
 		       but breaks the vax pcc.  */
 		    found = 1;
 		  }
-		if (p[0] == 'n' && p[1] == 'o' && p[3] == '-'
+		if (p[0] == 'n' && p[1] == 'o' && p[2] == '-'
 		    && ! strcmp (p+3, f_options[j].string))
 		  {
 		    *f_options[j].variable = ! f_options[j].on_value;

@@ -49,7 +49,7 @@ extern long ftell();
 
 /* Indexed by rtx code, gives number of operands for an rtx with that code.
    Does NOT include rtx header data (code and links).
-   This array is initialized in init_rtx.  */
+   This array is initialized in init_rtl.  */
 
 int rtx_length[NUM_RTX_CODE + 1];
 
@@ -1274,4 +1274,25 @@ init_rtl ()
 
   for (i = 0; i < NUM_RTX_CODE; i++)
     rtx_length[i] = strlen (rtx_format[i]);
+
+  /* Make CONST_DOUBLE bigger, if real values are bigger than
+     it normally expects to have room for.
+     Note that REAL_VALUE_TYPE is not defined by default,
+     since tree.h is not included.  But the default dfn as `double'
+     would do no harm.  */
+#ifdef REAL_VALUE_TYPE
+  i = sizeof (REAL_VALUE_TYPE) / sizeof (rtunion) + 2;
+  if (rtx_length[(int) CONST_DOUBLE] < i)
+    {
+      char *s = (char *) permalloc (i + 1);
+      rtx_length[(int) CONST_DOUBLE] = i;
+      *s++ = 'e';
+      *s++ = '0';
+      /* Set the GET_RTX_FORMAT of CONST_DOUBLE to a string
+	 of as many `i's as we now have elements.  */
+      for (i = 0; i < rtx_length[(int) CONST_DOUBLE]; i++)
+	*s++ = 'i';
+      *s++ = 0;
+    }
+#endif
 }

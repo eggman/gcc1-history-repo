@@ -430,6 +430,7 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"config.h\"\n");
   printf ("#include \"rtl.h\"\n");
   printf ("#include \"expr.h\"\n");
+  printf ("#include \"real.h\"\n");
   printf ("#include \"insn-config.h\"\n\n");
   printf ("extern char *insn_operand_constraint[][MAX_RECOG_OPERANDS];\n\n");
   printf ("extern rtx recog_operand[];\n");

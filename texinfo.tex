@@ -1,6 +1,6 @@
 %% TeX macros to handle texinfo files
 
-%   Copyright (C) 1985, 1986, 1988 Richard M. Stallman
+%   Copyright (C) 1985, 1986, 1988 Free Software Foundation, Inc.
 
 %		       NO WARRANTY
 
@@ -101,7 +101,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.18}
+\def\texinfoversion{1.21}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -457,15 +457,22 @@
 \font\secsf=cmss10 scaled \magstep2
 \let\secbf=\secrm
 
-\font\ssecrm=cmbx10 scaled \magstep1
-\font\ssecit=cmti10 scaled \magstep1
-\font\ssecsl=cmsl10 scaled \magstep1
-\font\ssectt=cmtt10 scaled \magstep1
-\font\ssecsf=cmss10 scaled \magstep1
+% \font\ssecrm=cmbx10 scaled \magstep1    % This size an fontlooked bad.
+% \font\ssecit=cmti10 scaled \magstep1    % The letters were too crowded.
+% \font\ssecsl=cmsl10 scaled \magstep1
+% \font\ssectt=cmtt10 scaled \magstep1
+% \font\ssecsf=cmss10 scaled \magstep1
+
+\font\ssecrm=cmb10 at 13pt	% Note the use of cmb rather than cmbx.
+\font\ssecit=cmti10 at 13pt	% Also, the size is a little larger than
+\font\ssecsl=cmsl10 at 13pt	% being scaled magstep1.
+\font\ssectt=cmtt10 at 13pt
+\font\ssecsf=cmss10 at 13pt
+
 \let\ssecbf=\ssecrm
 
 \def\textfonts{\let\rm=\tenrm\let\it=\tenit\let\sl=\tensl\let\bf=\tenbf%
-\let\sc=\tensc\let\sf=\tensf}
+\let\smallcaps=\tensc\let\sf=\tensf}
 \def\chapfonts{\let\rm=\chaprm\let\it=\chapit\let\sl=\chapsl\let\bf=\chapbf\let\tt=\chaptt\let\sf=\chapsf}
 \def\secfonts{\let\rm=\secrm\let\it=\secit\let\sl=\secsl\let\bf=\secbf\let\tt=\sectt\let\sf=\secsf}
 \def\subsecfonts{\let\rm=\ssecrm\let\it=\ssecit\let\sl=\ssecsl\let\bf=\ssecbf\let\tt=\ssectt\let\sf=\ssecsf}
@@ -494,11 +501,11 @@
 
 \let\file=\samp
 
-\def\l#1{{\li #1}\null}
+\def\l#1{{\li #1}\null}		% 
 
-\def\r#1{{\rm #1}}
-\def\s#1{{\sc #1}}
-\def\ii#1{{\it #1}}
+\def\r#1{{\rm #1}}		% roman font
+\def\sc#1{{\\smallcaps #1}}	% smallcaps font
+\def\ii#1{{\it #1}}		% italic font
 
 \def\titlefont#1{{\titlerm #1}}
 
@@ -1193,10 +1200,10 @@ July\or August\or September\or October\or November\or December\fi
 
 \outer\def\majorheading #1{%
 {\advance\chapheadingskip by 10pt \chapbreak }%
-{\chapfonts \line{\chaprm #1\hfill}}\bigskip \par\penalty 200}
+{\chapfonts \line{\rm #1\hfill}}\bigskip \par\penalty 200}
 
 \outer\def\chapheading #1{\chapbreak %
-{\chapfonts \line{\chaprm #1\hfill}}\bigskip \par\penalty 200}
+{\chapfonts \line{\rm #1\hfill}}\bigskip \par\penalty 200}
 
 \let\heading=\secheadingi
 \let\subheading=\subsecheadingi
@@ -1242,17 +1249,17 @@ July\or August\or September\or October\or November\or December\fi
 
 \def\chfplain #1#2{%
 \pchapsepmacro %
-{\chapfonts \line{\chaprm #2.\enspace #1\hfill}}\bigskip \par\penalty 5000 %
+{\chapfonts \line{\rm #2.\enspace #1\hfill}}\bigskip \par\penalty 5000 %
 }
 
 \def\unnchfplain #1{%
 \pchapsepmacro %
-{\chapfonts \line{\chaprm #1\hfill}}\bigskip \par\penalty 10000 %
+{\chapfonts \line{\rm #1\hfill}}\bigskip \par\penalty 10000 %
 }
 \CHAPFplain % The default
 
 \def\unnchfopen #1{%
-\chapoddpage {\chapfonts \line{\chaprm #1\hfill}}\bigskip \par\penalty 10000 %
+\chapoddpage {\chapfonts \line{\rm #1\hfill}}\bigskip \par\penalty 10000 %
 }
 
 \def\chfopen #1#2{\chapoddpage {\chapfonts
@@ -1272,23 +1279,32 @@ July\or August\or September\or October\or November\or December\fi
 \newskip \secheadingskip  \secheadingskip = 21pt plus 8pt minus 4pt
 \def\secheadingbreak{\dobreak \secheadingskip {-1000}}
 
+
+% Section fonts are the base font at magstep2, which produces
+% a size a bit more than 14 points in the default situation.	
+
 \def\secheading #1#2#3{\secheadingi {#2.#3\enspace #1}}
 \def\plainsecheading #1{\secheadingi {#1}}
 \def\secheadingi #1{{\advance \secheadingskip by \parskip %
 \secheadingbreak}%
-{\secfonts \line{\secrm #1\hfill}}%
+{\secfonts \line{\rm #1\hfill}}%
 \ifdim \parskip<10pt \kern 10pt\kern -\parskip\fi \penalty 10000 }
+
+
+% Subsection fonts are the base font at magstep1, 
+% which produces a size of 12 points.
 
 \def\subsecheading #1#2#3#4{{\advance \subsecheadingskip by \parskip %
 \subsecheadingbreak}%
-{\secfonts \line{\secrm#2.#3.#4\enspace #1\hfill}}%
+{\subsecfonts \line{\rm#2.#3.#4\enspace #1\hfill}}%
 \ifdim \parskip<10pt \kern 10pt\kern -\parskip\fi \penalty 10000 }
 
-\def\subsubsecfonts{\subsecfonts} % Maybe this should change
-
+\def\subsubsecfonts{\subsecfonts} % Maybe this should change:
+				  % Perhaps make sssec fonts scaled
+				  % magstep half
 \def\subsubsecheading #1#2#3#4#5{{\advance \subsecheadingskip by \parskip %
 \subsecheadingbreak}%
-{\secfonts \line{\secrm#2.#3.#4.#5\enspace #1\hfill}}%
+{\subsubsecfonts \line{\rm#2.#3.#4.#5\enspace #1\hfill}}%
 \ifdim \parskip<10pt \kern 10pt\kern -\parskip\fi \penalty 10000}
 
 \message{toc printing,}
@@ -1441,7 +1457,7 @@ July\or August\or September\or October\or November\or December\fi
 % by adding a space to the end of each line.
 \let\par=\lisppar
 \def\Elisp{\endgroup\afterenvbreak}%
-\parskip=0pt \advance \rightskip by \lispnarrowing 
+\parskip=0pt
 \advance \leftskip by \lispnarrowing
 \parindent=0pt
 \let\exdent=\internalexdent
@@ -1470,7 +1486,7 @@ July\or August\or September\or October\or November\or December\fi
 % by adding a space to the end of each line.
 \let\par=\lisppar
 \def\Esmalllisp{\endgroup\afterenvbreak}%
-\parskip=0pt \advance \rightskip by \lispnarrowing 
+\parskip=0pt
 \advance \leftskip by \lispnarrowing
 \parindent=0pt
 \let\exdent=\internalexdent
@@ -1489,7 +1505,7 @@ July\or August\or September\or October\or November\or December\fi
 % by adding a space to the end of each line.
 \let\par=\lisppar
 \def\Edisplay{\endgroup\afterenvbreak}%
-\parskip=0pt \advance \rightskip by \lispnarrowing 
+\parskip=0pt
 \advance \leftskip by \lispnarrowing
 \parindent=0pt
 \let\exdent=\internalexdent

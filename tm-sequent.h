@@ -43,11 +43,13 @@ and this notice must be preserved on all copies.  */
 #undef CPP_PREDEFINES
 #define CPP_PREDEFINES "-Dns32000 -Dsequent -Dunix"
 
-/* This is how to align the code that follows an unconditional branch.  */
+/* This is how to align the code that follows an unconditional branch.
+   Don't define it, since it confuses the assembler (we hear).  */
 
 #undef ASM_OUTPUT_ALIGN_CODE
-#define ASM_OUTPUT_ALIGN_CODE(FILE)
-  fprintf (FILE, "\t.align 2\n")
+
+/* Assember pseudo-op for shared data segment. */
+#define SHARED_SECTION_ASM_OP ".shdata"
 
 /* %$ means print the prefix for an immediate operand.
    On the sequent, no prefix is used for such.  */
@@ -95,10 +97,10 @@ and this notice must be preserved on all copies.  */
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     if (GET_MODE (X) == DFmode)						\
       { union { double d; int i[2]; } u;				\
-	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
 	fprintf (FILE, "0d%.20e", u.d); }				\
     else { union { double d; int i[2]; } u;				\
-	   u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	   u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X); \
 	   fprintf (FILE, "0f%.20e", u.d); }				\
   else output_addr_const (FILE, X); }
 

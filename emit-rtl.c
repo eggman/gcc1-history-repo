@@ -40,6 +40,7 @@ and this notice must be preserved on all copies.  */
 #include "rtl.h"
 #include "regs.h"
 #include "insn-config.h"
+#include "real.h"
 
 #define max(A,B) ((A) > (B) ? (A) : (B))
 #define min(A,B) ((A) < (B) ? (A) : (B))
@@ -188,25 +189,6 @@ gen_rtx (va_alist)
 	return const1_rtx;
       rt_val = rtx_alloc (code);
       INTVAL (rt_val) = arg;
-    }
-  else if (code == CONST_DOUBLE)
-    {
-      int arg0 = va_arg (p, int);
-      int arg1 = va_arg (p, int);
-      if (arg0 == XINT (fconst0_rtx, 0)
-	  && arg1 == XINT (fconst0_rtx, 1))
-	{
-	  if (mode == DFmode)
-	    return dconst0_rtx;
-	  if (mode == SFmode)
-	    return fconst0_rtx;
-	  if (mode == DImode)
-	    return const0_rtx;
-	}
-      rt_val = rtx_alloc (code);
-      rt_val->mode = mode;
-      XINT (rt_val, 0) = arg0;
-      XINT (rt_val, 1) = arg1;
     }
   else
     {
@@ -1549,24 +1531,24 @@ init_emit_once ()
   INTVAL (const1_rtx) = 1;
 
   fconst0_rtx = rtx_alloc (CONST_DOUBLE);
-  {
-    union { double d; int i[2]; } u;
-    u.d = 0;
-    XINT (fconst0_rtx, 0) = u.i[0];
-    XINT (fconst0_rtx, 1) = u.i[1];
-    XEXP (fconst0_rtx, 2) = cc0_rtx;
-  }
-  PUT_MODE (fconst0_rtx, SFmode);
-
   dconst0_rtx = rtx_alloc (CONST_DOUBLE);
   {
-    union { double d; int i[2]; } u;
+    union real_extract u;
+#ifdef REAL_IS_NOT_DOUBLE
+    bzero (&u, sizeof u);
+    u.d = REAL_VALUE_ATOF ("0");
+#else
     u.d = 0;
-    XINT (dconst0_rtx, 0) = u.i[0];
-    XINT (dconst0_rtx, 1) = u.i[1];
-    XEXP (dconst0_rtx, 2) = cc0_rtx;
+#endif
+
+    bcopy (&u, &CONST_DOUBLE_LOW (fconst0_rtx), sizeof u);
+    CONST_DOUBLE_MEM (fconst0_rtx) = cc0_rtx;
+    PUT_MODE (fconst0_rtx, SFmode);
+
+    bcopy (&u, &CONST_DOUBLE_LOW (dconst0_rtx), sizeof u);
+    CONST_DOUBLE_MEM (dconst0_rtx) = cc0_rtx;
+    PUT_MODE (dconst0_rtx, DFmode);
   }
-  PUT_MODE (dconst0_rtx, DFmode);
 
   stack_pointer_rtx = gen_rtx (REG, Pmode, STACK_POINTER_REGNUM);
   frame_pointer_rtx = gen_rtx (REG, Pmode, FRAME_POINTER_REGNUM);

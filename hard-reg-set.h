@@ -184,6 +184,13 @@ extern char call_used_regs[FIRST_PSEUDO_REGISTER];
 
 extern HARD_REG_SET call_used_reg_set;
 
+/* Indexed by hard register number, contains 1 for registers
+   that are being used for global register decls.
+   These must be exempt from ordinary flow analysis
+   and are also considered fixed.  */
+
+extern char global_regs[FIRST_PSEUDO_REGISTER];
+
 /* Table of register numbers in the order in which to try to use them.  */
 
 extern int reg_alloc_order[FIRST_PSEUDO_REGISTER];

@@ -116,6 +116,11 @@ static short *n_times_set;
 
 static short *n_times_used;
 
+/* Nonzero means reg N has already been moved out of one loop.
+   This reduces the desire to move it out of another.  */
+
+static char *moved_once;
+
 /* Array of fixed memory addresses that are stored in this loop.
    If there are too many to fit here,
    we just turn on unknown_address_altered.  */
@@ -219,6 +224,9 @@ loop_optimize (f, dumpfile)
   init_recog ();
 
   old_max_reg = max_reg_num ();
+
+  moved_once = (char *) alloca (old_max_reg);
+  bzero (moved_once, old_max_reg);
 
   /* First find the last real insn, and count the number of insns,
      and assign insns their suids.  */
@@ -797,6 +805,14 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 	  if (loop_dump_stream)
 	    fprintf (loop_dump_stream, "savings %d ", savings);
 
+	  if (moved_once[regno])
+	    {
+	      insn_count *= 2;
+
+	      if (loop_dump_stream)
+		fprintf (loop_dump_stream, "halved since already moved ");
+	    }
+
 	  /* An insn MUST be moved if we already moved something else
 	     which is safe only if this one is moved too: that is,
 	     if already_moved[REGNO] is nonzero.  */
@@ -919,6 +935,9 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 	      /* Any other movable that loads the same register
 		 MUST be moved.  */
 	      already_moved[regno] = 1;
+
+	      /* This reg has been moved out of one loop.  */
+	      moved_once[regno] = 1;
 
 	      /* The reg set here is now invariant.  */
 	      if (! m->partial)
@@ -1055,10 +1074,14 @@ replace_regs (x, reg_map, nregs)
      rtx *reg_map;
      int nregs;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register int i;
   register char *fmt;
 
+  if (x == 0)
+    return x;
+
+  code = GET_CODE (x);
   switch (code)
     {
     case PC:
@@ -1099,10 +1122,13 @@ static void
 replace_call_address (x, reg, addr)
      rtx x, reg, addr;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register int i;
   register char *fmt;
 
+  if (x == 0)
+    return;
+  code = GET_CODE (x);
   switch (code)
     {
     case PC:
@@ -1300,7 +1326,7 @@ can_jump_into_range_p (x, beg, end)
      rtx x;
      int beg, end;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code = GET_CODE (x);
   register int i;
   register char *fmt;
 
@@ -1397,10 +1423,13 @@ invariant_p (x)
      register rtx x;
 {
   register int i;
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
   int conditional = 0;
 
+  if (x == 0)
+    return 1;
+  code = GET_CODE (x);
   switch (code)
     {
     case CONST_INT:
@@ -1764,9 +1793,12 @@ may_trap_p (x)
      rtx x;
 {
   int i;
-  enum rtx_code code = GET_CODE (x);
+  enum rtx_code code;
   char *fmt;
 
+  if (x == 0)
+    return 0;
+  code = GET_CODE (x);
   switch (code)
     {
       /* Handle these cases fast.  */
@@ -3003,9 +3035,12 @@ basic_induction_var (x, dest_regno, inc_val, mult_val)
      rtx *inc_val;
      rtx *mult_val;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   rtx arg;
 
+  if (x == 0)
+    return 0;
+  code = GET_CODE (x);
   switch (code)
     {
     case PLUS:
@@ -3094,13 +3129,17 @@ general_induction_var (x, src_regno, add_val, mult_val, forces, forces2)
      struct induction **forces;
      struct induction **forces2;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   rtx arg;
   struct induction *g = 0;
   struct induction *v = 0;
   int subexp = 0;
   int tem;
 
+  if (x == 0)
+    return 0;
+
+  code = GET_CODE (x);
   switch (code)
     {
     case NEG:

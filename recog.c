@@ -26,6 +26,8 @@ and this notice must be preserved on all copies.  */
 #include "recog.h"
 #include "regs.h"
 #include "hard-reg-set.h"
+#include "real.h"
+
 
 static int inequality_comparisons_p ();
 
@@ -452,8 +454,12 @@ asm_noperands (body)
 
       /* Count backwards through CLOBBERs to determine number of SETs.  */
       for (i = XVECLEN (body, 0); i > 0; i--)
-	if (GET_CODE (XVECEXP (body, 0, i - 1)) == SET)
-	  break;
+	{
+	  if (GET_CODE (XVECEXP (body, 0, i - 1)) == SET)
+	    break;
+	  if (GET_CODE (XVECEXP (body, 0, i - 1)) != CLOBBER)
+	    return -1;
+	}
 
       /* N_SETS is now number of output operands.  */
       n_sets = i;
@@ -486,7 +492,7 @@ asm_noperands (body)
 
       /* Make sure all the other parallel things really are clobbers.  */
       for (i = XVECLEN (body, 0) - 1; i > 0; i--)
-	if (GET_CODE (XVECEXP (body, 0, i - 1)) != CLOBBER)
+	if (GET_CODE (XVECEXP (body, 0, i)) != CLOBBER)
 	  return -1;
 
       return XVECLEN (XVECEXP (body, 0, 0), 3);
@@ -870,8 +876,9 @@ constrain_operands (insn_code_num)
 
   struct funny_match funny_match[MAX_RECOG_OPERANDS];
   int funny_match_index;
+  int nalternatives = insn_n_alternatives[insn_code_num];
 
-  if (noperands == 0)
+  if (noperands == 0 || nalternatives == 0)
     return 1;
 
   for (c = 0; c < noperands; c++)
@@ -879,7 +886,7 @@ constrain_operands (insn_code_num)
 
   which_alternative = 0;
 
-  while (which_alternative < insn_n_alternatives[insn_code_num])
+  while (which_alternative < nalternatives)
     {
       register int opno;
       int lose = 0;

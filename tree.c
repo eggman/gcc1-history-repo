@@ -566,7 +566,7 @@ build_int_2 (low, hi)
 tree
 build_real (type, d)
      tree type;
-     double d;
+     REAL_VALUE_TYPE d;
 {
   tree v;
 
@@ -585,6 +585,10 @@ build_real (type, d)
 /* Return a new REAL_CST node whose type is TYPE
    and whose value is the integer value of the INTEGER_CST node I.  */
 
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+/* This function can't be implemented if we can't do arithmetic
+   on the float representation.  */
+
 tree
 build_real_from_int_cst (type, i)
      tree type;
@@ -596,6 +600,9 @@ build_real_from_int_cst (type, i)
   v = make_node (REAL_CST);
   TREE_TYPE (v) = type;
 
+#ifdef REAL_ARITHMETIC
+  REAL_VALUE_FROM_INT (d, TREE_INT_CST_LOW (i), TREE_INT_CST_HIGH (i));
+#else /* not REAL_ARITHMETIC */
   if (TREE_INT_CST_HIGH (i) < 0)
     {
       d = (double) (~ TREE_INT_CST_HIGH (i));
@@ -611,6 +618,7 @@ build_real_from_int_cst (type, i)
 	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
       d += (double) (unsigned) TREE_INT_CST_LOW (i);
     }
+#endif /* not REAL_ARITHMETIC */
 
   /* Check for valid float value for this type on this target machine;
      if not, can print error message and store a valid value in D.  */
@@ -621,6 +629,8 @@ build_real_from_int_cst (type, i)
   TREE_REAL_CST (v) = d;
   return v;
 }
+
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
 
 /* Return a newly constructed STRING_CST node whose value is
    the LEN characters at STR.
@@ -1611,7 +1621,7 @@ simple_cst_equal (t1, t2)
 	&& TREE_INT_CST_HIGH (t1) == TREE_INT_CST_HIGH (t2);
 
     case REAL_CST:
-      return TREE_REAL_CST (t1) == TREE_REAL_CST (t2);
+      return REAL_VALUES_EQUAL (TREE_REAL_CST (t1), TREE_REAL_CST (t2));
 
     case STRING_CST:
       return TREE_STRING_LENGTH (t1) == TREE_STRING_LENGTH (t2)

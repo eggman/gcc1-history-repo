@@ -521,8 +521,10 @@ output_move_double (operands)
 	latehalf[1] = const0_rtx;
       else if (GET_CODE (operands[1]) == CONST_DOUBLE)
 	{
-	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 1));
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 0));
+	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_HIGH (operands[1]));
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_LOW (operands[1]));
 	}
     }
   else
@@ -603,6 +605,10 @@ standard_80387_constant_p (x)
     return 1;
   if (d == 1)
     return 2;
+  /* Note that on the 80387, other constants, such as pi,
+     are much slower to load as standard constants
+     than to load from doubles in memory!  */
+
   return 0;
 }
 
@@ -645,8 +651,8 @@ output_move_const_single (operands)
     {
       union { int i[2]; double d;} u1;
       union { int i; float f;} u2;
-      u1.i[0] = XINT (operands[1], 0);
-      u1.i[1] = XINT (operands[1], 1);
+      u1.i[0] = CONST_DOUBLE_LOW (operands[1]);
+      u1.i[1] = CONST_DOUBLE_HIGH (operands[1]);
       u2.f = u1.d;
       operands[1] = gen_rtx (CONST_INT, VOIDmode, u2.i);
     }
@@ -956,8 +962,8 @@ print_operand (file, x, code)
     {
       union { double d; int i[2]; } u;
       union { float f; int i; } u1;
-      u.i[0] = XINT (x, 0);
-      u.i[1] = XINT (x, 1);
+      u.i[0] = CONST_DOUBLE_LOW (x);
+      u.i[1] = CONST_DOUBLE_HIGH (x);
       u1.f = u.d;
       if (code == 'f')
         fprintf (file, "%.22e", u1.f);
@@ -970,8 +976,8 @@ print_operand (file, x, code)
   else if (GET_CODE (x) == CONST_DOUBLE && GET_MODE (x) == DFmode)
     {
       union { double d; int i[2]; } u;
-      u.i[0] = XINT (x, 0);
-      u.i[1] = XINT (x, 1);
+      u.i[0] = CONST_DOUBLE_LOW (x);
+      u.i[1] = CONST_DOUBLE_HIGH (x);
       fprintf (file, "%.22e", u.d);
     }
   else 
@@ -1100,18 +1106,14 @@ print_operand_address (file, addr)
 }
 
 /* Set the cc_status for the results of an insn whose pattern is EXP.
-   On the 80386, we assume that only test and compare insns
-   set the condition codes usefully,
-   and that all other insns except for jumps and moves
-   clobber the condition codes unpredictably.
+   On the 80386, we assume that only test and compare insns, as well
+   as SI, HI, & DI mode ADD, SUB, NEG, AND, IOR, XOR, ASHIFT, LSHIFT,
+   ASHIFTRT, and LSHIFTRT instructions set the condition codes usefully.
+   Also, we assume that jumps and moves don't affect the condition codes.
+   All else, clobbers the condition codes, by assumption.
 
-   In fact, it would be legitimate to detect certain arithmetic
-   instructions and record what they do to the cc's,
-   but it would be necessary to be careful:
-   for example, some fixed-point add insns generate code that
-   doesn't set them.  In addition, correct handling of arith insn
-   cc's requires setting CC_NO_OVERFLOW; but i386.md's jump insns
-   don't make correct output in this case.  */
+   We assume that ALL add, minus, etc. instructions effect the condition
+   codes.  This MUST be consistent with i386.md.  */
 
 notice_update_cc (exp)
      rtx exp;
@@ -1134,6 +1136,7 @@ notice_update_cc (exp)
 	  if (cc_status.value2
 	      && reg_overlap_mentioned_p (SET_DEST (exp), cc_status.value2))
 	    cc_status.value2 = 0;
+	  return;
 	}
       /* Moving register into memory doesn't alter the cc's.
 	 It may invalidate the RTX's which we remember the cc's came from.  */
@@ -1145,6 +1148,12 @@ notice_update_cc (exp)
 	    cc_status.value2 = 0;
 	  return;
 	}
+      /* Function calls clobber the cc's.  */
+      else if (GET_CODE (SET_SRC (exp)) == CALL)
+	{
+	  CC_STATUS_INIT;
+	  return;
+	}
       /* Tests and compares set the cc's in predictable ways.  */
       else if (SET_DEST (exp) == cc0_rtx)
 	{
@@ -1152,6 +1161,34 @@ notice_update_cc (exp)
 	  cc_status.value1 = SET_SRC (exp);
 	  return;
 	}
+      /* Certain instructions effect the condition codes. */
+      else if (GET_MODE (SET_SRC (exp)) == SImode
+	       || GET_MODE (SET_SRC (exp)) == HImode
+	       || GET_MODE (SET_SRC (exp)) == QImode)
+	switch (GET_CODE (SET_SRC (exp)))
+	  {
+	  case ASHIFTRT: case LSHIFTRT:
+	  case ASHIFT: case LSHIFT:
+	    /* Shifts on the 386 don't set the condition codes if the
+	       shift count is zero. */
+	    if (GET_CODE (XEXP (SET_SRC (exp), 1)) != CONST_INT)
+	      {
+		CC_STATUS_INIT;
+		break;
+	      }
+	    /* We assume that the CONST_INT is non-zero (this rtx would
+	       have been deleted if it were zero. */
+
+	  case PLUS: case MINUS: case NEG:
+	  case AND: case IOR: case XOR:
+	    cc_status.flags |= CC_NO_OVERFLOW;
+	    cc_status.value1 = SET_SRC (exp);
+	    cc_status.value2 = SET_DEST (exp);
+	    break;
+
+	  default:
+	    CC_STATUS_INIT;
+	  }
       else
 	{
 	  CC_STATUS_INIT;

@@ -1,5 +1,5 @@
 /* Build expressions with type checking for C compiler.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -36,7 +36,7 @@ and this notice must be preserved on all copies.  */
 
 
 
-static void mark_addressable ();
+static int mark_addressable ();
 static tree convert_for_assignment ();
 static int compparms ();
 int comp_target_types ();
@@ -616,6 +616,12 @@ default_conversion (exp)
   if (TREE_CODE (exp) == CONST_DECL)
     exp = DECL_INITIAL (exp);
 
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since EXP is being used in non-lvalue context.  */
+  if (TREE_CODE (exp) == NOP_EXPR
+      && TREE_TYPE (exp) == TREE_TYPE (TREE_OPERAND (exp, 0)))
+    exp = TREE_OPERAND (exp, 0);
+
   if (form == ENUMERAL_TYPE
       || (form == INTEGER_TYPE
 	  && (TYPE_PRECISION (dt)
@@ -640,8 +646,11 @@ default_conversion (exp)
   if (form == ARRAY_TYPE)
     {
       register tree adr;
+      tree restype = TREE_TYPE (dt);
+      tree ptrtype;
+
       if (TREE_CODE (exp) == INDIRECT_REF)
-	return convert (TYPE_POINTER_TO (TREE_TYPE (dt)),
+	return convert (TYPE_POINTER_TO (restype),
 			TREE_OPERAND (exp, 0));
 
       if (TREE_CODE (exp) == COMPOUND_EXPR)
@@ -658,14 +667,21 @@ default_conversion (exp)
 	  return error_mark_node;
 	}
 
+      if (TREE_READONLY (exp) || TREE_VOLATILE (exp))
+	restype = build_type_variant (restype, TREE_READONLY (exp),
+				      TREE_VOLATILE (exp));
+
+      ptrtype = build_pointer_type (restype);
+
       if (TREE_CODE (exp) == VAR_DECL)
 	{
 	  /* ??? This is not really quite correct
 	     in that the type of the operand of ADDR_EXPR
 	     is not the target type of the type of the ADDR_EXPR itself.
 	     Question is, can this lossage be avoided?  */
-	  adr = build (ADDR_EXPR, TYPE_POINTER_TO (TREE_TYPE (dt)), exp);
-	  mark_addressable (exp);
+	  adr = build (ADDR_EXPR, ptrtype, exp);
+	  if (mark_addressable (exp) == 0)
+	    return error_mark_node;
 	  TREE_LITERAL (adr) = staticp (exp);
 	  TREE_VOLATILE (adr) = 0;   /* Default would be, same as EXP.  */
 	  return adr;
@@ -673,7 +689,7 @@ default_conversion (exp)
       /* This way is better for a COMPONENT_REF since it can
 	 simplify the offset for a component.  */
       adr = build_unary_op (ADDR_EXPR, exp, 1);
-      return convert (TYPE_POINTER_TO (TREE_TYPE (dt)), adr);
+      return convert (ptrtype, adr);
     }
   return exp;
 }
@@ -717,6 +733,8 @@ build_component_ref (datum, component)
 		 IDENTIFIER_POINTER (component));
 	  return error_mark_node;
 	}
+      if (TREE_TYPE (field) == error_mark_node)
+	return error_mark_node;
 
       ref = build (COMPONENT_REF, TREE_TYPE (field), basename, field);
 
@@ -805,10 +823,22 @@ build_array_ref (array, index)
 	 Likewise an array of elements of variable size.  */
       if (TREE_CODE (index) != INTEGER_CST
 	  || TREE_CODE (TYPE_SIZE (TREE_TYPE (TREE_TYPE (array)))) != INTEGER_CST)
-	mark_addressable (array);
+	{
+	  if (mark_addressable (array) == 0)
+	    return error_mark_node;
+	}
 
       if (pedantic && !lvalue_p (array))
 	warning ("ANSI C forbids subscripting non-lvalue array");
+
+      if (pedantic)
+	{
+	  tree foo = array;
+	  while (TREE_CODE (foo) == COMPONENT_REF)
+	    foo = TREE_OPERAND (foo, 0);
+	  if (TREE_CODE (foo) == VAR_DECL && TREE_REGDECL (foo))
+	    warning ("ANSI C forbids subscripting non-lvalue array");
+	}
 
       rval = build (ARRAY_REF, TREE_TYPE (TREE_TYPE (array)), array, index);
       /* Array ref is const/volatile if the array elements are.  */
@@ -850,6 +880,12 @@ build_function_call (function, params)
   register tree coerced_params;
   tree name = NULL_TREE;
   tree actualparameterlist ();
+
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since FUNCTION is used in non-lvalue context.  */
+  if (TREE_CODE (function) == NOP_EXPR
+      && TREE_TYPE (function) == TREE_TYPE (TREE_OPERAND (function, 0)))
+    function = TREE_OPERAND (function, 0);
 
   /* Convert anything with function type to a pointer-to-function.  */
   if (TREE_CODE (function) == FUNCTION_DECL)
@@ -950,6 +986,12 @@ actualparameterlist (typelist, values, name)
 	    error ("too many arguments to function");
 	  break;
 	}
+
+      /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+	 Strip such NOP_EXPRs, since VAL is used in non-lvalue context.  */
+      if (TREE_CODE (val) == NOP_EXPR
+	  && TREE_TYPE (val) == TREE_TYPE (TREE_OPERAND (val, 0)))
+	val = TREE_OPERAND (val, 0);
 
       if (TREE_CODE (TREE_TYPE (val)) == ARRAY_TYPE
 	  || TREE_CODE (TREE_TYPE (val)) == FUNCTION_TYPE)
@@ -2132,7 +2174,8 @@ build_unary_op (code, xarg, noconvert)
       /* For &x[y], return x+y */
       if (TREE_CODE (arg) == ARRAY_REF)
 	{
-	  mark_addressable (TREE_OPERAND (arg, 0));
+	  if (mark_addressable (TREE_OPERAND (arg, 0)) == 0)
+	    return error_mark_node;
 	  return build_binary_op (PLUS_EXPR, TREE_OPERAND (arg, 0),
 				  TREE_OPERAND (arg, 1));
 	}
@@ -2179,7 +2222,8 @@ build_unary_op (code, xarg, noconvert)
 
       argtype = build_pointer_type (argtype);
 
-      mark_addressable (arg);
+      if (mark_addressable (arg) == 0)
+	return error_mark_node;
 
       {
 	tree addr;
@@ -2332,7 +2376,15 @@ tree
 truthvalue_conversion (expr)
      tree expr;
 {
-  register enum tree_code form = TREE_CODE (expr);
+  register enum tree_code form;
+
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since EXPR is being used in non-lvalue context.  */
+  if (TREE_CODE (expr) == NOP_EXPR
+      && TREE_TYPE (expr) == TREE_TYPE (TREE_OPERAND (expr, 0)))
+    expr = TREE_OPERAND (expr, 0);
+
+  form = TREE_CODE (expr);
 
   if (form == EQ_EXPR && integer_zerop (TREE_OPERAND (expr, 1)))
     return build_unary_op (TRUTH_NOT_EXPR, TREE_OPERAND (expr, 0), 0);
@@ -2356,6 +2408,13 @@ truthvalue_conversion (expr)
   /* Unary minus has no effect on whether its argument is nonzero.  */
   if (form == NEGATE_EXPR)
     return truthvalue_conversion (TREE_OPERAND (expr, 0));
+
+  /* Distribute the conversion into the arms of a COND_EXPR.  */
+  if (form == COND_EXPR)
+    return build (COND_EXPR, TREE_TYPE (expr),
+		  TREE_OPERAND (expr, 0),
+		  truthvalue_conversion (TREE_OPERAND (expr, 1)),
+		  truthvalue_conversion (TREE_OPERAND (expr, 2)));
 
   /* Sign-extension and zero-extension has no effect.  */
   if (form == NOP_EXPR
@@ -2436,9 +2495,10 @@ invert_truthvalue (arg)
 }
 
 /* Mark EXP saying that we need to be able to take the
-   address of it; it should not be allocated in a register.  */
+   address of it; it should not be allocated in a register.
+   Value is 1 if successful.  */
 
-static void
+static int
 mark_addressable (exp)
      tree exp;
 {
@@ -2457,8 +2517,15 @@ mark_addressable (exp)
       case PARM_DECL:
       case RESULT_DECL:
 	if (TREE_REGDECL (x) && !TREE_ADDRESSABLE (x))
-	  warning ("address requested for `%s', which is declared `register'",
-		   IDENTIFIER_POINTER (DECL_NAME (x)));
+	  {
+	    if (DECL_CONTEXT (x) == 0)
+	      {
+		error ("address of global register variable requested");
+		return 0;
+	      }
+	    warning ("address requested for `%s', which is declared `register'",
+		     IDENTIFIER_POINTER (DECL_NAME (x)));
+	  }
 	put_var_into_stack (x);
 
 	/* drops in */
@@ -2467,7 +2534,7 @@ mark_addressable (exp)
 	TREE_ADDRESSABLE (DECL_NAME (x)) = 1;
 
       default:
-	return;
+	return 1;
     }
 }
 
@@ -2659,7 +2726,15 @@ build_compound_expr (list)
   register tree rest;
 
   if (TREE_CHAIN (list) == 0)
-    return TREE_VALUE (list);
+    {
+      /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+	 Strip such NOP_EXPRs, since LIST is used in non-lvalue context.  */
+      if (TREE_CODE (list) == NOP_EXPR
+	  && TREE_TYPE (list) == TREE_TYPE (TREE_OPERAND (list, 0)))
+	list = TREE_OPERAND (list, 0);
+
+      return TREE_VALUE (list);
+    }
 
   rest = build_compound_expr (TREE_CHAIN (list));
 
@@ -2676,12 +2751,19 @@ build_c_cast (type, expr)
      register tree type;
      tree expr;
 {
-  register tree value;
+  register tree value = expr;
   
   if (type == error_mark_node)
     return error_mark_node;
+  type = TYPE_MAIN_VARIANT (type);
 
-  if (type == TREE_TYPE (expr))
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since VALUE is being used in non-lvalue context.  */
+  if (TREE_CODE (value) == NOP_EXPR
+      && TREE_TYPE (value) == TREE_TYPE (TREE_OPERAND (value, 0)))
+    value = TREE_OPERAND (value, 0);
+
+  if (type == TREE_TYPE (value))
     {
       if (pedantic)
 	{
@@ -2689,17 +2771,38 @@ build_c_cast (type, expr)
 	      || TREE_CODE (type) == UNION_TYPE)
 	    warning ("ANSI C forbids casting nonscalar to the same type");
 	}
-      return expr;
+    }
+  else
+    {
+      tree otype;
+      value = default_conversion (value);
+      otype = TREE_TYPE (value);
+
+      /* Optionally warn about potentially worrysome casts.  */
+
+      if (warn_cast_qual
+	  && TREE_CODE (type) == POINTER_TYPE
+	  && TREE_CODE (otype) == POINTER_TYPE)
+	{
+	  if (TREE_VOLATILE (TREE_TYPE (otype))
+	      && ! TREE_VOLATILE (TREE_TYPE (type)))
+	    warning ("cast discards `volatile' from pointer target type");
+	  if (TREE_READONLY (TREE_TYPE (otype))
+	      && ! TREE_READONLY (TREE_TYPE (type)))
+	    warning ("cast discards `const' from pointer target type");
+	}
+
+      value = convert (type, value);
     }
 
-  value = convert (TYPE_MAIN_VARIANT (type), default_conversion (expr));
-  /* As far as I know, it is not meaningful to cast something
-     to a const or volatile type, because those are meaningful
-     only for lvalues.
-     But if it is meaningful, we must somehow return something
-     whose TREE_READONLY or TREE_VOLATILE is set.
-     That is not trivial because it is possible that VALUE == EXPR
-     or is a shared constant.  */
+  if (value == expr)
+    {
+      /* Always produce some operator for an explicit cast,
+	 so we can tell (for -pedantic) that the cast is no lvalue.  */
+      tree nvalue = build (NOP_EXPR, type, value);
+      TREE_LITERAL (nvalue) = TREE_LITERAL (value);
+      return nvalue;
+    }
   return value;
 }
 
@@ -2714,7 +2817,7 @@ build_modify_expr (lhs, modifycode, rhs)
      enum tree_code modifycode;
 {
   register tree result;
-  tree newrhs = rhs;
+  tree newrhs;
   tree lhstype = TREE_TYPE (lhs);
   tree olhstype = lhstype;
 
@@ -2724,6 +2827,14 @@ build_modify_expr (lhs, modifycode, rhs)
   /* Avoid duplicate error messages from operands that had errors.  */
   if (TREE_CODE (lhs) == ERROR_MARK || TREE_CODE (rhs) == ERROR_MARK)
     return error_mark_node;
+
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since RHS is being used in non-lvalue context.  */
+  if (TREE_CODE (rhs) == NOP_EXPR
+      && TREE_TYPE (rhs) == TREE_TYPE (TREE_OPERAND (rhs, 0)))
+    rhs = TREE_OPERAND (rhs, 0);
+
+  newrhs = rhs;
 
   /* Handle control structure constructs used as "lvalues".  */
 
@@ -2740,10 +2851,21 @@ build_modify_expr (lhs, modifycode, rhs)
 	/* Handle (a ? b : c) used as an "lvalue".  */
       case COND_EXPR:
 	rhs = save_expr (rhs);
-	return (build_conditional_expr
-		(TREE_OPERAND (lhs, 0),
-		 build_modify_expr (TREE_OPERAND (lhs, 1), modifycode, rhs),
-		 build_modify_expr (TREE_OPERAND (lhs, 2), modifycode, rhs)));
+	{
+	  /* Produce (a ? (b = rhs) : (c = rhs))
+	     except that the RHS goes through a save-expr
+	     so the code to compute it is only emitted once.  */
+	  tree cond
+	    = build_conditional_expr
+	      (TREE_OPERAND (lhs, 0),
+	       build_modify_expr (TREE_OPERAND (lhs, 1),
+				  modifycode, rhs),
+	       build_modify_expr (TREE_OPERAND (lhs, 2),
+				  modifycode, rhs));
+	  /* Make sure the code to compute the rhs comes out
+	     before the split.  */
+	  return build (COMPOUND_EXPR, TREE_TYPE (lhs), rhs, cond);
+	}
       }
 
   /* If a binary op has been requested, combine the old LHS value with the RHS
@@ -2858,15 +2980,24 @@ convert_for_assignment (type, rhs, errtype)
      char *errtype;
 {
   register enum tree_code codel = TREE_CODE (type);
-  register tree rhstype = datatype (rhs);
-  register enum tree_code coder = TREE_CODE (rhstype);
+  register tree rhstype;
+  register enum tree_code coder;
 
-  if (coder == ERROR_MARK)
-    return rhs;
+  /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
+     Strip such NOP_EXPRs, since RHS is used in non-lvalue context.  */
+  if (TREE_CODE (rhs) == NOP_EXPR
+      && TREE_TYPE (rhs) == TREE_TYPE (TREE_OPERAND (rhs, 0)))
+    rhs = TREE_OPERAND (rhs, 0);
 
   if (TREE_CODE (TREE_TYPE (rhs)) == ARRAY_TYPE
       || TREE_CODE (TREE_TYPE (rhs)) == FUNCTION_TYPE)
     rhs = default_conversion (rhs);
+
+  rhstype = TREE_TYPE (rhs);
+  coder = TREE_CODE (rhstype);
+
+  if (coder == ERROR_MARK)
+    return rhs;
 
   if (type == rhstype)
     return rhs;
@@ -2960,14 +3091,16 @@ initializer_constant_valid_p (value)
       return 2;
 
     case CONVERT_EXPR:
+    case NOP_EXPR:
+      /* Allow conversions between types of the same kind.  */
+      if (TREE_CODE (TREE_TYPE (value))
+	  == TREE_CODE (TREE_TYPE (TREE_OPERAND (value, 0))))
+	return initializer_constant_valid_p (TREE_OPERAND (value, 0));
       /* Allow (int) &foo.  */
       if (TREE_CODE (TREE_TYPE (value)) == INTEGER_TYPE
 	  && TREE_CODE (TREE_TYPE (TREE_OPERAND (value, 0))) == POINTER_TYPE)
 	return initializer_constant_valid_p (TREE_OPERAND (value, 0));
       return 0;
-	
-    case NOP_EXPR:
-      return initializer_constant_valid_p (TREE_OPERAND (value, 0));
 
     case PLUS_EXPR:
       {
@@ -3036,7 +3169,7 @@ store_init_value (decl, init)
 	  if (! TREE_LITERAL (value))
 	    warning ("aggregate initializer is not constant");
 	  else if (! TREE_STATIC (value))
-	    warning ("aggregate initializer uses complex arithmetic");
+	    warning ("aggregate initializer uses complicated arithmetic");
 	}
     }
   DECL_INITIAL (decl) = value;
@@ -3393,9 +3526,22 @@ c_expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 
   /* Copy all the intermediate outputs into the specified outputs.  */
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
-    if (o[i] != TREE_VALUE (tail))
-      expand_expr (build_modify_expr (o[i], NOP_EXPR, TREE_VALUE (tail)),
-		   0, VOIDmode, 0);
+    {
+      if (o[i] != TREE_VALUE (tail))
+	expand_expr (build_modify_expr (o[i], NOP_EXPR, TREE_VALUE (tail)),
+		     0, VOIDmode, 0);
+      /* Detect modification of read-only values.
+	 (Otherwise done by build_modify_expr.)  */
+      else
+	{
+	  tree type = TREE_TYPE (o[i]);
+	  if (TREE_READONLY (o[i])
+	      || ((TREE_CODE (type) == RECORD_TYPE
+		   || TREE_CODE (type) == UNION_TYPE)
+		  && C_TYPE_FIELDS_READONLY (type)))
+	    readonly_warning (o[i], "modification by `asm'");
+	}
+    }
 
   /* Those MODIFY_EXPRs could do autoincrements.  */
   emit_queue ();
@@ -3410,6 +3556,9 @@ c_expand_return (retval)
      tree retval;
 {
   tree valtype = TREE_TYPE (TREE_TYPE (current_function_decl));
+
+  if (TREE_THIS_VOLATILE (current_function_decl))
+    warning ("function declared `volatile' has a `return' statement");
 
   if (!retval)
     {

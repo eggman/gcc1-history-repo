@@ -564,7 +564,18 @@ dump (node, indent)
 	  break;
 
 	case REAL_CST:
+#ifndef REAL_IS_NOT_DOUBLE
 	  fprintf (outfile, " = %e;", TREE_REAL_CST (node));
+#else
+	  {
+	    int i;
+	    fprintf (outfile, " = 0x");
+	    char *p = (char *) &TREE_REAL_CST (node);
+	    for (i = 0; i < sizeof TREE_REAL_CST (node); i++)
+	      fprintf (outfile, "%02x", *p++);
+	    fprintf (outfile, ";");
+	  }
+#endif /* REAL_IS_NOT_DOUBLE */
 	  break;
 
 	case COMPLEX_CST:

@@ -49,3 +49,7 @@ and this notice must be preserved on all copies.  */
 
 #define unlink delete
 #endif
+
+/* global const variables don't work,
+   so turn off const-ness to prevent trouble with insn-output.c.  */
+#define const

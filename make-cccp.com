@@ -2,8 +2,7 @@ $!
 $!	Build the GNU "C" pre-processor on VMS
 $!
 $ if "''p1'" .eqs. "LINK" then goto Link
-! $ gcc /define=("GCC_INCLUDE_DIR=""gnu_cc:[000000]""",-
-!           "GPLUSPLUS_INCLUDE_DIR=""gnu_cc:[000000]""","IDENT_DIRECTIVE") cccp.c
+$ gcc/debug cccp.c
 $ t1:='f$search("CEXP.C")'
 $ if "''t1'" .eqs. "" then goto 10$
 $ t1:='f$file_attributes("CEXP.Y","RDT")'
@@ -13,9 +12,9 @@ $ t2:='f$cvtime(t2)'
 $ if t1 .les. t2 then goto 20$
 $ 10$:
 $ bison cexp.y
+$ rename cexp_tab.c cexp.c
 $ 20$:
 $!
-$ rename cexp_tab.c cexp.c
 $ gcc/debug cexp.c
 $ gcc/debug version.c
 $ Link:

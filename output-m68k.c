@@ -182,8 +182,10 @@ output_move_double (operands)
 	latehalf[1] = const0_rtx;
       else if (GET_CODE (operands[1]) == CONST_DOUBLE)
 	{
-	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 1));
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 0));
+	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_HIGH (operands[1]));
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_LOW (operands[1]));
 	}
     }
   else
@@ -348,8 +350,8 @@ standard_68881_constant_p (x)
 {
   union {double d; int i[2];} u;
   register double d;
-  u.i[0] = XINT (x, 0);
-  u.i[1] = XINT (x, 1);
+  u.i[0] = CONST_DOUBLE_LOW (x);
+  u.i[1] = CONST_DOUBLE_HIGH (x);
   d = u.d;
 
   if (d == 0)
@@ -404,8 +406,8 @@ standard_sun_fpa_constant_p (x)
 {
   union {double d; int i[2];} u;
   register double d;
-  u.i[0] = XINT (x, 0);
-  u.i[1] = XINT (x, 1);
+  u.i[0] = CONST_DOUBLE_LOW (x);
+  u.i[1] = CONST_DOUBLE_HIGH (x);
   d = u.d;
 
   if (d == 0.0)

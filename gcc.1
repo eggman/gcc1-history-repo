@@ -1,7 +1,7 @@
 .\	" ======================
-.\	" This version is 1.24.
+.\	" This version is 1.33.
 .\	" ======================
-.TH GCC 1 "8 July 1988" "Version 1.24"
+.TH GCC 1 "19 January 1989" "Version 1.33"
 .SH NAME
 gcc \- GNU project C Compiler
 .SH SYNOPSIS
@@ -13,11 +13,11 @@ This man page is an extract of the documentation of the
 and is limited to the meaning of the options.  It is updated only
 occasionally, because the GNU project does not use nroff.
 For complete, current documentation, refer to the Info file
-.B internals
+.B gcc
 or the DVI file
-.B internals.dvi
+.B gcc.dvi
 which are made from the Texinfo source file
-.B internals.texinfo
+.B gcc.texinfo
 \.
 .SH DESCRIPTION
 The
@@ -209,30 +209,35 @@ and \fBvolatile\fR are not recognized.
 \(** Integer types \fBunsigned short\fR and \fBunsigned char\fR
 promote to \fBunsigned int\fR.
 .br
+\(** Out-of-range floating point literals are not an error.
+.br
+\(** All automatic variables not declared \fBregister\fR are preserved by
+\fBlongjmp\fR.  Ordinarily, GNU C follows ANSI C: automatic variables
+not declared \fBvolatile\fR may be clobbered.
+.br
 \(** In the preprocessor, comments convert to nothing at all,
 rather than to a space.
 This allows traditional token concatenation.
 .br
-\(** In the preprocessor, single and double quote characters are
-ignored when scanning macro definitions, so that macro arguments
-can be replaced even within a string or character constant.
-Quote characters are also ignored when skipping text inside
-a failing conditional directive.
-.TP
-.B \-pedantic
-Issue all the warnings demanded by strict ANSI standard C;
-reject all programs that use forbidden extensions.
-Valid ANSI standard C programs should compile properly with or
-without this option (though a rare few will require `\fB\-ansi\fR'.
-However, without this option, certain GNU extensions and
-traditional C features are supported as well.
-With this option, they are rejected.
-There is no reason to \fIuse\fR
-this option; it exists only to satisfy pedants.
+\(** In the preprocessor, macro arguments are recognized within string
+constants in a macro definition (and their values are stringified,
+though without additional quote marks, when they appear in such a
+context).  The preprocessor also considers a string constant to end
+at a newline.
+.br
+\(** The predefined macro \fB__STDC__\fR is not defined when you 
+use `\fB\-traditional\fR', but \fB__GNUC__\fR is (since the GNU extensions
+which \fB__GNUC__\fR indicates are not affected by `\fB\-traditional\fR').
+If you need to write header files that work
+differently depending on whether `\fB\-traditional\fR' is in use, by
+testing both of these predefined macros you can distinguish four
+situations: GNU C, traditional GNU C, other ANSI C compilers, and
+other old C compilers.
 .TP
 .B \-O
 Optimize.  Optimizing compilation takes somewhat more time, and a lot
 more memory for a large function.
+.br
 Without `\fB\-O\fR', the compiler's goal is to reduce the cost of
 compilation and to make debugging produce the expected results.
 Statements are independent: if you stop the program with a breakpoint
@@ -243,15 +248,18 @@ Without `\fB\-O\fR', only variables declared \fBregister\fR
 are allocated in registers.
 The resulting compiled code is
 a little worse than produced by PCC without `\fB\-O\fR'.
+.br
 With `\fB\-O\fR', the compiler tries to reduce code size and execution time.
 Some of the `\fB\-f\fR' options described below turn specific
 kinds of optimization on or off.
 .TP
 .B \-g
-Produce debugging information in DBX format.
-Unlike most other C compilers,
-GNU CC allows you to use `\fB\-g\fR' with `\fB\-O\fR'.
-The shortcuts taken by optimized code may occasionally
+Produce debugging information in the operating system's native format
+(for DBX or SDB).  GDB also can work with this debugging information.
+Unlike most other C compilers, GNU CC allows you to use `\fB\-g\fR' 
+with`\fB\-O\fR'.
+.br
+The short cuts taken by optimized code may occasionally
 produce surprising results: some variables you declared may not exist
 at all; flow of control may briefly move where you did not expect it;
 some statements may not be executed because they compute constant
@@ -265,6 +273,12 @@ have bugs.
 Produce debugging information in GDB's (the GNU Debugger's) own format.
 This requires the GNU assembler and linker
 in order to work.
+This feature will probably be eliminated.  It was intended to enable
+GDB to read the symbol table faster, but it doesn't result in enough
+of a speedup to be worth the larger object files and executables.  We
+are working on other ways of making GDB start even faster, which work
+with DBX format debugging information and could be made to work with
+SDB format.
 .TP
 .B \-w
 Inhibit all warning messages.
@@ -307,9 +321,8 @@ without a value.)
 Spurious warning can occur because GNU CC does not realize that
 certain functions (including \fBabort\fR
 and \fBlongjmp\fR) will never return.
-.TP
-.B \-Wunused
-Warn whenever a local variable is unused aside from its declaration.
+.br
+\(** An expression-statement contains no side effects.
 .TP
 .B \-Wimplicit
 Warn whenever a function is implicitly declared.
@@ -320,8 +333,23 @@ defaults to \fBint\fR. Also warn about any \fBreturn\fR
 statement with no return-value in a function whose return-type
 is not \fBvoid\fR.
 .TP
+.B \-Wunused
+Warn whenever a local variable is unused aside from its declaration.
+.TP
 .B \-Wcomment
 Warn whenever a comment-start sequence `/*' appears in a comment.
+.TP
+.B \-Wall
+All of the above \fB\-W\fR options combined.
+.TP
+.B \-Wwrite-strings
+Give string constants the type \fBconst char[\fIlength\fB]\fR so that
+copying the address of one into a non-\fBconst char *\fR
+pointer will get a warning.  These warnings will help you find at
+compile time code that can try to write into a string constant, but
+only if you have been very careful about using \fBconst\fR in
+declarations and prototypes.  Otherwise, it will just be a nuisance;
+this is why we did not make \fB\-Wall\fR request these warnings.
 .TP
 .B \-p
 Generate extra code to write profile information suitable for the
@@ -363,15 +391,22 @@ defined by that macro, which enables you to change the defaults.
 These are the `\fB\-m\fR' options defined in the 68000 machine description:
 .TP 10
 .B \ \ \ \ \ \ \ \ \-m68020
+.TP 10
+.B \ \ \ \ \ \ \ \ \-mc68020
 Generate output for a 68020 (rather than a 68000).
 This is the default if you use the unmodified sources.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-m68000
+.TP 10
+.B \ \ \ \ \ \ \ \ \-mc68000
 Generate output for a 68000 (rather than a 68020).
 .TP 10
 .B \ \ \ \ \ \ \ \ \-m68881
 Generate output containing 68881 instructions for floating point.
 This is the default if you use the unmodified sources.
+.TP 10
+.B \ \ \ \ \ \ \ \ \-mfpa
+Generate output containing Sun FPA instructions for floating point.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-msoft-float
 Generate output containing library calls for floating point.
@@ -410,20 +445,28 @@ harmlessly ignored.)
 The \fBrtd\fR
 instruction is supported by the 68010 and 68020
 processors, but not by the 68000.
-.IP
-These are the `\fB\-m\fR' options defined in the VAX machine description:
+.IP 
+These are the `\fB\-m\fR' options defined in the VAX 
+machine description:
 .TP 10
 .B \ \ \ \ \ \ \ \ \-munix
-Do not output certain jump instructions (\fBaobleq\fP and so on)
+Do not output certain jump instructions (\fBaobleq\fR and so on)
 that the Unix assembler
 for the VAX cannot handle across long ranges. 
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mgnu
 Do output those jump instructions, on the assumption
 that you will assemble with the GNU assembler.
+.TP 10
+.B \ \ \ \ \ \ \ \ \-mg
+Output code for g-format floating point numbers instead of d-format.
 .TP 5
 .BI \-f "flag"
-Specify machine-independent flags. These are the flags:
+Specify machine-independent flags.  Most flags have both positive and
+negative forms; the negative form of `\fB\-ffoo\fR' would 
+be `\fB\-fno-foo\fR'.  In the table below, only one of the forms is
+listed---the one which is not the default.  You can figure out the
+other form by either removing `\fBno-\fR' or adding it.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-ffloat-store
 Do not store floating-point variables in registers.
@@ -500,6 +543,10 @@ This is for compatibility with old programs which assume
 they can write into string constants.  Writing into string constants
 is a very bad idea; ``constants'' should be constant.
 .TP 10
+.B \ \ \ \ \ \ \ \ \-fcond-mismatch
+Allow conditional expressions with mismatched types in the second and
+third arguments.  The value of such an expression is void.
+.TP 10
 .B \ \ \ \ \ \ \ \ \-fno-function-cse
 Do not put function addresses in registers; make each instruction that
 calls a constant function contain the function's address explicitly.
@@ -509,6 +556,13 @@ performed when this option is not used.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fvolatile
 Consider all memory references through pointers to be volatile.
+.TP 10
+.B \ \ \ \ \ \ \ \ \-fshared-data
+Requests that the data and non-\fBconst\fR variables of this
+compilation be shared data rather than private data.  The distinction
+makes sense only on certain operating systems, where shared data is
+shared between processes running the same program, while private data
+exists in one copy per process.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-funsigned-char
 Let the type \fBchar\f be the unsigned, like \fBunsigned char\fR.
@@ -520,9 +574,13 @@ The type \fBchar\fR
 is always a distinct type from either \fBsigned char\fR
 or \fBunsigned char\fR,
 even though its behavior is always just like one of those two.
+Note that this is equivalent to `\fB\-fno-signed-char\fR', which is the
+negative form of `\fB\-fsigned-char\fR'.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fsigned-char
 Let the type \fBchar\fR be the same as \fBsigned char\fR.
+Note that this is equivalent to `\fB\-fno-unsigned-char\fR', which is
+the negative form of `\fB\-funsigned-char\fR'.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-ffixed-\fIreg\fR
 Treat the register named \fIreg\fR as a fixed register; generated
@@ -532,6 +590,8 @@ must be the name of a register.
 The register names accepted are machine-specific and are defined in
 the \fBREGISTER_NAMES\fR
 macro in the machine description macro file.
+This flag does not have a negative form, because it specifies a
+three-way choice.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fcall-used-\fIreg\fR
 Treat the register named \fIreg\fR
@@ -543,6 +603,8 @@ register \fIreg\fR.
 Use of this flag for a register that has a fixed pervasive role
 in the machine's execution model, such as the stack pointer or
 frame pointer, will produce disastrous results.
+This flag does not have a negative form, because it specifies a
+three-way choice.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fcall-saved-\fIreg\fR
 Treat the register named \fIreg\fR
@@ -554,7 +616,9 @@ Use of this flag for a register that has a fixed pervasive role
 in the machine's execution model, such as the stack pointer or
 frame pointer, will produce disastrous results.
 A different sort of disaster will result from the use of this
-flag for a register in which function values are may be returned.
+flag for a register in which function values may be returned.
+This flag does not have a negative form, because it specifies a
+three-way choice.
 .TP
 .BI \-d "letters"
 Says to make debugging dumps at times specified by \fIletters\fR.
@@ -590,6 +654,17 @@ Dump after global register allocation.
 .TP 10
 .B \ \ \ \ \ \ \ \ m
 Print statistics on memory usage, at the end of the run.
+.TP
+.B \-pedantic
+Issue all the warnings demanded by strict ANSI standard C;
+reject all programs that use forbidden extensions.
+Valid ANSI standard C programs should compile properly with or
+without this option (though a rare few will require `\fB\-ansi\fR'.
+However, without this option, certain GNU extensions and
+traditional C features are supported as well.
+With this option, they are rejected.
+There is no reason to \fIuse\fR
+this option; it exists only to satisfy pedants.
 .SH FILES
 .ta \w'/usr/local/lib/gcc-gnulib 'u
 file.c	input file
@@ -613,6 +688,8 @@ a.out	loaded output
 .br
 /usr/include	standard directory for `#include' files
 .br
+/usr/include/gcc-include	standard gcc directory for `#include' files
+.br
 .SH "SEE ALSO"
 adb(1), ld(1), dbx(1), as(1)
 .SH BUGS
@@ -620,7 +697,7 @@ Bugs should be reported to bug-gcc@prep.ai.mit.edu. Bugs tend actually to be
 fixed if they can be isolated, so it is in your interest to report them
 in such a way that they can be easily reproduced.
 .SH COPYING
-Copyright (C) 1988 Richard M. Stallman.
+Copyright (c) 1988 Free Software Foundation, Inc.
 .br
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -631,8 +708,11 @@ manual under the conditions for verbatim copying, provided that the
 entire resulting derived work is distributed under the terms of a
 permission notice identical to this one.
 .br
-Permission is granted to copy and distribute translations of this manual
-into another language, under the above conditions for modified versions.
+Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that this permission notice may be included in
+translations approved by the Free Software Foundation instead of in
+the original English.
 .SH AUTHORS
 See the GNU CC Manual for the contributors to GNU CC.
 

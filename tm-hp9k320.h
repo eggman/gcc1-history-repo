@@ -336,7 +336,7 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       u1.f = u.d;							\
       if (CODE == 'f')							\
         fprintf (FILE, "&0f%.9g", u1.f);				\
@@ -344,7 +344,7 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
         fprintf (FILE, "&0x%x", u1.i); }				\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == DFmode)	\
     { union { double d; int i[2]; } u;					\
-      u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
       fprintf (FILE, "&0f%.20g", u.d); }				\
   else { putc ('&', FILE); output_addr_const (FILE, X); }}
 

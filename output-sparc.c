@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for Sun SPARC.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@mcc.com)
 
 This file is part of GNU CC.
@@ -28,6 +28,8 @@ extern int frame_pointer_needed;
 
 static rtx find_addr_reg ();
 
+rtx next_real_insn_no_labels ();
+
 /* Return non-zero only if OP is a register of mode MODE,
    or const0_rtx.  */
 int
@@ -36,6 +38,249 @@ reg_or_0_operand (op, mode)
      enum machine_mode mode;
 {
   return (op == const0_rtx || register_operand (op, mode));
+}
+
+/* Return non-zero if this pattern, can be evaluated safely, even if it
+   was not asked for.  */
+int
+safe_insn_src_p (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  /* Just experimenting.  */
+
+  /* No floating point src is safe if it contains an arithmetic
+     operation, since that operation may trap.  */
+  switch (GET_CODE (op))
+    {
+    case CONST_INT:
+    case LABEL_REF:
+    case SYMBOL_REF:
+    case CONST:
+      return 1;
+
+    case REG:
+      return 1;
+
+    case MEM:
+      return CONSTANT_ADDRESS_P (XEXP (op, 0));
+
+      /* We never need to negate or complement constants.  */
+    case NEG:
+      return (mode != SFmode && mode != DFmode);
+    case NOT:
+      return 1;
+
+    case MINUS:
+    case PLUS:
+      return (mode != SFmode && mode != DFmode);
+    case AND:
+    case IOR:
+    case XOR:
+    case LSHIFT:
+    case ASHIFT:
+    case ASHIFTRT:
+    case LSHIFTRT:
+      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
+	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
+	return 0;
+      return 1;
+
+    default:
+      return 0;
+    }
+}
+
+/* Return 1 if REG is clobbered in IN.
+   Return 0 if REG is used in IN (other than being clobbered).
+   Return 2 if REG does not appear in IN.  */
+
+static int
+reg_clobbered_p (reg, in)
+     rtx reg;
+     rtx in;
+{
+  register char *fmt;
+  register int i, result = 0;
+
+  register enum rtx_code code;
+
+  if (in == 0)
+    return 2;
+
+  code = GET_CODE (in);
+
+  switch (code)
+    {
+      /* Let these fail out quickly.  */
+    case CONST_INT:
+    case SYMBOL_REF:
+    case CONST:
+      return 2;
+
+    case SUBREG:
+      if (SUBREG_WORD (in) != 0)
+	in = gen_rtx (REG, SImode, REGNO (SUBREG_REG (in)) + SUBREG_WORD (in));
+      else
+	in = SUBREG_REG (in);
+
+    case REG:
+      if (in == reg
+	  || refers_to_regno_p (REGNO (reg),
+				REGNO (reg) + HARD_REGNO_NREGS (reg, GET_MODE (reg)),
+				in, 0))
+	return 0;
+      return 2;
+
+    case SET:
+      if (SET_SRC (in) == reg
+	  || refers_to_regno_p (REGNO (reg),
+				REGNO (reg) + HARD_REGNO_NREGS (reg, GET_MODE (reg)),
+				SET_SRC (in), 0))
+	return 0;
+
+      if (SET_DEST (in) == reg)
+	return 1;
+
+      if (refers_to_regno_p (REGNO (reg),
+			     REGNO (reg) + HARD_REGNO_NREGS (reg, GET_MODE (reg)),
+			     SET_DEST (in), 0))
+	if (GET_CODE (SET_DEST (in)) == REG
+	    || GET_CODE (SET_DEST (in)) == SUBREG)
+	  return 1;
+	else
+	  return 0;
+      return 2;
+
+    case USE:
+      if (XEXP (in, 0) == reg
+	  || refers_to_regno_p (REGNO (reg),
+				REGNO (reg) + HARD_REGNO_NREGS (reg, GET_MODE (reg)),
+				XEXP (in, 0), 0))
+	return 0;
+      return 2;
+
+    case CLOBBER:
+      if (XEXP (in, 0) == reg)
+	return 1;
+      /* If the CLOBBER expression is a SUBREG, accept that as a
+	 clobber.  But if it is some expression based on this register,
+	 that is like a USE as far as this register is concerned,
+	 so we won't take it.  */
+      if (refers_to_regno_p (REGNO (reg),
+			     REGNO (reg) + HARD_REGNO_NREGS (reg, GET_MODE (reg)),
+			     XEXP (in, 0), 0))
+	if (GET_CODE (XEXP (in, 0)) == REG
+	    || GET_CODE (XEXP (in, 0)) == SUBREG)
+	  return 1;
+	else
+	  return 0;
+      return 2;
+    }
+
+  fmt = GET_RTX_FORMAT (code);
+
+  result = 2;
+
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = XVECLEN (in, i) - 1; j >= 0; j--)
+	    switch (reg_clobbered_p (reg, XVECEXP (in, i, j)))
+	      {
+	      case 0:
+		return 0;
+	      case 2:
+		continue;
+	      case 1:
+		result = 1;
+		break;
+	      }
+	}
+      else if (fmt[i] == 'e')
+	switch (reg_clobbered_p (reg, XEXP (in, i)))
+	  {
+	  case 0:
+	    return 0;
+	  case 2:
+	    continue;
+	  case 1:
+	    result = 1;
+	    break;
+	  }
+    }
+  return result;
+}
+
+/* Return non-zero if OP can be written to without screwing up
+   GCC's model of what's going on.  It is assumed that this operand
+   appears in the dest position of a SET insn in a conditional
+   branch's delay slot.  AFTER is the label to start looking from.  */
+int
+operand_clobbered_before_used_after (op, after)
+     rtx op;
+     rtx after;
+{
+  extern char call_used_regs[];
+
+  /* Just experimenting.  */
+  if (GET_CODE (op) == CC0)
+    return 1;
+  if (GET_CODE (op) == REG)
+    {
+      rtx insn;
+
+      if (op == stack_pointer_rtx)
+	return 0;
+
+      for (insn = NEXT_INSN (after); insn; insn = NEXT_INSN (insn))
+	{
+	  if (GET_CODE (insn) == NOTE)
+	    continue;
+	  if (GET_CODE (insn) == INSN
+	      || GET_CODE (insn) == JUMP_INSN
+	      || GET_CODE (insn) == CALL_INSN)
+	    {
+	      switch (reg_clobbered_p (op, PATTERN (insn)))
+		{
+		case 0:
+		  return 0;
+		case 2:
+		  break;
+		case 1:
+		  return 1;
+		}
+	      if (dead_or_set_p (insn, op))
+		return 1;
+	    }
+	  else if (GET_CODE (insn) == CODE_LABEL)
+	    return 0;
+	  if (GET_CODE (insn) == JUMP_INSN)
+	    {
+	      if (condjump_p (insn))
+		return 0;
+	      /* This is a jump insn which has already
+		 been mangled.  We can't tell what it does.  */
+	      if (GET_CODE (PATTERN (insn)) == PARALLEL)
+		return 0;
+	      if (! JUMP_LABEL (insn))
+		return 0;
+	      /* Keep following jumps.  */
+	      insn = JUMP_LABEL (insn);
+	    }
+	}
+      return 1;
+    }
+
+  /* In both of these cases, the first insn executed
+     for this op will be a sethi %hi(whatever),%g1,
+     which is tolerable.  */
+  if (GET_CODE (op) == MEM)
+    return (CONSTANT_ADDRESS_P (XEXP (op, 0)));
+
+  return 0;
 }
 
 /* Return non-zero if this pattern, as a source to a "SET",
@@ -48,9 +293,31 @@ single_insn_src_p (op, mode)
   switch (GET_CODE (op))
     {
     case CONST_INT:
+#if 1
+      /* This is not always a single insn src, technically,
+	 but output_delayed_branch knows how to deal with it.  */
+      return 1;
+#else
       if (SMALL_INT (op))
 	return 1;
+      /* We can put this set insn into delay slot, because this is one
+	 insn; 'sethi'.  */
+      if ((INTVAL (op) & 0x3ff) == 0)
+	return 1;
+
+      /* This is not a single insn src, technically,
+	 but output_delayed_branch knows how to deal with it.  */
+      return 1;
+#endif
+
+#if 1
+    case SYMBOL_REF:
+      /* This is not a single insn src, technically,
+	 but output_delayed_branch knows how to deal with it.  */
+      return 1;
+#else
       return 0;
+#endif
 
     case REG:
       return 1;
@@ -58,19 +325,23 @@ single_insn_src_p (op, mode)
     case MEM:
 #if 0
       /* This is not a single insn src, technically,
-	 but output_delay_insn knows how to deal with it.  */
+	 but output_delayed_branch knows how to deal with it.  */
       if (GET_CODE (XEXP (op, 0)) == SYMBOL_REF)
 	return 0;
 #endif
       return 1;
 
       /* We never need to negate or complement constants.  */
-    case NOT:
     case NEG:
+      return (mode != DFmode);
+    case NOT:
       return 1;
 
-    case PLUS:
     case MINUS:
+      /* If the target is cc0, then these insns will take
+	 two insns (one being a nop).  */
+      return (mode != SFmode && mode != DFmode);
+    case PLUS:
     case AND:
     case IOR:
     case XOR:
@@ -90,7 +361,10 @@ single_insn_src_p (op, mode)
 
     case SIGN_EXTEND:
     case ZERO_EXTEND:
-      /* Lazy... could check for these.  */
+      /* Lazy... could check for more cases.  */
+      if (GET_CODE (XEXP (op, 0)) == MEM
+	  && ! CONSTANT_ADDRESS_P (XEXP (XEXP (op, 0), 0)))
+	return 1;
       return 0;
 
       /* Not doing floating point, since they probably
@@ -106,6 +380,122 @@ single_insn_src_p (op, mode)
     default:
       return 0;
     }
+}
+
+/* Nonzero only if this *really* is a single insn operand.  */
+int
+strict_single_insn_op_p (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  if (mode == VOIDmode)
+    mode = GET_MODE (op);
+
+  switch (GET_CODE (op))
+    {
+    case CC0:
+      return 1;
+
+    case CONST_INT:
+      if (SMALL_INT (op))
+	return 1;
+      /* We can put this set insn into delay slot, because this is one
+	 insn; 'sethi'.  */
+      if ((INTVAL (op) & 0x3ff) == 0)
+	return 1;
+      return 0;
+
+    case SYMBOL_REF:
+      return 0;
+
+    case REG:
+      return (mode != DFmode && mode != DImode);
+
+    case MEM:
+      if (! CONSTANT_ADDRESS_P (XEXP (op, 0)))
+	return (mode != DFmode && mode != DImode);
+      return 0;
+
+      /* We never need to negate or complement constants.  */
+    case NEG:
+      return (mode != DFmode);
+    case NOT:
+      return 1;
+
+    case MINUS:
+      /* If the target is cc0, then these insns will take
+	 two insns (one being a nop).  */
+      return (mode != SFmode && mode != DFmode);
+    case PLUS:
+    case AND:
+    case IOR:
+    case XOR:
+    case LSHIFT:
+    case ASHIFT:
+    case ASHIFTRT:
+    case LSHIFTRT:
+      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
+	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
+	return 0;
+      return 1;
+
+    case SUBREG:
+      if (SUBREG_WORD (op) != 0)
+	return 0;
+      return strict_single_insn_op_p (SUBREG_REG (op), mode);
+
+    case SIGN_EXTEND:
+    case ZERO_EXTEND:
+      if (GET_CODE (XEXP (op, 0)) == MEM
+	  && ! CONSTANT_ADDRESS_P (XEXP (XEXP (op, 0), 0)))
+	return 1;
+      return 0;
+
+      /* Not doing floating point, since they probably
+	 take longer than the branch slot they might fill.  */
+    case FLOAT_EXTEND:
+    case FLOAT_TRUNCATE:
+    case FLOAT:
+    case FIX:
+    case UNSIGNED_FLOAT:
+    case UNSIGNED_FIX:
+      return 0;
+
+    default:
+      return 0;
+    }
+}
+
+/* Return truth value of whether OP is a relational operator.  */
+int
+relop (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  switch (GET_CODE (op))
+    {
+    case EQ:
+    case NE:
+    case GT:
+    case GE:
+    case LT:
+    case LE:
+    case GTU:
+    case GEU:
+    case LTU:
+    case LEU:
+      return 1;
+    }
+  return 0;
+}
+
+/* Return truth value of wheterh OP is EQ or NE.  */
+int
+eq_or_neq (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  return (GET_CODE (op) == EQ || GET_CODE (op) == NE);
 }
 
 /* Return truth value of whether OP can be used as an operands in a three
@@ -269,8 +659,10 @@ output_move_double (operands)
 	latehalf[1] = const0_rtx;
       else if (GET_CODE (operands[1]) == CONST_DOUBLE)
 	{
-	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 1));
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, XINT (operands[1], 0));
+	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_HIGH (operands[1]));
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_LOW (operands[1]));
 	}
     }
   else
@@ -312,13 +704,13 @@ output_move_double (operands)
 	  operands[1] = op2;
 	  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
 		 && cc_prev_status.mdep == op2))
-	    output_asm_insn ("sethi %%hi(%m1),%%g1", operands);
+	    output_asm_insn ("sethi %%hi(%1),%%g1", operands);
 	  cc_status.flags |= CC_KNOW_HI_G1;
 	  cc_status.mdep = op2;
 	  if (op1 == operands[0])
-	    return "ldd [%%lo(%m1)+%%g1],%0";
+	    return "ldd [%%lo(%1)+%%g1],%0";
 	  else
-	    return "std [%%lo(%m1)+%%g1],%0";
+	    return "std [%%lo(%1)+%%g1],%0";
 	}
 
       if (GET_CODE (op2) == PLUS)
@@ -547,7 +939,142 @@ output_sized_memop (opname, mode)
 
   fprintf (asm_out_file, "\t%s%s", opname, modename);
 }
+
+/* Output a store-in-memory whose operands are OPERANDS[0,1].
+   OPERANDS[0] is a MEM, and OPERANDS[1] is a reg or zero.  */
 
+char *
+output_store (operands)
+     rtx *operands;
+{
+  enum machine_mode mode = GET_MODE (operands[0]);
+  rtx address = XEXP (operands[0], 0);
+
+  cc_status.flags |= CC_KNOW_HI_G1;
+  cc_status.mdep = address;
+
+  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
+	 && address == cc_prev_status.mdep))
+    {
+      output_asm_insn ("sethi %%hi(%m0),%%g1", operands);
+      cc_prev_status.mdep = address;
+    }
+
+  /* Store zero in two parts when appropriate.  */
+  if (mode == DFmode && operands[1] == dconst0_rtx)
+    {
+      /* We can't cross a page boundary here because the
+	 SYMBOL_REF must be double word aligned, and for this
+	 to be the case, SYMBOL_REF+4 cannot cross.  */
+      output_sized_memop ("st", SImode);
+      output_asm_insn ("%r1,[%%g1+%%lo(%m0)]", operands);
+      output_sized_memop ("st", SImode);
+      return "%r1,[%%g1+%%lo(%m0)+4]";
+    }
+
+  /* Code below isn't smart enough to move a doubleword in two parts,
+     so use output_move_double to do that in the cases that require it.  */
+  if ((mode == DImode || mode == DFmode)
+      && (GET_CODE (operands[1]) == REG
+	  && (REGNO (operands[1]) & 1)))
+    return output_move_double (operands);
+
+  output_sized_memop ("st", mode);
+  return "%r1,[%%g1+%%lo(%m0)]";
+}
+
+/* Output a fixed-point load-from-memory whose operands are OPERANDS[0,1].
+   OPERANDS[0] is a reg, and OPERANDS[1] is a mem.  */
+
+char *
+output_load_fixed (operands)
+     rtx *operands;
+{
+  enum machine_mode mode = GET_MODE (operands[0]);
+  rtx address = XEXP (operands[1], 0);
+
+  /* We don't bother trying to see if we know %hi(address).
+     This is because we are doing a load, and if we know the
+     %hi value, we probably also know that value in memory.  */
+  cc_status.flags |= CC_KNOW_HI_G1;
+  cc_status.mdep = address;
+
+  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
+	 && address == cc_prev_status.mdep
+	 && cc_prev_status.mdep == cc_status.mdep))
+    {
+      output_asm_insn ("sethi %%hi(%m1),%%g1", operands);
+      cc_prev_status.mdep = address;
+    }
+
+  /* Code below isn't smart enough to do a doubleword in two parts.
+     So handle that case the slow way.  */
+  if (mode == DImode
+      && GET_CODE (operands[0]) == REG   /* Moving to nonaligned reg pair */
+      && (REGNO (operands[0]) & 1))
+    return output_move_double (operands);
+
+  output_sized_memop ("ld", mode);
+  if (GET_CODE (operands[0]) == REG)
+    return "[%%g1+%%lo(%m1)],%0";
+  abort ();
+}
+
+/* Output a floating-point load-from-memory whose operands are OPERANDS[0,1].
+   OPERANDS[0] is a reg, and OPERANDS[1] is a mem.
+   We also handle the case where OPERANDS[0] is a mem.  */
+
+char *
+output_load_floating (operands)
+     rtx *operands;
+{
+  enum machine_mode mode = GET_MODE (operands[0]);
+  rtx address = XEXP (operands[1], 0);
+
+  /* We don't bother trying to see if we know %hi(address).
+     This is because we are doing a load, and if we know the
+     %hi value, we probably also know that value in memory.  */
+  cc_status.flags |= CC_KNOW_HI_G1;
+  cc_status.mdep = address;
+
+  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
+	 && address == cc_prev_status.mdep
+	 && cc_prev_status.mdep == cc_status.mdep))
+    {
+      output_asm_insn ("sethi %%hi(%m1),%%g1", operands);
+      cc_prev_status.mdep = address;
+    }
+
+  if (mode == DFmode)
+    {
+      if (REG_P (operands[0]))
+	{
+	  if (REGNO (operands[0]) & 1)
+	    return output_move_double (operands);
+	  else
+	    return "ldd [%%g1+%%lo(%m1)],%0";
+	}
+      cc_status.flags &= ~(CC_F0_IS_0|CC_F1_IS_0);
+      output_asm_insn ("ldd [%%g1+%%lo(%m1)],%%f0", operands);
+      operands[1] = gen_rtx (REG, DFmode, 32);
+      return output_fp_move_double (operands);
+    }
+
+  if (GET_CODE (operands[0]) == MEM)
+    {
+      cc_status.flags &= ~CC_F1_IS_0;
+      output_asm_insn ("ld [%%g1+%%lo(%1)],%%f1", operands);
+      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+	{
+	  cc_status.mdep = XEXP (operands[0], 0);
+	  return "sethi %%hi(%m0),%%g1\n\tst %%f1,[%%g1+%%lo(%m0)]";
+	}
+      else
+	return "st %%f1,%0";
+    }
+  return "ld [%%g1+%%lo(%m1)],%0";
+}
+
 /* Load the address specified by OPERANDS[3] into the register
    specified by OPERANDS[0].
 
@@ -1072,21 +1599,46 @@ output_scc_insn (code, operand)
 	b ...
 	ld/st [%g1+%lo(x)],...
 
+   As another special case, we handle loading (SYMBOL_REF ...) and
+   other large constants around branches as well:
+
+	sethi %hi(x),%0
+	b ...
+	or %0,%lo(x),%1
+
    */
 
 char *
-output_delay_insn (template, operands, insn)
+output_delayed_branch (template, operands, insn)
      char *template;
      rtx *operands;
      rtx insn;
 {
+  extern rtx recog_operand[];
   rtx src = XVECEXP (PATTERN (insn), 0, 1);
   rtx dest = XVECEXP (PATTERN (insn), 0, 0);
 
-  if (GET_CODE (src) == MEM
-      && CONSTANT_ADDRESS_P (XEXP (src, 0))
-      || GET_CODE (dest) == MEM
-      && CONSTANT_ADDRESS_P (XEXP (dest, 0)))
+  if (GET_CODE (src) == SYMBOL_REF
+      || (GET_CODE (src) == CONST_INT
+	  && !(SMALL_INT (src) || (INTVAL (src) & 0x3ff) == 0)))
+    {
+      rtx xoperands[2];
+      xoperands[0] = dest;
+      xoperands[1] = src;
+
+      /* Output the `sethi' insn.  */
+      output_asm_insn ("sethi %%hi(%1),%0", xoperands);
+
+      /* Output the branch instruction next.  */
+      output_asm_insn (template, operands);
+
+      /* Now output the `or' insn.  */
+      output_asm_insn ("or %0,%%lo(%1),%0", xoperands);
+    }
+  else if ((GET_CODE (src) == MEM
+	    && CONSTANT_ADDRESS_P (XEXP (src, 0)))
+	   || (GET_CODE (dest) == MEM
+	       && CONSTANT_ADDRESS_P (XEXP (dest, 0))))
     {
       rtx xoperands[2];
       char *split_template;
@@ -1096,12 +1648,16 @@ output_delay_insn (template, operands, insn)
       /* Output the `sethi' insn.  */
       if (GET_CODE (src) == MEM)
 	{
-	  output_asm_insn ("sethi %%hi(%m1),%%g1", xoperands);
+	  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
+		 && cc_prev_status.mdep == XEXP (operands[1], 0)))
+	    output_asm_insn ("sethi %%hi(%m1),%%g1", xoperands);
 	  split_template = "ld [%%g1+%%lo(%m1)],%0";
 	}
       else
 	{
-	  output_asm_insn ("sethi %%hi(%m0),%%g1", xoperands);
+	  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
+		 && cc_prev_status.mdep == XEXP (operands[0], 0)))
+	    output_asm_insn ("sethi %%hi(%m0),%%g1", xoperands);
 	  split_template = "st %r1,[%%g1+%%lo(%m0)]";
 	}
 
@@ -1125,7 +1681,7 @@ output_delay_insn (template, operands, insn)
 
       /* Now recognize the insn which we put in its delay slot.
 	 We must do this after outputing the branch insn,
-	 since operands may just be a pointer to `recog_operands'.  */
+	 since operands may just be a pointer to `recog_operand'.  */
       insn_code_number = recog (pat, delay_insn);
       if (insn_code_number == -1)
 	abort ();
@@ -1136,8 +1692,209 @@ output_delay_insn (template, operands, insn)
 	 need to do an insn_extract.  */
       template = insn_template[insn_code_number];
       if (template == 0)
-	template = (*insn_outfun[insn_code_number]) (operands, delay_insn);
-      output_asm_insn (template, operands);
+	template = (*insn_outfun[insn_code_number]) (recog_operand, delay_insn);
+      output_asm_insn (template, recog_operand);
     }
+  CC_STATUS_INIT;
   return "";
 }
+
+/* Output a newly constructed insn DELAY_INSN.  */
+char *
+output_delay_insn (delay_insn)
+     rtx delay_insn;
+{
+  char *template;
+  extern rtx recog_operand[];
+  extern char call_used_regs[];
+  extern char *insn_template[];
+  extern int insn_n_operands[];
+  extern char *(*insn_outfun[])();
+  extern rtx alter_subreg();
+  int insn_code_number;
+  extern int insn_n_operands[];
+  int i;
+
+  /* Now recognize the insn which we put in its delay slot.
+     We must do this after outputing the branch insn,
+     since operands may just be a pointer to `recog_operand'.  */
+  insn_code_number = recog_memoized (delay_insn);
+  if (insn_code_number == -1)
+    abort ();
+
+  /* Extract the operands of this delay insn.  */
+  INSN_CODE (delay_insn) = insn_code_number;
+  insn_extract (delay_insn);
+
+  /* It is possible that this insn has not been properly scaned by final
+     yet.  If this insn's operands don't appear in the peephole's
+     actual operands, then they won't be fixed up by final, so we
+     make sure they get fixed up here.  -- This is a kludge.  */
+  for (i = 0; i < insn_n_operands[insn_code_number]; i++)
+    {
+      if (GET_CODE (recog_operand[i]) == SUBREG)
+	recog_operand[i] = alter_subreg (recog_operand[i]);
+    }
+
+#ifdef REGISTER_CONSTRAINTS
+  if (! constrain_operands (insn_code_number))
+    abort ();
+#endif
+
+  cc_prev_status = cc_status;
+
+  /* Update `cc_status' for this instruction.
+     The instruction's output routine may change it further.
+     If the output routine for a jump insn needs to depend
+     on the cc status, it should look at cc_prev_status.  */
+
+  NOTICE_UPDATE_CC (PATTERN (delay_insn), delay_insn);
+
+  /* Now get the template for what this insn would
+     have been, without the branch.  */
+
+  template = insn_template[insn_code_number];
+  if (template == 0)
+    template = (*insn_outfun[insn_code_number]) (recog_operand, delay_insn);
+  output_asm_insn (template, recog_operand);
+  return "";
+}
+
+/* Output the insn HEAD, keeping OPERANDS protected (wherever they are).
+   HEAD comes from the target of some branch, so before we output it,
+   we delete it from the target, lest we execute it twice.  The caller
+   of this function promises that such code motion is permissable.  */
+char *
+output_eager_then_insn (head, operands)
+     rtx head;
+     rtx *operands;
+{
+  extern rtx alter_subreg ();
+  extern int insn_n_operands[];
+  extern rtx recog_operand[];
+  rtx xoperands[MAX_RECOG_OPERANDS];
+  int insn_code_number, i, nbytes;
+  rtx nhead;
+
+  /* Micro-hack: run peephole on head if it looks like a good idea.
+     Right now there's only one such case worth doing...
+
+     This could be made smarter if the peephole for ``2-insn combine''
+     were also made smarter.  */
+  if (GET_CODE (PATTERN (head)) == SET
+      && REG_P (SET_SRC (PATTERN (head)))
+      && REG_P (SET_DEST (PATTERN (head)))
+      && (nhead = next_real_insn_no_labels (head))
+      && GET_CODE (nhead) == INSN
+      && GET_CODE (PATTERN (nhead)) == SET
+      && GET_CODE (SET_DEST (PATTERN (nhead))) == CC0
+      && (SET_SRC (PATTERN (nhead)) == SET_SRC (PATTERN (head))
+	  || SET_SRC (PATTERN (nhead)) == SET_DEST (PATTERN (head))))
+    /* Something's wrong if this does not fly.  */
+    if (! peephole (head))
+      abort ();
+
+  /* Save our contents of `operands', since output_delay_insn sets them.  */
+  insn_code_number = recog_memoized (head);
+  nbytes = insn_n_operands[insn_code_number] * sizeof (rtx);
+  bcopy (operands, xoperands, nbytes);
+
+  /* Output the delay insn, and prevent duplication later.  */
+  delete_insn (head);
+  output_delay_insn (head);
+
+  /* Restore this insn's operands.  */
+  bcopy (xoperands, operands, nbytes);
+}
+
+/* Return the next INSN, CALL_INSN or JUMP_INSN after LABEL;
+   or 0, if there is none.  Also return 0 if we cross a label.  */
+
+rtx
+next_real_insn_no_labels (label)
+     rtx label;
+{
+  register rtx insn = NEXT_INSN (label);
+  register RTX_CODE code;
+
+  while (insn)
+    {
+      code = GET_CODE (insn);
+      if (code == INSN)
+	{
+	  if (GET_CODE (PATTERN (insn)) != CLOBBER
+	      && GET_CODE (PATTERN (insn)) != USE)
+	    return insn;
+	}
+      if (code == CALL_INSN || code == JUMP_INSN)
+	return insn;
+      if (code == CODE_LABEL)
+	return 0;
+      insn = NEXT_INSN (insn);
+    }
+
+  return 0;
+}
+
+int
+operands_satisfy_eager_branch_peephole (operands, conditional)
+     rtx *operands;
+     int conditional;
+{
+  rtx label;
+
+  if (conditional)
+    {
+      if (GET_CODE (operands[0]) != IF_THEN_ELSE)
+	return 0;
+
+      if (GET_CODE (XEXP (operands[0], 1)) == LABEL_REF)
+	label = XEXP (XEXP (operands[0], 1), 0);
+      else if (GET_CODE (XEXP (operands[0], 2)) == LABEL_REF)
+	label = XEXP (XEXP (operands[0], 2), 0);
+      else return 0;
+    }
+  else
+    {
+      label = operands[0];
+    }
+
+  if (LABEL_NUSES (label) == 1)
+    {
+      rtx prev = PREV_INSN (label);
+      while (prev && GET_CODE (prev) == NOTE)
+	prev = PREV_INSN (prev);
+      if (prev == 0
+	  || GET_CODE (prev) == BARRIER)
+	{
+	  rtx head = next_real_insn_no_labels (label);
+
+	  if (head
+	      && ! INSN_DELETED_P (head)
+	      && GET_CODE (head) == INSN
+	      && GET_CODE (PATTERN (head)) == SET
+	      && strict_single_insn_op_p (SET_SRC (PATTERN (head)),
+					  GET_MODE (SET_DEST (PATTERN (head))))
+	      && strict_single_insn_op_p (SET_DEST (PATTERN (head)),
+					  GET_MODE (SET_DEST (PATTERN (head)))))
+	    {
+	      if (conditional == 2)
+		return (GET_CODE (operands[1]) != PC
+			&& safe_insn_src_p (operands[2], VOIDmode)
+			&& strict_single_insn_op_p (operands[2], VOIDmode)
+			&& operand_clobbered_before_used_after (operands[1], label));
+	      return 1;
+	    }
+	}
+    }
+
+  if (conditional == 1
+      && GET_CODE (operands[1]) != PC
+      && safe_insn_src_p (operands[2], VOIDmode)
+      && strict_single_insn_op_p (operands[2], VOIDmode)
+      && operand_clobbered_before_used_after (operands[1], label))
+    return 1;
+
+  return 0;
+}
+

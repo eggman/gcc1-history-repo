@@ -129,6 +129,7 @@ typedef unsigned char U_CHAR;
 #include <sys/stat.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <signal.h>
 
 #ifndef VMS
 #include <sys/file.h>
@@ -163,6 +164,7 @@ typedef unsigned char U_CHAR;
 
 void bcopy (), bzero ();
 int bcmp ();
+extern char *getenv ();
 extern char *version_string;
 
 /* Forward declarations.  */
@@ -315,8 +317,8 @@ struct directory_stack include_defaults[] =
   {
 #ifndef VMS
     { &include_defaults[1], GCC_INCLUDE_DIR },
-    { &include_defaults[2], "/usr/local/include" },
-    { 0, "/usr/include" }
+    { &include_defaults[2], "/usr/include" },
+    { 0, "/usr/local/include" }
 #else
     { &include_defaults[1], "GNU_CC_INCLUDE:" },       /* GNU includes */
     { &include_defaults[2], "SYS$SYSROOT:[SYSLIB.]" }, /* VAX-11 "C" includes */
@@ -567,6 +569,14 @@ int deps_column;
    so don't look for #include "foo" the source-file directory.  */
 int ignore_srcdir;
 
+/* Handler for SIGPIPE.  */
+
+static void
+pipe_closed ()
+{
+  fatal ("output pipe has been closed");
+}
+
 int
 main (argc, argv)
      int argc;
@@ -582,6 +592,14 @@ main (argc, argv)
   char **pend_undefs = (char **) xmalloc (argc * sizeof (char *));
   int inhibit_predefs = 0;
   int no_standard_includes = 0;
+
+  /* Non-0 means don't output the preprocessed program.  */
+  int inhibit_output = 0;
+
+  /* Stream on which to print the dependency information.  */
+  FILE *deps_stream = 0;
+  /* Target-name to write with the dependency information.  */
+  char *deps_target = 0;
 
 #ifdef RLIMIT_STACK
   /* Get rid of any avoidable limit on stack size.  */
@@ -614,10 +632,17 @@ main (argc, argv)
   cplusplus = 1;
 #endif
 
+  signal (SIGPIPE, pipe_closed);
+
+#ifndef VMS
   max_include_len
     = max (max (sizeof (GCC_INCLUDE_DIR),
 		sizeof (GPLUSPLUS_INCLUDE_DIR)),
 	   sizeof ("/usr/include/CC"));
+#else /* VMS */
+  max_include_len
+    = sizeof("SYS$SYSROOT:[SYSLIB.]");
+#endif /* VMS */
 
   bzero (pend_files, argc * sizeof (char *));
   bzero (pend_defs, argc * sizeof (char *));
@@ -683,12 +708,7 @@ main (argc, argv)
 	  print_deps = 2;
 	else if (!strcmp (argv[i], "-MM"))
 	  print_deps = 1;
-	deps_allocated_size = 200;
-	deps_buffer = (char *) xmalloc (deps_allocated_size);
-	deps_buffer[0] = 0;
-	deps_size = 0;
-	deps_column = 0;
-
+	inhibit_output = 1;
 	break;
 
       case 'd':
@@ -873,10 +893,65 @@ main (argc, argv)
   } else if ((f = open (in_fname, O_RDONLY, 0666)) < 0)
     goto perror;
 
+  /* Either of two environment variables can specify output of deps.
+     Its value is either "OUTPUT_FILE" or "OUTPUT_FILE DEPS_TARGET",
+     where OUTPUT_FILE is the file to write deps info to
+     and DEPS_TARGET is the target to mention in the deps.  */
+
+  if (print_deps == 0
+      && (getenv ("SUNPRO_DEPENDENCIES") != 0
+	  || getenv ("DEPENDENCIES_OUTPUT") != 0))
+    {
+      char *spec = getenv ("DEPENDENCIES_OUTPUT");
+      char *s;
+      char *output_file;
+
+      if (spec == 0)
+	{
+	  spec = getenv ("SUNPRO_DEPENDENCIES");
+	  print_deps = 2;
+	}
+      else
+	print_deps = 1;
+
+      s = spec;
+      /* Find the space before the DEPS_TARGET, if there is one.  */
+      /* Don't use `index'; that causes trouble on USG.  */
+      while (*s != 0 && *s != ' ') s++;
+      if (*s != 0)
+	{
+	  deps_target = s + 1;
+	  output_file = (char *) xmalloc (s - spec + 1);
+	  bcopy (spec, output_file, s - spec);
+	  output_file[s - spec] = 0;
+	}
+      else
+	{
+	  deps_target = 0;
+	  output_file = spec;
+	}
+      
+      deps_stream = fopen (output_file, "a");
+      if (deps_stream == 0)
+	pfatal_with_name (output_file);
+    }
+  /* If the -M option was used, output the deps to standard output.  */
+  else if (print_deps)
+    deps_stream = stdout;
+
   /* For -M, print the expected object file name
      as the target of this Make-rule.  */
   if (print_deps) {
-    if (*in_fname == 0)
+    deps_allocated_size = 200;
+    deps_buffer = (char *) xmalloc (deps_allocated_size);
+    deps_buffer[0] = 0;
+    deps_size = 0;
+    deps_column = 0;
+
+    if (deps_target) {
+      deps_output (deps_target, 0);
+      deps_output (":", 0);
+    } else if (*in_fname == 0)
       deps_output ("-: ", 0);
     else {
       int len;
@@ -985,10 +1060,18 @@ main (argc, argv)
 
   if (dump_macros)
     dump_all_macros ();
-  else if (print_deps)
-    puts (deps_buffer);
-  else if (write (fileno (stdout), outbuf.buf, outbuf.bufp - outbuf.buf) < 0)
-    fatal ("I/O error on output");
+  else if (print_deps) {
+    fputs (deps_buffer, deps_stream);
+    putc ('\n', deps_stream);
+    if (deps_stream != stdout) {
+      fclose (deps_stream);
+      if (ferror (deps_stream))
+	fatal ("I/O error on output");
+    }
+  } else if (! inhibit_output) {
+    if (write (fileno (stdout), outbuf.buf, outbuf.bufp - outbuf.buf) < 0)
+      fatal ("I/O error on output");
+  }
 
   if (ferror (stdout))
     fatal ("I/O error on output");

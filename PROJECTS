@@ -1,5 +1,15 @@
 1. Better optimization.
 
+* Constants in unused inline functions
+
+It would be nice to delay output of string constants so that string
+constants mentioned in unused inline functions are never generated.
+Perhaps this would also take care of string constants in dead code.
+
+The difficulty is in finding a clean way for the RTL which refers
+to the constant (currently, only by an assembler symbol name)
+to point to the constant and cause it to be output.
+
 * More cse
 
 The techniques for doing full global cse are described in the
@@ -190,12 +200,47 @@ within functions.  Some of the mechanisms for this already exist.
 
 4. Generalize the machine model.
 
-Some new compiler features may be needed to do a good job on machines
+* Some new compiler features may be needed to do a good job on machines
 where static data needs to be addressed using base registers.
 
-Some machines have two stacks in different areas of memory, one used
+* Some machines have two stacks in different areas of memory, one used
 for scalars and another for large objects.  The compiler does not
 now have a way to understand this.
+
+* Some machines use a caller-saves convention for saving registers over
+function calls.  Here is a design for how to handle such a convention.
+
+Classify all the hard registers as call-clobbered, then teach the
+compiler how to put call-crossing pseudo-regs in call-clobbered hard
+registers by generating save/restore insns around the call.  Generate
+the save/restores somewhere around the reload pass; this avoids
+getting confused by cross jumping which happens after.  Actually put
+the save/restore insns into the RTL chain, so that cross-jumping and
+peephole opt. will work on them.
+
+The time to generate these insns is when you can still tell what regs
+are live at each call, but late enough to know exactly where the
+pseudos have been allocated.  Perhaps the best time is just before
+reload_as_needed.
+
+This requires changes in local-alloc.c and global-alloc.c to be willing
+to allocate call-crossing pseudos to call-clobbered registers.
+That isn't hard if you do it with a special flag macro that simply says to
+ignore (in those passes) whether a register is call-clobbered.
+This macro would be defined if the target machine uses caller-saves.
+
+To get the best output, it is necessary to count the cost (in
+additional save/restores) for each pseudo register of putting it in a
+call-clobbered hard reg.  This means counting *how many times* each
+pseudo crosses a call.  Depending on that value, it might be better to
+put the pseudo in memory than in a call-clobbered register.  Cost
+counting would be done in flow.c, perhaps, and costs would affect
+allocation decisions in local-alloc and global-alloc.  Perhaps each
+pseudo should have one priority for getting a call-saved reg and
+another, lower (in general) priority for a call-clobbered reg.
+
+Then there would no longer be a need for the flag: the changes would
+improve the output, on all machines.
 
 5. Precompilation of header files.
 
@@ -265,3 +310,78 @@ files' contents.  This would use a new option that would cause all
 The second step is to divide the output into strings, some keyed and
 some unconditional.  This division is done without changing the order
 of the text being divided up.
+
+6. Other possibly nice features.
+
+* cpp could have a #provide directive.
+#provide would have the same syntax as #include,
+and it would nullify any future #include directive
+with the same argument.  Thus, the file foo.h
+could contain #provide <foo> to prevent itself from
+being included twice.
+
+This is much cleaner than the alternative sometimes implemented,
+which is to require the user to use something other than #include
+in order to ensure inclusion only once.
+
+7. Better documentation of how GCC works and how to port it.
+
+Here is an outline proposed by Allan Adler.
+
+I.    Overview of this document
+II.   The machines on which GCC is implemented
+    A. Prose description of those characteristics of target machines and
+       their operating systems which are pertinent to the implementation
+       of GCC.
+	i. target machine characteristics
+	ii. comparison of this system of machine characteristics with
+	    other systems of machine specification currently in use
+    B. Tables of the characteristics of the target machines on which
+       GCC is implemented.
+    C. A priori restrictions on the values of characteristics of target 
+       machines, with special reference to those parts of the source code
+       which entail those restrictions
+	i. restrictions on individual characteristics 
+        ii. restrictions involving relations between various characteristics
+    D. The use of GCC as a cross-compiler 
+	i. cross-compilation to existing machines
+	ii. cross-compilation to non-existent machines
+    E. Assumptions which are made regarding the target machine
+	i.  assumptions regarding the architecture of the target machine
+	ii. assumptions regarding the operating system of the target machine
+	iii. assumptions regarding software resident on the target machine
+	iv. where in the source code these assumptions are in effect made
+III.   A systematic approach to writing the files tm.h and xm.h
+    A. Macros which require special care or skill
+    B. Examples, with special reference to the underlying reasoning
+IV.    A systematic approach to writing the machine description file md
+    A. Minimal viable sets of insn descriptions
+    B. Examples, with special reference to the underlying reasoning
+V.     Uses of the file aux-output.c
+VI.    Specification of what constitutes correct performance of an 
+       implementation of GCC
+    A. The components of GCC
+    B. The itinerary of a C program through GCC
+    C. A system of benchmark programs
+    D. What your RTL and assembler look should like with these benchmarks
+    E. Fine tuning for speed and size of compiled code
+VII.   A systematic procedure for debugging an implementation of GCC
+    A. Use of GDB
+	i. the macros in the file .gdbinit for GCC
+	ii. obstacles to the use of GDB
+	    a. functions implemented as macros can't be called in GDB
+    B. Debugging without GDB
+	i. How to turn off the normal operation of GCC and access specific
+	   parts of GCC
+    C. Debugging tools
+    D. Debugging the parser
+	i. how machine macros and insn definitions affect the parser
+    E. Debugging the recognizer
+	i. how machine macros and insn definitions affect the recognizer
+
+ditto for other components
+
+VIII. Data types used by GCC, with special reference to restrictions not 
+      specified in the formal definition of the data type
+IX.   References to the literature for the algorithms used in GCC
+

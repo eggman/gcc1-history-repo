@@ -1,5 +1,5 @@
 /* Optimize jump instructions, for GNU compiler.
-   Copyright (C) 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -103,9 +103,7 @@ int condjump_p ();
    Delete unused labels and unreachable code.
    If CROSS_JUMP is nonzero, detect matching code
    before a jump and its destination and unify them.
-   If NOOP_MOVES is nonzero, also delete no-op move insns
-   and perform machine-specific peephole optimizations
-   (but flag_no_peephole inhibits the latter).
+   If NOOP_MOVES is nonzero, also delete no-op move insns.
 
    If `optimize' is zero, don't change any code,
    just determine whether control drops off the end of the function.
@@ -276,16 +274,20 @@ jump_optimize (f, cross_jump, noop_moves)
 	  {
 	    register rtx body = PATTERN (insn);
 
+#if 0 /* Keep these, since they are used for conditional branch
+	 scheduling peepholes on the sparc.  */
 	    /* Delete insns that existed just to advise flow-analysis.  */
 
 	    if (GET_CODE (body) == USE
 		|| GET_CODE (body) == CLOBBER)
 	      delete_insn (insn);
+	    else
+#endif
 
 	    /* Detect and delete no-op move instructions
 	       resulting from not allocating a parameter in a register.  */
 
-	    else if (GET_CODE (body) == SET
+	      if (GET_CODE (body) == SET
 		     && (SET_DEST (body) == SET_SRC (body)
 			 || (GET_CODE (SET_DEST (body)) == MEM
 			     && GET_CODE (SET_SRC (body)) == MEM
@@ -336,12 +338,16 @@ jump_optimize (f, cross_jump, noop_moves)
 
       for (insn = f; insn; insn = next)
 	{
-	  /* On the first iteration, if this is the last jump pass
-	     (just before final), do the special peephole optimizations.  */
+#if 0
+	  /* If NOT the first iteration, if this is the last jump pass
+	     (just before final), do the special peephole optimizations.
+	     Avoiding the first iteration gives ordinary jump opts
+	     a chance to work before peephole opts.  */
 
-	  if (noop_moves && first && !flag_no_peephole)
+	  if (noop_moves && !first && !flag_no_peephole)
 	    if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN)
 	      peephole (insn);
+#endif
 
 	  /* That could have deleted some insns after INSN, so check now
 	     what the following insn is.  */
@@ -366,7 +372,7 @@ jump_optimize (f, cross_jump, noop_moves)
 	      /* Delete insns that adjust stack pointer before a return,
 		 if this is the last jump-optimization before final
 		 and we need to have a frame pointer.  */
-#if 0
+#if 0   /* These are now deleted by flow.c as dead stores.  */
 #ifdef EXIT_IGNORE_STACK
 	      if (noop_moves && frame_pointer_needed && EXIT_IGNORE_STACK
 		  && NEXT_INSN (JUMP_LABEL (insn)) == 0)
@@ -467,6 +473,8 @@ jump_optimize (f, cross_jump, noop_moves)
 		       jump-around-a-jump gets simplified before we ask here
 		       whether a jump is unconditional.  */
 		    if (! first
+			/* Make sure INSN is something we can invert.  */
+			&& condjump_p (insn)
 			&& JUMP_LABEL (insn) == label1
 			&& LABEL_NUSES (label1) == 1
 			&& GET_CODE (range1end) == JUMP_INSN
@@ -1161,7 +1169,7 @@ delete_jump (insn)
 	delete_insn (prev);
     }
 }
-
+
 /* Delete insn INSN from the chain of insns and update label ref counts.
    May delete some following insns as a consequence; may even delete
    a label elsewhere and insns that follow it.
@@ -1265,6 +1273,47 @@ next_nondeleted_insn (insn)
   while (INSN_DELETED_P (insn))
     insn = NEXT_INSN (insn);
   return insn;
+}
+
+/* Delete a range of insns from FROM to TO, inclusive.
+   This is for the sake of peephole optimization, so assume
+   that whatever these insns do will still be done by a new
+   peephole insn that will replace them.  */
+
+void
+delete_for_peephole (from, to)
+     register rtx from, to;
+{
+  register rtx insn = from;
+
+  while (1)
+    {
+      register rtx next = NEXT_INSN (insn);
+      register rtx prev = PREV_INSN (insn);
+
+      if (GET_CODE (insn) != NOTE)
+	{
+	  INSN_DELETED_P (insn) = 1;
+
+	  /* Patch this insn out of the chain.  */
+	  /* We don't do this all at once, because we
+	     must preserve all NOTEs.  */
+	  if (prev)
+	    NEXT_INSN (prev) = next;
+
+	  if (next)
+	    PREV_INSN (next) = prev;
+	}
+
+      if (insn == to)
+	break;
+      insn = next;
+    }
+
+  /* Note that if TO is an unconditional jump
+     we *do not* delete the BARRIER that follows,
+     since the peephole that replaces this sequence
+     is also an unconditional jump in that case.  */
 }
 
 /* Invert the condition of the jump JUMP, and make it jump

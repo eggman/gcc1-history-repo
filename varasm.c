@@ -1,5 +1,5 @@
 /* Output variables, constants and external declarations, for GNU compiler.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -33,6 +33,7 @@ and this notice must be preserved on all copies.  */
 #include "tree.h"
 #include "flags.h"
 #include "expr.h"
+#include "hard-reg-set.h"
 
 #include "obstack.h"
 
@@ -57,6 +58,9 @@ int const_labelno;
    static variable internal to a function.  */
 
 int var_labelno;
+
+/* Nonzero if at least one function definition has been seen.  */
+static int function_defined;
 
 extern FILE *asm_out_file;
 
@@ -116,11 +120,15 @@ make_function_rtl (decl)
       = gen_rtx (MEM, DECL_MODE (decl),
 		 gen_rtx (SYMBOL_REF, Pmode,
 			  IDENTIFIER_POINTER (DECL_NAME (decl))));
+
+  /* Record at least one function has been defined.  */
+  function_defined = 1;
 }
 
-/* Create the DECL_RTL for a declaration (either variable or function).
-   ASMSPEC, if not 0, is the string
-   which the user specified as the assembler symbol name.
+/* Create the DECL_RTL for a declaration for a static or external variable
+   or static or external function.
+   ASMSPEC, if not 0, is the string which the user specified
+   as the assembler symbol name.
    TOP_LEVEL is nonzero if this is a file-scope variable.  */
 
 void
@@ -130,17 +138,32 @@ make_decl_rtl (decl, asmspec, top_level)
      int top_level;
 {
   register char *name = IDENTIFIER_POINTER (DECL_NAME (decl));
+  int reg_number = -1;
 
   if (asmspec != 0)
     {
+      int i;
+      extern char *reg_names[];
+
       if (TREE_CODE (asmspec) != STRING_CST)
 	abort ();
-      name = (char *) obstack_alloc (saveable_obstack,
-				     strlen (TREE_STRING_POINTER (asmspec)) + 2);
-      name[0] = '*';
-      strcpy (&name[1], TREE_STRING_POINTER (asmspec));
-    }
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+	if (!strcmp (TREE_STRING_POINTER (asmspec),
+		     reg_names[i]))
+	  break;
 
+      if (i < FIRST_PSEUDO_REGISTER)
+	reg_number = i;
+      else
+	{
+	  name = (char *) obstack_alloc (saveable_obstack,
+					 strlen (TREE_STRING_POINTER (asmspec)) + 2);
+	  name[0] = '*';
+	  strcpy (&name[1], TREE_STRING_POINTER (asmspec));
+	  reg_number = -2;
+	}
+    }
+    
   /* For a duplicate declaration, we can be called twice on the
      same DECL node.  Don't alter the RTL already made
      unless the old mode is wrong (which can happen when
@@ -148,31 +171,74 @@ make_decl_rtl (decl, asmspec, top_level)
   if (DECL_RTL (decl) == 0
       || GET_MODE (DECL_RTL (decl)) != DECL_MODE (decl))
     {
-      if (DECL_RTL (decl) && asmspec == 0)
-	name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
+      DECL_RTL (decl) = 0;
 
-      /* Can't use just the variable's own name for a variable
-	 whose scope is less than the whole file.
-	 Concatenate a distinguishing number.  */
-      else if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
+      /* First detect errors in declaring global registers.  */
+      if (TREE_REGDECL (decl) && reg_number == -1)
+	error_with_decl (decl,
+			 "register name not specified for `%s'");
+      if (TREE_REGDECL (decl) && reg_number == -2)
+	error_with_decl (decl,
+			 "invalid register name for `%s'");
+      else if (reg_number >= 0 && ! TREE_REGDECL (decl))
+	error_with_decl (decl,
+			 "register name given for non-register variable `%s'");
+      else if (TREE_REGDECL (decl) && TREE_CODE (decl) == FUNCTION_DECL)
+	error ("function declared `register'");
+      else if (TREE_REGDECL (decl) && TYPE_MODE (TREE_TYPE (decl)) == BLKmode)
+	error_with_decl (decl, "data type of `%s' isn't suitable for a register");
+      /* Now handle properly declared static register variables.  */
+      else if (TREE_REGDECL (decl))
 	{
-	  char *label;
-
-	  ASM_FORMAT_PRIVATE_NAME (label, name, var_labelno);
-	  name = obstack_copy0 (saveable_obstack, label, strlen (label));
-	  var_labelno++;
+	  int nregs;
+	  if (pedantic)
+	    warning ("ANSI C forbids global register variables");
+	  if (DECL_INITIAL (decl) != 0)
+	    {
+	      DECL_INITIAL (decl) = 0;
+	      error ("global register variable has initial value");
+	    }
+	  if (fixed_regs[reg_number] == 0
+	      && function_defined)
+	    error ("global register variable follows a function definition");
+	  DECL_RTL (decl) = gen_rtx (REG, DECL_MODE (decl), reg_number);
+	  /* Make this register fixed, so not usable for anything else.  */
+	  nregs = HARD_REGNO_NREGS (reg_number, DECL_MODE (decl));
+	  while (nregs > 0)
+	    global_regs[reg_number + --nregs] = 1;
+	  init_reg_sets_1 ();
 	}
 
-      DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
-				 gen_rtx (SYMBOL_REF, Pmode, name));
-      if (TREE_VOLATILE (decl))
-	MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
-      if (TREE_READONLY (decl))
-	RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
-      MEM_IN_STRUCT_P (DECL_RTL (decl))
-	= (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
-	   || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
-	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
+      /* Now handle ordinary static variables and functions (in memory).
+	 Also handle vars declared register invalidly.  */
+      if (DECL_RTL (decl) == 0)
+	{
+	  if (DECL_RTL (decl) && asmspec == 0)
+	    name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
+
+	  /* Can't use just the variable's own name for a variable
+	     whose scope is less than the whole file.
+	     Concatenate a distinguishing number.  */
+	  else if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
+	    {
+	      char *label;
+
+	      ASM_FORMAT_PRIVATE_NAME (label, name, var_labelno);
+	      name = obstack_copy0 (saveable_obstack, label, strlen (label));
+	      var_labelno++;
+	    }
+
+	  DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
+				     gen_rtx (SYMBOL_REF, Pmode, name));
+	  if (TREE_VOLATILE (decl))
+	    MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
+	  if (TREE_READONLY (decl))
+	    RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
+	  MEM_IN_STRUCT_P (DECL_RTL (decl))
+	    = (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
+	       || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
+	       || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
+	}
     }
 }
 
@@ -270,8 +336,13 @@ assemble_variable (decl, top_level, write_symbols, at_end)
      enum debugger write_symbols;
      int at_end;
 {
-  register char *name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
+  register char *name;
   register int i;
+
+  /* Do nothing for global register variables.  */
+
+  if (GET_CODE (DECL_RTL (decl)) == REG)
+    return;
 
   /* Normally no need to say anything for external references,
      since assembler considers all undefined symbols external.  */
@@ -334,6 +405,8 @@ assemble_variable (decl, top_level, write_symbols, at_end)
 
   app_disable ();
 
+  name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
+
   /* Handle uninitialized definitions.  */
 
   if (DECL_INITIAL (decl) == 0 || DECL_INITIAL (decl) == error_mark_node)
@@ -346,6 +419,8 @@ assemble_variable (decl, top_level, write_symbols, at_end)
       int rounded = ((size + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
 		     / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
 		     * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
+      if (flag_shared_data)
+	data_section ();
       if (TREE_PUBLIC (decl))
 	ASM_OUTPUT_COMMON (asm_out_file, name, size, rounded);
       else
@@ -439,9 +514,10 @@ assemble_name (file, name)
    CONST_DOUBLE rtx's, and force those out to memory when necessary.  */
 
 /* Chain of all CONST_DOUBLE rtx's constructed for the current function.
-   They are chained through the third operand slot, XEXP (r, 3).
-   A CONST_DOUBLE rtx has XEXP (r, 2) != cc0_rtx iff it is on this chain.
-   XEXP (r, 2) is either a MEM, or const0_rtx if no MEM has been made.  */
+   They are chained through the CONST_DOUBLE_CHAIN.
+   A CONST_DOUBLE rtx has CONST_DOUBLE_MEM != cc0_rtx iff it is on this chain.
+   In that case, CONST_DOUBLE_MEM is either a MEM,
+   or const0_rtx if no MEM has been made for this CONST_DOUBLE yet.  */
 
 static rtx real_constant_chain;
 
@@ -454,30 +530,28 @@ immed_double_const (i0, i1, mode)
 {
   register rtx r;
 
+  if (mode == DImode && i0 == 0 && i1 == 0)
+    return const0_rtx;
+
   /* Search the chain for an existing CONST_DOUBLE with the right value.
      If one is found, return it.  */
 
-  for (r = real_constant_chain; r; r = XEXP (r, 3))
-    if (XINT (r, 0) == i0 && XINT (r, 1) == i1
+  for (r = real_constant_chain; r; r = CONST_DOUBLE_CHAIN (r))
+    if (CONST_DOUBLE_LOW (r) == i0 && CONST_DOUBLE_HIGH (r) == i1
 	&& GET_MODE (r) == mode)
       return r;
 
   /* No; make a new one and add it to the chain.  */
 
-  r = gen_rtx (CONST_DOUBLE, mode, i0, i1, 0);
+  r = gen_rtx (CONST_DOUBLE, mode, 0, i0, i1);
 
-  /* If a one-word int was allocated for the value,
-     just return it.  */
-  if (GET_CODE (r) == CONST_INT)
-    return r;
-
-  XEXP (r, 3) = real_constant_chain;
+  CONST_DOUBLE_CHAIN (r) = real_constant_chain;
   real_constant_chain = r;
 
-  /* Store const0_rtx in slot 2 since this CONST_DOUBLE is on the chain.
-     Actual use of slot 2 is only through force_const_double_mem.  */
+  /* Store const0_rtx in mem-slot since this CONST_DOUBLE is on the chain.
+     Actual use of mem-slot is only through force_const_double_mem.  */
 
-  XEXP (r, 2) = const0_rtx;
+  CONST_DOUBLE_MEM (r) = const0_rtx;
 
   return r;
 }
@@ -487,17 +561,54 @@ immed_double_const (i0, i1, mode)
 
 rtx
 immed_real_const_1 (d, mode)
-     double d;
+     REAL_VALUE_TYPE d;
      enum machine_mode mode;
 {
-  union {double d; int i[2];} u;
+  union real_extract u;
+  register rtx r;
+  REAL_VALUE_TYPE negated;
 
-  /* Get the desired `double' value as two ints
+  /* Get the desired `double' value as a sequence of ints
      since that is how they are stored in a CONST_DOUBLE.  */
 
   u.d = d;
 
-  return immed_double_const (u.i[0], u.i[1], mode);
+  /* Detect zero.  */
+
+  negated = REAL_VALUE_NEGATE (d);
+  if (REAL_VALUES_EQUAL (negated, d))
+    return (mode == DFmode ? dconst0_rtx : fconst0_rtx);
+
+  if (sizeof u == 2 * sizeof (int))
+    return immed_double_const (u.i[0], u.i[1], mode);
+
+  /* The rest of this function handles the case where
+     a float value requires more than 2 ints of space.
+     It will be deleted as dead code on machines that don't need it.  */
+
+  /* Search the chain for an existing CONST_DOUBLE with the right value.
+     If one is found, return it.  */
+
+  for (r = real_constant_chain; r; r = CONST_DOUBLE_CHAIN (r))
+    if (! bcmp (&CONST_DOUBLE_LOW (r), &u, sizeof u)
+	&& GET_MODE (r) == mode)
+      return r;
+
+  /* No; make a new one and add it to the chain.  */
+
+  r = rtx_alloc (CONST_DOUBLE);
+  PUT_MODE (r, mode);
+  bcopy (&u, &CONST_DOUBLE_LOW (r), sizeof u);
+
+  CONST_DOUBLE_CHAIN (r) = real_constant_chain;
+  real_constant_chain = r;
+
+  /* Store const0_rtx in slot 2 since this CONST_DOUBLE is on the chain.
+     Actual use of slot 2 is only through force_const_double_mem.  */
+
+  CONST_DOUBLE_MEM (r) = const0_rtx;
+
+  return r;
 }
 
 /* Return a CONST_DOUBLE rtx for a value specified by EXP,
@@ -519,23 +630,23 @@ rtx
 force_const_double_mem (r)
      rtx r;
 {
-  if (XEXP (r, 2) == cc0_rtx)
+  if (CONST_DOUBLE_MEM (r) == cc0_rtx)
     {
-      XEXP (r, 3) = real_constant_chain;
+      CONST_DOUBLE_CHAIN (r) = real_constant_chain;
       real_constant_chain = r;
-      XEXP (r, 2) = const0_rtx;
+      CONST_DOUBLE_MEM (r) = const0_rtx;
     }
 
-  if (XEXP (r, 2) == const0_rtx)
+  if (CONST_DOUBLE_MEM (r) == const0_rtx)
     {
-      XEXP (r, 2) = force_const_mem (GET_MODE (r), r);
+      CONST_DOUBLE_MEM (r) = force_const_mem (GET_MODE (r), r);
     }
-  /* XEXP (r, 2) is now a MEM with a constant address.
+  /* CONST_DOUBLE_MEM (r) is now a MEM with a constant address.
      If that is legitimate, return it.
      Othewise it will need reloading, so return a copy of it.  */
-  if (memory_address_p (GET_MODE (r), XEXP (XEXP (r, 2), 0)))
-    return XEXP (r, 2);
-  return gen_rtx (MEM, GET_MODE (r), XEXP (XEXP (r, 2), 0));
+  if (memory_address_p (GET_MODE (r), XEXP (CONST_DOUBLE_MEM (r), 0)))
+    return CONST_DOUBLE_MEM (r);
+  return gen_rtx (MEM, GET_MODE (r), XEXP (CONST_DOUBLE_MEM (r), 0));
 }
 
 /* At the end of a function, forget the memory-constants
@@ -549,9 +660,9 @@ clear_const_double_mem ()
 
   for (r = real_constant_chain; r; r = next)
     {
-      next = XEXP (r, 3);
-      XEXP (r, 3) = 0;
-      XEXP (r, 2) = cc0_rtx;
+      next = CONST_DOUBLE_CHAIN (r);
+      CONST_DOUBLE_CHAIN (r) = 0;
+      CONST_DOUBLE_MEM (r) = cc0_rtx;
     }
   real_constant_chain = 0;
 }
@@ -1015,7 +1126,7 @@ struct rtx_const
   enum kind { RTX_DOUBLE, RTX_INT } kind : 16;
   enum machine_mode mode : 16;
   union {
-    int d[2];
+    union real_extract du;
     struct addr_const addr;
   } un;
 };
@@ -1030,18 +1141,24 @@ decode_rtx_const (mode, x, value)
      rtx x;
      struct rtx_const *value;
 {
+  /* Clear the whole structure, including any gaps.  */
+
+  {
+    int *p = (int *) value;
+    int *end = (int *) (value + 1);
+    while (p < end)
+      *p++ = 0;
+  }
+
   value->kind = RTX_INT;	/* Most usual kind. */
   value->mode = mode;
-  value->un.addr.base = 0;
-  value->un.addr.offset = 0;
 
   switch (GET_CODE (x))
     {
     case CONST_DOUBLE:
       value->kind = RTX_DOUBLE;
       value->mode = GET_MODE (x);
-      value->un.d[0] = XINT (x, 0);
-      value->un.d[1] = XINT (x, 1);
+      bcopy (&CONST_DOUBLE_LOW (x), &value->un.du, sizeof value->un.du);
       break;
 
     case CONST_INT:
@@ -1177,6 +1294,10 @@ force_const_mem (mode, x)
   char *found = 0;
   rtx def;
 
+  if (GET_CODE (x) == CONST_DOUBLE
+      && GET_CODE (CONST_DOUBLE_MEM (x)) == MEM)
+    return CONST_DOUBLE_MEM (x);
+
   /* Compute hash code of X.  Search the descriptors for that hash code
      to see if any of them describes X.  If yes, the descriptor records
      the label number already assigned.  */
@@ -1222,10 +1343,9 @@ force_const_mem (mode, x)
       /* Output the value of EXP.  */
       if (GET_CODE (x) == CONST_DOUBLE)
 	{
-	  union {double d; int i[2];} u;
+	  union real_extract u;
 
-	  u.i[0] = XINT (x, 0);
-	  u.i[1] = XINT (x, 1);
+	  bcopy (&CONST_DOUBLE_LOW (x), &u, sizeof u);
 	  switch (mode)
 	    {
 	    case DImode:
@@ -1276,6 +1396,16 @@ force_const_mem (mode, x)
   RTX_UNCHANGING_P (def) = 1;
   /* Mark the symbol_ref as belonging to this constants pool.  */
   CONSTANT_POOL_ADDRESS_P (XEXP (def, 0)) = 1;
+
+  if (GET_CODE (x) == CONST_DOUBLE)
+    {
+      if (CONST_DOUBLE_MEM (x) == cc0_rtx)
+	{
+	  CONST_DOUBLE_CHAIN (x) = real_constant_chain;
+	  real_constant_chain = x;
+	}
+      CONST_DOUBLE_MEM (x) = def;
+    }
 
   return def;
 }
@@ -1458,6 +1588,8 @@ output_constant (exp, size)
 	  register unsigned char *p
 	    = (unsigned char *) TREE_STRING_POINTER (exp);
 	  int excess = 0;
+	  int pos = 0;
+	  int maximum = 2000;
 
 	  if (size > TREE_STRING_LENGTH (exp))
 	    {
@@ -1465,33 +1597,45 @@ output_constant (exp, size)
 	      size = TREE_STRING_LENGTH (exp);
 	    }
 
-#ifdef ASM_OUTPUT_ASCII
-	  ASM_OUTPUT_ASCII (asm_out_file, p, size);
-#else
-	  fprintf (asm_out_file, "\t.ascii \"");
+	  /* If the string is very long, split it up.  */
 
-	  for (i = 0; i < size; i++)
+	  while (pos < size)
 	    {
-	      register int c = p[i];
-	      if (c == '\"' || c == '\\')
-		putc ('\\', asm_out_file);
-	      if (c >= ' ' && c < 0177)
-		putc (c, asm_out_file);
-	      else
+	      int thissize = size - pos;
+	      if (thissize > maximum)
+		thissize = maximum;
+
+#ifdef ASM_OUTPUT_ASCII
+	      ASM_OUTPUT_ASCII (asm_out_file, p, thissize);
+#else
+	      fprintf (asm_out_file, "\t.ascii \"");
+
+	      for (i = 0; i < thissize; i++)
 		{
-		  fprintf (asm_out_file, "\\%o", c);
-		  /* After an octal-escape, if a digit follows,
-		     terminate one string constant and start another.
-		     The Vax assembler fails to stop reading the escape
-		     after three digits, so this is the only way we
-		     can get it to parse the data properly.  */
-		  if (i < size - 1 && p[i + 1] >= '0' && p[i + 1] <= '9')
-		    fprintf (asm_out_file, "\"\n\t.ascii \"");
+		  register int c = p[i];
+		  if (c == '\"' || c == '\\')
+		    putc ('\\', asm_out_file);
+		  if (c >= ' ' && c < 0177)
+		    putc (c, asm_out_file);
+		  else
+		    {
+		      fprintf (asm_out_file, "\\%o", c);
+		      /* After an octal-escape, if a digit follows,
+			 terminate one string constant and start another.
+			 The Vax assembler fails to stop reading the escape
+			 after three digits, so this is the only way we
+			 can get it to parse the data properly.  */
+		      if (i < thissize - 1
+			  && p[i + 1] >= '0' && p[i + 1] <= '9')
+			fprintf (asm_out_file, "\"\n\t.ascii \"");
+		    }
 		}
-	    }
-	  fprintf (asm_out_file, "\"\n");
+	      fprintf (asm_out_file, "\"\n");
 #endif /* no ASM_OUTPUT_ASCII */
 
+	      pos += thissize;
+	      p += thissize;
+	    }
 	  size = excess;
 	}
       else

@@ -8,7 +8,12 @@
 # Directory in which to store the results.
 LIB=/usr/local/lib/gcc-include
 
-mkdir $LIB > /dev/null 2>&1
+echo 'Making directories:'
+cd /usr/include
+files=`find . -type d -print`
+for file in $files; do
+  mkdir $LIB/$file > /dev/null 2>&1
+done
 
 echo 'Finding header files:'
 cd /usr/include
@@ -19,8 +24,6 @@ for file in $files; do
     echo Fixing $file
     if [ -r $file ]; then
       cp $file ${LIB}/$file >/dev/null 2>&1	\
-      || (mkdir `dirname ${LIB}/$file`		\
-	  && cp $file ${LIB}/$file)		\
       || echo "Can't copy $file"
       chmod +w ${LIB}/$file
       ex ${LIB}/$file <<EOF
@@ -44,8 +47,6 @@ file=sundev/vuid_event.h
 if [ -r $file ]; then
   if [ ! -r ${LIB}/$file ]; then
     cp $file ${LIB}/$file >/dev/null 2>&1	\
-    || (mkdir `dirname ${LIB}/$file`		\
-        && cp $file ${LIB}/$file)		\
     || echo "Can't copy $file"
     chmod +w ${LIB}/$file
   fi

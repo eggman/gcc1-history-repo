@@ -1,5 +1,5 @@
 ;;- Machine description for SPARC chip for GNU C compiler
-;;   Copyright (C) 1988 Free Software Foundation, Inc.
+;;   Copyright (C) 1988, 1989 Free Software Foundation, Inc.
 ;;   Contributed by Michael Tiemann (tiemann@mcc.com)
 
 ;; This file is part of GNU CC.
@@ -113,6 +113,80 @@
   ""
   "set %0,%%g1\;tst %%g1")
 
+;; Optimize the case of following a reg-reg move with a test
+;; of reg just moved.
+
+(define_peephole
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(match_operand:SI 1 "register_operand" "r"))
+   (set (cc0) (match_operand:SI 2 "register_operand" "r"))]
+  "operands[2] == operands[0]
+   || operands[2] == operands[1]"
+  "orcc %1,%%g0,%0 ! 2-insn combine")
+
+;; Optimize 5(6) insn sequence to 3(4) insns.
+;; These patterns could also optimize more complicated sets
+;; before conditional branches.
+
+(define_peephole
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(match_operand:SI 1 "general_operand" "g"))
+   (set (match_operand:SI 2 "register_operand" "=r")
+	(match_operand:SI 3 "reg_or_0_operand" "rJ"))
+   (set (cc0) (match_operand:SI 4 "register_operand" "r"))
+   (set (pc) (match_operand 5 "" ""))]
+  "GET_CODE (operands[5]) == IF_THEN_ELSE
+   && operands[0] != operands[3]
+   && ! reg_mentioned_p (operands[2], operands[1])
+   && (operands[4] == operands[0]
+       || operands[4] == operands[2]
+       || operands[4] == operands[3])"
+  "*
+{
+  rtx xoperands[2];
+  int parity;
+  xoperands[0] = XEXP (operands[5], 0);
+  if (GET_CODE (XEXP (operands[5], 1)) == PC)
+    {
+      parity = 1;
+      xoperands[1] = XEXP (XEXP (operands[5], 2), 0);
+    }
+  else
+    {
+      parity = 0;
+      xoperands[1] = XEXP (XEXP (operands[5], 1), 0);
+    }
+
+  if (operands[4] == operands[0])
+    {
+      /* Although the constraints for operands[1] permit a general
+	 operand (and hence possibly a const_int), we know that
+	 in this branch it cannot be a CONST_INT, since that would give
+	 us a fixed condition, and those should have been optimized away.  */
+      if (REG_P (operands[1]))
+	output_asm_insn (\"orcc %1,%%g0,%0 ! 3-insn reorder\", operands);
+      else if (GET_CODE (operands[1]) != MEM)
+	abort ();
+      else
+	{
+	  if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+	    output_asm_insn (\"sethi %%hi(%m1),%%g1\;ld [%%g1+%%lo(%m1)],%0\;tst %0 ! 4-insn reorder\", operands);
+	  else
+	    output_asm_insn (\"ld %1,%0\;tst %0 ! 3.5-insn reorder\", operands);
+	}
+      XVECEXP (PATTERN (insn), 0, 0) = XVECEXP (PATTERN (insn), 0, 2);
+      XVECEXP (PATTERN (insn), 0, 1) = XVECEXP (PATTERN (insn), 0, 3);
+    }
+  else
+    {
+      output_asm_insn (\"orcc %3,%%g0,%2 ! 3-insn reorder\", operands);
+    }
+  if (parity)
+    return output_delayed_branch (\"b%N0 %l1\", xoperands, insn);
+  else
+    return output_delayed_branch (\"b%C0 %l1\", xoperands, insn);
+}")
+
 ;; By default, operations don't set the condition codes.
 ;; These patterns allow cc's to be set, while doing some work
 
@@ -120,7 +194,7 @@
   [(set (cc0)
 	(zero_extend:SI (subreg:QI (match_operand:SI 0 "register_operand" "r"))))]
   ""
-  "andcc %0,0xff,%g0")
+  "andcc %0,0xff,%%g0")
 
 (define_insn ""
   [(set (cc0)
@@ -290,95 +364,110 @@
   ""
   "gen_scc_insn (EQ, VOIDmode, operands); DONE;")
 
+(define_expand "sne"
+  [(set (match_operand:SI 0 "general_operand" "=r")
+	(ne (cc0) (const_int 0)))]
+  ""
+  "gen_scc_insn (NE, VOIDmode, operands); DONE;")
+
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
-	(eq (minus (match_operand:SI 1 "general_operand" "r,rI")
-		   (match_operand:SI 2 "general_operand" "I,r"))
-	    (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(minus (match_operand:SI 2 "general_operand" "r,rI")
+				(match_operand:SI 3 "general_operand" "I,r"))
+			 (const_int 0)]))]
   ""
   "*
 {
-  if (! REG_P (operands[1]))
+  if (! REG_P (operands[2]))
     {
-      output_asm_insn (\"cmp %2,%1\", operands);
+      output_asm_insn (\"cmp %3,%2\", operands);
       cc_status.flags |= CC_REVERSED;
     }
   else
-    output_asm_insn (\"cmp %1,%2\", operands);
-  return output_scc_insn (EQ, operands[0]);
+    output_asm_insn (\"cmp %2,%3\", operands);
+  return output_scc_insn (GET_CODE (operands[1]), operands[0]);
 }")
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(eq (match_operand:SI 1 "general_operand" "r") (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(match_operand:SI 2 "general_operand" "r")
+			 (const_int 0)]))]
   ""
-  "* output_asm_insn (\"tst %1\", operands);
-     return output_scc_insn (EQ, operands[0]);")
+  "* output_asm_insn (\"tst %2\", operands);
+     return output_scc_insn (GET_CODE (operands[1]), operands[0]);")
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
-	(eq (minus:DF (match_operand:DF 1 "general_operand" "f,fG")
-		      (match_operand:DF 2 "general_operand" "G,f"))
-	    (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(minus:DF (match_operand:DF 2 "general_operand" "f,fG")
+				   (match_operand:DF 3 "general_operand" "G,f"))
+			 (const_int 0)]))]
   ""
   "*
 {
-  if (GET_CODE (operands[1]) == CONST_DOUBLE
-      || GET_CODE (operands[2]) == CONST_DOUBLE)
+  if (GET_CODE (operands[2]) == CONST_DOUBLE
+      || GET_CODE (operands[3]) == CONST_DOUBLE)
     make_f0_contain_0 (2);
 
   cc_status.flags |= CC_IN_FCCR;
-  if (GET_CODE (operands[1]) == CONST_DOUBLE)
-    output_asm_insn (\"fcmped %%f0,%2\;nop\", operands);
-  else if (GET_CODE (operands[2]) == CONST_DOUBLE)
-    output_asm_insn (\"fcmped %1,%%f0\;nop\", operands);
-  else output_asm_insn (\"fcmped %1,%2\;nop\", operands);
-  return output_scc_insn (EQ, operands[0]);
+  if (GET_CODE (operands[2]) == CONST_DOUBLE)
+    output_asm_insn (\"fcmped %%f0,%3\;nop\", operands);
+  else if (GET_CODE (operands[3]) == CONST_DOUBLE)
+    output_asm_insn (\"fcmped %2,%%f0\;nop\", operands);
+  else output_asm_insn (\"fcmped %2,%3\;nop\", operands);
+  return output_scc_insn (GET_CODE (operands[1]), operands[0]);
 }")
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(eq (match_operand:DF 1 "general_operand" "f") (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(match_operand:DF 2 "general_operand" "f")
+			 (const_int 0)]))]
   ""
   "*
 {
   make_f0_contain_0 (2);
   cc_status.flags |= CC_IN_FCCR;
-  output_asm_insn (\"fcmped %1,%%f0\;nop\", operands);
-  return output_scc_insn (EQ, operands[0]);
+  output_asm_insn (\"fcmped %2,%%f0\;nop\", operands);
+  return output_scc_insn (GET_CODE (operands[1]), operands[0]);
 }")
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
-	(eq (minus:SF (match_operand:SF 1 "general_operand" "f,fG")
-		      (match_operand:SF 2 "general_operand" "G,f"))
-	    (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(minus:SF (match_operand:SF 2 "general_operand" "f,fG")
+				   (match_operand:SF 3 "general_operand" "G,f"))
+			 (const_int 0)]))]
   ""
   "*
 {
-  if (GET_CODE (operands[1]) == CONST_DOUBLE
-      || GET_CODE (operands[2]) == CONST_DOUBLE)
+  if (GET_CODE (operands[2]) == CONST_DOUBLE
+      || GET_CODE (operands[3]) == CONST_DOUBLE)
     make_f0_contain_0 (1);
 
   cc_status.flags |= CC_IN_FCCR;
-  if (GET_CODE (operands[1]) == CONST_DOUBLE)
-    output_asm_insn (\"fcmpes %%f0,%2\;nop\", operands);
-  else if (GET_CODE (operands[2]) == CONST_DOUBLE)
-    output_asm_insn (\"fcmpes %1,%%f0\;nop\", operands);
-  else output_asm_insn (\"fcmpes %1,%2\;nop\", operands);
-  return output_scc_insn (EQ, operands[0]);
+  if (GET_CODE (operands[2]) == CONST_DOUBLE)
+    output_asm_insn (\"fcmpes %%f0,%3\;nop\", operands);
+  else if (GET_CODE (operands[3]) == CONST_DOUBLE)
+    output_asm_insn (\"fcmpes %2,%%f0\;nop\", operands);
+  else output_asm_insn (\"fcmpes %2,%3\;nop\", operands);
+  return output_scc_insn (GET_CODE (operands[1]), operands[0]);
 }")
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(eq (match_operand:SF 1 "general_operand" "f") (const_int 0)))]
+	(match_operator 1 "eq_or_neq"
+			[(match_operand:SF 2 "general_operand" "f")
+			 (const_int 0)]))]
   ""
   "*
 {
   make_f0_contain_0 (1);
   cc_status.flags |= CC_IN_FCCR;
-  output_asm_insn (\"fcmpes %1,%%f0\;nop\", operands);
-  return output_scc_insn (EQ, operands[0]);
+  output_asm_insn (\"fcmpes %2,%%f0\;nop\", operands);
+  return output_scc_insn (GET_CODE (operands[1]), operands[0]);
 }")
 
 ;; These control RTL generation for conditional jump insns
@@ -423,7 +512,7 @@
 {
   if (cc_prev_status.flags & CC_IN_FCCR)
     return \"fbg %l0\;nop\";
-  return \"bgt %l0\;nop\";
+  return \"bg %l0\;nop\";
 }")
 
 (define_insn "bgtu"
@@ -524,146 +613,19 @@
   return \"bleu %l0\;nop\";
 }")
 
-;; These match inverted jump insns for register allocation.
+;; This matches inverted jump insns for register allocation.
 
 (define_insn ""
   [(set (pc)
-	(if_then_else (eq (cc0)
-			  (const_int 0))
+	(if_then_else (match_operator 0 "relop" [(cc0) (const_int 0)])
 		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
+		      (label_ref (match_operand 1 "" ""))))]
   ""
   "*
 {
   if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbne %l0\;nop\";
-  return \"bne %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (ne (cc0)
-			  (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbe %l0\;nop\";
-  return \"be %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (gt (cc0)
-			  (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fble %l0\;nop\";
-  return \"ble %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (gtu (cc0)
-			   (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    abort ();
-  return \"bleu %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (lt (cc0)
-			  (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbge %l0\;nop\";
-  return \"bge %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (ltu (cc0)
-			   (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    abort ();
-  return \"bgeu %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (ge (cc0)
-			  (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbl %l0\;nop\";
-  return \"bl %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (geu (cc0)
-			   (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    abort ();
-  return \"blu %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (le (cc0)
-			  (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbg %l0\;nop\";
-  return \"bg %l0\;nop\";
-}")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else (leu (cc0)
-			   (const_int 0))
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-  "*
-{
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    abort ();
-  return \"bgu %l0\;nop\";
+    return \"fb%F0 %l1\;nop\";
+  return \"b%N0 %l1\;nop\";
 }")
 
 ;; Move instructions
@@ -698,149 +660,6 @@
   return \"swap %0,%1\";
 }")
 
-;; These three patterns pick up all cases dealing with SYMBOL_REFS
-;; Can't do any special casing on modes if we want to use a modeless
-;; catch-all pattern, since taht pattern will win ahead of these patterns,
-;; despite the order they appear in the file.
-
-(define_insn ""
-  [(set (match_operand 0 "general_operand" "=fg")
-	(mem (match_operand:SI 1 "" "i")))]
-  "(GET_MODE (operands[0]) == SFmode
-    || GET_MODE (operands[0]) == DFmode)
-   && CONSTANT_ADDRESS_P (operands[1])"
-  "*
-{
-  enum machine_mode mode = GET_MODE (SET_SRC (PATTERN (insn)));
-
-  /* We don't bother trying to see if we know %hi(operands[1]).
-     This is because we are doing a load, and if we know the
-     %hi value, we probably also know that value in memory.  */
-  cc_status.flags |= CC_KNOW_HI_G1;
-  cc_status.mdep = operands[1];
-
-  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
-	 && XEXP (operands[1], 0) == cc_prev_status.mdep
-	 && cc_prev_status.mdep == cc_status.mdep))
-    {
-      output_asm_insn (\"sethi %%hi(%1),%%g1\", operands);
-      cc_prev_status.mdep = operands[1];
-    }
-
-  if (mode == DFmode)
-    {
-      if (REG_P (operands[0]))
-	if (REGNO (operands[0]) & 1)
-	  {
-	    operands[1] = gen_rtx (MEM, mode, operands[1]);
-	    return output_move_double (operands);
-	  }
-	else
-	  return \"ldd [%%g1+%%lo(%1)],%0\";
-      cc_status.flags &= ~(CC_F0_IS_0|CC_F1_IS_0);
-      output_asm_insn (\"ldd [%%g1+%%lo(%1)],%%f0\", operands);
-      operands[1] = gen_rtx (REG, DFmode, 32);
-      return output_fp_move_double (operands);
-    }
-
-  if (GET_CODE (operands[0]) == MEM)
-    {
-      cc_status.flags &= ~CC_F1_IS_0;
-      output_asm_insn (\"ld [%%g1+%%lo(%1)],%%f1\", operands);
-      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
-	{
-	  cc_status.mdep = XEXP (operands[0], 0);
-	  return \"sethi %%hi(%m0),%%g1\;st %%f1,[%%g1+%%lo(%m0)]\";
-	}
-      else
-	return \"st %%f1,%0\";
-    }
-  return \"ld [%%g1+%%lo(%1)],%0\";
-}")
-
-(define_insn ""
-  [(set (match_operand 0 "general_operand" "=r")
-	(mem (match_operand:SI 1 "" "i")))]
-  "GET_MODE (operands[0]) != SFmode
-   && GET_MODE (operands[0]) != DFmode
-   && CONSTANT_ADDRESS_P (operands[1])"
-  "*
-{
-  enum machine_mode mode = GET_MODE (SET_SRC (PATTERN (insn)));
-
-  /* We don't bother trying to see if we know %hi(operands[1]).
-     This is because we are doing a load, and if we know the
-     %hi value, we probably also know that value in memory.  */
-  cc_status.flags |= CC_KNOW_HI_G1;
-  cc_status.mdep = operands[1];
-
-  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
-	 && XEXP (operands[1], 0) == cc_prev_status.mdep
-	 && cc_prev_status.mdep == cc_status.mdep))
-    {
-      output_asm_insn (\"sethi %%hi(%1),%%g1\", operands);
-      cc_prev_status.mdep = operands[1];
-    }
-
-  /* Code below isn't smart enough to do a doubleword in two parts.
-     So handle that case the slow way.  */
-  if (mode == DImode
-      && GET_CODE (operands[0]) == REG   /* Moving to nonaligned reg pair */
-      && (REGNO (operands[0]) & 1))
-    {
-      operands[1] = gen_rtx (MEM, mode, operands[1]);
-      return output_move_double (operands);
-    }
-  output_sized_memop (\"ld\", mode);
-  if (GET_CODE (operands[0]) == REG)
-    return \"[%%g1+%%lo(%1)],%0\";
-  abort ();
-}")
-
-(define_insn ""
-  [(set (mem (match_operand:SI 0 "" "i"))
-	(match_operand 1 "reg_or_0_operand" "frGJ"))]
-  "CONSTANT_ADDRESS_P (operands[0])"
-  "*
-{
-  enum machine_mode mode = GET_MODE (SET_DEST (PATTERN (insn)));
-
-  cc_status.flags |= CC_KNOW_HI_G1;
-  cc_status.mdep = operands[0];
-
-  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
-	 && operands[0] == cc_prev_status.mdep))
-    {
-      output_asm_insn (\"sethi %%hi(%0),%%g1\", operands);
-      cc_prev_status.mdep = operands[0];
-    }
-
-  /* Store zero in two parts when appropriate.  */
-  if (mode == DFmode && operands[1] == dconst0_rtx)
-    {
-      /* We can't cross a page boundary here because the
-	 SYMBOL_REF must be double word aligned, and for this
-	 to be the case, SYMBOL_REF+4 cannot cross.  */
-      output_sized_memop (\"st\", SImode);
-      output_asm_insn (\"%r1,[%%g1+%%lo(%0)]\", operands);
-      output_sized_memop (\"st\", SImode);
-      return \"%r1,[%%g1+%%lo(%0)+4]\";
-    }
-
-  /* Code below isn't smart enough to move a doubleword in two parts,
-     so use output_move_double to do that in the cases that require it.  */
-  if ((mode == DImode || mode == DFmode)
-      && (GET_CODE (operands[1]) == REG
-	  && (REGNO (operands[1]) & 1)))
-    {
-      operands[0] = gen_rtx (MEM, mode, operands[0]);
-      return output_move_double (operands);
-    }
-
-  output_sized_memop (\"st\", mode);
-  return \"%r1,[%%g1+%%lo(%0)]\";
-}")
-
 (define_insn "movsi"
   [(set (match_operand:SI 0 "general_operand" "=r,m")
 	(match_operand:SI 1 "general_operand" "rmif,rJ"))]
@@ -848,16 +667,27 @@
   "*
 {
   if (GET_CODE (operands[0]) == MEM)
-    return \"st %r1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+	return output_store (operands);
+      return \"st %r1,%0\";
+    }
   if (GET_CODE (operands[1]) == MEM)
-    return \"ld %1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+	return output_load_fixed (operands);
+      return \"ld %1,%0\";
+    }
   if (FP_REG_P (operands[1]))
     return \"st %r1,[%%fp-4]\;ld [%%fp-4],%0\";
   if (REG_P (operands[1])
       || (GET_CODE (operands[1]) == CONST_INT
 	  && SMALL_INT (operands[1])))
     return \"mov %1,%0\";
-  return \"set %1,%0\";
+  if (GET_CODE (operands[1]) == CONST_INT
+      && (INTVAL (operands[1]) & 0x3ff) == 0)
+    return \"sethi %%hi(%1),%0\";
+  return \"sethi %%hi(%1),%0\;or %%lo(%1),%0,%0\";
 }")
 
 (define_insn "movhi"
@@ -867,14 +697,22 @@
   "*
 {
   if (GET_CODE (operands[0]) == MEM)
-    return \"sth %r1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+	return output_store (operands);
+      return \"sth %r1,%0\";
+    }
   if (GET_CODE (operands[1]) == MEM)
-    return \"ldsh %1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+	return output_load_fixed (operands);
+      return \"ldsh %1,%0\";
+    }
   if (REG_P (operands[1])
       || (GET_CODE (operands[1]) == CONST_INT
 	  && SMALL_INT (operands[1])))
     return \"mov %1,%0\";
-  return \"set %1,%0\";
+  return \"sethi %%hi(%1),%0\;or %%lo(%1),%0,%0\";
 }")
 
 (define_insn "movqi"
@@ -884,10 +722,22 @@
   "*
 {
   if (GET_CODE (operands[0]) == MEM)
-    return \"stb %r1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+	return output_store (operands);
+      return \"stb %r1,%0\";
+    }
   if (GET_CODE (operands[1]) == MEM)
-    return \"ldsb %1,%0\";
-  return \"mov %1,%0\";
+    {
+      if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+	return output_load_fixed (operands);
+      return \"ldsb %1,%0\";
+    }
+  if (REG_P (operands[1])
+      || (GET_CODE (operands[1]) == CONST_INT
+	  && SMALL_INT (operands[1])))
+    return \"mov %1,%0\";
+  return \"sethi %%hi(%1),%0\;or %%lo(%1),%0,%0\";
 }")
 
 ;; The definition of this insn does not really explain what it does,
@@ -957,22 +807,36 @@
 }")
 
 (define_insn "movdf"
-  [(set (match_operand:DF 0 "general_operand" "=r,m,?f,?rm")
-	(match_operand:DF 1 "general_operand" "rm,r,rfm,f"))]
+  [(set (match_operand:DF 0 "general_operand" "=rm,&r,?f,?rm")
+	(match_operand:DF 1 "general_operand" "r,m,rfm,f"))]
   ""
   "*
 {
+  if (GET_CODE (operands[0]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+    return output_store (operands);
+  if (GET_CODE (operands[1]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+    return output_load_floating (operands);
+
   if (FP_REG_P (operands[0]) || FP_REG_P (operands[1]))
     return output_fp_move_double (operands);
   return output_move_double (operands);
 }")
 
 (define_insn "movdi"
-  [(set (match_operand:DI 0 "general_operand" "=r,m,?f,?rm")
-	(match_operand:DI 1 "general_operand" "rmi,r,rfm,f"))]
+  [(set (match_operand:DI 0 "general_operand" "=rm,&r,?f,?rm")
+	(match_operand:DI 1 "general_operand" "r,mi,rfm,f"))]
   ""
   "*
 {
+  if (GET_CODE (operands[0]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+    return output_store (operands);
+  if (GET_CODE (operands[1]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+    return output_load_fixed (operands);
+
   if (FP_REG_P (operands[0]) || FP_REG_P (operands[1]))
     return output_fp_move_double (operands);
   return output_move_double (operands);
@@ -984,6 +848,12 @@
   ""
   "*
 {
+  if (GET_CODE (operands[0]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+    return output_store (operands);
+  if (GET_CODE (operands[1]) == MEM
+      && CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+    return output_load_floating (operands);
   if (FP_REG_P (operands[0]))
     {
       if (FP_REG_P (operands[1]))
@@ -1016,30 +886,9 @@
       return \"st %r1,%0\";
     }
   if (GET_CODE (operands[0]) == MEM)
-    {
-      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
-	{
-	  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
-		 && XEXP (operands[0], 0) == cc_prev_status.mdep))
-	    {
-	      cc_status.flags |= CC_KNOW_HI_G1;
-	      cc_status.mdep = XEXP (operands[0], 0);
-	      output_asm_insn (\"sethi %%hi(%m0),%%g1\", operands);
-	    }
-	  return \"st %r1,[%%g1+%%lo(%m0)]\";
-	}
-      return \"st %r1,%0\";
-    }
+    return \"st %r1,%0\";
   if (GET_CODE (operands[1]) == MEM)
-    {
-      if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
-	{
-	  cc_status.flags |= CC_KNOW_HI_G1;
-	  cc_status.mdep = XEXP (operands[1], 0);
-	  return \"sethi %%hi(%m1),%%g1\;ld [%%g1+%%lo(%m1)],%0\";
-	}
-      return \"ld %1,%0\";
-    }
+    return \"ld %1,%0\";
   return \"mov %1,%0\";
 }")
 
@@ -1501,7 +1350,7 @@
   if (SMALL_INT (operands[2]))
     return \"add %1,%2,%0\";
   cc_status.flags &= ~CC_KNOW_HI_G1;
-  return \"set %2,%%g1\;add %1,%%g1,%0\";
+  return \"sethi %%hi(%2),%%g1\;or %%lo(%2),%%g1,%%g1\;add %1,%%g1,%0\";
 }")
 
 (define_insn "subsi3"
@@ -1516,7 +1365,7 @@
   if (SMALL_INT (operands[2]))
     return \"sub %1,%2,%0\";
   cc_status.flags &= ~CC_KNOW_HI_G1;
-  return \"set %2,%%g1\;sub %1,%%g1,%0\";
+  return \"sethi %%hi(%2),%%g1\;or %%lo(%2),%%g1,%%g1\;sub %1,%%g1,%0\";
 }")
 
 (define_expand "mulsi3"
@@ -1648,7 +1497,7 @@
   ""
   "*
   return (GET_CODE (operands[1]) == CONST_INT
-	  ? \"set %1,%0\"
+	  ? \"sethi %%hi(%1),%0\;or %%lo(%1),%0,%0\"
 	  : \"mov %1,%0\");
 ")
 
@@ -1663,7 +1512,7 @@
   if (REG_P (operands[2]) || SMALL_INT (operands[2]))
     return \"and %1,%2,%0\";
   cc_status.flags &= ~CC_KNOW_HI_G1;
-  return \"set %2,%%g1\;and %1,%%g1,%0\";
+  return \"sethi %%hi(%2),%%g1\;or %%lo(%2),%%g1,%%g1\;and %1,%%g1,%0\";
 }")
 
 (define_insn "andcbsi3"
@@ -1683,7 +1532,7 @@
   if (REG_P (operands[2]) || SMALL_INT (operands[2]))
     return \"or %1,%2,%0\";
   cc_status.flags &= ~CC_KNOW_HI_G1;
-  return \"set %2,%%g1\;or %1,%%g1,%0\";
+  return \"sethi %%hi(%2),%%g1\;or %%lo(%2),%%g1,%%g1\;or %1,%%g1,%0\";
 }")
 
 (define_insn "iorcbsi3"
@@ -1703,7 +1552,7 @@
   if (REG_P (operands[2]) || SMALL_INT (operands[2]))
     return \"xor %1,%2,%0\";
   cc_status.flags &= ~CC_KNOW_HI_G1;
-  return \"set %2,%%g1\;xor %1,%%g1,%0\";
+  return \"sethi %%hi(%2),%%g1\;or %%lo(%2),%%g1,%%g1\;xor %1,%%g1,%0\";
 }")
 
 (define_insn "xorcbsi3"
@@ -1909,26 +1758,233 @@
 }")
 
 ;; Unconditional and other jump instructions
+;; Note that for the Sparc, by setting the annul bit on an unconditional
+;; branch, the following insn is never executed.  This saves us a nop,
+;; but requires a debugger which can handle annuled branches.
 (define_insn "jump"
-  [(set (pc)
-	(label_ref (match_operand 0 "" "")))]
+  [(set (pc) (label_ref (match_operand 0 "" "")))]
   ""
-  "b %l0\;nop")
+  "*
+{
+  extern int optimize;
+  extern int flag_no_peephole;
+
+  if (optimize && !flag_no_peephole)
+    return \"b,a %l0\";
+  return \"b %l0\;nop\";
+}")
 
 ;; Peephole optimizers recognize a few simple cases when delay insns are safe.
+;; Complex ones are up front.  Simple ones after.
+
+;; This pattern is just like the following one, but matches when there
+;; is a jump insn after the "delay" insn.  Without this pattern, we
+;; de-optimize that case.
+
+(define_peephole
+  [(set (pc) (match_operand 0 "" ""))
+   (set (match_operand:SI 1 "" "")
+	(match_operand:SI 2 "" ""))
+   (set (pc) (label_ref (match_operand 3 "" "")))]
+  "TARGET_EAGER && operands_satisfy_eager_branch_peephole (operands, 2)"
+  "*
+{
+  rtx xoperands[2];
+  rtx pat = gen_rtx (SET, VOIDmode, operands[1], operands[2]);
+  rtx delay_insn = gen_rtx (INSN, VOIDmode, 0, 0, 0, pat, -1, 0, 0);
+  rtx label, head;
+  int parity;
+
+  if (GET_CODE (XEXP (operands[0], 1)) == PC)
+    {
+      parity = 1;
+      label = XEXP (XEXP (operands[0], 2), 0);
+    }
+  else
+    {
+      parity = 0;
+      label = XEXP (XEXP (operands[0], 1), 0);
+    }
+  xoperands[0] = XEXP (operands[0], 0);
+  xoperands[1] = label;
+
+  head = next_real_insn_no_labels (label);
+
+  /* If at the target of this label we set the condition codes,
+     and the condition codes are already set for that value,
+     advance, if we can, to the following insn.  */
+  if (GET_CODE (PATTERN (head)) == SET
+      && GET_CODE (SET_DEST (PATTERN (head))) == CC0
+      && cc_status.value2 == SET_SRC (PATTERN (head)))
+    {
+      rtx nhead = next_real_insn_no_labels (head);
+      if (nhead
+	  && GET_CODE (nhead) == INSN
+	  && GET_CODE (PATTERN (nhead)) == SET
+	  && strict_single_insn_op_p (SET_SRC (PATTERN (nhead)),
+				      GET_MODE (SET_DEST (PATTERN (nhead))))
+	  && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode))
+	{
+	  head = nhead;
+	}
+    }
+
+  /* Output the branch instruction first.  */
+  if (cc_prev_status.flags & CC_IN_FCCR)
+    {
+      if (parity)
+	output_asm_insn (\"fb%F0,a %l1 ! eager\", xoperands);
+      else
+	output_asm_insn (\"fb%C0,a %l1 ! eager\", xoperands);
+    }
+  else
+    {
+      if (parity)
+	output_asm_insn (\"b%N0,a %l1 ! eager\", xoperands);
+      else
+	output_asm_insn (\"b%C0,a %l1 ! eager\", xoperands);
+    }
+
+  /* Now steal the first insn of the target.  */
+  output_eager_then_insn (head, operands);
+
+  XVECEXP (PATTERN (insn), 0, 0) = XVECEXP (PATTERN (insn), 0, 1);
+  XVECEXP (PATTERN (insn), 0, 1) = XVECEXP (PATTERN (insn), 0, 2);
+
+  return output_delayed_branch (\"b %l3 ! eager2\", operands, insn);
+}")
+
+;; Here is a peephole which recognizes where delay insns can be made safe:
+;; (1) following a conditional branch, if the target of the conditional branch
+;; has only one user (this insn), move the first insn into our delay slot
+;; and emit an annulled branch.
+;; (2) following a conditional branch, if we can execute the fall-through
+;; insn without risking any evil effects, then do that instead of a nop.
+
+(define_peephole
+  [(set (pc) (match_operand 0 "" ""))
+   (set (match_operand:SI 1 "" "")
+	(match_operand:SI 2 "" ""))]
+  "TARGET_EAGER && operands_satisfy_eager_branch_peephole (operands, 1)"
+  "*
+{
+  rtx xoperands[2];
+  rtx pat = gen_rtx (SET, VOIDmode, operands[1], operands[2]);
+  rtx delay_insn = gen_rtx (INSN, VOIDmode, 0, 0, 0, pat, -1, 0, 0);
+  rtx label, head, prev = (rtx)1;
+  int parity;
+
+  if (GET_CODE (XEXP (operands[0], 1)) == PC)
+    {
+      parity = 1;
+      label = XEXP (XEXP (operands[0], 2), 0);
+    }
+  else
+    {
+      parity = 0;
+      label = XEXP (XEXP (operands[0], 1), 0);
+    }
+  xoperands[0] = XEXP (operands[0], 0);
+  xoperands[1] = label;
+
+  if (LABEL_NUSES (label) == 1)
+    {
+      prev = PREV_INSN (label);
+      while (prev
+	     && (GET_CODE (prev) == NOTE
+		 || (GET_CODE (prev) == INSN
+		     && (GET_CODE (PATTERN (prev)) == CLOBBER
+			 || GET_CODE (PATTERN (prev)) == USE))))
+	prev = PREV_INSN (prev);
+      if (prev == 0
+	  || GET_CODE (prev) == BARRIER)
+	{
+	  prev = 0;
+	  head = next_real_insn_no_labels (label);
+	}
+    }
+  if (prev == 0
+      && head != 0
+      && ! INSN_DELETED_P (head)
+      && GET_CODE (head) == INSN
+      && GET_CODE (PATTERN (head)) == SET
+      && strict_single_insn_op_p (SET_SRC (PATTERN (head)),
+				  GET_MODE (SET_DEST (PATTERN (head))))
+      && strict_single_insn_op_p (SET_DEST (PATTERN (head)), VOIDmode))
+    {
+      /* If at the target of this label we set the condition codes,
+	 and the condition codes are already set for that value,
+	 advance, if we can, to the following insn.  */
+      if (GET_CODE (PATTERN (head)) == SET
+	  && GET_CODE (SET_DEST (PATTERN (head))) == CC0
+	  && cc_status.value2 == SET_SRC (PATTERN (head)))
+	{
+	  rtx nhead = next_real_insn_no_labels (head);
+	  if (nhead
+	      && GET_CODE (nhead) == INSN
+	      && GET_CODE (PATTERN (nhead)) == SET
+	      && strict_single_insn_op_p (SET_SRC (PATTERN (nhead)),
+					  GET_MODE (SET_DEST (nhead)))
+	      && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode))
+	    head = nhead;
+	}
+
+      /* Output the branch instruction first.  */
+      if (cc_prev_status.flags & CC_IN_FCCR)
+	{
+	  if (parity)
+	    output_asm_insn (\"fb%F0,a %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"fb%C0,a %l1 ! eager\", xoperands);
+	}
+      else
+	{
+	  if (parity)
+	    output_asm_insn (\"b%N0,a %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"b%C0,a %l1 ! eager\", xoperands);
+	}
+
+      /* Now steal the first insn of the target.  */
+      output_eager_then_insn (head, operands);
+    }
+  else
+    {
+      /* Output the branch instruction first.  */
+      if (cc_prev_status.flags & CC_IN_FCCR)
+	{
+	  if (parity)
+	    output_asm_insn (\"fb%F0 %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"fb%C0 %l1 ! eager\", xoperands);
+	}
+      else
+	{
+	  if (parity)
+	    output_asm_insn (\"b%N0 %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"b%C0 %l1 ! eager\", xoperands);
+	}
+    }
+  return output_delay_insn (delay_insn);
+}")
+
+;; Here are two simple peepholes which fill the delay slot of
+;; an unconditional branch.
+
 (define_peephole
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(match_operand:SI 1 "single_insn_src_p" "p"))
    (set (pc) (label_ref (match_operand 2 "" "")))]
   ""
-  "* return output_delay_insn (\"b %l2\", operands, insn);")
+  "* return output_delayed_branch (\"b %l2\", operands, insn);")
 
 (define_peephole
   [(set (match_operand:SI 0 "memory_operand" "=m")
 	(match_operand:SI 1 "reg_or_0_operand" "rJ"))
    (set (pc) (label_ref (match_operand 2 "" "")))]
   ""
-  "* return output_delay_insn (\"b %l2\", operands, insn);")
+  "* return output_delayed_branch (\"b %l2\", operands, insn);")
 
 (define_insn "tablejump"
   [(set (pc) (match_operand:SI 0 "register_operand" "r"))
@@ -1942,7 +1998,7 @@
    (set (pc) (match_operand:SI 2 "register_operand" "r"))
    (use (label_ref (match_operand 3 "" "")))]
   "REGNO (operands[0]) != REGNO (operands[2])"
-  "* return output_delay_insn (\"jmp %2\", operands, insn);")
+  "* return output_delayed_branch (\"jmp %2\", operands, insn);")
 
 (define_peephole
   [(set (match_operand:SI 0 "memory_operand" "=m")
@@ -1950,7 +2006,7 @@
    (set (pc) (match_operand:SI 2 "register_operand" "r"))
    (use (label_ref (match_operand 3 "" "")))]
   ""
-  "* return output_delay_insn (\"jmp %2\", operands, insn);")
+  "* return output_delayed_branch (\"jmp %2\", operands, insn);")
 
 ;;- jump to subroutine
 (define_expand "call"
@@ -1999,6 +2055,7 @@
 {
   /* strip the MEM.  */
   operands[0] = XEXP (operands[0], 0);
+  CC_STATUS_INIT;
   if (TARGET_SUN_ASM && GET_CODE (operands[0]) == REG)
     return \"jmpl %a0,%%o7\;nop\";
   return \"call %a0,%1\;nop\";
@@ -2017,8 +2074,8 @@
   /* strip the MEM.  */
   operands[2] = XEXP (operands[2], 0);
   if (TARGET_SUN_ASM && GET_CODE (operands[2]) == REG)
-    return output_delay_insn (\"jmpl %a2,%%o7\", operands, insn);
-  return output_delay_insn (\"call %a2,%3\", operands, insn);
+    return output_delayed_branch (\"jmpl %a2,%%o7\", operands, insn);
+  return output_delayed_branch (\"call %a2,%3\", operands, insn);
 }")
 
 (define_peephole
@@ -2034,8 +2091,8 @@
   /* strip the MEM.  */
   operands[2] = XEXP (operands[2], 0);
   if (TARGET_SUN_ASM && GET_CODE (operands[2]) == REG)
-    return output_delay_insn (\"jmpl %a2,%%o7\", operands, insn);
-  return output_delay_insn (\"call %a2,%3\", operands, insn);
+    return output_delayed_branch (\"jmpl %a2,%%o7\", operands, insn);
+  return output_delayed_branch (\"call %a2,%3\", operands, insn);
 }")
 
 (define_expand "call_value"
@@ -2087,6 +2144,7 @@
 {
   /* strip the MEM.  */
   operands[1] = XEXP (operands[1], 0);
+  CC_STATUS_INIT;
   if (TARGET_SUN_ASM && GET_CODE (operands[1]) == REG)
     return \"jmpl %a1,%%o7\;nop\";
   return \"call %a1,%2\;nop\";
@@ -2106,8 +2164,8 @@
   /* strip the MEM.  */
   operands[3] = XEXP (operands[3], 0);
   if (TARGET_SUN_ASM && GET_CODE (operands[3]) == REG)
-    return output_delay_insn (\"jmpl %a3,%%o7\", operands, insn);
-  return output_delay_insn (\"call %a3,%4\", operands, insn);
+    return output_delayed_branch (\"jmpl %a3,%%o7\", operands, insn);
+  return output_delayed_branch (\"call %a3,%4\", operands, insn);
 }")
 
 (define_peephole
@@ -2124,8 +2182,8 @@
   /* strip the MEM.  */
   operands[3] = XEXP (operands[3], 0);
   if (TARGET_SUN_ASM && GET_CODE (operands[3]) == REG)
-    return output_delay_insn (\"jmpl %a3,%%o7\", operands, insn);
-  return output_delay_insn (\"call %a3,%4\", operands, insn);
+    return output_delayed_branch (\"jmpl %a3,%%o7\", operands, insn);
+  return output_delayed_branch (\"call %a3,%4\", operands, insn);
 }")
 
 (define_insn "return"
@@ -2165,3 +2223,4 @@
 ;;- eval: (modify-syntax-entry ?{ "(}")
 ;;- eval: (modify-syntax-entry ?} "){")
 ;;- End:
+

@@ -1,5 +1,5 @@
 /* Front-end tree definitions for GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -33,7 +33,7 @@ enum tree_code {
 #undef DEFTREECODE
 
 /* Number of tree codes.  */
-#define NUM_TREE_CODE ((int)LAST_AND_UNUSED_TREE_CODE)
+#define NUM_TREE_CODES ((int)LAST_AND_UNUSED_TREE_CODE)
 
 /* Indexed by enum tree_code, contains a character which is
    `e' for an expression, `r' for a reference, `c' for a constant,
@@ -88,6 +88,7 @@ enum built_in_function
   BUILT_IN_FSQRT,
   BUILT_IN_GETEXP,
   BUILT_IN_GETMAN,
+  BUILT_IN_SAVEREGS,
 
   /* C++ extensions */
   BUILT_IN_NEW,
@@ -311,14 +312,20 @@ struct tree_int_cst
 #define TREE_CST_RTL(NODE) ((NODE)->real_cst.rtl)
 
 /* In a REAL_CST node.  */
+/* We can represent a real value as either a `double' or a string.
+   Strings don't allow for any optimization, but they do allow
+   for cross-compilation.  */
+
 #define TREE_REAL_CST(NODE) ((NODE)->real_cst.real_cst)
+
+#include "real.h"
 
 struct tree_real_cst
 {
   char common[sizeof (struct tree_common)];
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
-  double real_cst;
+  REAL_VALUE_TYPE real_cst;
 };
 
 /* In a STRING_CST */
@@ -355,6 +362,7 @@ struct tree_complex
 #define IDENTIFIER_LOCAL_VALUE(NODE) ((NODE)->identifier.local_value)
 #define IDENTIFIER_LABEL_VALUE(NODE) ((NODE)->identifier.label_value)
 #define IDENTIFIER_IMPLICIT_DECL(NODE) ((NODE)->identifier.implicit_decl)
+#define IDENTIFIER_ERROR_LOCUS(NODE) ((NODE)->identifier.error_locus)
 
 struct tree_identifier
 {
@@ -365,6 +373,7 @@ struct tree_identifier
   union tree_node *local_value;
   union tree_node *label_value;
   union tree_node *implicit_decl;
+  union tree_node *error_locus;
 };
 
 /* In a TREE_LIST node.  */
@@ -510,7 +519,7 @@ struct tree_decl
 				   (rtl) info */
   int frame_size;		/* For FUNCTION_DECLs: size of stack frame */
   struct rtx_def *saved_insns;	/* For FUNCTION_DECLs: points to insn that
-				   constitute its definition on the
+				   constitutes its definition on the
 				   permanent obstack.  */
   int block_symtab_address;
   /* Points to a structure whose details depend on the language in use.  */

@@ -30,7 +30,11 @@ and this notice must be preserved on all copies.  */
 
 /* Get N_SO from stab.h if we can expect the file to exist.  */
 #ifdef DBX_DEBUGGING_INFO
-#include <stab.h>
+#ifdef USG
+#include "stab.h"  /* If doing DBX on sysV, use our own stab.h.  */
+#else
+#include <stab.h>  /* On BSD, use the system's stab.h.  */
+#endif /* not USG */
 #endif
 
 /* .stabs code for source file name.  */
@@ -763,6 +767,48 @@ symout_block_symbols (decls, addr_buffer, filter)
 		  /* Detect vars that were optimized entirely away.  */
 		  if (buffer.value.value == -1)
 		    buffer.class = LOC_CONST;
+		}
+	      else if (GET_CODE (DECL_RTL (decl)) == MEM
+		       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
+			   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
+			       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
+		/* If the value is indirect by memory or by a register
+		   that isn't the frame pointer
+		   then it means the object is variable-sized and address through
+		   that register or stack slot.
+		   If we have a pointer-type (which we should, for an array),
+		   output the variable as a pointer.
+		   Otherwise ignore it, since it is hard to create the ptr
+		   type now and output it, and -gg is being retired.  */
+		{
+		  tree ptype = TYPE_POINTER_TO (TREE_TYPE (TREE_TYPE (decl)));
+		  if (ptype == 0
+		      || TYPE_OUTPUT_ADDRESS (ptype) == 0)
+		    continue;
+
+		  buffer.type = (struct type *) TYPE_OUTPUT_ADDRESS (ptype);
+
+
+		  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
+		    {
+		      buffer.class = LOC_REGISTER;
+		      buffer.value.value = REGNO (DECL_RTL (decl));
+		      /* Detect vars that were optimized entirely away.  */
+		      if (buffer.value.value == -1)
+			buffer.class = LOC_CONST;
+		    }
+		  else
+		    {
+		      register rtx addr = XEXP (DECL_RTL (decl), 0);
+		      if (GET_CODE (addr) != PLUS && GET_CODE (addr) != MINUS)
+			abort ();
+		      if (GET_CODE (XEXP (addr, 1)) != CONST_INT)
+			abort ();
+		      buffer.class = LOC_LOCAL;
+		      buffer.value.value = INTVAL (XEXP (addr, 1));
+		      if (GET_CODE (addr) == MINUS)
+			buffer.value.value = - buffer.value.value;
+		    }
 		}
 	      /* Locals in memory are expected to be addressed as
 		 (PLUS (REG ...) (CONST_INT ...)).

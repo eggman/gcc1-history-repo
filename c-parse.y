@@ -59,7 +59,7 @@ extern int errno;
 #endif
 
 /* Cause the `yydebug' variable to be defined.  */
-#define YYDEBUG
+#define YYDEBUG 1
 %}
 
 %start program
@@ -125,7 +125,7 @@ extern int errno;
 %type <code> unop
 
 %type <ttype> identifier IDENTIFIER TYPENAME CONSTANT expr nonnull_exprlist exprlist
-%type <ttype> expr_no_commas primary string STRING
+%type <ttype> expr_no_commas cast_expr unary_expr primary string STRING
 %type <ttype> typed_declspecs reserved_declspecs
 %type <ttype> typed_typespecs reserved_typespecquals
 %type <ttype> declmods typespec typespecqual_reserved
@@ -159,13 +159,13 @@ static tree make_pointer_declarator ();
 static tree combine_strings ();
 static void reinit_parse_for_function ();
 
-extern double atof ();
-
 /* List of types and structure classes of the current declaration */
 tree current_declspecs;
 
 char *input_filename;		/* source file current line is coming from */
 char *main_input_filename;	/* top-level source file */
+
+int undeclared_variable_notice;	/* 1 if we explained undeclared var errors. */
 
 static int yylex ();
 %}
@@ -284,19 +284,37 @@ nonnull_exprlist:
 		{ chainon ($1, build_tree_list (NULL_TREE, $3)); }
 	;
 
-expr_no_commas:
+unary_expr:
 	primary
-	| '*' expr_no_commas   %prec UNARY
+	| '*' cast_expr   %prec UNARY
 		{ $$ = build_indirect_ref ($2, "unary *"); }
-	| unop expr_no_commas  %prec UNARY
+	| unop cast_expr  %prec UNARY
 		{ $$ = build_unary_op ($1, $2, 0); }
-	| '(' typename ')' expr_no_commas  %prec UNARY
+	| SIZEOF unary_expr  %prec UNARY
+		{ if (TREE_CODE ($2) == COMPONENT_REF
+		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
+		    error ("`sizeof' applied to a bit-field");
+		  $$ = c_sizeof (TREE_TYPE ($2)); }
+	| SIZEOF '(' typename ')'  %prec HYPERUNARY
+		{ $$ = c_sizeof (groktypename ($3)); }
+	| ALIGNOF unary_expr  %prec UNARY
+		{ if (TREE_CODE ($2) == COMPONENT_REF
+		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
+		    error ("`__alignof' applied to a bit-field");
+		  $$ = c_alignof (TREE_TYPE ($2)); }
+	| ALIGNOF '(' typename ')'  %prec HYPERUNARY
+		{ $$ = c_alignof (groktypename ($3)); }
+	;
+
+cast_expr:
+	unary_expr
+	| '(' typename ')' cast_expr  %prec UNARY
 		{ tree type = groktypename ($2);
 		  $$ = build_c_cast (type, $4); }
 	| '(' typename ')' '{' initlist maybecomma '}'  %prec UNARY
 		{ tree type = groktypename ($2);
 		  if (pedantic)
-		    warning ("ANSI C forbids constructor-expressions");
+		    warning ("ANSI C forbids constructor expressions");
 		  $$ = digest_init (type, build_nt (CONSTRUCTOR, NULL_TREE, nreverse ($5)), 0);
 		  if (TREE_CODE (type) == ARRAY_TYPE && TYPE_SIZE (type) == 0)
 		    {
@@ -305,20 +323,10 @@ expr_no_commas:
 			abort ();
 		    }
 		}
-	| SIZEOF expr_no_commas  %prec UNARY
-		{ if (TREE_CODE ($2) == COMPONENT_REF
-		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
-		    error ("sizeof applied to a bit-field");
-		  $$ = c_sizeof (TREE_TYPE ($2)); }
-	| SIZEOF '(' typename ')'  %prec HYPERUNARY
-		{ $$ = c_sizeof (groktypename ($3)); }
-	| ALIGNOF expr_no_commas  %prec UNARY
-		{ if (TREE_CODE ($2) == COMPONENT_REF
-		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
-		    error ("__alignof applied to a bit-field");
-		  $$ = c_alignof (TREE_TYPE ($2)); }
-	| ALIGNOF '(' typename ')'  %prec HYPERUNARY
-		{ $$ = c_alignof (groktypename ($3)); }
+	;
+
+expr_no_commas:
+	  cast_expr
 	| expr_no_commas '+' expr_no_commas
 		{ $$ = build_binary_op ($2, $1, $3); }
 	| expr_no_commas '-' expr_no_commas
@@ -358,7 +366,7 @@ expr_no_commas:
 primary:
 	IDENTIFIER
 		{ $$ = lastiddecl;
-		  if (!$$)
+		  if (!$$ || $$ == error_mark_node)
 		    {
 		      if (yychar == YYEMPTY)
 			yychar = YYLEX;
@@ -368,14 +376,31 @@ primary:
 			  assemble_external ($$);
 			  TREE_USED ($$) = 1;
 			}
+		      else if (current_function_decl == 0)
+			{
+			  error ("`%s' undeclared, outside of functions",
+				 IDENTIFIER_POINTER ($1));
+			  $$ = error_mark_node;
+			}
 		      else
 			{
-			  if (IDENTIFIER_GLOBAL_VALUE ($1) != error_mark_node)
-			    error ("undeclared variable `%s' (first use here)",
-				   IDENTIFIER_POINTER ($1));
+			  if (IDENTIFIER_GLOBAL_VALUE ($1) != error_mark_node
+			      || IDENTIFIER_ERROR_LOCUS ($1) != current_function_decl)
+			    {
+			      error ("`%s' undeclared (first use this function)",
+				     IDENTIFIER_POINTER ($1));
+
+			      if (! undeclared_variable_notice)
+				{
+				  error ("(Each undeclared identifier is reported only once");
+				  error ("for each function it appears in.)");
+				  undeclared_variable_notice = 1;
+				}
+			    }
 			  $$ = error_mark_node;
 			  /* Prevent repeated error messages.  */
 			  IDENTIFIER_GLOBAL_VALUE ($1) = error_mark_node;
+			  IDENTIFIER_ERROR_LOCUS ($1) = current_function_decl;
 			}
 		    }
 		  else if (! TREE_USED ($$))
@@ -1543,8 +1568,9 @@ extend_token_buffer (p)
 }
 
 /* At the beginning of a line, increment the line number
-   and handle a #line directive immediately following.
-   Return first nonwhite char of first non-# line following.  */
+   and process any #-directive on this line.
+   If the line is a #-directive, read the entire line and return a newline.
+   Otherwise, return the line's first non-whitespace character.  */
 
 int
 check_newline ()
@@ -1552,174 +1578,162 @@ check_newline ()
   register int c;
   register int token;
 
-  while (1)
+  lineno++;
+
+  /* Read first nonwhite char on the line.  */
+
+  c = getc (finput);
+  while (c == ' ' || c == '\t')
+    c = getc (finput);
+
+  if (c != '#')
     {
-      lineno++;
+      /* If not #, return it so caller will use it.  */
+      return c;
+    }
 
-      /* Read first nonwhite char on the line.  */
+  /* Read first nonwhite char after the `#'.  */
 
-      c = getc (finput);
-      while (c == ' ' || c == '\t')
-	c = getc (finput);
+  c = getc (finput);
+  while (c == ' ' || c == '\t')
+    c = getc (finput);
 
-      if (c != '#')
+  /* If a letter follows, then if the word here is `line', skip
+     it and ignore it; otherwise, ignore the line, with an error
+     if the word isn't `pragma'.  */
+
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+    {
+      if (c == 'p')
 	{
-	  /* If not #, return it so caller will use it.  */
-	  return c;
+	  if (getc (finput) == 'r'
+	      && getc (finput) == 'a'
+	      && getc (finput) == 'g'
+	      && getc (finput) == 'm'
+	      && getc (finput) == 'a'
+	      && ((c = getc (finput)) == ' ' || c == '\t'))
+	    goto skipline;
 	}
 
-      /* Read first nonwhite char after the `#'.  */
-
-      c = getc (finput);
-      while (c == ' ' || c == '\t')
-	c = getc (finput);
-
-      /* If a letter follows, then if the word here is `line', skip
-	 it and ignore it; otherwise, ignore the line, with an error
-	 if the word isn't `pragma'.  */
-
-      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+      else if (c == 'l')
 	{
-	  if (c == 'p')
-	    {
-	      if (getc (finput) == 'r'
-		  && getc (finput) == 'a'
-		  && getc (finput) == 'g'
-		  && getc (finput) == 'm'
-		  && getc (finput) == 'a'
-		  && ((c = getc (finput)) == ' ' || c == '\t'))
-		goto noerror;
-	    }
-
-	  else if (c == 'l')
-	    {
-	      if (getc (finput) == 'i'
-		  && getc (finput) == 'n'
-		  && getc (finput) == 'e'
-		  && ((c = getc (finput)) == ' ' || c == '\t'))
-		goto linenum;
-	    }
+	  if (getc (finput) == 'i'
+	      && getc (finput) == 'n'
+	      && getc (finput) == 'e'
+	      && ((c = getc (finput)) == ' ' || c == '\t'))
+	    goto linenum;
+	}
 #ifdef IDENT_DIRECTIVE
-	  else if (c == 'i')
+      else if (c == 'i')
+	{
+	  if (getc (finput) == 'd'
+	      && getc (finput) == 'e'
+	      && getc (finput) == 'n'
+	      && getc (finput) == 't'
+	      && ((c = getc (finput)) == ' ' || c == '\t'))
 	    {
-	      if (getc (finput) == 'd'
-		  && getc (finput) == 'e'
-		  && getc (finput) == 'n'
-		  && getc (finput) == 't'
-		  && ((c = getc (finput)) == ' ' || c == '\t'))
+	      extern FILE *asm_out_file;
+
+	      if (pedantic)
+		error ("ANSI C does not allow #ident");
+
+	      /* Here we have just seen `#ident '.
+		 A string constant should follow.  */
+
+	      while (c == ' ' || c == '\t')
+		c = getc (finput);
+
+	      /* If no argument, ignore the line.  */
+	      if (c == '\n')
+		return c;
+
+	      ungetc (c, finput);
+	      token = yylex ();
+	      if (token != STRING
+		  || TREE_CODE (yylval.ttype) != STRING_CST)
 		{
-		  extern FILE *asm_out_file;
-
-		  if (pedantic)
-		    error ("ANSI C does not allow #ident");
-
-		  /* Here we have just seen `#ident '.
-		     A string constant should follow.  */
-
-		  while (c == ' ' || c == '\t')
-		    c = getc (finput);
-
-		  /* If no argument, ignore the line.  */
-		  if (c == '\n')
-		    continue;
-
-		  ungetc (c, finput);
-		  token = yylex ();
-		  if (token != STRING
-		      || TREE_CODE (yylval.ttype) != STRING_CST)
-		    {
-		      error ("invalid #ident");
-		      return getc (finput);
-		    }
+		  error ("invalid #ident");
+		  goto skipline;
+		}
 
 #ifdef ASM_OUTPUT_IDENT
-		  ASM_OUTPUT_IDENT (asm_out_file, TREE_STRING_POINTER (yylval.ttype));
+	      ASM_OUTPUT_IDENT (asm_out_file, TREE_STRING_POINTER (yylval.ttype));
 #else
-		  fprintf (asm_out_file, "\t.ident \"%s\"\n",
-			   TREE_STRING_POINTER (yylval.ttype));
+	      fprintf (asm_out_file, "\t.ident \"%s\"\n",
+		       TREE_STRING_POINTER (yylval.ttype));
 #endif
 
-		  /* Skip the rest of this line.  */
-		  while ((c = getc (finput)) && c != '\n');
-		  if (c == 0)
-		    return 0;
-		  continue;
-		}
+	      /* Skip the rest of this line.  */
+	      goto skipline;
 	    }
+	}
 #endif
 
-	  error ("undefined or invalid # directive");
-	noerror:
+      error ("undefined or invalid # directive");
+      goto skipline;
+    }
 
-	  while ((c = getc (finput)) && c != '\n');
+linenum:
+  /* Here we have either `#line' or `# <nonletter>'.
+     In either case, it should be a line number; a digit should follow.  */
 
-	  if (c == 0)
-	    return 0;
-	  continue;
-	}
+  while (c == ' ' || c == '\t')
+    c = getc (finput);
 
-    linenum:
-      /* Here we have either `#line' or `# <nonletter>'.
-	 In either case, it should be a line number; a digit should follow.  */
+  /* If the # is the only nonwhite char on the line,
+     just ignore it.  Check the new newline.  */
+  if (c == '\n')
+    return c;
 
+  /* Something follows the #; read a token.  */
+
+  ungetc (c, finput);
+  token = yylex ();
+
+  if (token == CONSTANT
+      && TREE_CODE (yylval.ttype) == INTEGER_CST)
+    {
+      /* subtract one, because it is the following line that
+	 gets the specified number */
+
+      int l = TREE_INT_CST_LOW (yylval.ttype) - 1;
+
+      /* Is this the last nonwhite stuff on the line?  */
+      c = getc (finput);
       while (c == ' ' || c == '\t')
 	c = getc (finput);
-
-      /* If the # is the only nonwhite char on the line,
-	 just ignore it.  Check the new newline.  */
       if (c == '\n')
-	continue;
-
-      /* Something follows the #; read a token.  */
-
-      ungetc (c, finput);
-      token = yylex ();
-
-      if (token == CONSTANT
-	  && TREE_CODE (yylval.ttype) == INTEGER_CST)
 	{
-	  /* subtract one, because it is the following line that
-	     gets the specified number */
-
-	  int l = TREE_INT_CST_LOW (yylval.ttype) - 1;
-
-	  /* Is this the last nonwhite stuff on the line?  */
-	  c = getc (finput);
-	  while (c == ' ' || c == '\t')
-	    c = getc (finput);
-	  if (c == '\n')
-	    {
-	      /* No more: store the line number and check following line.  */
-	      lineno = l;
-	      continue;
-	    }
-	  ungetc (c, finput);
-
-	  /* More follows: it must be a string constant (filename).  */
-
-	  token = yylex ();
-	  if (token != STRING || TREE_CODE (yylval.ttype) != STRING_CST)
-	    {
-	      error ("invalid #line");
-	      return getc (finput);
-	    }
-
-	  input_filename
-	    = (char *) permalloc (TREE_STRING_LENGTH (yylval.ttype) + 1);
-	  strcpy (input_filename, TREE_STRING_POINTER (yylval.ttype));
+	  /* No more: store the line number and check following line.  */
 	  lineno = l;
-
-	  if (main_input_filename == 0)
-	    main_input_filename = input_filename;
+	  return c;
 	}
-      else
-	error ("invalid #line");
+      ungetc (c, finput);
 
-      /* skip the rest of this line.  */
-      while ((c = getc (finput)) && c != '\n');
-      if (c == 0)
-	return 0;
+      /* More follows: it must be a string constant (filename).  */
+
+      token = yylex ();
+      if (token != STRING || TREE_CODE (yylval.ttype) != STRING_CST)
+	{
+	  error ("invalid #line");
+	  goto skipline;
+	}
+
+      input_filename
+	= (char *) permalloc (TREE_STRING_LENGTH (yylval.ttype) + 1);
+      strcpy (input_filename, TREE_STRING_POINTER (yylval.ttype));
+      lineno = l;
+
+      if (main_input_filename == 0)
+	main_input_filename = input_filename;
     }
+  else
+    error ("invalid #line");
+
+  /* skip the rest of this line.  */
+ skipline:
+  while ((c = getc (finput)) && c != '\n');
+  return c;
 }
 
 #define isalnum(char) ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9'))
@@ -2138,7 +2152,7 @@ yylex ()
 	    tree type = double_type_node;
 	    char f_seen = 0;
 	    char l_seen = 0;
-	    double value;
+	    REAL_VALUE_TYPE value;
 
 	    /* Read explicit exponent if any, and put it in tokenbuf.  */
 
@@ -2166,7 +2180,7 @@ yylex ()
 
 	    *p = 0;
 	    errno = 0;
-	    value = atof (token_buffer);
+	    value = REAL_VALUE_ATOF (token_buffer);
 #ifdef ERANGE
 	    if (errno == ERANGE && !flag_traditional)
 	      {

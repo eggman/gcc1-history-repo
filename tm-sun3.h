@@ -23,7 +23,9 @@ and this notice must be preserved on all copies.  */
 
 /* See tm-m68k.h.  7 means 68020 with 68881.  */
 
+#ifndef TARGET_DEFAULT
 #define TARGET_DEFAULT 7
+#endif
 
 /* Define __HAVE_FPA__ or __HAVE_68881__ in preprocessor,
    according to the -m flags.

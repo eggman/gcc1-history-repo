@@ -55,3 +55,6 @@ and this notice must be preserved on all copies.  */
 #undef FUNCTION_PROFILER
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
    fprintf (FILE, "\tmovl $LP%d,%%eax\n\tcall mcount\n", (LABELNO));
+
+/* Assember pseudo-op for shared data segment. */
+#define SHARED_SECTION_ASM_OP ".shdata"

@@ -471,7 +471,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 	    fputc (',', FILE);					\
 	}							\
       fprintf (FILE, "],%d\n", SIZE);				\
-    }
+    }								\
   else while (*bufp >= 0)					\
     fprintf (FILE, "\tmovd r%d,tos\n", *bufp++);		\
   fbufp = used_fregs_buf;					\
@@ -1069,7 +1069,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 /* This is how to align the code that follows an unconditional branch.  */
 
-#define ASM_OUTPUT_ALIGN_CODE(FILE)
+#define ASM_OUTPUT_ALIGN_CODE(FILE)	\
   fprintf (FILE, "\t.align 4\n")
 
 /* This is how to output an assembler line defining a `double' constant.  */
@@ -1195,11 +1195,11 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     if (GET_MODE (X) == DFmode)						\
       { union { double d; int i[2]; } u;				\
-	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
 	fprintf (FILE, "$0d%.20e", u.d); }				\
     else								\
       { union { double d; int i[2]; } u;				\
-	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
 	fprintf (FILE, "$0f%.20e", u.d); }				\
   else { putc ('$', FILE); output_addr_const (FILE, X); }}
 

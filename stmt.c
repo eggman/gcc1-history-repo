@@ -1,5 +1,5 @@
 /* Expands front end tree to back end RTL for GNU C-Compiler
-   Copyright (C) 1987,1988 Free Software Foundation, Inc.
+   Copyright (C) 1987,1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -161,7 +161,7 @@ static void fixup_var_refs_insns ();
 static rtx fixup_var_refs_1 ();
 static rtx parm_stack_loc ();
 static void optimize_bit_field ();
-void do_jump_if_equal ();
+static void do_jump_if_equal ();
 
 /* Functions and data structures for expanding case statements.  */
 
@@ -738,10 +738,31 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
     {
       tree val = TREE_VALUE (tail);
+      int j;
+      int found_equal;
 
       /* If there's an erroneous arg, emit no insn.  */
       if (TREE_TYPE (val) == error_mark_node)
 	return;
+
+      /* Make sure constraint has `=' and does not have `+'.  */
+
+      found_equal = 0;
+      for (j = 0; j < TREE_STRING_LENGTH (TREE_PURPOSE (tail)); j++)
+	{
+	  if (TREE_STRING_POINTER (TREE_PURPOSE (tail))[j] == '+')
+	    {
+	      error ("input operand constraint contains `+'");
+	      return;
+	    }
+	  if (TREE_STRING_POINTER (TREE_PURPOSE (tail))[j] == '=')
+	    found_equal = 1;
+	}
+      if (! found_equal)
+	{
+	  error ("output operand constraint lacks `='");
+	  return;
+	}
 
       /* If an output operand is not a variable or indirect ref,
 	 create a SAVE_EXPR which is a pseudo-reg
@@ -785,6 +806,8 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
   i = 0;
   for (tail = inputs; tail; tail = TREE_CHAIN (tail))
     {
+      int j;
+
       /* If there's an erroneous arg, emit no insn,
 	 because the ASM_INPUT would get VOIDmode
 	 and that could cause a crash in reload.  */
@@ -796,6 +819,17 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 		 TREE_STRING_POINTER (TREE_VALUE (tail)) );
 	  return;
 	}
+
+      /* Make sure constraint has neither `=' nor `+'.  */
+
+      for (j = 0; j < TREE_STRING_LENGTH (TREE_PURPOSE (tail)); j++)
+	if (TREE_STRING_POINTER (TREE_PURPOSE (tail))[j] == '='
+	    || TREE_STRING_POINTER (TREE_PURPOSE (tail))[j] == '+')
+	  {
+	    error ("input operand constraint contains `%c'",
+		   TREE_STRING_POINTER (TREE_PURPOSE (tail))[j]);
+	    return;
+	  }
 
       XVECEXP (body, 3, i)      /* argvec */
 	= expand_expr (TREE_VALUE (tail), 0, VOIDmode, 0);
@@ -911,7 +945,8 @@ expand_expr_stmt (exp)
 {
   /* If -W, warn about statements with no side effects,
      except inside a ({...}) where they may be useful.  */
-  if (extra_warnings && expr_stmts_for_value == 0 && !TREE_VOLATILE (exp))
+  if (extra_warnings && expr_stmts_for_value == 0 && !TREE_VOLATILE (exp)
+      && exp != error_mark_node)
     warning ("statement with no effect");
   last_expr_type = TREE_TYPE (exp);
   if (! flag_syntax_only)
@@ -1304,6 +1339,9 @@ expand_return (retval)
   else if ((TREE_CODE (retval) == MODIFY_EXPR || TREE_CODE (retval) == INIT_EXPR)
 	   && TREE_CODE (TREE_OPERAND (retval, 0)) == RESULT_DECL)
     retval_rhs = TREE_OPERAND (retval, 1);
+  else if (TREE_TYPE (retval) == void_type_node)
+    /* Recognize tail-recursive call to void function.  */
+    retval_rhs = retval;
   else
     retval_rhs = NULL_TREE;
 
@@ -1322,7 +1360,6 @@ expand_return (retval)
       && tail_recursion_args (TREE_OPERAND (retval_rhs, 1),
 			      DECL_ARGUMENTS (this_function)))
     {
-      ;
       if (tail_recursion_label == 0)
 	{
 	  tail_recursion_label = gen_label_rtx ();
@@ -1370,7 +1407,7 @@ expand_return (retval)
   val = expand_expr (retval, 0, VOIDmode, 0);
   emit_queue ();
 
-  if (retval_rhs && GET_CODE (val) == REG)
+  if (GET_CODE (val) == REG)
     emit_insn (gen_rtx (USE, VOIDmode, val));
 
   expand_null_return_1 (last_insn);
@@ -1678,19 +1715,10 @@ expand_decl (decl, cleanup)
 
   type = TREE_TYPE (decl);
 
-  /* External function declarations are supposed to have been
-     handled in assemble_variable.  Verify this.  */
-
-  if (TREE_CODE (decl) == FUNCTION_DECL)
-    {
-      if (DECL_RTL (decl) == 0)
-	abort ();
-      return;
-    }
-
   /* Aside from that, only automatic variables need any expansion done.
-     Static and external variables were handled by `assemble_variable'
-     (called from finish_decl).  TYPE_DECL and CONST_DECL require nothing;
+     Static and external variables, and external functions,
+     will be handled by `assemble_variable' (called from finish_decl).
+     TYPE_DECL and CONST_DECL require nothing.
      PARM_DECLs are handled in `assign_parms'.  */
 
   if (TREE_CODE (decl) != VAR_DECL)
@@ -1702,6 +1730,17 @@ expand_decl (decl, cleanup)
 
   if (type == error_mark_node)
     DECL_RTL (decl) = gen_rtx (MEM, BLKmode, const0_rtx);
+  else if (DECL_SIZE (decl) == 0)
+    /* Variable with incomplete type.  */
+    {
+      if (DECL_INITIAL (decl) == 0)
+	/* Error message was already done; now avoid a crash.  */
+	DECL_RTL (decl) = assign_stack_local (DECL_MODE (decl), 0);
+      else
+	/* An initializer is going to decide the size of this array.
+	   Until we know the size, represent its address with a reg.  */
+	DECL_RTL (decl) = gen_rtx (MEM, BLKmode, gen_reg_rtx (Pmode));
+    }
   else if (DECL_MODE (decl) != BLKmode
 	   /* If -ffloat-store, don't put explicit float vars
 	      into regs.  */
@@ -1717,12 +1756,23 @@ expand_decl (decl, cleanup)
 	mark_reg_pointer (DECL_RTL (decl));
       REG_USERVAR_P (DECL_RTL (decl)) = 1;
     }
-  else if (DECL_SIZE (decl) == 0)
-    /* Variable with incomplete type.  */
-    /* Error message was already done; now avoid a crash.  */
-    DECL_RTL (decl) = assign_stack_local (DECL_MODE (decl), 0);
   else if (TREE_LITERAL (DECL_SIZE (decl)))
     {
+      rtx oldaddr = 0;
+      rtx addr;
+
+      /* If we previously made RTL for this decl, it must be an array
+	 whose size was determined by the initializer.
+	 The old address was a register; set that register now
+	 to the proper address.  */
+      if (DECL_RTL (decl) != 0)
+	{
+	  if (GET_CODE (DECL_RTL (decl)) != MEM
+	      || GET_CODE (XEXP (DECL_RTL (decl), 0)) != REG)
+	    abort ();
+	  oldaddr = XEXP (DECL_RTL (decl), 0);
+	}
+
       /* Variable of fixed size that goes on the stack.  */
       DECL_RTL (decl)
 	= assign_stack_local (DECL_MODE (decl),
@@ -1730,6 +1780,12 @@ expand_decl (decl, cleanup)
 			       * DECL_SIZE_UNIT (decl)
 			       + BITS_PER_UNIT - 1)
 			      / BITS_PER_UNIT);
+      if (oldaddr)
+	{
+	  addr = force_operand (XEXP (DECL_RTL (decl), 0), oldaddr);
+	  emit_move_insn (oldaddr, addr);
+	}
+
       /* If this is a memory ref that contains aggregate components,
 	 mark it as such for cse and loop optimize.  */
       MEM_IN_STRUCT_P (DECL_RTL (decl))
@@ -1801,10 +1857,18 @@ expand_decl (decl, cleanup)
   /* If doing stupid register allocation, make sure life of any
      register variable starts here, at the start of its scope.  */
 
-  if (obey_regdecls
-      && TREE_CODE (decl) == VAR_DECL
-      && DECL_RTL (decl) != 0)
+  if (obey_regdecls)
     use_variable (DECL_RTL (decl));
+}
+
+/* Emit code to perform the initialization of a declaration DECL.  */
+
+void
+expand_decl_init (decl)
+     tree decl;
+{
+  if (TREE_STATIC (decl))
+    return;
 
   /* Compute and store the initial value now.  */
 
@@ -2060,7 +2124,7 @@ pushcase (value, label)
 	 But report an error if this element is a duplicate.  */
       for (l = &case_stack->data.case_stmt.case_list;
 	   /* Keep going past elements distinctly less than VALUE.  */
-	   *l != 0 && !tree_int_cst_lt (value, (*l)->high);
+	   *l != 0 && tree_int_cst_lt ((*l)->high, value);
 	   l = &(*l)->right)
 	;
       if (*l)
@@ -2144,7 +2208,7 @@ pushcase_range (value1, value2, label)
      But report an error if this element is a duplicate.  */
   for (l = &case_stack->data.case_stmt.case_list;
        /* Keep going past elements distinctly less than this range.  */
-       *l != 0 && !tree_int_cst_lt (value1, (*l)->high);
+       *l != 0 && tree_int_cst_lt ((*l)->high, value1);
        l = &(*l)->right)
     ;
   if (*l)
@@ -2277,12 +2341,22 @@ expand_end_case ()
 	{
 	  index = expand_expr (index_expr, 0, VOIDmode, 0);
 	  emit_queue ();
+	  do_pending_stack_adjust ();
 
 	  index = protect_from_queue (index, 0);
 	  if (GET_CODE (index) == MEM)
 	    index = copy_to_reg (index);
-	  if (TREE_CODE (index_expr) == INTEGER_CST)
+	  if (GET_CODE (index) == CONST_INT
+	      || TREE_CODE (index_expr) == INTEGER_CST)
 	    {
+	      /* Make a tree node with the proper constant value
+		 if we don't already have one.  */
+	      if (TREE_CODE (index_expr) != INTEGER_CST)
+		{
+		  index_expr = build_int_2 (INTVAL (index), 0);
+		  index_expr = convert (TREE_TYPE (index_expr), index_expr);
+		}
+
 	      /* For constant index expressions we need only
 		 issue a unconditional branch to the appropriate
 		 target code.  The job of removing any unreachable
@@ -2297,9 +2371,9 @@ expand_end_case ()
 		    break;
 		}
 	      if (n)
-		emit_jump (default_label);
-	      else
 		emit_jump (label_rtx (n->code_label));
+	      else
+		emit_jump (default_label);
 	    }
 	  else
 	    {
@@ -2318,7 +2392,8 @@ expand_end_case ()
 		 default code is emitted.  */
 	      balance_case_nodes (&thiscase->data.case_stmt.case_list, 0);
 	      emit_case_nodes (index, thiscase->data.case_stmt.case_list,
-			       default_label);
+			       default_label,
+			       TREE_UNSIGNED (TREE_TYPE (index_expr)));
 	      emit_jump_if_reachable (default_label);
 	    }
 	}
@@ -2414,11 +2489,11 @@ expand_end_case ()
 }
 
 /* Generate code to jump to LABEL if OP1 and OP2 are equal.  */
-/* ??? This may need an UNSIGNEDP argument to work properly ??? */
 
-void
-do_jump_if_equal (op1, op2, label)
+static void
+do_jump_if_equal (op1, op2, label, unsignedp)
      rtx op1, op2, label;
+     int unsignedp;
 {
   if (GET_CODE (op1) == CONST_INT
       && GET_CODE (op2) == CONST_INT)
@@ -2428,7 +2503,7 @@ do_jump_if_equal (op1, op2, label)
     }
   else
     {
-      emit_cmp_insn (op1, op2, 0, 0);
+      emit_cmp_insn (op1, op2, 0, unsignedp, 0);
       emit_jump_insn (gen_beq (label));
     }
 }
@@ -2566,16 +2641,18 @@ node_has_low_bound (node)
   if (node->left)
     {
       low_minus_one = combine (MINUS_EXPR, node->low, build_int_2 (1, 0));
-      for (pnode = node->parent; pnode; pnode = pnode->parent)
-	{
-	  if (tree_int_cst_equal (low_minus_one, pnode->high))
-	    return 1;
-	  /* If a parent node has a left branch we know that none
-	     of its parents can have a high bound of our target
-	     minus one so we abort the search.  */
-	  if (node->left)
-	    break;
-	}
+      /* Avoid the screw case of overflow where low_minus_one is > low.  */
+      if (tree_int_cst_lt (low_minus_one, node->low))
+	for (pnode = node->parent; pnode; pnode = pnode->parent)
+	  {
+	    if (tree_int_cst_equal (low_minus_one, pnode->high))
+	      return 1;
+	    /* If a parent node has a left branch we know that none
+	       of its parents can have a high bound of our target
+	       minus one so we abort the search.  */
+	    if (node->left)
+	      break;
+	  }
     }
   return 0;
 }
@@ -2599,16 +2676,18 @@ node_has_high_bound (node)
   if (node->right == 0)
     {
       high_plus_one = combine (PLUS_EXPR, node->high, build_int_2 (1, 0));
-      for (pnode = node->parent; pnode; pnode = pnode->parent)
-	{
-	  if (tree_int_cst_equal (high_plus_one, pnode->low))
-	    return 1;
-	  /* If a parent node has a right branch we know that none
-	     of its parents can have a low bound of our target
-	     plus one so we abort the search.  */
-	  if (node->right)
-	    break;
-	}
+      /* Avoid the screw case of overflow where high_plus_one is > high.  */
+      if (tree_int_cst_lt (node->high, high_plus_one))
+	for (pnode = node->parent; pnode; pnode = pnode->parent)
+	  {
+	    if (tree_int_cst_equal (high_plus_one, pnode->low))
+	      return 1;
+	    /* If a parent node has a right branch we know that none
+	       of its parents can have a low bound of our target
+	       plus one so we abort the search.  */
+	    if (node->right)
+	      break;
+	  }
     }
   return 0;
 }
@@ -2641,6 +2720,7 @@ emit_jump_if_reachable (label)
 /* Emit step-by-step code to select a case for the value of INDEX.
    The thus generated decision tree follows the form of the
    case-node binary tree NODE, whose nodes represent test conditions.
+   UNSIGNEDP is nonzero if we should do unsigned comparisons.
 
    Care is taken to prune redundant tests from the decision tree
    by detecting any boundary conditions already checked by
@@ -2656,11 +2736,19 @@ emit_jump_if_reachable (label)
    code for out of bound conditions on the current node node.  */
 
 static void
-emit_case_nodes (index, node, default_label)
-     tree index;
+emit_case_nodes (index, node, default_label, unsignedp)
+     rtx index;
      case_node_ptr node;
      tree default_label;
+     int unsignedp;
 {
+  /* If INDEX has an unsigned type, we must make unsigned branches.  */
+  typedef rtx rtx_function ();
+  rtx_function *gen_bgt_pat = unsignedp ? gen_bgtu : gen_bgt;
+  rtx_function *gen_bge_pat = unsignedp ? gen_bgeu : gen_bge;
+  rtx_function *gen_blt_pat = unsignedp ? gen_bltu : gen_blt;
+  rtx_function *gen_ble_pat = unsignedp ? gen_bleu : gen_ble;
+
   if (node->test_label)
     {
       /* If this test node requires a label it follows that
@@ -2674,33 +2762,37 @@ emit_case_nodes (index, node, default_label)
     {
       /* Node is single valued.  */
       do_jump_if_equal (index, expand_expr (node->low, 0, VOIDmode, 0),
-			label_rtx (node->code_label));
+			label_rtx (node->code_label), unsignedp);
       if (node->right)
 	{
 	  if (node->left)
 	    {
 	      /* This node has children on either side.  */
+	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
 
 	      if (node_is_bounded (node->right))
 		{
-		  emit_jump_insn (gen_bgt (label_rtx (node->right->code_label)));
+		  emit_jump_insn (gen_bgt_pat (label_rtx (node->right->code_label)));
 		  if (node_is_bounded (node->left))
 		    emit_jump (label_rtx (node->left->code_label));
 		  else
-		    emit_case_nodes (index, node->left, default_label);
+		    emit_case_nodes (index, node->left,
+				     default_label, unsignedp);
 		}
 	      else
 		{
 		  if (node_is_bounded (node->left))
-		    emit_jump_insn (gen_blt (label_rtx (node->left->code_label)));
+		    emit_jump_insn (gen_blt_pat (label_rtx (node->left->code_label)));
 		  else
 		    {
 		      node->right->test_label =
 			build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
-		      emit_jump_insn (gen_bgt (label_rtx (node->right->test_label)));
-		      emit_case_nodes (index, node->left, default_label);
+		      emit_jump_insn (gen_bgt_pat (label_rtx (node->right->test_label)));
+		      emit_case_nodes (index, node->left,
+				       default_label, unsignedp);
 		    }
-		  emit_case_nodes (index, node->right, default_label);
+		  emit_case_nodes (index, node->right,
+				   default_label, unsignedp);
 		}
 	    }
 	  else
@@ -2713,11 +2805,14 @@ emit_case_nodes (index, node, default_label)
 		 if we it avoid only one right child;
 		 it costs too much space to save so little time.  */
 	      if (node->right->right && !node_has_low_bound (node))
-		emit_jump_insn (gen_blt (default_label));
+		{
+		  emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
+		  emit_jump_insn (gen_blt_pat (default_label));
+		}
 	      if (node_is_bounded (node->right))
 		emit_jump (label_rtx (node->right->code_label));
 	      else
-		emit_case_nodes (index, node->right, default_label);
+		emit_case_nodes (index, node->right, default_label, unsignedp);
 	    }
 	}
       else if (node->left)
@@ -2725,7 +2820,7 @@ emit_case_nodes (index, node, default_label)
 	  if (node_is_bounded (node->left))
 	    emit_jump (label_rtx (node->left->code_label));
 	  else
-	    emit_case_nodes (index, node->left, default_label);
+	    emit_case_nodes (index, node->left, default_label, unsignedp);
 	}
     }
   else
@@ -2735,13 +2830,13 @@ emit_case_nodes (index, node, default_label)
 	{
 	  if (node->left)
 	    {
-	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0);
+	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
 	      if (node_is_bounded (node->right))
 		{
 		  /* Right hand node is fully bounded so we can
 		     eliminate any testing and branch directly
 		     to the target code.  */
-		  emit_jump_insn (gen_bgt (label_rtx (node->right->code_label)));
+		  emit_jump_insn (gen_bgt_pat (label_rtx (node->right->code_label)));
 		}
 	      else
 		{
@@ -2749,10 +2844,10 @@ emit_case_nodes (index, node, default_label)
 		     a label to put on the cmp code.  */
 		  node->right->test_label =
 		    build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
-		  emit_jump_insn (gen_bgt (label_rtx (node->right->test_label)));
+		  emit_jump_insn (gen_bgt_pat (label_rtx (node->right->test_label)));
 		}
-	      emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0);
-	      emit_jump_insn (gen_bge (label_rtx (node->code_label)));
+	      emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0, 0);
+	      emit_jump_insn (gen_bge_pat (label_rtx (node->code_label)));
 	      if (node_is_bounded (node->left))
 		{
 		  /* Left hand node is fully bounded so we can
@@ -2761,21 +2856,21 @@ emit_case_nodes (index, node, default_label)
 		  emit_jump (label_rtx (node->left->code_label));
 		}
 	      else
-		emit_case_nodes (index, node->left, default_label);
+		emit_case_nodes (index, node->left, default_label, unsignedp);
 	      /* If right node has been given a test label above
 		 we must process it now.  */
 	      if (node->right->test_label)
-		emit_case_nodes (index, node->right, default_label);
+		emit_case_nodes (index, node->right, default_label, unsignedp);
 	    }
 	  else
 	    {
 	      if (!node_has_low_bound (node))
 		{
-		  emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0);
-		  emit_jump_insn (gen_blt (default_label));
+		  emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0, 0);
+		  emit_jump_insn (gen_blt_pat (default_label));
 		}
-	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0);
-	      emit_jump_insn (gen_ble (label_rtx (node->code_label)));
+	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
+	      emit_jump_insn (gen_ble_pat (label_rtx (node->code_label)));
 	      if (node_is_bounded (node->right))
 		{
 		  /* Right hand node is fully bounded so we can
@@ -2784,18 +2879,18 @@ emit_case_nodes (index, node, default_label)
 		  emit_jump (label_rtx (node->right->code_label));
 		}
 	      else
-		emit_case_nodes (index, node->right, default_label);
+		emit_case_nodes (index, node->right, default_label, unsignedp);
 	    }
 	}
       else if (node->left)
 	{
 	  if (!node_has_high_bound (node))
 	    {
-	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0);
-	      emit_jump_insn (gen_bgt (default_label));
+	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
+	      emit_jump_insn (gen_bgt_pat (default_label));
 	    }
-	  emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0);
-	  emit_jump_insn (gen_bge (label_rtx (node->code_label)));
+	  emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0, 0);
+	  emit_jump_insn (gen_bge_pat (label_rtx (node->code_label)));
 	  if (node_is_bounded (node->left))
 	    {
 	      /* Left hand node is fully bounded so we can
@@ -2804,7 +2899,7 @@ emit_case_nodes (index, node, default_label)
 	      emit_jump (label_rtx (node->left->code_label));
 	    }
 	  else
-	    emit_case_nodes (index, node->left, default_label);
+	    emit_case_nodes (index, node->left, default_label, unsignedp);
 	}
       else
 	{
@@ -2814,13 +2909,13 @@ emit_case_nodes (index, node, default_label)
 	     node will have emmited a jump to our target code.  */
 	  if (!node_has_high_bound (node))
 	    {
-	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0);
-	      emit_jump_insn (gen_bgt (default_label));
+	      emit_cmp_insn (index, expand_expr (node->high, 0, VOIDmode, 0), 0, 0, 0);
+	      emit_jump_insn (gen_bgt_pat (default_label));
 	    }
 	  if (!node_has_low_bound (node))
 	    {
-	      emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0);
-	      emit_jump_insn (gen_bge (label_rtx (node->code_label)));
+	      emit_cmp_insn (index, expand_expr (node->low, 0, VOIDmode, 0), 0, 0, 0);
+	      emit_jump_insn (gen_bge_pat (label_rtx (node->code_label)));
 	    }
 	  /* We allow the default case to drop through since
 	     it will picked up by calls to `jump_if_reachable'
@@ -3792,6 +3887,8 @@ assign_parms (fndecl)
 	}
       else if (! ((obey_regdecls && ! TREE_REGDECL (parm)
 		   && ! TREE_INLINE (fndecl))
+		  /* layout_decl may set this.  */
+		  || TREE_ADDRESSABLE (parm)
 		  /* If -ffloat-store specified, don't put explicit
 		     float variables into registers.  */
 		  || (flag_float_store
@@ -4206,7 +4303,7 @@ expand_function_end (filename, line)
   /* If you have any cleanups to do at this point,
      and they need to create temporary variables,
      then you will lose.  */
-  fixup_gotos (0, 0, get_insns (), 0);
+  fixup_gotos (0, 0, 0, get_insns (), 0);
 }
 
 
