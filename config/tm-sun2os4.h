@@ -19,6 +19,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #include "tm-sun2.h"
 
+#undef LINK_SPEC
+#define LINK_SPEC "%{!e*:-e start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{-Bstatic}"
+
 #undef ASM_OUTPUT_DOUBLE
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)					\
   (isinf ((VALUE))							\

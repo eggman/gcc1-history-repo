@@ -1,15 +1,15 @@
 Info file gcc.info, produced by Makeinfo, -*- Text -*- from input
 file gcc.texinfo.
 
-This file documents the use and the internals of the GNU compiler.
+   This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
+   Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
-Permission is granted to make and distribute verbatim copies of this
-manual provided the copyright notice and this permission notice are
-preserved on all copies.
+   Permission is granted to make and distribute verbatim copies of
+this manual provided the copyright notice and this permission notice
+are preserved on all copies.
 
-Permission is granted to copy and distribute modified versions of
+   Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
 that the sections entitled "GNU General Public License" and "Protect
 Your Freedom--Fight `Look And Feel'" are included exactly as in the
@@ -17,13 +17,235 @@ original, and provided that the entire resulting derived work is
 distributed under the terms of a permission notice identical to this
 one.
 
-Permission is granted to copy and distribute translations of this
+   Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
 versions, except that the sections entitled "GNU General Public
 License" and "Protect Your Freedom--Fight `Look And Feel'" and this
 permission notice may be included in translations approved by the
 Free Software Foundation instead of in the original English.
 
+
+File: gcc.info,  Node: Constants,  Next: Regs and Memory,  Prev: Machine Modes,  Up: RTL
+
+Constant Expression Types
+=========================
+
+   The simplest RTL expressions are those that represent constant
+values.
+
+`(const_int I)'
+     This type of expression represents the integer value I.  I is
+     customarily accessed with the macro `INTVAL' as in `INTVAL
+     (EXP)', which is equivalent to `XINT (EXP, 0)'.
+
+     There is only one expression object for the integer value zero;
+     it is the value of the variable `const0_rtx'.  Likewise, the
+     only expression for integer value one is found in `const1_rtx'. 
+     Any attempt to create an expression of code `const_int' and
+     value zero or one will return `const0_rtx' or `const1_rtx' as
+     appropriate.
+
+`(const_double:M I0 I1)'
+     Represents a 64-bit constant of mode M.  All floating point
+     constants are represented in this way, and so are 64-bit
+     `DImode' integer constants.
+
+     The two integers I0 and I1 together contain the bits of the
+     value.  If the constant is floating point (either single or
+     double precision), then they represent a `double'.  To convert
+     them to a `double', do
+
+          union { double d; int i[2];} u;
+          u.i[0] = CONST_DOUBLE_LOW(x);
+          u.i[1] = CONST_DOUBLE_HIGH(x);
+
+     and then refer to `u.d'.
+
+     The global variables `dconst0_rtx' and `fconst0_rtx' hold
+     `const_double' expressions with value 0, in modes `DFmode' and
+     `SFmode', respectively.  The macro `CONST0_RTX (MODE)' refers to
+     a `const_double' expression with value 0 in mode MODE.  The mode
+     MODE must be of mode class `MODE_FLOAT'.
+
+`(symbol_ref SYMBOL)'
+     Represents the value of an assembler label for data.  SYMBOL is
+     a string that describes the name of the assembler label.  If it
+     starts with a `*', the label is the rest of SYMBOL not including
+     the `*'.  Otherwise, the label is SYMBOL, prefixed with `_'.
+
+`(label_ref LABEL)'
+     Represents the value of an assembler label for code.  It
+     contains one operand, an expression, which must be a
+     `code_label' that appears in the instruction sequence to
+     identify the place where the label should go.
+
+     The reason for using a distinct expression type for code label
+     references is so that jump optimization can distinguish them.
+
+`(const EXP)'
+     Represents a constant that is the result of an assembly-time
+     arithmetic computation.  The operand, EXP, is an expression that
+     contains only constants (`const_int', `symbol_ref' and
+     `label_ref' expressions) combined with `plus' and `minus'. 
+     However, not all combinations are valid, since the assembler
+     cannot do arbitrary arithmetic on relocatable symbols.
+
+
+File: gcc.info,  Node: Regs and Memory,  Next: Arithmetic,  Prev: Constants,  Up: RTL
+
+Registers and Memory
+====================
+
+   Here are the RTL expression types for describing access to machine
+registers and to main memory.
+
+`(reg:M N)'
+     For small values of the integer N (less than
+     `FIRST_PSEUDO_REGISTER'), this stands for a reference to machine
+     register number N: a "hard register".  For larger values of N,
+     it stands for a temporary value or "pseudo register".  The
+     compiler's strategy is to generate code assuming an unlimited
+     number of such pseudo registers, and later convert them into
+     hard registers or into memory references.
+
+     The symbol `FIRST_PSEUDO_REGISTER' is defined by the machine
+     description, since the number of hard registers on the machine
+     is an invariant characteristic of the machine.  Note, however,
+     that not all of the machine registers must be general registers.
+     All the machine registers that can be used for storage of data
+     are given hard register numbers, even those that can be used
+     only in certain instructions or can hold only certain types of
+     data.
+
+     Each pseudo register number used in a function's RTL code is
+     represented by a unique `reg' expression.
+
+     M is the machine mode of the reference.  It is necessary because
+     machines can generally refer to each register in more than one
+     mode.  For example, a register may contain a full word but there
+     may be instructions to refer to it as a half word or as a single
+     byte, as well as instructions to refer to it as a floating point
+     number of various precisions.
+
+     Even for a register that the machine can access in only one
+     mode, the mode must always be specified.
+
+     A hard register may be accessed in various modes throughout one
+     function, but each pseudo register is given a natural mode and
+     is accessed only in that mode.  When it is necessary to describe
+     an access to a pseudo register using a nonnatural mode, a
+     `subreg' expression is used.
+
+     A `reg' expression with a machine mode that specifies more than
+     one word of data may actually stand for several consecutive
+     registers.  If in addition the register number specifies a
+     hardware register, then it actually represents several
+     consecutive hardware registers starting with the specified one.
+
+     Such multi-word hardware register `reg' expressions must not be
+     live across the boundary of a basic block.  The lifetime
+     analysis pass does not know how to record properly that several
+     consecutive registers are actually live there, and therefore
+     register allocation would be confused.  The CSE pass must go out
+     of its way to make sure the situation does not arise.
+
+`(subreg:M REG WORDNUM)'
+     `subreg' expressions are used to refer to a register in a
+     machine mode other than its natural one, or to refer to one
+     register of a multi-word `reg' that actually refers to several
+     registers.
+
+     Each pseudo-register has a natural mode.  If it is necessary to
+     operate on it in a different mode--for example, to perform a
+     fullword move instruction on a pseudo-register that contains a
+     single byte--the pseudo-register must be enclosed in a `subreg'.
+     In such a case, WORDNUM is zero.
+
+     The other use of `subreg' is to extract the individual registers
+     of a multi-register value.  Machine modes such as `DImode' and
+     `EPmode' indicate values longer than a word, values which
+     usually require two consecutive registers.  To access one of the
+     registers, use a `subreg' with mode `SImode' and a WORDNUM that
+     says which register.
+
+     The compilation parameter `WORDS_BIG_ENDIAN', if defined, says
+     that word number zero is the most significant part; otherwise,
+     it is the least significant part.
+
+     Between the combiner pass and the reload pass, it is possible to
+     have a `subreg' which contains a `mem' instead of a `reg' as its
+     first operand.  The reload pass eliminates these cases by
+     reloading the `mem' into a suitable register.
+
+     Note that it is not valid to access a `DFmode' value in `SFmode'
+     using a `subreg'.  On some machines the most significant part of
+     a `DFmode' value does not have the same format as a
+     single-precision floating value.
+
+`(cc0)'
+     This refers to the machine's condition code register.  It has no
+     operands and may not have a machine mode.  There are two ways to
+     use it:
+
+        * To stand for a complete set of condition code flags.  This
+          is best on most machines, where each comparison sets the
+          entire series of flags.
+
+          With this technique, `(cc0)' may be validly used in only
+          two contexts: as the destination of an assignment (in test
+          and compare instructions) and in comparison operators
+          comparing against zero (`const_int' with value zero; that
+          is to say, `const0_rtx').
+
+        * To stand for a single flag that is the result of a single
+          condition.  This is useful on machines that have only a
+          single flag bit, and in which comparison instructions must
+          specify the condition to test.
+
+          With this technique, `(cc0)' may be validly used in only
+          two contexts: as the destination of an assignment (in test
+          and compare instructions) where the source is a comparison
+          operator, and as the first operand of `if_then_else' (in a
+          conditional branch).
+
+     There is only one expression object of code `cc0'; it is the
+     value of the variable `cc0_rtx'.  Any attempt to create an
+     expression of code `cc0' will return `cc0_rtx'.
+
+     One special thing about the condition code register is that
+     instructions can set it implicitly.  On many machines, nearly
+     all instructions set the condition code based on the value that
+     they compute or store.  It is not necessary to record these
+     actions explicitly in the RTL because the machine description
+     includes a prescription for recognizing the instructions that do
+     so (by means of the macro `NOTICE_UPDATE_CC').  Only
+     instructions whose sole purpose is to set the condition code,
+     and instructions that use the condition code, need mention
+     `(cc0)'.
+
+     In some cases, better code may result from recognizing
+     combinations or peepholes that include instructions that set the
+     condition codes, even in cases where some reloading is
+     inevitable.  For examples, search for `addcc' and `andcc' in
+     `sparc.md'.
+
+`(pc)'
+     This represents the machine's program counter.  It has no
+     operands and may not have a machine mode.  `(pc)' may be validly
+     used only in certain specific contexts in jump instructions.
+
+     There is only one expression object of code `pc'; it is the
+     value of the variable `pc_rtx'.  Any attempt to create an
+     expression of code `pc' will return `pc_rtx'.
+
+     All instructions that do not jump alter the program counter
+     implicitly by incrementing it, but there is no need to mention
+     this in the RTL.
+
+`(mem:M ADDR)'
+     This RTX represents a reference to main memory at an address
+     represented by the expression ADDR.  M specifies how large a
+     unit of memory is accessed.
 
 
 File: gcc.info,  Node: Arithmetic,  Next: Comparisons,  Prev: Regs and Memory,  Up: RTL
@@ -154,14 +376,13 @@ RTL Expressions for Arithmetic
      is zero.)  The mode of X need not be M; depending on the target
      machine, various mode combinations may be valid.
 
-
 
 File: gcc.info,  Node: Comparisons,  Next: Bit Fields,  Prev: Arithmetic,  Up: RTL
 
 Comparison Operations
 =====================
 
-Comparison operators test a relation on two operands and are
+   Comparison operators test a relation on two operands and are
 considered to represent a machine-dependent nonzero value
 (`STORE_FLAG_VALUE') if the relation holds, or zero if it does not. 
 The mode of the comparison is determined by the operands; they must
@@ -170,19 +391,19 @@ operands constant would be invalid as the machine mode could not be
 deduced from it, but such a comparison should never exist in RTL due
 to constant folding.
 
-Inequality comparisons come in two flavors, signed and unsigned. 
+   Inequality comparisons come in two flavors, signed and unsigned. 
 Thus, there are distinct expression codes `gt' and `gtu' for signed
 and unsigned greater-than.  These can produce different results for
 the same pair of integer values: for example, 1 is signed
 greater-than -1 but not unsigned greater-than, because -1 when
 regarded as unsigned is actually `0xffffffff' which is greater than 1.
 
-The signed comparisons are also used for floating point values. 
+   The signed comparisons are also used for floating point values. 
 Floating point comparisons are distinguished by the machine modes of
 the operands.
 
-The comparison operators may be used to compare the condition codes
-`(cc0)' against zero, as in `(eq (cc0) (const_int 0))'.  Such a
+   The comparison operators may be used to compare the condition
+codes `(cc0)' against zero, as in `(eq (cc0) (const_int 0))'.  Such a
 construct actually refers to the result of the preceding instruction
 in which the condition codes were set.  The above example stands for
 1 if the condition codes were set to say "zero" or "equal", 0
@@ -227,14 +448,13 @@ uses in the same context.
      On most machines, `if_then_else' expressions are valid only to
      express conditional jumps.
 
-
 
 File: gcc.info,  Node: Bit Fields,  Next: Conversions,  Prev: Comparisons,  Up: RTL
 
 Bit-fields
 ==========
 
-Special expression codes exist to represent bit-field instructions. 
+   Special expression codes exist to represent bit-field instructions.
 These types of expressions are lvalues in RTL; they may appear on the
 left side of an assignment, indicating insertion of a value into the
 specified bit field.
@@ -256,25 +476,25 @@ specified bit field.
      are filled to an entire word with zeros instead of by
      sign-extension.
 
-
 
 File: gcc.info,  Node: Conversions,  Next: RTL Declarations,  Prev: Bit Fields,  Up: RTL
 
 Conversions
 ===========
 
-All conversions between machine modes must be represented by explicit
-conversion operations.  For example, an expression which is the sum
-of a byte and a full word cannot be written as `(plus:SI (reg:QI 34)
-(reg:SI 80))' because the `plus' operation requires two operands of
-the same machine mode.  Therefore, the byte-sized operand is enclosed
-in a conversion operation, as in
+   All conversions between machine modes must be represented by
+explicit conversion operations.  For example, an expression which is
+the sum of a byte and a full word cannot be written as `(plus:SI
+(reg:QI 34) (reg:SI 80))' because the `plus' operation requires two
+operands of the same machine mode.  Therefore, the byte-sized operand
+is enclosed in a conversion operation, as in
 
      (plus:SI (sign_extend:SI (reg:QI 34)) (reg:SI 80))
 
-The conversion operation is not a mere placeholder, because there may
-be more than one way of converting from a given starting mode to the
-desired final mode.  The conversion operation code says how to do it.
+   The conversion operation is not a mere placeholder, because there
+may be more than one way of converting from a given starting mode to
+the desired final mode.  The conversion operation code says how to do
+it.
 
 `(sign_extend:M X)'
      Represents the result of sign-extending the value X to machine
@@ -326,15 +546,14 @@ desired final mode.  The conversion operation code says how to do it.
      integer, still represented in floating point mode M, by rounding
      towards zero.
 
-
 
 File: gcc.info,  Node: RTL Declarations,  Next: Side Effects,  Prev: Conversions,  Up: RTL
 
 Declarations
 ============
 
-Declaration expression codes do not represent arithmetic operations
-but rather state assertions about their operands.
+   Declaration expression codes do not represent arithmetic
+operations but rather state assertions about their operands.
 
 `(strict_low_part (subreg:M (reg:N R) 0))'
      This expression code is used in only one context: operand 0 of a
@@ -347,21 +566,20 @@ but rather state assertions about their operands.
      subreg is allowed to have undefined effects on the rest of the
      register when M is less than a word.
 
-
 
 File: gcc.info,  Node: Side Effects,  Next: Incdec,  Prev: RTL Declarations,  Up: RTL
 
 Side Effect Expressions
 =======================
 
-The expression codes described so far represent values, not actions. 
+   The expression codes described so far represent values, not actions.
 But machine instructions never produce values; they are meaningful
 only for their side effects on the state of the machine.  Special
 expression codes are used to represent side effects.
 
-The body of an instruction is always one of these side effect codes;
-the codes described above, which represent values, appear only as the
-operands of these.
+   The body of an instruction is always one of these side effect
+codes; the codes described above, which represent values, appear only
+as the operands of these.
 
 `(set LVAL X)'
      Represents the action of storing the value of X into the place
@@ -526,8 +744,8 @@ operands of these.
      the chain of insns.  When actually inserted, the individual
      sub-insns are separated out and the `sequence' is forgotten.
 
-Three expression codes appear in place of a side effect, as the body
-of an insn, though strictly speaking they do not describe side
+   Three expression codes appear in place of a side effect, as the
+body of an insn, though strictly speaking they do not describe side
 effects as such:
 
 `(asm_input S)'
@@ -544,14 +762,14 @@ effects as such:
      expressions and so is BASE.  The mode M specifies how much space
      is given to each address-difference.
 
-
 
 File: gcc.info,  Node: Incdec,  Next: Assembler,  Prev: Side Effects,  Up: RTL
 
 Embedded Side-Effects on Addresses
 ==================================
 
-Four special side-effect expression codes appear as memory addresses.
+   Four special side-effect expression codes appear as memory
+addresses.
 
 `(pre_dec:M X)'
      Represents the side effect of decrementing X by a standard
@@ -579,7 +797,7 @@ Four special side-effect expression codes appear as memory addresses.
 `(post_inc:M X)'
      Similar, but specifies incrementing X instead of decrementing it.
 
-These embedded side effect expressions must be used with care. 
+   These embedded side effect expressions must be used with care. 
 Instruction patterns may not use them.  Until the `flow' pass of the
 compiler, they may occur only to represent pushes onto the stack. 
 The `flow' pass finds cases where registers are incremented or
@@ -587,19 +805,18 @@ decremented in one instruction and used as an address shortly before
 or after; these cases are then transformed to use pre- or
 post-increment or -decrement.
 
-Explicit popping of the stack could be represented with these
+   Explicit popping of the stack could be represented with these
 embedded side effect operators, but that would not be safe; the
 instruction combination pass could move the popping past pushes, thus
 changing the meaning of the code.
 
-An instruction that can be represented with an embedded side effect
-could also be represented using `parallel' containing an additional
-`set' to describe how the address register is altered.  This is not
-done because machines that allow these operations at all typically
-allow them wherever a memory address is called for.  Describing them
-as additional parallel stores would require doubling the number of
-entries in the machine description.
-
+   An instruction that can be represented with an embedded side
+effect could also be represented using `parallel' containing an
+additional `set' to describe how the address register is altered. 
+This is not done because machines that allow these operations at all
+typically allow them wherever a memory address is called for. 
+Describing them as additional parallel stores would require doubling
+the number of entries in the machine description.
 
 
 File: gcc.info,  Node: Assembler,  Next: Insns,  Prev: IncDec,  Up: RTL
@@ -607,7 +824,7 @@ File: gcc.info,  Node: Assembler,  Next: Insns,  Prev: IncDec,  Up: RTL
 Assembler Instructions as Expressions
 =====================================
 
-The RTX code `asm_operands' represents a value produced by a
+   The RTX code `asm_operands' represents a value produced by a
 user-specified assembler instruction.  It is used to represent an
 `asm' statement with arguments.  An `asm' statement with a single
 output operand, like this:
@@ -630,13 +847,12 @@ input operand RTX's, and a vector of input-operand modes and
 constraints.  The mode M1 is the mode of the sum `x+y'; M2 is that of
 `*z'.
 
-When an `asm' statement has multiple output values, its insn has
+   When an `asm' statement has multiple output values, its insn has
 several such `set' RTX's inside of a `parallel'.  Each `set' contains
 a `asm_operands'; all of these share the same assembler template and
 vectors, but each contains the constraint for the respective output
 operand.  They are also distinguished by the output-operand index
 number, which is 0, 1, ... for successive output operands.
-
 
 
 File: gcc.info,  Node: Insns,  Next: Calls,  Prev: Assembler,  Up: RTL
@@ -644,14 +860,14 @@ File: gcc.info,  Node: Insns,  Next: Calls,  Prev: Assembler,  Up: RTL
 Insns
 =====
 
-The RTL representation of the code for a function is a doubly-linked
-chain of objects called "insns".  Insns are expressions with special
-codes that are used for no other purpose.  Some insns are actual
-instructions; others represent dispatch tables for `switch'
-statements; others represent labels to jump to or various sorts of
-declarative information.
+   The RTL representation of the code for a function is a
+doubly-linked chain of objects called "insns".  Insns are expressions
+with special codes that are used for no other purpose.  Some insns
+are actual instructions; others represent dispatch tables for
+`switch' statements; others represent labels to jump to or various
+sorts of declarative information.
 
-In addition to its own specific data, each insn must have a unique
+   In addition to its own specific data, each insn must have a unique
 id-number that distinguishes it from all other insns in the current
 function, and chain pointers to the preceding and following insns. 
 These three fields occupy the same position in every insn,
@@ -670,14 +886,14 @@ always used:
      Accesses the chain pointer to the insn following I.  If I is the
      last insn, this is a null pointer.
 
-The `NEXT_INSN' and `PREV_INSN' pointers must always correspond: if
-INSN is not the first insn,
+   The `NEXT_INSN' and `PREV_INSN' pointers must always correspond:
+if INSN is not the first insn,
 
      NEXT_INSN (PREV_INSN (INSN)) == INSN
 
 is always true.
 
-Every insn has one of the following six expression codes:
+   Every insn has one of the following six expression codes:
 
 `insn'
      The expression code `insn' is used for instructions that do not
@@ -766,10 +982,10 @@ Every insn has one of the following six expression codes:
      These codes are printed symbolically when they appear in
      debugging dumps.
 
-The machine mode of an insn is normally zero (`VOIDmode'), but the
+   The machine mode of an insn is normally zero (`VOIDmode'), but the
 reload pass sets it to `QImode' if the insn needs reloading.
 
-Here is a table of the extra fields of `insn', `jump_insn' and
+   Here is a table of the extra fields of `insn', `jump_insn' and
 `call_insn' insns:
 
 `PATTERN (I)'
@@ -797,7 +1013,7 @@ Here is a table of the extra fields of `insn', `jump_insn' and
      about the usage of registers in this insn.  This list is set up
      by the flow analysis pass; it is a null pointer until then.
 
-The `LOG_LINKS' field of an insn is a chain of `insn_list'
+   The `LOG_LINKS' field of an insn is a chain of `insn_list'
 expressions.  Each of these has two operands: the first is an insn,
 and the second is another `insn_list' expression (the next one in the
 chain).  The last `insn_list' in the chain has a null pointer as
@@ -805,7 +1021,7 @@ second operand.  The significant thing about the chain is which insns
 appear in it (as first operands of `insn_list' expressions).  Their
 order is not significant.
 
-The `REG_NOTES' field of an insn is a similar chain but of
+   The `REG_NOTES' field of an insn is a similar chain but of
 `expr_list' expressions instead of `insn_list'.  There are several
 kinds of register notes, which are distinguished by the machine mode
 of the `expr_list', which in a register note is really understood as
@@ -877,15 +1093,14 @@ of register note:
      The register OP is known to have nonnegative value when this
      insn is reached.
 
-For convenience, the machine mode in an `insn_list' or `expr_list' is
-printed using these symbolic codes in debugging dumps.
+   For convenience, the machine mode in an `insn_list' or `expr_list'
+is printed using these symbolic codes in debugging dumps.
 
-The only difference between the expression codes `insn_list' and
+   The only difference between the expression codes `insn_list' and
 `expr_list' is that the first operand of an `insn_list' is assumed to
 be an insn and is printed in debugging dumps as the insn's unique id;
 the first operand of an `expr_list' is printed in the ordinary way as
 an expression.
-
 
 
 File: gcc.info,  Node: Calls,  Next: Sharing,  Prev: Insns,  Up: RTL
@@ -893,11 +1108,11 @@ File: gcc.info,  Node: Calls,  Next: Sharing,  Prev: Insns,  Up: RTL
 RTL Representation of Function-Call Insns
 =========================================
 
-Insns that call subroutines have the RTL expression code `call_insn'.
-These insns must satisfy special rules, and their bodies must use a
-special RTL expression code, `call'.
+   Insns that call subroutines have the RTL expression code
+`call_insn'.  These insns must satisfy special rules, and their
+bodies must use a special RTL expression code, `call'.
 
-A `call' expression has two operands, as follows:
+   A `call' expression has two operands, as follows:
 
      (call (mem:FM ADDR) NBYTES)
 
@@ -907,10 +1122,10 @@ argument data being passed to the subroutine, FM is a machine mode
 the machine description) and ADDR represents the address of the
 subroutine.
 
-For a subroutine that returns no value, the `call' RTX as shown above
-is the entire body of the insn.
+   For a subroutine that returns no value, the `call' RTX as shown
+above is the entire body of the insn.
 
-For a subroutine that returns a value whose mode is not `BLKmode',
+   For a subroutine that returns a value whose mode is not `BLKmode',
 the value is returned in a hard register.  If this register's number
 is R, then the body of the call insn looks like this:
 
@@ -920,13 +1135,13 @@ is R, then the body of the call insn looks like this:
 This RTL expression makes it clear (to the optimizer passes) that the
 appropriate register receives a useful value in this insn.
 
-Immediately after RTL generation, if the value of the subroutine is
-actually used, this call insn is always followed closely by an insn
-which refers to the register R.  This remains true through all the
-optimizer passes until cross jumping occurs.
+   Immediately after RTL generation, if the value of the subroutine
+is actually used, this call insn is always followed closely by an
+insn which refers to the register R.  This remains true through all
+the optimizer passes until cross jumping occurs.
 
-The following insn has one of two forms.  Either it copies the value
-into a pseudo-register, like this:
+   The following insn has one of two forms.  Either it copies the
+value into a pseudo-register, like this:
 
      (set (reg:M P) (reg:M R))
 
@@ -939,215 +1154,9 @@ this):
 Between the call insn and this following insn there may intervene
 only a stack-adjustment insn (and perhaps some `note' insns).
 
-When a subroutine returns a `BLKmode' value, it is handled by passing
-to the subroutine the address of a place to store the value.  So the
-call insn itself does not "return" any value, and it has the same RTL
-form as a call that returns nothing.
-
-
-
-File: gcc.info,  Node: Sharing,  Prev: Calls,  Up: RTL
-
-Structure Sharing Assumptions
-=============================
-
-The compiler assumes that certain kinds of RTL expressions are
-unique; there do not exist two distinct objects representing the same
-value.  In other cases, it makes an opposite assumption: that no RTL
-expression object of a certain kind appears in more than one place in
-the containing structure.
-
-These assumptions refer to a single function; except for the RTL
-objects that describe global variables and external functions, no RTL
-objects are common to two functions.
-
-   * Each pseudo-register has only a single `reg' object to represent
-     it, and therefore only a single machine mode.
-
-   * For any symbolic label, there is only one `symbol_ref' object
-     referring to it.
-
-   * There is only one `const_int' expression with value zero, and
-     only one with value one.
-
-   * There is only one `pc' expression.
-
-   * There is only one `cc0' expression.
-
-   * There is only one `const_double' expression with mode `SFmode'
-     and value zero, and only one with mode `DFmode' and value zero.
-
-   * No `label_ref' appears in more than one place in the RTL
-     structure; in other words, it is safe to do a tree-walk of all
-     the insns in the function and assume that each time a
-     `label_ref' is seen it is distinct from all others that are seen.
-
-   * Only one `mem' object is normally created for each static
-     variable or stack slot, so these objects are frequently shared
-     in all the places they appear.  However, separate but equal
-     objects for these variables are occasionally made.
-
-   * When a single `asm' statement has multiple output operands, a
-     distinct `asm_operands' RTX is made for each output operand. 
-     However, these all share the vector which contains the sequence
-     of input operands.  Because this sharing is used later on to
-     test whether two `asm_operands' RTX's come from the same
-     statement, the sharing must be guaranteed to be preserved.
-
-   * No RTL object appears in more than one place in the RTL
-     structure except as described above.  Many passes of the
-     compiler rely on this by assuming that they can modify RTL
-     objects in place without unwanted side-effects on other insns.
-
-   * During initial RTL generation, shared structure is freely
-     introduced.  After all the RTL for a function has been
-     generated, all shared structure is copied by `unshare_all_rtl'
-     in `emit-rtl.c', after which the above rules are guaranteed to
-     be followed.
-
-   * During the combiner pass, shared structure with an insn can
-     exist temporarily.  However, the shared structure is copied
-     before the combiner is finished with the insn.  This is done by
-     `copy_substitutions' in `combine.c'.
-
+   When a subroutine returns a `BLKmode' value, it is handled by
+passing to the subroutine the address of a place to store the value. 
+So the call insn itself does not "return" any value, and it has the
+same RTL form as a call that returns nothing.
 
 
-File: gcc.info,  Node: Machine Desc,  Next: Machine Macros,  Prev: RTL,  Up: Top
-
-Machine Descriptions
-********************
-
-A machine description has two parts: a file of instruction patterns
-(`.md' file) and a C header file of macro definitions.
-
-The `.md' file for a target machine contains a pattern for each
-instruction that the target machine supports (or at least each
-instruction that is worth telling the compiler about).  It may also
-contain comments.  A semicolon causes the rest of the line to be a
-comment, unless the semicolon is inside a quoted string.
-
-See the next chapter for information on the C header file.
-
-* Menu:
-
-* Patterns::            How to write instruction patterns.
-* Example::             An explained example of a `define_insn' pattern.
-* RTL Template::        The RTL template defines what insns match a pattern.
-* Output Template::     The output template says how to make assembler code
-                          from such an insn.
-* Output Statement::    For more generality, write C code to output 
-                          the assembler code.
-* Constraints::         When not all operands are general operands.
-* Standard Names::      Names mark patterns to use for code generation.
-* Pattern Ordering::    When the order of patterns makes a difference.
-* Dependent Patterns::  Having one pattern may make you need another.
-* Jump Patterns::       Special considerations for patterns for jump insns.
-* Peephole Definitions::Defining machine-specific peephole optimizations.
-* Expander Definitions::Generating a sequence of several RTL insns
-                         for a standard operation.
-
- 
-
-File: gcc.info,  Node: Patterns,  Next: Example,  Prev: Machine Desc,  Up: Machine Desc
-
-Everything about Instruction Patterns
-=====================================
-
-Each instruction pattern contains an incomplete RTL expression, with
-pieces to be filled in later, operand constraints that restrict how
-the pieces can be filled in, and an output pattern or C code to
-generate the assembler output, all wrapped up in a `define_insn'
-expression.
-
-A `define_insn' is an RTL expression containing four or five operands:
-
-  1. An optional name.  The presence of a name indicate that this
-     instruction pattern can perform a certain standard job for the
-     RTL-generation pass of the compiler.  This pass knows certain
-     names and will use the instruction patterns with those names, if
-     the names are defined in the machine description.
-
-     The absence of a name is indicated by writing an empty string
-     where the name should go.  Nameless instruction patterns are
-     never used for generating RTL code, but they may permit several
-     simpler insns to be combined later on.
-
-     Names that are not thus known and used in RTL-generation have no
-     effect; they are equivalent to no name at all.
-
-  2. The "RTL template" (*note RTL Template::.) is a vector of
-     incomplete RTL expressions which show what the instruction
-     should look like.  It is incomplete because it may contain
-     `match_operand' and `match_dup' expressions that stand for
-     operands of the instruction.
-
-     If the vector has only one element, that element is the template
-     for the instruction pattern.  If the vector has multiple
-     elements, then the instruction pattern is a `parallel'
-     expression containing the elements described.
-
-  3. A condition.  This is a string which contains a C expression
-     that is the final test to decide whether an insn body matches
-     this pattern.
-
-     For a named pattern, the condition (if present) may not depend
-     on the data in the insn being matched, but only the
-     target-machine-type flags.  The compiler needs to test these
-     conditions during initialization in order to learn exactly which
-     named instructions are available in a particular run.
-
-     For nameless patterns, the condition is applied only when
-     matching an individual insn, and only after the insn has matched
-     the pattern's recognition template.  The insn's operands may be
-     found in the vector `operands'.
-
-  4. The "output template": a string that says how to output matching
-     insns as assembler code.  `%' in this string specifies where to
-     substitute the value of an operand.  *Note Output Template::.
-
-     When simple substitution isn't general enough, you can specify a
-     piece of C code to compute the output.  *Note Output Statement::.
-
-  5. Optionally, some "machine-specific information".  The meaning of
-     this information is defined only by an individual machine
-     description; typically it might say whether this insn alters the
-     condition codes, or how many bytes of output it generates.
-
-     This operand is written as a string containing a C initializer
-     (complete with braces) for the structure type
-     `INSN_MACHINE_INFO', whose definition is up to you (*note
-     Misc::.).
-
-
-
-File: gcc.info,  Node: Example,  Next: RTL Template,  Prev: Patterns,  Up: Machine Desc
-
-Example of `define_insn'
-========================
-
-Here is an actual example of an instruction pattern, for the
-68000/68020.
-
-     (define_insn "tstsi"
-       [(set (cc0)
-             (match_operand:SI 0 "general_operand" "rm"))]
-       ""
-       "*
-     { if (TARGET_68020 || ! ADDRESS_REG_P (operands[0]))
-         return \"tstl %0\";
-       return \"cmpl #0,%0\"; }")
-
-This is an instruction that sets the condition codes based on the
-value of a general operand.  It has no condition, so any insn whose
-RTL description has the form shown may be handled according to this
-pattern.  The name `tstsi' means "test a `SImode' value" and tells
-the RTL generation pass that, when it is necessary to test such a
-value, an insn to do so can be constructed using this pattern.
-
-The output control string is a piece of C code which chooses which
-output template to return based on the kind of operand and the
-specific type of CPU for which code is being generated.
-
-`"rm"' is an operand constraint.  Its meaning is explained below.
-
-

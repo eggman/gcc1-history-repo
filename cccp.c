@@ -37,6 +37,10 @@ typedef unsigned char U_CHAR;
 #include "config.h"
 #endif /* not EMACS */
 
+#ifndef CC_INCLUDE_DIR
+#define CC_INCLUDE_DIR "/usr/include"
+#endif
+
 #ifndef STDC_VALUE
 #define STDC_VALUE 1
 #endif
@@ -269,12 +273,13 @@ struct file_name_list include_defaults[] =
   {
 #ifndef VMS
     { &include_defaults[1], GCC_INCLUDE_DIR },
-    { &include_defaults[2], "/usr/include" },
+    { &include_defaults[2], CC_INCLUDE_DIR },
     { 0, "/usr/local/include" }
 #else
     { &include_defaults[1], "GNU_CC_INCLUDE:" },       /* GNU includes */
     { &include_defaults[2], "SYS$SYSROOT:[SYSLIB.]" }, /* VAX-11 "C" includes */
-    { 0, "" },	/* This makes normal VMS filespecs work OK */
+    { 0, "." }	/* This makes normal VMS filespecs work OK. The "." forces */
+		/* the file through hack_vms_include_specification */
 #endif /* VMS */
   };
 
@@ -286,13 +291,13 @@ struct file_name_list cplusplus_include_defaults[] =
     { &cplusplus_include_defaults[1], GPLUSPLUS_INCLUDE_DIR },
     /* Use GNU CC specific header files.  */
     { &cplusplus_include_defaults[2], GCC_INCLUDE_DIR },
-    { 0, "/usr/include" }
+    { 0, CC_INCLUDE_DIR }
 #else
     { &cplusplus_include_defaults[1], "GNU_GXX_INCLUDE:" },
     { &cplusplus_include_defaults[2], "GNU_CC_INCLUDE:" },
     /* VAX-11 C includes */
     { &cplusplus_include_defaults[3], "SYS$SYSROOT:[SYSLIB.]" },
-    { 0, "" },	/* This makes normal VMS filespecs work OK */
+    { 0, "." }	/* This makes normal VMS filespecs work OK */
 #endif /* VMS */
   };
 
@@ -4000,6 +4005,10 @@ skip_to_end_of_comment (ip, line_counter)
     if (output)
       *op->bufp++ = *bp;
     switch (*bp++) {
+    case '/':
+      if (warn_comments && bp < limit && *bp == '*')
+	warning("`/*' within comment");
+      break;
     case '\n':
       if (line_counter != NULL)
 	++*line_counter;
@@ -5399,7 +5408,6 @@ deps_output (string, size)
   deps_buffer[deps_size] = 0;
 }
 
-#ifndef BSD
 #ifndef BSTRING
 
 void
@@ -5465,8 +5473,6 @@ bcmp (b1, b2, length)	/* This could be a macro! */
 #endif /* not VMS */
 }
 #endif /* not BSTRING */
-#endif /* not BSD */
-
 
 void
 fatal (str, arg)
@@ -5626,6 +5632,20 @@ hack_vms_include_specification (fname)
   } else {
     cp = index (fname, '/');	/* Look for the "/" */
   }
+
+  cp2 = Local; /* initialize */
+
+  /* We are trying to do a number of things here.  First of all, we are 
+     trying to hammer the filenames into a standard format, such that later 
+     processing can handle them.
+
+     If the file name contains something like [dir.], then it recognizes this
+     as a root, and strips the ".]".  Later processing will add whatever is 
+     needed to get things working properly.
+
+     If no device is specified, then the first directory name is taken to be
+     a device name (or a rooted logical).  */
+
   /* See if we found that 1st slash */
   if (cp == 0) return;		/* Nothing to do!!! */
   if (*cp != '/') return;	/* Nothing to do!!! */
@@ -5633,45 +5653,80 @@ hack_vms_include_specification (fname)
   cp1 = cp+1;
   /* If the directory spec is not rooted, we can just copy
      the UNIX filename part and we are done */
-  if (((cp - fname) > 2)
-      && ((cp[-1] == ']') || (cp[-1] == '>'))
-      && (cp[-2] != '.')) {
-    strcpy (cp, cp1);
-    return;
-  }
+  if (((cp - fname) > 2) && ((cp[-1] == ']') || (cp[-1] == '>'))) {
+	if (cp[-2] != '.') {
+/*
+ * The VMS part ends in a "]", where the preceeding character is not a ".".
+ * We assume that the rest of the specification is correct, and we splice
+ * the two parts together, and go back.  Actually, given the default
+ * locations for include files listed in cccp.c, we will never get here.
+ * Things could change, so we leave it in...
+ */
+	    strcpy (cp, cp1);	/* Non-rooted */
+	    return;             /* trailing "]/", and not ".]/" */
+	} else {
+/* 
+ * The VMS part has a ".]" at the end, and this will not do.  Later 
+ * processing will add a second directory spec, and this would be a syntax 
+ * error.  Thus we strip the ".]", and thus merge the directory specs.
+ * We also backspace cp1, so that it points to a '/'.  This inhibits the
+ * generation of the 000000 root directory spec (which does not belong here
+ * in this case).
+ */
+	    cp -= 2;		/* Strip ".]" */
+	    cp1--; };		/* backspace */
+   } else {
+
+/* We drop in here if there is no VMS style directory specification yet.
+ * If there is no device specification either, we make the first dir a
+ * device and try that.  If we do not do this, then we will be essentially
+ * searching the users default directory (as if they did a #include "asdf.h").
+ *
+ * Then all we need to do is to push a '[' into the output string.  Later
+ * processing will fill this in, and close the bracket.
+ */
+     if (cp[-1] != ':')		/* dev not in spec.  take first dir */
+       *cp2++ = ':';
+     *cp2++ = '[';		/* Open the directory specification */
+   }
+
+ /* at this point we assume that we have the device spec, and (at least
+    the opening "[" for a directory specification.  We may have directories
+    specified already */
+
   /* If there are no other slashes then the filename will be
      in the "root" directory.  Otherwise, we need to add
      directory specifications. */
   if (index (cp1, '/') == 0) {
-    /* Just add "[000000]" as the directory string */
-    strcpy (Local, "[000000]");
-    cp2 = Local + strlen (Local);
+      /* Just add "000000]" as the directory string */
+      strcpy (cp2, "000000]");
+      cp2 += strlen (cp2);
   } else {
-    /* Open the directory specification */
-    cp2 = Local;
-    *cp2++ = '[';
-    /* As long as there are still subdirectories to add, do them. */
-    while (index (cp1, '/') != 0) {
-      /* If this token is "." we can ignore it */
-      if ((cp1[0] == '.') && (cp1[1] == '/')) {
-	cp1 += 2;
-	continue;
+      /* As long as there are still subdirectories to add, do them. */
+      while (index (cp1, '/') != 0) {
+	  /* If this token is "." we can ignore it */
+	  if ((cp1[0] == '.') && (cp1[1] == '/')) {
+	      cp1 += 2;
+	      continue;
+	  }
+	  /* Add a subdirectory spec. Do not duplicate "." */
+	  if (cp2[-1] != '.' && cp2[-1] != '[' && cp2[-1] != '<')
+	      *cp2++ = '.';
+	  /* If this is ".." then the spec becomes "-" */
+	  if ((cp1[0] == '.') && (cp1[1] == '.') && (cp[2] == '/')) {
+	      /* Add "-" and skip the ".." */
+	      *cp2++ = '-';
+	      cp1 += 3;
+	      continue;
+	  }
+	  /* Copy the subdirectory */
+	  while (*cp1 != '/') *cp2++= *cp1++;
+	  cp1++;		/* Skip the "/" */
       }
-      /* Add a subdirectory spec. */
-      if (cp2 != Local+1) *cp2++ = '.';
-      /* If this is ".." then the spec becomes "-" */
-      if ((cp1[0] == '.') && (cp1[1] == '.') && (cp[2] == '/')) {
-	/* Add "-" and skip the ".." */
-	*cp2++ = '-';
-	cp1 += 3;
-	continue;
-      }
-      /* Copy the subdirectory */
-      while (*cp1 != '/') *cp2++= *cp1++;
-      cp1++;			/* Skip the "/" */
-    }
-    /* Close the directory specification */
-    *cp2++ = ']';
+      /* Close the directory specification */
+      if(cp2[-1] == '.')	/* no trailing periods */
+	  cp2--;
+      *cp2++ = ']';
   }
   /* Now add the filename */
   while (*cp1) *cp2++ = *cp1++;

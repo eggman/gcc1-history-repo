@@ -1138,9 +1138,13 @@ compile_file (name)
 	if (TREE_CODE (decl) == VAR_DECL && TREE_STATIC (decl)
 	    && ! TREE_ASM_WRITTEN (decl))
 	  {
-	    /* Don't write out static consts, unless we needed
-	       to take their address for some reason.  */
+	    /* Don't write out static consts, unless we used them.
+	       (This used to write them out only if the address was
+	       taken, but that was wrong; if the variable was simply
+	       referred to, it still needs to exist or else it will
+	       be undefined in the linker.)  */
 	    if (! TREE_READONLY (decl)
+		|| TREE_USED (decl)
 		|| TREE_PUBLIC (decl)
 		|| TREE_ADDRESSABLE (decl))
 	      rest_of_decl_compilation (decl, 0, 1, 1);

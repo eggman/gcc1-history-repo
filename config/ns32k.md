@@ -1247,7 +1247,7 @@
 
 (define_insn "andcbhi3"
   [(set (match_operand:HI 0 "general_operand" "=g")
-	(and:HI (match_operand:HI 1 "general_operand" "%0")
+	(and:HI (match_operand:HI 1 "general_operand" "0")
 		(not:HI (match_operand:HI 2 "general_operand" "g"))))]
   ""
   "*
@@ -1273,7 +1273,7 @@
 
 (define_insn "andcbqi3"
   [(set (match_operand:QI 0 "general_operand" "=g")
-	(and:QI (match_operand:QI 1 "general_operand" "%0")
+	(and:QI (match_operand:QI 1 "general_operand" "0")
 		(not:QI (match_operand:QI 2 "general_operand" "g"))))]
   ""
   "bicb %2,%0")

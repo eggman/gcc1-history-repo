@@ -22,6 +22,19 @@
 #define INTIFY(FLOATVAL)  (intify.f = (FLOATVAL), intify.i)
 #endif
 
+#ifdef GNULIB_NEEDS_DOUBLE
+#define FLOAT_ARG_TYPE double
+#define FLOATIFY(ARG)  ((float) (ARG))
+#endif
+
+#ifndef FLOATIFY
+#define FLOATIFY(INTVAL)  ((INTVAL).f)
+#endif
+
+#ifndef FLOAT_ARG_TYPE
+#define FLOAT_ARG_TYPE union flt_or_int
+#endif
+
 union flt_or_int { int i; float f; };
 
 
@@ -227,41 +240,41 @@ __floatsidf (a)
 #ifdef L_addsf3
 SFVALUE
 __addsf3 (a, b)
-     union flt_or_int a, b;
+     FLOAT_ARG_TYPE a, b;
 {
   union flt_or_int intify;
-  return INTIFY (a.f + b.f);
+  return INTIFY (FLOATIFY (a) + FLOATIFY (b));
 }
 #endif
 
 #ifdef L_negsf2
 SFVALUE
 __negsf2 (a)
-     union flt_or_int a;
+     FLOAT_ARG_TYPE a;
 {
   union flt_or_int intify;
-  return INTIFY (-a.f);
+  return INTIFY (-FLOATIFY (a));
 }
 #endif
 
 #ifdef L_subsf3
 SFVALUE
 __subsf3 (a, b)
-     union flt_or_int a, b;
+     FLOAT_ARG_TYPE a, b;
 {
   union flt_or_int intify;
-  return INTIFY (a.f - b.f);
+  return INTIFY (FLOATIFY (a) - FLOATIFY (b));
 }
 #endif
 
 #ifdef L_cmpsf2
 SItype
 __cmpsf2 (a, b)
-     union flt_or_int a, b;
+     FLOAT_ARG_TYPE a, b;
 {
-  if (a.f > b.f)
+  if (FLOATIFY (a) > FLOATIFY (b))
     return 1;
-  else if (a.f < b.f)
+  else if (FLOATIFY (a) < FLOATIFY (b))
     return -1;
   return 0;
 }
@@ -270,20 +283,21 @@ __cmpsf2 (a, b)
 #ifdef L_mulsf3
 SFVALUE
 __mulsf3 (a, b)
-     union flt_or_int a, b;
+     FLOAT_ARG_TYPE a, b;
 {
   union flt_or_int intify;
-  return INTIFY (a.f * b.f);
+  return INTIFY (FLOATIFY (a) * FLOATIFY (b));
 }
 #endif
 
 #ifdef L_divsf3
 SFVALUE
 __divsf3 (a, b)
-     union flt_or_int a, b;
+     FLOAT_ARG_TYPE a, b;
 {
   union flt_or_int intify;
-  return INTIFY (a.f / b.f);
+  
+  return INTIFY (FLOATIFY (a) / FLOATIFY (b));
 }
 #endif
 
@@ -300,10 +314,9 @@ __truncdfsf2 (a)
 #ifdef L_extendsfdf2
 double
 __extendsfdf2 (a)
-     union flt_or_int a;
+     FLOAT_ARG_TYPE a;
 {
-  union flt_or_int intify;
-  return a.f;
+  return FLOATIFY (a);
 }
 #endif
 

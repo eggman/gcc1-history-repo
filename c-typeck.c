@@ -905,10 +905,16 @@ build_array_ref (array, index)
 
       type = TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (array)));
       rval = build (ARRAY_REF, type, array, index);
-      /* Array ref is const/volatile if the array elements are.  */
-      TREE_READONLY (rval) |= TREE_READONLY (TREE_TYPE (TREE_TYPE (array)));
-      TREE_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
-      TREE_THIS_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
+      /* Array ref is const/volatile if the array elements are,
+         or if the array object is.  */
+      TREE_READONLY (rval)
+	|= (TREE_READONLY (TREE_TYPE (TREE_TYPE (array)))
+	    | TREE_READONLY (array));
+      TREE_VOLATILE (rval)
+	|= (TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)))
+	    | TREE_VOLATILE (array));
+      TREE_THIS_VOLATILE (rval)
+	|= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
       return require_complete_type (fold (rval));
     }
 
@@ -3338,56 +3344,6 @@ digest_init (type, init, tail)
       && TREE_CHAIN (CONSTRUCTOR_ELTS (init)) == 0)
     element = TREE_VALUE (CONSTRUCTOR_ELTS (init));
 
-  /* Any type can be initialized from an expression of the same type,
-     optionally with braces.  */
-
-  if (init && (TREE_TYPE (init) == type
-	       || (code == ARRAY_TYPE && TREE_TYPE (init)
-		   && comptypes (TREE_TYPE (init), type))))
-    {
-      if (pedantic && code == ARRAY_TYPE
-	  && TREE_CODE (init) != STRING_CST)
-	warning ("ANSI C forbids initializing array from array expression");
-      if (optimize && TREE_READONLY (init) && TREE_CODE (init) == VAR_DECL)
-	return decl_constant_value (init);
-      return init;
-    }
-
-  if (element && (TREE_TYPE (element) == type
-		  || (code == ARRAY_TYPE && TREE_TYPE (element)
-		      && comptypes (TREE_TYPE (element), type))))
-    {
-      if (pedantic && code == ARRAY_TYPE)
-	warning ("ANSI C forbids initializing array from array expression");
-      if (pedantic && (code == RECORD_TYPE || code == UNION_TYPE))
-	warning ("single-expression nonscalar initializer has braces");
-      if (optimize && TREE_READONLY (element) && TREE_CODE (element) == VAR_DECL)
-	return decl_constant_value (element);
-      return element;
-    }
-
-  /* Check for initializing a union by its first field.
-     Such an initializer must use braces.  */
-
-  if (code == UNION_TYPE)
-    {
-      tree result;
-
-      if (TYPE_FIELDS (type) == 0)
-	{
-	  error ("union with no members cannot be initialized");
-	  return error_mark_node;
-	}
-
-      if (raw_constructor)
-	return process_init_constructor (type, init, 0);
-      else if (tail != 0)
-	{
-	  *tail = old_tail_contents;
-	  return process_init_constructor (type, 0, tail);
-	}
-    }
-
   /* Initialization of an array of chars from a string constant
      optionally enclosed in braces.  */
 
@@ -3432,6 +3388,61 @@ digest_init (type, init, tail)
 		warning ("initializer-string for array of chars is too long");
 	    }
 	  return string;
+	}
+    }
+
+  /* Any type can be initialized from an expression of the same type,
+     optionally with braces.  */
+
+  if (init && (TREE_TYPE (init) == type
+	       || (code == ARRAY_TYPE && TREE_TYPE (init)
+		   && comptypes (TREE_TYPE (init), type))))
+    {
+      if (code == ARRAY_TYPE && TREE_CODE (init) != STRING_CST)
+	{
+	  error ("array initialized from non-constant array expression");
+	  return error_mark_node;
+	}
+      if (optimize && TREE_READONLY (init) && TREE_CODE (init) == VAR_DECL)
+	return decl_constant_value (init);
+      return init;
+    }
+
+  if (element && (TREE_TYPE (element) == type
+		  || (code == ARRAY_TYPE && TREE_TYPE (element)
+		      && comptypes (TREE_TYPE (element), type))))
+    {
+      if (code == ARRAY_TYPE)
+	{
+	  error ("array initialized from non-constant array expression");
+	  return error_mark_node;
+	}
+      if (pedantic && (code == RECORD_TYPE || code == UNION_TYPE))
+	warning ("single-expression nonscalar initializer has braces");
+      if (optimize && TREE_READONLY (element) && TREE_CODE (element) == VAR_DECL)
+	return decl_constant_value (element);
+      return element;
+    }
+
+  /* Check for initializing a union by its first field.
+     Such an initializer must use braces.  */
+
+  if (code == UNION_TYPE)
+    {
+      tree result;
+
+      if (TYPE_FIELDS (type) == 0)
+	{
+	  error ("union with no members cannot be initialized");
+	  return error_mark_node;
+	}
+
+      if (raw_constructor)
+	return process_init_constructor (type, init, 0);
+      else if (tail != 0)
+	{
+	  *tail = old_tail_contents;
+	  return process_init_constructor (type, 0, tail);
 	}
     }
 

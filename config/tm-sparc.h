@@ -379,8 +379,9 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* Similar, but for floating constants, and defining letters G and H.
    Here VALUE is the CONST_DOUBLE rtx itself.  */
 
-#define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)  \
-  ((C) == 'G' && XINT (VALUE, 0) == 0 && XINT (VALUE, 1) == 0)
+#define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)				\
+  ((C) == 'G' && CONST_DOUBLE_LOW ((VALUE)) == 0			\
+   && CONST_DOUBLE_HIGH ((VALUE)) == 0)
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.
@@ -657,7 +658,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    basic block profiling info, if that has not already been done.  */
 
 #define FUNCTION_BLOCK_PROFILER(FILE, LABELNO)  \
-  fprintf (FILE, "\tsethi %%hi(LPBX0),%%o0\n\tld [%%lo(LPBX0)+%%o0],%%o1\n\ttst %%o1\n\tbne LPY%d\n\tnop\n\tcall ___bb_init_func\n\tnop\nLPY%d:\n",  \
+  fprintf (FILE, "\tsethi %%hi(LPBX0),%%o0\n\tld [%%lo(LPBX0)+%%o0],%%o1\n\ttst %%o1\n\tbne LPY%d\n\tadd %%o0,%%lo(LPBX0),%%o0\n\tcall ___bb_init_func\n\tnop\nLPY%d:\n",  \
 	   (LABELNO), (LABELNO))
 
 /* Output assembler code to FILE to increment the entry-count for

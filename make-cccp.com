@@ -1,3 +1,6 @@
+$! Set the def dir to proper place for use in batch. Works for interactive too.
+$flnm = f$enviroment("PROCEDURE")     ! get current procedure name
+$set default 'f$parse(flnm,,,"DEVICE")''f$parse(flnm,,,"DIRECTORY")'
 $!
 $!	Build the GNU "C" pre-processor on VMS
 $!
@@ -36,6 +39,9 @@ $ 'CC 'CFLAGS cexp.c
 $ 'CC 'CFLAGS version.c
 $ Link:
 $ link 'LDFLAGS /exe=gcc-cpp cccp,cexp,version,'LIBS'
+$!
+$! CAUTION: If you want to link gcc-cpp to the sharable image library
+$! VAXCRTL, see the notes in gcc.texinfo (or INSTALL) first.
 $!
 $!	Done
 $!

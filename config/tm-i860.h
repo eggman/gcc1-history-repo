@@ -807,6 +807,9 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* This is the kind of divide that is easiest to do in the general case.  */
 #define EASY_DIV_EXPR TRUNC_DIV_EXPR
 
+/* Must pass floats to gnulib functions as doubles.  */
+#define GNULIB_NEEDS_DOUBLE 1
+
 #define DIVSI3_LIBCALL "*.div"
 #define UDIVSI3_LIBCALL "*.udiv"
 #define REMSI3_LIBCALL "*.rem"

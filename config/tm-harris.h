@@ -33,6 +33,25 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #undef UDIVSI3_LIBCALL
 #undef UMODSI3_LIBCALL
 
+/* start the assembly by turning off APP.  For the Harris (if not,
+   apparently, for the Tahoe) we want a .file directive as well. */
+
+#undef ASM_FILE_START
+#define ASM_FILE_START(FILE) \
+  do {							\
+    int len = strlen (dump_base_name);			\
+    char *na = dump_base_name + len;			\
+    /* NA gets DUMP_BASE_NAME sans directory names.  */	\
+    while (na > dump_base_name)				\
+      {							\
+        if (na[-1] == '/')				\
+          break;					\
+        na--;						\
+      }							\
+    fprintf (FILE, "#NO_APP\n\n");			\
+    fprintf (FILE, "\t.file\t\"%s\"\n", na);		\
+  } while (0)
+
 /* Operand of .align is not logarithmic.  */
 #undef ASM_OUTPUT_ALIGN
 #define ASM_OUTPUT_ALIGN(FILE,LOG)  \

@@ -1331,6 +1331,13 @@ canon_hash (x, mode)
 	    do_not_record = 1;
 	    return 0;
 	  }
+#ifdef SMALL_REGISTER_CLASSES
+	if (regno < FIRST_PSEUDO_REGISTER)
+	  {
+	    do_not_record = 1;
+	    return 0;
+	  }
+#endif
 	return hash + ((int) REG << 7) + reg_qty[regno];
       }
 
@@ -1613,6 +1620,13 @@ refers_to_mem_p (x, reg, start, end)
   register enum rtx_code code;
   register char *fmt;
 
+  if (GET_CODE (reg) == CONST_INT)
+    {
+      start += INTVAL (reg);
+      end += INTVAL (reg);
+      reg = const0_rtx;
+    }
+
  repeat:
   if (x == 0)
     return 0;
@@ -1639,6 +1653,8 @@ refers_to_mem_p (x, reg, start, end)
 	       && XEXP (addr, 0) == reg
 	       && GET_CODE (XEXP (addr, 1)) == CONST_INT)
 	i = INTVAL (XEXP (addr, 1));
+      else if (GET_CODE (addr) == CONST_INT && reg == const0_rtx)
+	i = INTVAL (addr);
       else
 	return 0;
 

@@ -30,3 +30,10 @@
 /* SCO's assember doesn't grok '$' in labels (for g++) */
 
 #define NO_DOLLAR_IN_LABEL
+
+/* SCO's libraries are compiled with Microsoft C, which requires the
+   caller to pop the extra argument passed to functions that return
+   structures. */
+
+#define STRUCT_RETURN_CALLER_POP
+

@@ -153,7 +153,7 @@ char *note_insn_name[] = { "NOTE_INSN_FUNCTION_BEG", "NOTE_INSN_DELETED",
 
 char *reg_note_name[] = { "", "REG_DEAD", "REG_INC", "REG_EQUIV", "REG_WAS_0",
 			  "REG_EQUAL", "REG_RETVAL", "REG_LIBCALL",
-			  "REG_NONNEG", "REG_ASM_LINE", "REG_ASM_FILE" };
+			  "REG_NONNEG", "REG_UNSET" };
 
 /* Allocate an rtx vector of N elements.
    Store the length, and initialize all elements to zero.  */

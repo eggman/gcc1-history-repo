@@ -22,7 +22,7 @@
 # Shell script to create proper links to machine-dependent files in
 # preparation for compiling gcc.
 #
-# Usage: config.gcc [vint] machine
+# Usage: config.gcc [vint] [-srcdir=DIR] machine
 #
 # If config.gcc succeeds, it leaves its status in config.status.
 # If config.gcc fails after disturbing the status quo, 
@@ -135,12 +135,20 @@ then
 		cpu_type=i386
 		configuration_file=xm-i386v.h
 		;;
+	i386-isc)                       # for Intel 80386's running ISC
+		machine=i386isc
+		cpu_type=i386
+		configuration_file=xm-i386v.h
+		;;
 	i386-aix | ps2-aix | aix386 | ps2aix )		# for IBM PS/2 running AIX
 		machine=aix386
 		cpu_type=i386
 		configuration_file=xm-${machine}.h
 		;;
 	i860)
+		;;
+	i860-gas)
+		target_machine=tm-i860g.h
 		;;
 	next )
 		cpu_type=m68k
@@ -208,6 +216,10 @@ then
 	hp9k320-bsd)			# HP 9000/3xx running Berkeley Unix
 		cpu_type=m68k
 		target_machine=tm-hp9k3bsd.h
+		;;
+	hp9k200-bsd)			# HP 9000/2xx running Berkeley Unix
+		cpu_type=m68k
+		target_machine=tm-hp9k2bsd.h
 		;;
 	isi68)
 		cpu_type=m68k
@@ -291,6 +303,7 @@ then
 	mips-sysv)			# SYSV variant of MIPS system.
 		cpu_type=mips
 		target_machine=tm-mips-sysv.h
+		configuration_file=xm-umips.h
 	        ;;
 	mips-bsd43)			# BSD 4.3 variant of MIPS system.
 		cpu_type=mips

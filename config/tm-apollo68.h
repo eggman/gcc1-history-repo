@@ -102,20 +102,17 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Note that includes knowledge of the default specs for gcc, ie. no
    args translates to the same effect as -m68881 */
 
-#if TARGET_DEFAULT & 2
-/* -m68881 is the default */
-#define STARTFILE_SPEC					\
-  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}"
-#else
-/* -msoft-float is the default */
-#define STARTFILE_SPEC					\
-  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}"
-#endif
+/* To get ANSI-conformant behavior, a special version of crt0.o must be used.
+   We use the -ansi switch to pick up that version. */
 
-/* Specify library to handle `-a' basic block profiling.  */
+#define STARTFILE_SPEC \
+  "%{ansi:/usr/apollo/lib/%{pg:gcrt0.o}%{!pg:%{p:mcrt0.o}%{!p:crt0.o}}}\
+%{!ansi:%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}}"
 
-#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
-%{a:/usr/lib/bb_link.o} "
+/* Make sure ld sets the entry point to _start.
+   This is in LIB_SPEC rather than LINK_SPEC because it needs to
+   come after _start is defined, and to eliminate the default LIB_SPEC.  */
+#define LIB_SPEC "-e _start"
 
 /* Debugging is not supported yet */
 

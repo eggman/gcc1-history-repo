@@ -673,10 +673,18 @@ real_value_from_int_cst (i)
 #else /* not REAL_ARITHMETIC */
   if (TREE_INT_CST_HIGH (i) < 0)
     {
+#define MASK ((unsigned)1 << (HOST_BITS_PER_INT - 1))
       d = (double) (~ TREE_INT_CST_HIGH (i));
       d *= ((double) (1 << (HOST_BITS_PER_INT / 2))
 	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
-      d += (double) (unsigned) (~ TREE_INT_CST_LOW (i));
+      /* The following four lines are equivalent to converting
+	 ~ TREE_INT_CST_LOW (i) from unsigned to double,
+	 but that is broken in some compilers.  */
+      if (((~ TREE_INT_CST_LOW (i)) & MASK) != 0)
+	d += ((double) MASK + (double) ((~ MASK) & ~ TREE_INT_CST_LOW (i)));
+      else
+	d += (double) (unsigned) (~ TREE_INT_CST_LOW (i));
+
       d = (- d - 1.0);
     }
   else
@@ -684,8 +692,12 @@ real_value_from_int_cst (i)
       d = (double) TREE_INT_CST_HIGH (i);
       d *= ((double) (1 << (HOST_BITS_PER_INT / 2))
 	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
-      d += (double) (unsigned) TREE_INT_CST_LOW (i);
+      if ((TREE_INT_CST_LOW (i) & MASK) != 0)
+	d += ((double) MASK + (double) ((~ MASK) & TREE_INT_CST_LOW (i)));
+      else
+	d += (double) (unsigned) TREE_INT_CST_LOW (i);
     }
+#undef MASK
 #endif /* not REAL_ARITHMETIC */
   return d;
 }

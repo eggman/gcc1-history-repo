@@ -71,6 +71,9 @@ static rtx inline_fp_rtx;
    given a fresh stack-slot.  */
 static rtx *parm_map;
 
+/* This is used to prevent looking beyond parm_map.  */
+static int parm_map_size;
+
 /* ?? Should this be done here??  It is not right now.
    Keep track of whether a given pseudo-register is the sum
    of the frame pointer and a const_int (or zero).  */
@@ -108,7 +111,7 @@ static rtx access_parm_map ();
 
 static void copy_parm_decls ();
 static void copy_decl_tree ();
-
+static int frame_pointer_sum_p ();
 static rtx try_fold_cc0 ();
 
 /* We do some simple constant folding optimization.  This optimization
@@ -694,6 +697,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	     we may not simply substitute the actual value;
 	     copy it through a register.  */
 	  copy = gen_reg_rtx (tmode);
+	  REG_USERVAR_P (copy) = 1;
 	  store_expr (arg, copy, 0);
 	}
       else
@@ -740,14 +744,15 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   reg_map = (rtx *) alloca (max_regno * sizeof (rtx));
   bzero (reg_map, max_regno * sizeof (rtx));
 
-  parm_map = (rtx *)alloca ((FUNCTION_ARGS_SIZE (header) + UNITS_PER_WORD - 1)
-			    / UNITS_PER_WORD * sizeof (rtx));
-  bzero (parm_map, ((FUNCTION_ARGS_SIZE (header) + UNITS_PER_WORD - 1)
-		    / UNITS_PER_WORD * sizeof (rtx)));
+  parm_map_size = (FUNCTION_ARGS_SIZE (header) + UNITS_PER_WORD - 1)
+    / UNITS_PER_WORD;
+  parm_map = (rtx *)alloca (parm_map_size * sizeof (rtx));
+  bzero (parm_map, (parm_map_size * sizeof (rtx)));
 
   /* Note that expand_expr (called above) can clobber first_parm_offset.  */
   first_parm_offset = FIRST_PARM_OFFSET (fndecl);
   parm_map -= first_parm_offset / UNITS_PER_WORD;
+  parm_map_size += first_parm_offset / UNITS_PER_WORD;
 
   if (DECL_ARGUMENTS (fndecl))
     {
@@ -1144,12 +1149,13 @@ copy_parm_decls (args, vec)
 
   for (tail = args, i = 0; tail; tail = TREE_CHAIN (tail), i++)
     {
-      register tree decl = pushdecl (build_decl (VAR_DECL, DECL_NAME (tail),
-						 TREE_TYPE (tail)));
+      register tree decl = build_decl (VAR_DECL, DECL_NAME (tail),
+				       TREE_TYPE (tail));
       /* These args would always appear unused, if not for this.  */
       TREE_USED (decl) = 1;
       /* Prevent warning for shadowing with these.  */
       TREE_INLINE (decl) = 1;
+      decl = pushdecl (decl);
       DECL_RTL (decl) = vec[i];
     }
 }
@@ -1203,6 +1209,23 @@ copy_decl_tree (let, level)
   node = poplevel (level > 0, 0, 0);
   if (node)
     TREE_USED (node) = TREE_USED (let);
+}
+
+/* Nonzero if X is a sum which has the frame pointer or arg pointers
+   as a term.  */
+
+static int
+frame_pointer_sum_p (x)
+     rtx x;
+{
+  if (x == frame_pointer_rtx || x == arg_pointer_rtx)
+    return 1;
+  if (GET_CODE (x) == PLUS
+      &&
+      (frame_pointer_sum_p (XEXP (x, 0)) || frame_pointer_sum_p (XEXP (x, 1))))
+    return 1;
+
+  return 0;
 }
 
 /* Create a new copy of an rtx.
@@ -1260,7 +1283,10 @@ copy_rtx_and_substitute (orig)
 	  return orig;
 	}
       if (reg_map[regno] == NULL)
-	reg_map[regno] = gen_reg_rtx (mode);
+	{
+	  reg_map[regno] = gen_reg_rtx (mode);
+	  REG_USERVAR_P (reg_map[regno]) = REG_USERVAR_P (orig);
+	}
       return reg_map[regno];
 
     case SUBREG:
@@ -1346,7 +1372,8 @@ copy_rtx_and_substitute (orig)
 	    {
 	      int c = INTVAL (copy);
 
-	      if (reg == arg_pointer_rtx && c >= first_parm_offset)
+	      if (reg == arg_pointer_rtx && c >= first_parm_offset
+		  && (c / UNITS_PER_WORD) < parm_map_size)
 		{
 		  copy = access_parm_map (c, VOIDmode);
 		  if (GET_CODE (copy) != MEM)
@@ -1365,9 +1392,7 @@ copy_rtx_and_substitute (orig)
 	  temp = force_reg (mode, gen_rtx (PLUS, mode, frame_pointer_rtx, copy));
 	  return plus_constant (temp, fp_delta);
 	}
-      else if (reg_mentioned_p (frame_pointer_rtx, orig)
-	       || (ARG_POINTER_REGNUM != FRAME_POINTER_REGNUM
-		   && reg_mentioned_p (arg_pointer_rtx, orig)))
+      else if (frame_pointer_sum_p (orig))
 	{
 	  /* If we have a complex sum which has a frame pointer
 	     in it, and it was a legitimate address, then
@@ -1447,7 +1472,8 @@ copy_rtx_and_substitute (orig)
 		{
 		  int c = INTVAL (copy);
 
-		  if (reg == arg_pointer_rtx && c >= first_parm_offset)
+		  if (reg == arg_pointer_rtx && c >= first_parm_offset
+		      && (c / UNITS_PER_WORD) < parm_map_size)
 		    return access_parm_map (c, mode);
 
 		  temp = gen_rtx (PLUS, Pmode,
@@ -1648,9 +1674,9 @@ access_parm_map (reladdress, mode)
       if ((offset % UNITS_PER_WORD) != 0)
 	abort ();
 #endif
-      word = offset % UNITS_PER_WORD;
+      word = offset / UNITS_PER_WORD;
       if (GET_CODE (copy) == SUBREG)
-	word = SUBREG_WORD (copy), copy = SUBREG_REG (copy);
+	word += SUBREG_WORD (copy), copy = SUBREG_REG (copy);
       if (CONSTANT_P (copy))
 	copy = force_reg (GET_MODE (copy), copy);
       return gen_rtx (SUBREG, mode, copy, word);

@@ -82,6 +82,7 @@ or with constant text in a single argument.
         This allows config.h to specify part of the spec for running as.
  %l     process LINK_SPEC as a spec.
  %L     process LIB_SPEC as a spec.
+ %G     process LIBG_SPEC as a spec.  A capital G is actually used here.
  %S     process STARTFILE_SPEC as a spec.  A capital S is actually used here.
  %E     process ENDFILE_SPEC as a spec.  A capital E is actually used here.
  %c	process SIGNED_CHAR_SPEC as a spec.
@@ -125,6 +126,7 @@ position among the other output files.
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 
 #include "config.h"
 #include "obstack.h"
@@ -197,6 +199,11 @@ void fancy_abort ();
 /* config.h can define ENDFILE_SPEC to override the default crtn files.  */
 #ifndef ENDFILE_SPEC
 #define ENDFILE_SPEC ""
+#endif
+
+/* config.h can define LIBG_SPEC to override the default debug libraries.  */
+#ifndef LIBG_SPEC
+#define LIBG_SPEC "%{g:-lg}"
 #endif
 
 /* config.h can define STARTFILE_SPEC to override the default crt0 files.  */
@@ -299,7 +306,7 @@ struct compiler compilers[] =
 char *link_spec = "%{!c:%{!M*:%{!E:%{!S:ld %{o*} %l\
  %{A} %{d} %{e*} %{N} %{n} %{r} %{s} %{S} %{T*} %{t} %{u*} %{X} %{x} %{z}\
  %{y*} %{!A:%{!nostdlib:%S}} \
- %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L gnulib%s %{!A:%E}}\n }}}}";
+ %{L*} %o %{!nostdlib:%G gnulib%s %L gnulib%s %{!A:%E}}\n }}}}";
 
 /* Accumulate a command (program name and args), and run it.  */
 
@@ -379,9 +386,7 @@ store_arg (arg, delete_always, delete_failure)
      int delete_always, delete_failure;
 {
   if (argbuf_index + 1 == argbuf_length)
-    {
-      argbuf = (char **) realloc (argbuf, (argbuf_length *= 2) * sizeof (char *));
-    }
+    argbuf = (char **) xrealloc (argbuf, (argbuf_length *= 2) * sizeof (char *));
 
   argbuf[argbuf_index++] = arg;
   argbuf[argbuf_index] = 0;
@@ -484,9 +489,15 @@ delete_temp_files ()
       if (i == 'y' || i == 'Y')
 #endif /* DEBUG */
 	{
-	  if (unlink (temp->name) < 0)
-	    if (vflag)
-	      perror_with_name (temp->name);
+	  struct stat st;
+	  if (stat (temp->name, &st) >= 0)
+	    {
+	      /* Delete only ordinary files.  */
+	      if ((st.st_mode & S_IFMT) == S_IFREG)
+		if (unlink (temp->name) < 0)
+		  if (vflag)
+		    perror_with_name (temp->name);
+	    }
 	}
     }
 
@@ -1302,6 +1313,10 @@ do_spec_1 (spec, inswitch)
 	    do_spec_1 (LIB_SPEC, 0);
 	    break;
 
+	  case 'G':
+	    do_spec_1 (LIBG_SPEC, 0);
+	    break;
+
 	  case 'p':
 	    do_spec_1 (CPP_PREDEFINES, 0);
 	    break;
@@ -1844,7 +1859,7 @@ xmalloc (size)
 {
   register int value = malloc (size);
   if (value == 0)
-    fatal ("Virtual memory full.");
+    fatal ("virtual memory exhausted");
   return value;
 }
 
@@ -1853,7 +1868,7 @@ xrealloc (ptr, size)
 {
   register int value = realloc (ptr, size);
   if (value == 0)
-    fatal ("Virtual memory full.");
+    fatal ("virtual memory exhausted");
   return value;
 }
 

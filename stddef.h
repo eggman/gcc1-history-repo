@@ -39,6 +39,13 @@ typedef unsigned long size_t;
 #endif /* _T_SIZE */
 #endif /* _SIZE_T */
 
+/* Data type for wide chars.  */
+
+#ifndef _WCHAR_T
+#define _WCHAR_T
+typedef int wchar_t;
+#endif
+
 /* A null pointer constant.  */
 
 #undef NULL		/* in case <stdio.h> has defined it. */

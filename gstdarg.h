@@ -1,3 +1,8 @@
+/* stdarg.h for GNU.
+   Note that the type used in va_arg is supposed to match the
+   actual type **after default promotions**.
+   Thus, va_arg (..., short) is not valid.  */
+
 #ifndef _STDARG_H
 #define _STDARG_H
 

@@ -2281,11 +2281,22 @@ loop_reg_used_before_p (insn, loop_start, scan_start, loop_end)
      rtx insn, loop_start, scan_start, loop_end;
 {
   rtx reg = SET_DEST (PATTERN (insn));
-  if (INSN_LUID (scan_start) > INSN_LUID (insn))
-    return (reg_used_between_p (reg, scan_start, loop_end)
-	    || reg_used_between_p (reg, loop_start, insn));
-  else
-    return reg_used_between_p (reg, scan_start, insn);
+  rtx p;
+
+  /* Scan forward checking for register usage.  If we hit INSN, we
+     are done.  Otherwise, if we hit LOOP_END, wrap around to LOOP_START.  */
+  for (p = scan_start; p != insn; p = NEXT_INSN (p))
+    {
+      if ((GET_CODE (p) == INSN || GET_CODE (p) == CALL_INSN
+	   || GET_CODE (p) == JUMP_INSN)
+	  && reg_overlap_mentioned_p (reg, PATTERN (p)))
+	return 1;
+
+      if (p == loop_end)
+	p = loop_start;
+    }
+
+  return 0;
 }
 
 /* A "basic induction variable" or biv is a pseudo reg that is set
@@ -3228,7 +3239,16 @@ strength_reduce (scan_start, end, loop_top, insn_count,
   for (p = loop_start; p != end; p = NEXT_INSN (p))
     if (GET_CODE (p) == INSN || GET_CODE (p) == JUMP_INSN
  	|| GET_CODE (p) == CALL_INSN)
-      replace_regs (PATTERN (p), reg_map, nregs);
+      {
+	rtx tail;
+
+	replace_regs (PATTERN (p), reg_map, nregs);
+	/* Subsitute registers in the equivalent expression also.  */
+	for (tail = REG_NOTES (p); tail; tail = XEXP (tail, 1))
+	  if (REG_NOTE_KIND (tail) == REG_EQUAL
+	      || REG_NOTE_KIND (tail) == REG_EQUIV)
+	    replace_regs (XEXP (tail, 0), reg_map, nregs);
+      }
 
   if (loop_dump_stream)
     fprintf (loop_dump_stream, "\n");
@@ -4683,11 +4703,42 @@ check_dbra_loop (loop_end, iv_list, insn_count, loop_start)
 	         allow 2 insns for the compare/jump at the end of the loop.  */
 	      int num_nonfixed_reads = 0;
 	      rtx p;
+	      /* 1 if the iteration var is used only to count iterations.  */
+	      int no_use_except_counting = 0;
 
 	      for (p = loop_start; p != loop_end; p = NEXT_INSN (p))
 		if (GET_CODE (p) == INSN || GET_CODE (p) == CALL_INSN
 		    || GET_CODE (p) == JUMP_INSN)
 		  num_nonfixed_reads += count_nonfixed_reads (PATTERN (p));
+
+	      if (bl->giv_count == 0)
+		{
+		  rtx bivreg = regno_reg_rtx[bl->regno];
+
+		  /* If there are no givs for this biv,
+		     see if perhaps there are no uses except to count.  */
+		  no_use_except_counting = 1;
+		  for (p = loop_start; p != loop_end; p = NEXT_INSN (p))
+		    if (GET_CODE (p) == INSN || GET_CODE (p) == CALL_INSN
+			|| GET_CODE (p) == JUMP_INSN)
+		      {
+			if (GET_CODE (PATTERN (p)) == SET
+			    && GET_CODE (SET_DEST (PATTERN (p))) == REG
+			    && REGNO (SET_DEST (PATTERN (p))) == bl->regno)
+			  /* An insn that sets the biv is okay.  */
+			  ;
+			else if (p == PREV_INSN (PREV_INSN (loop_end))
+				 || p == PREV_INSN (loop_end))
+			  /* Don't bother about the end test.  */
+			  ;
+			else if (reg_mentioned_p (bivreg, PATTERN (p)))
+			  /* Any other use of the biv is no good.  */
+			  {
+			    no_use_except_counting = 0;
+			    break;
+			  }
+		      }
+		}
 
 	      /* This code only acts for innermost loops.  Also it simplifies
 		 the memory address check by only reversing loops with
@@ -4697,8 +4748,9 @@ check_dbra_loop (loop_end, iv_list, insn_count, loop_start)
 
 	      if (num_nonfixed_reads <= 1
 		  && !loop_has_call
-		  && (bl->giv_count + bl->biv_count + num_mem_sets
-		      + num_movables + 2 == insn_count))
+		  && (no_use_except_counting
+		      || (bl->giv_count + bl->biv_count + num_mem_sets
+			  + num_movables + 2 == insn_count)))
 		{
 		  rtx src_two_before_end;
 		  int constant;
@@ -4956,12 +5008,13 @@ can_eliminate_biv_p (insn, bl)
 	 can replace test insn with a compare insn (cmp REDUCED_GIV ADD_VAL).
 	 Require a constant integer for MULT_VAL, so we know it's nonzero.  */
 
-      for (v = bl->giv; v; v = v->family)
-	if (GET_CODE (v->mult_val) == CONST_INT && v->mult_val != const0_rtx
-	    && (GET_CODE (v->add_val) == REG || GET_CODE (v->add_val) == CONST_INT)
-	    && ! v->ignore
-	    && v->mode == mode)
-	  return 1;
+      if (next_insn_tests_no_inequality (insn))
+	for (v = bl->giv; v; v = v->family)
+	  if (GET_CODE (v->mult_val) == CONST_INT && v->mult_val != const0_rtx
+	      && (GET_CODE (v->add_val) == REG || GET_CODE (v->add_val) == CONST_INT)
+	      && ! v->ignore
+	      && v->mode == mode)
+	    return 1;
 
       if (loop_dump_stream)
 	fprintf (loop_dump_stream, "Cannot eliminate biv %d in test insn %d: no appropriate giv.\n",
@@ -4996,19 +5049,38 @@ can_eliminate_biv_p (insn, bl)
 		&& GET_CODE (v->add_val) == CONST_INT
 		&& ! v->ignore
 		&& v->mode == mode)
-	      return 1;
+	      {
+		/* Make sure there's no overflow in the range for the giv.  */
+		if (INTVAL (v->mult_val) == 0
+		    ||
+		    (INTVAL (arg) * INTVAL (v->mult_val) / INTVAL (v->mult_val)
+		     != INTVAL (arg))
+		    ||
+		    ((0 < (INTVAL (arg) * INTVAL (v->mult_val)
+			   + INTVAL (v->add_val)))
+		     != (0 < INTVAL (arg))))
+		  return 0;
 
-	  /* Look for giv with constant mult_val and nonconst add_val,
-	     since we can insert add insn before loop
-	     to calculate new compare value.  */
+		return 1;
+	      }
 
-	  for (v = bl->giv; v; v = v->family)
-	    if (GET_CODE (v->mult_val) == CONST_INT
-		&& ! v->ignore
-		&& v->mode == mode)
-	      return 1;
+	  if (next_insn_tests_no_inequality (insn))
+	    {
+	      /* Look for giv with constant mult_val and nonconst add_val,
+		 since we can insert add insn before loop
+		 to calculate new compare value.  */
+
+	      /* This is not safe if the end-test is not == or !=,
+		 since we can't tell whether the giv will overflow.  */
+	      for (v = bl->giv; v; v = v->family)
+		if (GET_CODE (v->mult_val) == CONST_INT
+		    && ! v->ignore
+		    && v->mode == mode)
+		  return 1;
+	    }
 	}
-      else if (GET_CODE (arg) == REG || GET_CODE (arg) == MEM)
+      else if ((GET_CODE (arg) == REG || GET_CODE (arg) == MEM)
+	       && next_insn_tests_no_inequality (insn))
 	{
 	  /* Comparing against invariant register or memref can be handled.  */
 
@@ -5164,7 +5236,18 @@ eliminate_biv (insn, bl, loop_start)
 		&& GET_CODE (v->add_val) == CONST_INT
 		&& v->new_reg
 		&& v->mode == mode)
-	      break;
+	      {
+		/* Make sure there's no overflow in the range for the giv.  */
+		if (! (INTVAL (v->mult_val) == 0
+		       ||
+		       (INTVAL (arg) * INTVAL (v->mult_val) / INTVAL (v->mult_val)
+			!= INTVAL (arg))
+		       ||
+		       ((0 < (INTVAL (arg) * INTVAL (v->mult_val)
+			      + INTVAL (v->add_val)))
+			!= (0 < INTVAL (arg)))))
+		  break;
+	      }
 	  if (v)
 	    {
 	      rtx newval;

@@ -450,7 +450,8 @@ global_conflicts ()
 	      while (n_regs_set > 0)
 		if (find_regno_note (insn, REG_DEAD, REGNO (regs_set[--n_regs_set])))
 		  mark_reg_death (regs_set[n_regs_set]);
-		
+
+	      /*???The following seems to be incorrect.  */
 	      /* Likewise for regs set by incrementation.  */
 
 	      for (link = REG_NOTES (insn); link; link = XEXP (link, 1))

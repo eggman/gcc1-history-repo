@@ -286,7 +286,12 @@ enum reg_class {
 
 #define FP_REG_P(X) (REG_P (X) && FP_REGNO_P (REGNO (X)))
 #define FP_REGNO_P(n) ((n) >= FIRST_FLOAT_REG && (n) < FIRST_PSEUDO_REGISTER)
-  
+
+/* This definition indicates that some register classes are very small,
+   which requires extra care in certain optimizations.  */
+
+#define SMALL_REGISTER_CLASSES
+
 /* Try to maintain the accuracy of the death notes for regs satisfying the
    following.  Important for stack like regs, to know when to pop. */
 

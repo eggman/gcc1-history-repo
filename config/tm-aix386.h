@@ -38,7 +38,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Special flags for the linker.  I don't know what they do.  */
 
-#define LINK_SPEC "%{!K:-K} %{!T*:-T0x00400000} %{z:-lm}"
+#define LINK_SPEC "%{K} %{!K:-K} %{T*} %{z:-lm}"
 
 /* Specify predefined symbols in preprocessor.  */
 
@@ -59,8 +59,14 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #undef ASM_FILE_START
 #define ASM_FILE_START(FILE) 					\
-  do { fprintf (FILE, "\t.file\t\"%s\"\n", dump_base_name);	\
-     } while (0)
+  do {								\
+    char *p = (char *) strrchr (main_input_filename, '/');	\
+    if (!p)							\
+      p = main_input_filename;					\
+    else p++;							\
+    fprintf ((FILE), "\t.file\t\"%s\"\n", p);			\
+  } while (0)
+
 /* This used to output .noopt if nonoptimizing and run ASM_FILE_START_1
    if optimizing, but that loses with the AIX assembler.  */
 
@@ -112,3 +118,12 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #undef FUNCTION_PROFILER
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
    fprintf (FILE, "\tleal %sP%d,%%eax\n\tcall mcount\n", LPREFIX, (LABELNO));
+
+/* Note that using bss_section here caused errors
+   in building shared libraries on system V.3.
+   but AIX 1.2 does not have yet shareable libraries on PS2 */
+#undef ASM_OUTPUT_LOCAL
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  	\
+  (bss_section (),					\
+   ASM_OUTPUT_LABEL ((FILE), (NAME)),			\
+   fprintf ((FILE), "\t.set .,.+%u\n", (ROUNDED)))

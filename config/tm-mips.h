@@ -47,8 +47,8 @@ SWITCHES:
           Pass -bestGnum flag to ld. This helps setting best value for
           the -G parameter.
 
-    -SSYSV  for RISC-OS: use the System V environment
-    -SBSD43 for RISC-OS: use the BSD 4.3  environment
+    -ZSYSV  for RISC-OS: use the System V environment
+    -ZBSD43 for RISC-OS: use the BSD 4.3  environment
 ----------------------------------------------------------------------*/
 
 
@@ -176,6 +176,9 @@ extern void overide_options ();
 #ifndef LIB_SPEC
 #define LIB_SPEC "%{pg:%e-pg is not supported on the MIPS}%{p:-lprof1} -lc"
 #endif
+
+/* Inhibit use of -lg.  */
+#define LIBG_SPEC ""
 
 /* Extra switches sometimes passed to the loader.  */
 
@@ -335,16 +338,17 @@ extern void overide_options ();
 #ifdef MIPS_SYSV
 #define CPP_SPEC " %{!ansi:%{!ZBSD43:-DSYSTYPE_SYSV}%{ZBSD43:-DSYSTYPE_BSD43}}\
 		   %{!ZBSD43:-D__SYSTYPE_SYSV__}%{ZBSD43:-D__SYSTYPE_BSD43__} \
-		   %{!nostdinc:%{!ZBSD43:-I/sysv/usr/include}		\
-			       %{ZBSD43:-I/bsd43/usr/include}}		\
 		   %{O1:-D__OPTIMIZE__}					\
 		   %{O2:-D__OPTIMIZE__}					\
 		   %{O3:-D__OPTIMIZE__}"
 #else /* not MIPS_SYSV */
+
+/* Use this instead of a conditional -I in CPP_SPEC
+   because -I adds the dir in the wrongplace in the search path.  */
+#define CC_INCLUDE_DIR "/bsd43/usr/include"
+
 #define CPP_SPEC " %{!ansi:%{!ZSYSV:-DSYSTYPE_BSD43}%{ZSYSV:-DSYSTYPE_SYSV}}\
 		   %{!ZSYSV:-D__SYSTYPE_BSD43__}%{ZSYSV:-D__SYSTYPE_SYSV__}\
-		   %{!nostdinc:%{!ZSYSV:-I/bsd43/usr/include}		\
-			       %{ZSYSV:-I/sysv/usr/include}}		\
 		   %{O1:-D__OPTIMIZE__}					\
 		   %{O2:-D__OPTIMIZE__}					\
 		   %{O3:-D__OPTIMIZE__}"
@@ -1016,7 +1020,8 @@ description.  */
 				** 'G'     : Floating point 0
 				 */
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)				\
-  ((C) == 'G' && XINT (VALUE, 0) == 0 && XINT (VALUE, 1) == 0)
+  ((C) == 'G' && CONST_DOUBLE_LOW ((VALUE)) == 0			\
+   && CONST_DOUBLE_HIGH ((VALUE)) == 0)
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.
@@ -1536,6 +1541,13 @@ extern void compare_restore ();
 
 #define FUNCTION_MODE SImode
 
+/* Define TARGET_MEM_FUNCTIONS if we want to use calls to memcpy and
+   memset, instead of the BSD functions bcopy and bzero.  */
+
+#if defined(MIPS_SYSV) || defined(OSF_OS)
+#define TARGET_MEM_FUNCTIONS
+#endif
+
 /* Compute the cost of computing a constant rtl expression RTX
    whose rtx-code is CODE.  The body of this macro is a portion
    of a switch statement.  If the code is computed here,
@@ -1591,25 +1603,9 @@ extern void compare_restore ();
    declaration when the code is processed, it generates a two
    instruction sequence.  */
 
-#define ASM_FILE_START(STREAM)						\
-{									\
-  extern FILE *asm_out_text_file, *asm_out_data_file;			\
-  extern FILE *tmpfile ();						\
-  if (TARGET_NAME_REGS)							\
-    fprintf (STREAM, "#include <regdef.h>\n");				\
-  ASM_OUTPUT_SOURCE_FILENAME (STREAM, main_input_filename);		\
-  print_options(STREAM);						\
-  data_section ();		/* put gcc_compiled. in data, not text*/\
-  if (TARGET_GP_OPT)							\
-    {									\
-      asm_out_data_file = STREAM;					\
-      asm_out_text_file = tmpfile ();					\
-      if (!asm_out_text_file)						\
-	pfatal_with_name ("Can't open temporary file with tmpfile");	\
-    }									\
-  else									\
-    asm_out_data_file = asm_out_text_file = STREAM;			\
-}
+extern void mips_asm_file_start ();
+
+#define ASM_FILE_START(STREAM) mips_asm_file_start (STREAM)
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */

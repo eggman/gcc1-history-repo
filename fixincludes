@@ -86,8 +86,9 @@ while [ $# != 0 ]; do
   cd $1
   files=`find . -name '*.h' -type f -print`
   echo 'Checking header files:'
+# Note that BSD43_* are used on recent MIPS systems.
   for file in $files; do
-    if egrep '[ 	]_IO[A-Z]*\(|#define._IO|CTRL' $file > /dev/null; then
+    if egrep '[ 	]_IO[A-Z]*\(|[	 ]BSD43__IO[A-Z]*\(|#define._IO|#define.BSD43__IO|CTRL' $file > /dev/null; then
       echo Fixing $file
       if [ -r $file ]; then
 	cp $file $2/$file >/dev/null 2>&1	\
@@ -98,10 +99,13 @@ while [ $# != 0 ]; do
 	  /\\$/			N
 	  /\\$/			b loop
 	  /[ 	]_IO[A-Z]*[ 	]*(/	s/(\(.\),/('\''\1'\'',/
+	  /[ 	]BSD43__IO[A-Z]*[ 	]*(/	s/(\(.\),/('\''\1'\'',/
 	  /#define._IO/		s/'\''x'\''/x/g
+	  /#define.BSD43__IO/		s/'\''x'\''/x/g
 	  /[^A-Z]CTRL[ 	]*(/	s/\([^'\'']\))/'\''\1'\'')/
 	  /#define.CTRL/		s/'\''c'\''/c/g
 	  /#define._CTRL/		s/'\''c'\''/c/g
+	  /#define.BSD43_CTRL/		s/'\''c'\''/c/g
 	' $2/$file > $2/$file.sed
 	mv $2/$file.sed $2/$file
 	if cmp $file $2/$file >/dev/null 2>&1; then
@@ -138,6 +142,55 @@ EOF
   fi
 fi
 
+# Fix this Sun file to avoid intefering with stddef.h.
+
+file=sys/stdtypes.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    cp $file ${LIB}/$file >/dev/null 2>&1	\
+    || echo "Can't copy $file"
+    chmod +w ${LIB}/$file
+  fi
+fi
+
+if [ -r ${LIB}/$file ]; then
+  echo Fixing $file comment
+  ex ${LIB}/$file <<EOF
+  /size_t.*;/
+  i
+#ifndef _SIZE_T
+#define _SIZE_T
+.
+  /size_t/+1
+  i
+#endif
+.
+  /ptrdiff_t.*;/
+  i
+#ifndef _PTRDIFF_T
+#define _PTRDIFF_T
+.
+  /ptrdiff_t/+1
+  i
+#endif
+.
+  /wchar_t.*;/
+  i
+#ifndef _WCHAR_T
+#define _WCHAR_T
+.
+  /wchar_t/+1
+  i
+#endif
+.
+  wq
+EOF
+  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+    echo Deleting ${LIB}/$file\; no fixes were needed.
+    rm ${LIB}/$file
+  fi
+fi
+
 # Fix an error in this file: a missing semi-colon at the end of the statsswtch
 # structure definition.
 file=rpcsvc/rstat.h
@@ -161,6 +214,29 @@ EOF
   fi
 fi
 
+# Fix an error in this file: a missing semi-colon at the end of the nodeent
+# structure definition.
+file=netdnet/dnetdb.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    cp $file ${LIB}/$file >/dev/null 2>&1	\
+    || echo "Can't copy $file"
+    chmod +w ${LIB}/$file
+  fi
+fi
+
+if [ -r ${LIB}/$file ]; then
+  echo Fixing $file, definition of nodeent
+  ex ${LIB}/$file <<EOF
+  g/na_addr/s//&;/
+  wq
+EOF
+  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+    echo Deleting ${LIB}/$file\; no fixes were needed.
+    rm ${LIB}/$file
+  fi
+fi
+
 # Check for bad #ifdef line (in Ultrix 4.1)
 
 file=sys/file.h
@@ -174,7 +250,7 @@ if [ -r $file ]; then
 fi
 
 if [ -r ${LIB}/$file ]; then
-  echo Fixing $file, bad #ifdef line
+  echo Fixing $file, bad \#ifdef line
   ex ${LIB}/$file <<EOF
   g/^#ifdef KERNEL && !defined/
   s/#ifdef KERNEL && !defined/#if defined(KERNEL) \&\& !defined/
@@ -183,6 +259,37 @@ EOF
   if cmp $file ${LIB}/$file >/dev/null 2>&1; then
     echo Deleting ${LIB}/$file\; no fixes were needed.
     rm ${LIB}/$file
+  fi
+fi
+
+# Check for superfluous `static' (in Ultrix 4.2)
+
+file=machine/cpu.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    mkdir ${LIB}/machine 2>&-
+    cp $file ${LIB}/$file >/dev/null 2>&1	\
+    || echo "Can't copy $file"
+    chmod +w ${LIB}/$file
+  fi
+fi
+
+if [ -r ${LIB}/$file ]; then
+  echo Fixing $file, superfluous static
+  ex ${LIB}/$file <<EOF
+  g/^static struct tlb_pid_state/
+  s/static//
+  wq
+EOF
+  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+    echo Deleting ${LIB}/$file\; no fixes were needed.
+    rm ${LIB}/$file
+  else
+# This file has an alternative name, mips/cpu.h.  Fix that name, too.
+    if cmp machine/cpu.h mips/cpu.h > /dev/null 2>& 1; then
+      mkdir ${LIB}/mips 2>&-
+      ln ${LIB}/$file ${LIB}/mips/cpu.h 
+    fi
   fi
 fi
 
@@ -231,17 +338,6 @@ if [ -r $file ]; then
   if [ ! -r ${LIB}/$file ]; then
     mkdir ${LIB}/pixrect 2>&-
     sed -e '/^#define.CAT(a,b)/ s/IDENT(a)b/a##b/g' $file > ${LIB}/$file
-    cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
-  fi
-fi
-
-# Check for yet more missing ';' in struct (in SunOS 4.0.x)
-
-file=rpcsvc/rusers.h
-if [ -r $file ]; then
-  if [ ! -r ${LIB}/$file ]; then
-    mkdir ${LIB}/rpcsvc 2>&-
-    sed -e '/^struct/,/^};/s/_cnt$/_cnt;/' $file > ${LIB}/$file
     cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
   fi
 fi

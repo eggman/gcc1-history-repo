@@ -1,6 +1,6 @@
 /* like pmax except BIG ENDIAN instead of LITTLE ENDIAN  */
 
-#define DECSTATION
+#define MIPS_NEWS
 #include "tm-mips.h"
 
 #undef CPP_SPEC

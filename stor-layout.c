@@ -199,6 +199,22 @@ agg_mode (size)
 
   return val;
 }
+
+/* Round the value SIZE up to the next size of some machine mode.  */
+
+int
+round_size (size)
+     int size;
+{
+  enum machine_mode t;
+
+  for (t = QImode; (int) t < (int) BLKmode;
+       t = (enum machine_mode) ((int) t + 1))
+    if (GET_MODE_BITSIZE (t) >= size)
+      return GET_MODE_BITSIZE (t);
+
+  abort ();
+}
 
 /* Return an INTEGER_CST with value V and type from `sizetype'.  */
 

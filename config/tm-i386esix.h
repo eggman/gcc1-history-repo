@@ -31,3 +31,6 @@
 /* SCO's assember doesn't grok '$' in labels (for g++) */
 
 #define NO_DOLLAR_IN_LABEL
+
+/* Unlike SCO, ESIX expects the called function to pop the structure
+   value address.  So don't define STRUCT_RETURN_CALLER_POP.  */

@@ -685,6 +685,10 @@ fixup_gotos (thisblock, stack_level, cleanup_list, first_insn, dont_jump_in)
 	 If so, we can finalize it.  */
       else if (PREV_INSN (f->target_rtl) != 0)
 	{
+	  rtx after_label = f->target_rtl;
+	  while (after_label != 0 && GET_CODE (after_label) == CODE_LABEL)
+	    after_label = NEXT_INSN (after_label);
+
 	  /* If this fixup jumped into this contour from before the beginning
 	     of this contour, report an error.  */
 	  /* ??? Bug: this does not detect jumping in through intermediate
@@ -693,13 +697,17 @@ fixup_gotos (thisblock, stack_level, cleanup_list, first_insn, dont_jump_in)
 	     around the label.  */
 	  if (f->target != 0
 	      && (dont_jump_in || stack_level || cleanup_list)
+	      /* If AFTER_LABEL is 0, it means the jump goes to the end
+		 of the rtl, which means it jumps into this scope.  */
+	      && (after_label == 0
+		  || INSN_UID (first_insn) < INSN_UID (after_label))
 	      && INSN_UID (first_insn) > INSN_UID (f->before_jump)
-	      && ! TREE_ADDRESSABLE (f->target))
+	      && ! TREE_REGDECL (f->target))
 	    {
 	      error_with_decl (f->target,
 			       "label `%s' used before containing binding contour");
 	      /* Prevent multiple errors for one label.  */
-	      TREE_ADDRESSABLE (f->target) = 1;
+	      TREE_REGDECL (f->target) = 1;
 	    }
 
 	  /* Execute cleanups for blocks this jump exits.  */
@@ -1290,10 +1298,17 @@ expand_end_loop ()
 
   do_pending_stack_adjust ();
 
+  while (insn && GET_CODE (insn) == NOTE)
+    insn = PREV_INSN (insn);
+
   /* If optimizing, perhaps reorder the loop.  If the loop
-     starts with a conditional exit, roll that to the end
-     where it will optimize together with the jump back.  */
-  if (optimize
+     does not already end with a conditional branch, scan over the
+     insns within the loop and try to find a conditional branch which
+     is a loop exit.  If such an insn is found, move that insn (and
+     its predecessors) to the end of the loop so that the conditional
+     exit and the jump back can perhaps be optimized into one insn.  */
+
+  if (optimize && insn != 0
       &&
       ! (GET_CODE (insn) == JUMP_INSN
 	 && GET_CODE (PATTERN (insn)) == SET
@@ -1750,6 +1765,8 @@ use_variable (rtl)
   if (GET_CODE (rtl) == REG)
     /* This is a register variable.  */
     emit_insn (gen_rtx (USE, VOIDmode, rtl));
+  else if (GET_CODE (rtl) == SUBREG)
+    use_variable (SUBREG_REG (rtl));
   else if (GET_CODE (rtl) == MEM
 	   && GET_CODE (XEXP (rtl, 0)) == REG
 	   && XEXP (rtl, 0) != frame_pointer_rtx
@@ -1768,6 +1785,8 @@ use_variable_after (rtl, insn)
   if (GET_CODE (rtl) == REG)
     /* This is a register variable.  */
     emit_insn_after (gen_rtx (USE, VOIDmode, rtl), insn);
+  else if (GET_CODE (rtl) == SUBREG)
+    use_variable_after (SUBREG_REG (rtl), insn);
   else if (GET_CODE (rtl) == MEM
 	   && GET_CODE (XEXP (rtl, 0)) == REG
 	   && XEXP (rtl, 0) != frame_pointer_rtx

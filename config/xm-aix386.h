@@ -19,6 +19,12 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* #defines that need visibility everywhere.  */
+#ifdef FALSE
+#undef FALSE
+#endif
+#ifdef TRUE
+#undef TRUE
+#endif
 #define FALSE 0
 #define TRUE 1
 

@@ -127,8 +127,10 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
   extern char call_used_regs[];					\
   int fsize = ((SIZE) + 3) & -4;				\
   if (frame_pointer_needed)					\
-    { if (TARGET_68020 || fsize < 0x8000)			\
+    { if (fsize < 0x8000)			                \
         fprintf (FILE, "\tlink fp,#%d\n", -fsize);		\
+      else if (TARGET_68020)                                    \
+        fprintf (FILE, "\tlink.l fp,#%d\n", -fsize);            \
       else							\
 	fprintf (FILE, "\tlink fp,#0\n\tsub.l #%d,sp\n", fsize); }  \
   for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\
@@ -385,7 +387,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 	  break;							\
 	}								\
       else if (reg1 != 0 && GET_CODE (addr) == LABEL_REF)		\
-	{ fprintf (FILE, "(L%d.b,pc,%s:l)",				\
+	{ fprintf (FILE, "(L%d.b,pc,%s.l)",				\
 		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
 		   reg_names[REGNO (reg1)]);				\
 	  break; }							\

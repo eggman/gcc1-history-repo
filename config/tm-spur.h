@@ -287,8 +287,9 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* Similar, but for floating constants, and defining letters G and H.
    Here VALUE is the CONST_DOUBLE rtx itself.  */
 
-#define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)  \
-  ((C) == 'G' && XINT (VALUE, 0) == 0 && XINT (VALUE, 1) == 0)
+#define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)				\
+  ((C) == 'G' && CONST_DOUBLE_LOW ((VALUE)) == 0			\
+   && CONST_DOUBLE_HIGH ((VALUE)) == 0)
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.

@@ -201,6 +201,7 @@ int caller_save_needed;
 static int frame_pointer_address_altered;
 
 void mark_home_live ();
+static int possible_group_p ();
 static rtx scan_paradoxical_subregs ();
 static void reload_as_needed ();
 static int modes_equiv_for_class_p ();
@@ -980,7 +981,15 @@ reload (first, global, dumpfile)
 	      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 		if (potential_reload_regs[i] >= 0
 		    && TEST_HARD_REG_BIT (reg_class_contents[class],
-					  potential_reload_regs[i]))
+					  potential_reload_regs[i])
+		    /* If this reg will not be available for groups,
+		       pick one that does not foreclose possible groups.
+		       This is a kludge, and not very general,
+		       but it should be sufficient to make the 386 work,
+		       and the problem should not occur on machines with
+		       more registers.  */
+		    && (max_nongroups[class] == 0
+			|| possible_group_p (potential_reload_regs[i], max_groups)))
 		  break;
 
 	      /* I should be the index in potential_reload_regs
@@ -1048,6 +1057,55 @@ reload (first, global, dumpfile)
 	    XEXP (reg_equiv_mem[i], 0) = addr;
 	}
     }
+}
+
+/* Nonzero if, after spilling reg REGNO for non-groups,
+   it will still be possible to find a group if we still need one.  */
+
+static int
+possible_group_p (regno, max_groups)
+     int regno;
+     int *max_groups;
+{
+  int i;
+  int group = 0;
+
+  for (i = 0; i < (int) N_REG_CLASSES; i++)
+    group |= max_groups[i];
+
+  if (group == 0)
+    return 1;
+
+  /* Consider each pair of consecutive registers.  */
+  for (i = 0; i < FIRST_PSEUDO_REGISTER - 1; i++)
+    {
+      if (i == regno || i + 1 == regno)
+	continue;
+
+      /* A pair of consecutive regs we can still spill does the trick.  */
+      if (spill_reg_order[i] < 0 && spill_reg_order[i + 1] < 0
+	  && !regs_explicitly_used[i] && !regs_explicitly_used[i + 1]
+	  && !fixed_regs[i] && i != FRAME_POINTER_REGNUM
+	  && !fixed_regs[i + 1] && i + 1 != FRAME_POINTER_REGNUM)
+	return 1;
+
+      /* A pair of one already spilled and one we can spill does it
+	 provided the one already spilled is not otherwise reserved.  */
+      if (spill_reg_order[i] < 0 && !regs_explicitly_used[i]
+	  && !fixed_regs[i] && i != FRAME_POINTER_REGNUM
+	  && spill_reg_order[i + 1] >= 0
+	  && !counted_for_groups[i + 1]
+	  && !counted_for_nongroups[i + 1])
+	return 1;
+      if (spill_reg_order[i + 1] < 0 && !regs_explicitly_used[i + 1]
+	  && !fixed_regs[i + 1] && i + 1 != FRAME_POINTER_REGNUM
+	  && spill_reg_order[i] >= 0
+	  && !counted_for_groups[i]
+	  && !counted_for_nongroups[i])
+	return 1;
+    }
+
+  return 0;
 }
 
 /* 1 if two machine modes MODE0 and MODE1 are equivalent
@@ -2811,7 +2869,7 @@ emit_reload_insns (insn)
 	     then load RELOADREG from OLDEQUIV.  */
 
 	  if (GET_MODE (reloadreg) != mode)
-	    reloadreg = gen_rtx (SUBREG, mode, reloadreg, 0);
+	    reloadreg = gen_rtx (REG, mode, REGNO (reloadreg));
 	  while (GET_CODE (oldequiv) == SUBREG && GET_MODE (oldequiv) != mode)
 	    oldequiv = SUBREG_REG (oldequiv);
 	  if (GET_MODE (oldequiv) != VOIDmode
@@ -3044,7 +3102,7 @@ emit_reload_insns (insn)
 	  /* Encapsulate both RELOADREG and OLD into that mode,
 	     then load RELOADREG from OLD.  */
 	  if (GET_MODE (reloadreg) != mode)
-	    reloadreg = gen_rtx (SUBREG, mode, reloadreg, 0);
+	    reloadreg = gen_rtx (REG, mode, REGNO (reloadreg));
 	  /* If OLD is a subreg, then strip it, since the subreg will
 	     be altered by this very reload (if it's a strict_low_part).  */
 	  while (GET_CODE (old) == SUBREG && GET_MODE (old) != mode)

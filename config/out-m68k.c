@@ -190,16 +190,17 @@ output_move_double (operands)
 	latehalf[1] = const0_rtx;
       else if (GET_CODE (operands[1]) == CONST_DOUBLE)
 	{
-	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
-				 CONST_DOUBLE_HIGH (operands[1]));
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
-				 CONST_DOUBLE_LOW (operands[1]));
-#if 0 /* not HOST_WORDS_BIG_ENDIAN */
+#ifndef HOST_WORDS_BIG_ENDIAN
 	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
 				 CONST_DOUBLE_LOW (operands[1]));
 	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
 				 CONST_DOUBLE_HIGH (operands[1]));
-#endif /* not HOST_WORDS_BIG_ENDIAN */
+#else /* HOST_WORDS_BIG_ENDIAN */
+	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_HIGH (operands[1]));
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_LOW (operands[1]));
+#endif /* HOST_WORDS_BIG_ENDIAN */
 	}
     }
   else

@@ -205,15 +205,15 @@ struct tree_common
    In CONSTRUCTOR nodes, it means the elements are all constants suitable
    for output as assembly-language initializers.
    In LABEL_DECL nodes, it means a goto for this label has been seen 
-   from a place outside all binding contours that restore stack levels,
-   or that an error message about jumping into such a binding contour
-   has been printed for this label.
+   from a place outside all binding contours that restore stack levels.
    In ..._TYPE nodes, it means that objects of this type must
    be fully addressable.  This means that pieces of this
    object cannot go into register parameters, for example.  */
 #define TREE_ADDRESSABLE(NODE) ((NODE)->common.addressable_attr)
 
-/* In VAR_DECL nodes, nonzero means declared `register'.  */
+/* In VAR_DECL nodes, nonzero means declared `register'.
+   In LABEL_DECL nodes, nonzero means that an error message about
+   jumping into such a binding contour has been printed for this label.  */
 #define TREE_REGDECL(NODE) ((NODE)->common.regdecl_attr)
 
 /* In any expression, nonzero means it has side effects or reevaluation

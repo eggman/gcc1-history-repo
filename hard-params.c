@@ -7,6 +7,8 @@
    xmalloc function defined, Richard Stallman, June 89.
    Avoid macro in #include, Richard Stallman, Jan 90.
    Undef CHAR_BIT, etc., if defined in stdio.h, Richard Stallman, Aug 90.
+   In EPROP, don't compare a with old if bad is already set.  Stallman, May 91.
+   Don't handle long doubles if -DNO_LONG_DOUBLE.  Stallman, May 91.
 
    Copyright (c) 1988, 1989 Steven Pemberton, CWI, Amsterdam.
    All rights reserved.
@@ -497,7 +499,7 @@ Procedure u_define(sort, name, val, req) char *sort, *name; unsigned long val, r
 #endif
 
 /* Long_double is the longest floating point type available: */
-#ifdef __STDC__
+#if defined(__STDC__) && !defined(NO_LONG_DOUBLE)
 #define Long_double long double
 #else
 #define Long_double double
@@ -950,7 +952,7 @@ int basic() {
 
 #ifdef PASS3
 
-#ifdef __STDC__
+#if defined(__STDC__) && !defined(NO_LONG_DOUBLE)
 #define Number long double
 #endif
 
@@ -1647,7 +1649,10 @@ Procedure EPROP(fprec, dprec, lprec) int fprec, dprec, lprec; {
 		do { old=a; a=a+a; }
 		while ((((a+1.0)-a)-1.0) == 0.0 && a>old);
 	} else bad=1;
-	if (a <= old) bad=1;
+
+	/* Avoid the comparison if bad is set,
+	   to avoid trouble on the convex.  */
+	if (!bad && (a <= old)) bad=1;
 
 	if (!bad) {
 		b=1.0;

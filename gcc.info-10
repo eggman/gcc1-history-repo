@@ -1,15 +1,15 @@
 Info file gcc.info, produced by Makeinfo, -*- Text -*- from input
 file gcc.texinfo.
 
-This file documents the use and the internals of the GNU compiler.
+   This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
+   Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
-Permission is granted to make and distribute verbatim copies of this
-manual provided the copyright notice and this permission notice are
-preserved on all copies.
+   Permission is granted to make and distribute verbatim copies of
+this manual provided the copyright notice and this permission notice
+are preserved on all copies.
 
-Permission is granted to copy and distribute modified versions of
+   Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
 that the sections entitled "GNU General Public License" and "Protect
 Your Freedom--Fight `Look And Feel'" are included exactly as in the
@@ -17,13 +17,277 @@ original, and provided that the entire resulting derived work is
 distributed under the terms of a permission notice identical to this
 one.
 
-Permission is granted to copy and distribute translations of this
+   Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
 versions, except that the sections entitled "GNU General Public
 License" and "Protect Your Freedom--Fight `Look And Feel'" and this
 permission notice may be included in translations approved by the
 Free Software Foundation instead of in the original English.
 
+
+File: gcc.info,  Node: Addressing Modes,  Next: Delayed Branch,  Prev: Library Calls,  Up: Machine Macros
+
+Addressing Modes
+================
+
+`HAVE_POST_INCREMENT'
+     Define this macro if the machine supports post-increment
+     addressing.
+
+`HAVE_PRE_INCREMENT'
+`HAVE_POST_DECREMENT'
+`HAVE_PRE_DECREMENT'
+     Similar for other kinds of addressing.
+
+`CONSTANT_ADDRESS_P (X)'
+     A C expression that is 1 if the RTX X is a constant whose value
+     is an integer.  This includes integers whose values are not
+     explicitly known, such as `symbol_ref' and `label_ref'
+     expressions and `const' arithmetic expressions.
+
+     On most machines, this can be defined as `CONSTANT_P (X)', but a
+     few machines are more restrictive in which constant addresses
+     are supported.
+
+`MAX_REGS_PER_ADDRESS'
+     A number, the maximum number of registers that can appear in a
+     valid memory address.  Note that it is up to you to specify a
+     value equal to the maximum number that
+     `go_if_legitimate_address' would ever accept.
+
+`GO_IF_LEGITIMATE_ADDRESS (MODE, X, LABEL)'
+     A C compound statement with a conditional `goto LABEL;' executed
+     if X (an RTX) is a legitimate memory address on the target
+     machine for a memory operand of mode MODE.
+
+     It usually pays to define several simpler macros to serve as
+     subroutines for this one.  Otherwise it may be too complicated
+     to understand.
+
+     This macro must exist in two variants: a strict variant and a
+     non-strict one.  The strict variant is used in the reload pass. 
+     It must be defined so that any pseudo-register that has not been
+     allocated a hard register is considered a memory reference.  In
+     contexts where some kind of register is required, a
+     pseudo-register with no hard register must be rejected.
+
+     The non-strict variant is used in other passes.  It must be
+     defined to accept all pseudo-registers in every context where
+     some kind of register is required.
+
+     Compiler source files that want to use the strict variant of
+     this macro define the macro `REG_OK_STRICT'.  You should use an
+     `#ifdef REG_OK_STRICT' conditional to define the strict variant
+     in that case and the non-strict variant otherwise.
+
+     Typically among the subroutines used to define
+     `GO_IF_LEGITIMATE_ADDRESS' are subroutines to check for
+     acceptable registers for various purposes (one for base
+     registers, one for index registers, and so on).  Then only these
+     subroutine macros need have two variants; the higher levels of
+     macros may be the same whether strict or not.
+
+     Normally, constant addresses which are the sum of a `symbol_ref'
+     and an integer are stored inside a `const' RTX to mark them as
+     constant.  Therefore, there is no need to recognize such sums as
+     legitimate addresses.
+
+     Usually `PRINT_OPERAND_ADDRESS' is not prepared to handle
+     constant sums that are not marked with  `const'.  It assumes
+     that a naked `plus' indicates indexing.  If so, then you *must*
+     reject such naked constant sums as illegitimate addresses, so
+     that none of them will be given to `PRINT_OPERAND_ADDRESS'.
+
+`REG_OK_FOR_BASE_P (X)'
+     A C expression that is nonzero if X (assumed to be a `reg' RTX)
+     is valid for use as a base register.  For hard registers, it
+     should always accept those which the hardware permits and reject
+     the others.  Whether the macro accepts or rejects pseudo
+     registers must be controlled by `REG_OK_STRICT' as described
+     above.  This usually requires two variant definitions, of which
+     `REG_OK_STRICT' controls the one actually used.
+
+`REG_OK_FOR_INDEX_P (X)'
+     A C expression that is nonzero if X (assumed to be a `reg' RTX)
+     is valid for use as an index register.
+
+     The difference between an index register and a base register is
+     that the index register may be scaled.  If an address involves
+     the sum of two registers, neither one of them scaled, then
+     either one may be labeled the "base" and the other the "index";
+     but whichever labeling is used must fit the machine's
+     constraints of which registers may serve in each capacity.  The
+     compiler will try both labelings, looking for one that is valid,
+     and will reload one or both registers only if neither labeling
+     works.
+
+`LEGITIMIZE_ADDRESS (X, OLDX, MODE, WIN)'
+     A C compound statement that attempts to replace X with a valid
+     memory address for an operand of mode MODE.  WIN will be a C
+     statement label elsewhere in the code; the macro definition may
+     use
+
+          GO_IF_LEGITIMATE_ADDRESS (MODE, X, WIN);
+
+     to avoid further processing if the address has become legitimate.
+
+     X will always be the result of a call to
+     `break_out_memory_refs', and OLDX will be the operand that was
+     given to that function to produce X.
+
+     The code generated by this macro should not alter the
+     substructure of X.  If it transforms X into a more legitimate
+     form, it should assign X (which will always be a C variable) a
+     new value.
+
+     It is not necessary for this macro to come up with a legitimate
+     address.  The compiler has standard ways of doing so in all
+     cases.  In fact, it is safe for this macro to do nothing.  But
+     often a machine-dependent strategy can generate better code.
+
+`GO_IF_MODE_DEPENDENT_ADDRESS (ADDR, LABEL)'
+     A C statement or compound statement with a conditional `goto
+     LABEL;' executed if memory address X (an RTX) can have different
+     meanings depending on the machine mode of the memory reference
+     it is used for.
+
+     Autoincrement and autodecrement addresses typically have
+     mode-dependent effects because the amount of the increment or
+     decrement is the size of the operand being addressed.  Some
+     machines have other mode-dependent addresses.  Many RISC
+     machines have no mode-dependent addresses.
+
+     You may assume that ADDR is a valid address for the machine.
+
+`LEGITIMATE_CONSTANT_P (X)'
+     A C expression that is nonzero if X is a legitimate constant for
+     an immediate operand on the target machine.  You can assume that
+     either X is a `const_double' or it satisfies `CONSTANT_P', so
+     you need not check these things.  In fact, `1' is a suitable
+     definition for this macro on machines where any `const_double'
+     is valid and anything `CONSTANT_P' is valid.
+
+
+File: gcc.info,  Node: Delayed Branch,  Next: Condition Code,  Prev: Addressing Modes,  Up: Machine Macros
+
+Parameters for Delayed Branch Optimization
+==========================================
+
+`HAVE_DELAYED_BRANCH'
+     Define this macro if the target machine has delayed branches,
+     that is, a branch does not take effect immediately, and the
+     actual branch instruction may be followed by one or more
+     instructions that will be issued before the PC is actually
+     changed.
+
+     If defined, this allows a special scheduling pass to be run
+     after the second jump optimization to attempt to reorder
+     instructions to exploit this.  Defining this macro also requires
+     the definition of certain other macros described below.
+
+`DBR_SLOTS_AFTER (INSN)'
+     This macro must be defined if `HAVE_DELAYED_BRANCH' is defined. 
+     Its definition should be a C expression returning the number of
+     available delay slots following the instruction(s) output by the
+     pattern for INSN.  The definition of "slot" is
+     machine-dependent, and may denote instructions, bytes, or
+     whatever.
+
+`DBR_INSN_SLOTS (INSN)'
+     This macro must be defined if `HAVE_DELAYED_BRANCH' is defined. 
+     It should be a C expression returning the number of slots
+     (typically the number of machine instructions) consumed by INSN.
+
+     You may assume that INSN is truly an insn, not a note, label,
+     barrier, dispatch table, `use', or `clobber'.
+
+`DBR_INSN_ELIGIBLE_P (INSN, DINSN)'
+     A C expression whose value is non-zero if it is legitimate to
+     put INSN in the delay slot following DINSN.
+
+     You do not need to take account of data flow considerations in
+     the definition of this macro, because the delayed branch
+     optimizer always does that.  This macro is needed only when
+     certain insns may not be placed in certain delay slots for
+     reasons not evident from the RTL expressions themselves.  If
+     there are no such problems, you don't need to define this macro.
+
+     You may assume that INSN is truly an insn, not a note, label,
+     barrier, dispatch table, `use', or `clobber'.  You may assume
+     that DINSN is a jump insn with a delay slot.
+
+`DBR_OUTPUT_SEQEND(FILE)'
+     A C statement, to be executed after all slot-filler instructions
+     have been output.  If necessary, call `dbr_sequence_length' to
+     determine the number of slots filled in a sequence (zero if not
+     currently outputting a sequence), to decide how many no-ops to
+     output, or whatever.
+
+     Don't define this macro if it has nothing to do, but it is
+     helpful in reading assembly output if the extent of the delay
+     sequence is made explicit (e.g. with white space).
+
+     Note that output routines for instructions with delay slots must
+     be prepared to deal with not being output as part of a sequence
+     (i.e.  when the scheduling pass is not run, or when no slot
+     fillers could be found.)  The variable `final_sequence' is null
+     when not processing a sequence, otherwise it contains the
+     `sequence' rtx being output.
+
+
+File: gcc.info,  Node: Condition Code,  Next: Cross-compilation,  Prev: Delayed Branch,  Up: Machine Macros
+
+Condition Code Information
+==========================
+
+   The file `conditions.h' defines a variable `cc_status' to describe
+how the condition code was computed (in case the interpretation of
+the condition code depends on the instruction that it was set by). 
+This variable contains the RTL expressions on which the condition
+code is currently based, and several standard flags.
+
+   Sometimes additional machine-specific flags must be defined in the
+machine description header file.  It can also add additional
+machine-specific information by defining `CC_STATUS_MDEP'.
+
+`CC_STATUS_MDEP'
+     C code for a data type which is used for declaring the `mdep'
+     component of `cc_status'.  It defaults to `int'.
+
+`CC_STATUS_MDEP_INIT'
+     A C expression to initialize the `mdep' field to "empty".  The
+     default definition does nothing, since most machines don't use
+     the field anyway.  If you want to use the field, you should
+     probably define this macro to initialize it.
+
+`NOTICE_UPDATE_CC (EXP, INSN)'
+     A C compound statement to set the components of `cc_status'
+     appropriately for an insn INSN whose body is EXP.  It is this
+     macro's responsibility to recognize insns that set the condition
+     code as a byproduct of other activity as well as those that
+     explicitly set `(cc0)'.
+
+     If there are insn that do not set the condition code but do
+     alter other machine registers, this macro must check to see
+     whether they invalidate the expressions that the condition code
+     is recorded as reflecting.  For example, on the 68000, insns
+     that store in address registers do not set the condition code,
+     which means that usually `NOTICE_UPDATE_CC' can leave
+     `cc_status' unaltered for such insns.  But suppose that the
+     previous insn set the condition code based on location
+     `a4@(102)' and the current insn stores a new value in `a4'. 
+     Although the condition code is not changed by this, it will no
+     longer be true that it reflects the contents of `a4@(102)'. 
+     Therefore, `NOTICE_UPDATE_CC' must alter `cc_status' in this
+     case to say that nothing is known about the condition code value.
+
+     The definition of `NOTICE_UPDATE_CC' must be prepared to deal
+     with the results of peephole optimization: insns whose patterns
+     are `parallel' RTXs containing various `reg', `mem' or constants
+     which are just the operands.  The RTL structure of these insns
+     is not sufficient to indicate what the insns actually do.  What
+     `NOTICE_UPDATE_CC' should do when it sees one is just to run
+     `CC_STATUS_INIT'.
 
 
 File: gcc.info,  Node: Cross-compilation,  Next: Misc,  Prev: Condition Code,  Up: Machine Macros
@@ -31,28 +295,28 @@ File: gcc.info,  Node: Cross-compilation,  Next: Misc,  Prev: Condition Code,  U
 Cross Compilation and Floating-Point Format
 ===========================================
 
-While all modern machines use 2's complement representation for
+   While all modern machines use 2's complement representation for
 integers, there are a variety of representations for floating point
 numbers.  This means that in a cross-compiler the representation of
 floating point numbers in the compiled program may be different from
 that used in the machine doing the compilation.
 
-Because different representation systems may offer different amounts
-of range and precision, the cross compiler cannot safely use the host
-machine's floating point arithmetic.  Therefore, floating point
-constants must be represented in the target machine's format.  This
-means that the cross compiler cannot use `atof' to parse a floating
-point constant; it must have its own special routine to use instead. 
-Also, constant folding must emulate the target machine's arithmetic
-(or must not be done at all).
+   Because different representation systems may offer different
+amounts of range and precision, the cross compiler cannot safely use
+the host machine's floating point arithmetic.  Therefore, floating
+point constants must be represented in the target machine's format. 
+This means that the cross compiler cannot use `atof' to parse a
+floating point constant; it must have its own special routine to use
+instead.  Also, constant folding must emulate the target machine's
+arithmetic (or must not be done at all).
 
-The macros in the following table should be defined only if you are
-cross compiling between different floating point formats.
+   The macros in the following table should be defined only if you
+are cross compiling between different floating point formats.
 
-Otherwise, don't define them. Then default definitions will be set up
-which use `double' as the data type, `==' to test for equality, etc.
+   Otherwise, don't define them. Then default definitions will be set
+up which use `double' as the data type, `==' to test for equality, etc.
 
-You don't need to worry about how many times you use an operand of
+   You don't need to worry about how many times you use an operand of
 any of these macros.  The compiler never uses operands which have
 side effects.
 
@@ -82,9 +346,9 @@ side effects.
      of type `char *', into a floating point number in the target
      machine's representation.  The value has type `REAL_VALUE_TYPE'.
 
-Define the following additional macros if you want to make floating
-point constant folding work while cross compiling.  If you don't
-define them, cross compilation is still possible, but constant
+   Define the following additional macros if you want to make
+floating point constant folding work while cross compiling.  If you
+don't define them, cross compilation is still possible, but constant
 folding will not happen for floating point values.
 
 `REAL_ARITHMETIC (OUTPUT, CODE, X, Y)'
@@ -121,7 +385,6 @@ folding will not happen for floating point values.
      A macro for a C expression which converts a double-precision
      integer found in LOW and HIGH, two variables of type INT, into a
      floating point value which is then stored into X.
-
 
 
 File: gcc.info,  Node: Misc,  Next: Assembler Format,  Prev: Cross-compilation,  Up: Machine Macros
@@ -317,7 +580,6 @@ Miscellaneous Parameters
      Define this to be nonzero if the character `$' should be allowed
      by default in identifier names.
 
-
 
 File: gcc.info,  Node: Assembler Format,  Prev: Misc,  Up: Machine Macros
 
@@ -347,6 +609,14 @@ Output of Assembler Code
 
      If this macro is not defined, a default is provided that loads
      the standard C library from the usual place.  See `gcc.c'.
+
+`LIBG_SPEC'
+     Another C string constant used much like `LINK_SPEC'.  This
+     controls whether to link `libg.a' when debugging.  Some systems
+     expect this; others do not have any `libg.a'.
+
+     If this macro is not defined, a default is provided that loads
+     the `libg.a' provided `-g' is specified.  See `gcc.c'.
 
 `STARTFILE_SPEC'
      Another C string constant used much like `LINK_SPEC'.  The
@@ -888,52 +1158,4 @@ Output of Assembler Code
           #define ASM_OPEN_PAREN "("
           #define ASM_CLOSE_PAREN ")"
 
-
 
-File: gcc.info,  Node: Config,  Prev: Machine Macros,  Up: Top
-
-The Configuration File
-**********************
-
-The configuration file `xm-MACHINE.h' contains macro definitions that
-describe the machine and system on which the compiler is running. 
-Most of the values in it are actually the same on all machines that
-GNU CC runs on, so large parts of all configuration files are
-identical.  But there are some macros that vary:
-
-`FAILURE_EXIT_CODE'
-     A C expression for the status code to be returned when the
-     compiler exits after serious errors.
-
-`SUCCESS_EXIT_CODE'
-     A C expression for the status code to be returned when the
-     compiler exits without serious errors.
-
-`USE_C_ALLOCA'
-     Define this macro to indicate that the compiler is running with
-     the `alloca' implemented in C.  This version of `alloca' can be
-     found in the file `alloca.c'; to use it, you must also alter the
-     `Makefile' variable `ALLOCA'.
-
-     This macro, unlike most, describes the machine that the compiler
-     is running on, rather than the one the compiler is compiling for.
-     Therefore, it should be set in the `xm-MACHINE.h' file rather
-     than in the `tm-MACHINE.h' file.
-
-     If you do define this macro, you should probably do it as follows:
-
-          #ifndef __GNUC__
-          #define USE_C_ALLOCA
-          #else
-          #define alloca __builtin_alloca
-          #endif
-
-     so that when the compiler is compiled with GNU CC it uses the
-     more efficient built-in `alloca' function.
-
-In addition, configuration files for system V define `bcopy', `bzero'
-and `bcmp' as aliases.  Some files define `alloca' as a macro when
-compiled with GNU CC, in order to take advantage of the benefit of
-GNU CC's built-in `alloca'.
-
-

@@ -192,7 +192,8 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align, total_size)
       high_pos = low_pos + low_size;
 #endif
 
-      value = force_reg (GET_MODE (value), value); 
+      if (GET_MODE (value) != VOIDmode)
+	value = force_reg (GET_MODE (value), value); 
       store_bit_field (op0, low_size, low_pos, SImode,
 		       gen_lowpart (SImode, value), align, total_size);
       store_bit_field (op0, high_size, high_pos, SImode,
@@ -235,6 +236,9 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align, total_size)
       rtx xop0 = op0;
       rtx last = get_last_insn ();
       rtx pat;
+      extern int volatile_ok;
+      int save_volatile_ok = volatile_ok;
+      volatile_ok = 1;
 
       /* If this machine's insv can only insert into a register,
 	 copy OP0 into a register and save it back later.  */
@@ -291,6 +295,7 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align, total_size)
 	  emit_move_insn (op0, tempreg);
 	  return value;
 	}
+      volatile_ok = save_volatile_ok;
 
       /* Add OFFSET into OP0's address.  */
       if (GET_CODE (xop0) == MEM)
@@ -821,6 +826,10 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 
 	  if (GET_CODE (xop0) == MEM)
 	    {
+	      extern int volatile_ok;
+	      int save_volatile_ok = volatile_ok;
+	      volatile_ok = 1;
+
 	      /* Is the memory operand acceptable?  */
 	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extzv][1])
 		     (xop0, GET_MODE (xop0))))
@@ -879,6 +888,8 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 		/* Get ref to first byte containing part of the field.  */
 		xop0 = change_address (xop0, QImode,
 				       plus_constant (XEXP (xop0, 0), xoffset));
+
+	      volatile_ok = save_volatile_ok;
 	    }
 
 	  /* If op0 is a register, we need it in SImode
@@ -1649,7 +1660,12 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	{
 	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
-	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	    {
+	      adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	      /* Copy op0 to a reg, since emit_cmp_insn will call emit_queue
+		 which will screw up mem refs for autoincrements.  */
+	      op0 = force_reg (mode, op0);
+	    }
 	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	  emit_jump_insn (gen_bge (label));
 	  expand_inc (adjusted_op0, plus_constant (op1, -1));
@@ -1664,7 +1680,10 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	{
 	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
-	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	    {
+	      adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	      op0 = force_reg (mode, op0);
+	    }
 	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0, 0);
 	  emit_jump_insn (gen_bge (label));
 	  expand_dec (adjusted_op0, op1);
@@ -1677,7 +1696,10 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
     case CEIL_DIV_EXPR:
     case CEIL_MOD_EXPR:
       if (! can_clobber_op0)
-	adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	{
+	  adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	  op0 = force_reg (mode, op0);
+	}
       if (log < 0)
 	{
 	  rtx label = 0;
@@ -1704,7 +1726,10 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
     case ROUND_DIV_EXPR:
     case ROUND_MOD_EXPR:
       if (! can_clobber_op0)
-	adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	{
+	  adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
+	  op0 = force_reg (mode, op0);
+	}
       if (log < 0)
 	{
 	  op1 = expand_shift (RSHIFT_EXPR, mode, op1, integer_one_node, 0, 0);

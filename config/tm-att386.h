@@ -134,8 +134,25 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* This is how to output an assembler line
    that says to advance the location counter by SIZE bytes.  */
 
+/* The `space' pseudo in the text segment outputs nop insns rather than 0s,
+   so we must output 0s explicitly in the text segment.  */
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf ((FILE), "\t.set .,.+%u\n", (SIZE))
+  if (in_text_section ())                                           	    \
+    {									    \
+      int i;								    \
+      for (i = 0; i < (SIZE) - 20; i += 20)				    \
+	fprintf (FILE, "\t.byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"); \
+      if (i < (SIZE))							    \
+        {								    \
+	  fprintf (FILE, "\t.byte 0");					    \
+	  i++;								    \
+	  for (; i < (SIZE); i++)					    \
+	    fprintf (FILE, ",0");					    \
+	  fprintf (FILE, "\n");						    \
+	}								    \
+    }									    \
+  else									    \
+    fprintf ((FILE), "\t.set .,.+%u\n", (SIZE))
 
 /* Output before read-only data.  */
 
@@ -180,10 +197,15 @@ bss_section ()							\
 
 /* Note that using bss_section here caused errors
    in building shared libraries on system V.3.  */
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
-  (data_section (),					\
-   ASM_OUTPUT_LABEL ((FILE), (NAME)),			\
-   fprintf ((FILE), "\t.set .,.+%u\n", (ROUNDED)))
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)	\
+  do {							\
+    int align = exact_log2 (ROUNDED);			\
+    if (align > 2) align = 2;				\
+    data_section ();					\
+    ASM_OUTPUT_ALIGN ((FILE), align == -1 ? 2 : align);	\
+    ASM_OUTPUT_LABEL ((FILE), (NAME));			\
+    fprintf ((FILE), "\t.set .,.+%u\n", (ROUNDED));	\
+  } while (0)
 
 /* This is how to store into the string BUF
    the symbol_ref name of an internal numbered label where

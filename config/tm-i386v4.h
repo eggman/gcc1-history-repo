@@ -50,3 +50,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
       p = main_input_filename;					\
     fprintf ((FILE), "\t.file\t\"%s\"\n", p);			\
   } while (0)
+
+/* SysVr4 has a third "alignment" argument to .comm.  It matters when
+   linking with PCC generated code when the object is less than word
+   length. */
+
+#undef ASM_OUTPUT_COMMON
+#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
+( fputs (".comm ", (FILE)),			\
+  assemble_name ((FILE), (NAME)),		\
+  fprintf ((FILE), ",%u,%u\n", (SIZE), (SIZE) < 3 ? (SIZE) : 4))

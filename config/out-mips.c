@@ -21,8 +21,16 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/file.h>
 #include "tree.h"
 #include "flags.h"
+
+#ifndef R_OK
+#define R_OK 4
+#define W_OK 2
+#define X_OK 1
+#endif
 
 extern void  debug_rtx ();
 extern void  abort_with_insn ();
@@ -327,7 +335,7 @@ function_arg_partial_nregs (cum, mode, type, named)
      tree type;			/* type of the argument or 0 if lib support */
      int named;			/* != 0 for normal args, == 0 for ... args */
 {
-  if (mode == BLKmode && cum->arg_number < MAX_ARGS_IN_REGISTERS)
+  if (mode == BLKmode && cum->arg_words < MAX_ARGS_IN_REGISTERS)
     {
       int words = (int_size_in_bytes (type) + 3) / 4;
 
@@ -341,7 +349,7 @@ function_arg_partial_nregs (cum, mode, type, named)
       return MAX_ARGS_IN_REGISTERS - cum->arg_words;
     }
 
-  else if (mode == DImode && cum->arg_number == MAX_ARGS_IN_REGISTERS-1)
+  else if (mode == DImode && cum->arg_words == MAX_ARGS_IN_REGISTERS-1)
     {
       if (TARGET_DEBUGE_MODE)
 	fprintf (stderr, "function_arg_partial_nregs = 1\n");
@@ -532,6 +540,77 @@ overide_options ()
   if (i >= 6)
     i += 3;
   mips_section_threshold = (i != 0) ? 1 << i : 0;
+}
+
+/* Compute a string to use as a temporary file name.  */
+
+static FILE *
+make_temp_file ()
+{
+  char *temp_filename;
+  FILE *stream;
+  extern char *getenv ();
+  char *base = getenv ("TMPDIR");
+  int len;
+
+  if (base == (char *)0)
+    {
+#ifdef P_tmpdir
+      if (access (P_tmpdir, R_OK | W_OK) == 0)
+	base = P_tmpdir;
+      else
+#endif
+	if (access ("/usr/tmp", R_OK | W_OK) == 0)
+	  base = "/usr/tmp/";
+	else
+	  base = "/tmp/";
+    }
+
+  len = strlen (base);
+  temp_filename = (char *) alloca (len + sizeof("/ccXXXXXX"));
+  strcpy (temp_filename, base);
+  if (len > 0 && temp_filename[len-1] != '/')
+    temp_filename[len++] = '/';
+
+  strcpy (temp_filename + len, "ccXXXXXX");
+  mktemp (temp_filename);
+
+  stream = fopen (temp_filename, "w+");
+  if (!stream)
+    pfatal_with_name (temp_filename);
+
+  unlink (temp_filename);
+  return stream;
+}
+
+/* Output at beginning of assembler file.
+   If we are optimizing to use the global pointer, create a temporary
+   file to hold all of the text stuff, and write it out to the end.
+   This is needed because the MIPS assembler is evidently one pass,
+   and if it hasn't seen the relevant .comm/.lcomm/.extern/.sdata
+   declaration when the code is processed, it generates a two
+   instruction sequence.  */
+
+void
+mips_asm_file_start (stream)
+     FILE *stream;
+{
+  if (TARGET_NAME_REGS)
+    fprintf (stream, "#include <regdef.h>\n");
+
+  ASM_OUTPUT_SOURCE_FILENAME (stream, main_input_filename);
+
+  print_options (stream);
+  data_section ();		/* put gcc_compiled. in data, not text*/
+
+  if (TARGET_GP_OPT)
+    {
+      asm_out_data_file = stream;
+      asm_out_text_file = make_temp_file ();
+    }
+  else
+    asm_out_data_file = asm_out_text_file = stream;
+
 }
 
 /* If optimizing for the global pointer, keep track of all of

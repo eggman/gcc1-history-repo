@@ -40,7 +40,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* It is hard to debug with shared libraries,
    so don't use them if going to debug.  */
 
-#define LINK_SPEC "%{g:-Bstatic} %{static:-Bstatic} %{Bstatic}"
+#undef LINK_SPEC
+#define LINK_SPEC "%{!e*:-e _start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{-Bstatic}"
 
 /* Extra switches to give the assembler.  */
 
@@ -72,7 +73,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Force structure alignment to the type used for a bitfield.  */
 
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* Define how to find the value returned by a function.
    VALTYPE is the data type of the value (as a tree).

@@ -1,15 +1,15 @@
 Info file gcc.info, produced by Makeinfo, -*- Text -*- from input
 file gcc.texinfo.
 
-This file documents the use and the internals of the GNU compiler.
+   This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
+   Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
-Permission is granted to make and distribute verbatim copies of this
-manual provided the copyright notice and this permission notice are
-preserved on all copies.
+   Permission is granted to make and distribute verbatim copies of
+this manual provided the copyright notice and this permission notice
+are preserved on all copies.
 
-Permission is granted to copy and distribute modified versions of
+   Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
 that the sections entitled "GNU General Public License" and "Protect
 Your Freedom--Fight `Look And Feel'" are included exactly as in the
@@ -17,13 +17,12 @@ original, and provided that the entire resulting derived work is
 distributed under the terms of a permission notice identical to this
 one.
 
-Permission is granted to copy and distribute translations of this
+   Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
 versions, except that the sections entitled "GNU General Public
 License" and "Protect Your Freedom--Fight `Look And Feel'" and this
 permission notice may be included in translations approved by the
 Free Software Foundation instead of in the original English.
-
 
 
 File: gcc.info,  Node: Options,  Next: Installation,  Prev: Boycott,  Up: Top
@@ -31,29 +30,29 @@ File: gcc.info,  Node: Options,  Next: Installation,  Prev: Boycott,  Up: Top
 GNU CC Command Options
 **********************
 
-The GNU C compiler uses a command syntax much like the Unix C compiler.
-The `gcc' program accepts options and file names as operands. 
-Multiple single-letter options may *not* be grouped: `-dr' is very
-different from `-d -r'.
+   The GNU C compiler uses a command syntax much like the Unix C
+compiler.  The `gcc' program accepts options and file names as
+operands.  Multiple single-letter options may *not* be grouped: `-dr'
+is very different from `-d -r'.
 
-When you invoke GNU CC, it normally does preprocessing, compilation,
-assembly and linking.  File names which end in `.c' are taken as C
-source to be preprocessed and compiled; file names ending in `.i' are
-taken as preprocessor output to be compiled; compiler output files
-plus any input files with names ending in `.s' are assembled; then
-the resulting object files, plus any other input files, are linked
-together to produce an executable.
+   When you invoke GNU CC, it normally does preprocessing,
+compilation, assembly and linking.  File names which end in `.c' are
+taken as C source to be preprocessed and compiled; file names ending
+in `.i' are taken as preprocessor output to be compiled; compiler
+output files plus any input files with names ending in `.s' are
+assembled; then the resulting object files, plus any other input
+files, are linked together to produce an executable.
 
-Command options allow you to stop this process at an intermediate
+   Command options allow you to stop this process at an intermediate
 stage.  For example, the `-c' option says not to run the linker. 
 Then the output consists of object files output by the assembler.
 
-Other command options are passed on to one stage of processing.  Some
-options control the preprocessor and others the compiler itself.  Yet
-other options control the assembler and linker; these are not
+   Other command options are passed on to one stage of processing. 
+Some options control the preprocessor and others the compiler itself.
+Yet other options control the assembler and linker; these are not
 documented here, but you rarely need to use any of them.
 
-Here are the options to control the overall compilation process,
+   Here are the options to control the overall compilation process,
 including those that say whether to link, whether to assemble, and so
 on.
 
@@ -139,7 +138,7 @@ on.
           /usr/lib/gcc-vax-cpp
           /usr/lib/gcc-cpp
 
-These options control the details of C compilation itself.
+   These options control the details of C compilation itself.
 
 `-ansi'
      Support all ANSI standard C programs.
@@ -831,7 +830,7 @@ These options control the details of C compilation itself.
      On Suns running version 4, this prevents linking with the shared
      libraries.  (`-g' has the same effect.)
 
-These options control the C preprocessor, which is run on each C
+   These options control the C preprocessor, which is run on each C
 source file before actual compilation.  If you use the `-E' option,
 nothing is done except C preprocessing.  Some of these options make
 sense only together with `-E' because they request preprocessor
@@ -911,4 +910,4 @@ output that is not suitable for actual compilation.
      Support ANSI C trigraphs.  You don't want to know about this
      brain-damage.  The `-ansi' option also has this effect.
 
-
+

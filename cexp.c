@@ -1,5 +1,5 @@
 
-/*  A Bison parser, made from ccdir/cexp.y  */
+/*  A Bison parser, made from ./cexp.y  */
 
 #define	INT	258
 #define	CHAR	259
@@ -15,7 +15,7 @@
 #define	RSH	269
 #define	UNARY	270
 
-#line 26 "ccdir/cexp.y"
+#line 26 "./cexp.y"
 
 #include "config.h"
 #include <setjmp.h>
@@ -34,7 +34,7 @@
 #define CHAR_TYPE_SIZE BITS_PER_UNIT
 #endif
 
-#line 45 "ccdir/cexp.y"
+#line 45 "./cexp.y"
 typedef union {
   struct constant {long value; int unsignedp;} integer;
   int voidval;
@@ -44,7 +44,7 @@ typedef union {
 #ifndef YYLTYPE
 typedef
   struct yyltype
-    {
+ {
       int timestamp;
       int first_line;
       int first_column;
@@ -52,7 +52,7 @@ typedef
       int last_column;
       char *text;
    }
-  yyltype;
+ yyltype;
 
 #define YYLTYPE yyltype
 #endif
@@ -101,6 +101,26 @@ static const char yytranslate[] = {     0,
      6,    10,    11,    15,    16,    19,    20,    21,    22,    28
 };
 
+static const short yyprhs[] = {     0,
+     0,     2,     4,     8,    11,    14,    17,    20,    24,    28,
+    32,    36,    40,    44,    48,    52,    56,    60,    64,    68,
+    72,    76,    80,    84,    88,    92,    96,   102,   104,   106
+};
+
+static const short yyrhs[] = {    34,
+     0,    35,     0,    34,     9,    35,     0,    24,    35,     0,
+    29,    35,     0,    23,    35,     0,    30,    35,     0,    31,
+    34,    32,     0,    35,    25,    35,     0,    35,    26,    35,
+     0,    35,    27,    35,     0,    35,    23,    35,     0,    35,
+    24,    35,     0,    35,    21,    35,     0,    35,    22,    35,
+     0,    35,    15,    35,     0,    35,    16,    35,     0,    35,
+    19,    35,     0,    35,    20,    35,     0,    35,    17,    35,
+     0,    35,    18,    35,     0,    35,    14,    35,     0,    35,
+    13,    35,     0,    35,    12,    35,     0,    35,    11,    35,
+     0,    35,    10,    35,     0,    35,     7,    35,     8,    35,
+     0,     3,     0,     4,     0,     5,     0
+};
+
 #if YYDEBUG != 0
 static const short yyrline[] = { 0,
     74,    79,    80,    85,    88,    91,    93,    96,   101,   107,
@@ -108,11 +128,11 @@ static const short yyrline[] = { 0,
    171,   177,   180,   183,   186,   189,   192,   195,   197,   199
 };
 
-static const char * const yytname[] = {     0,
+static const char * const yytname[] = {   "$",
 "error","$illegal.","INT","CHAR","NAME","ERROR","'?'","':'","','","OR",
 "AND","'|'","'^'","'&'","EQUAL","NOTEQUAL","'<'","'>'","LEQ","GEQ",
 "LSH","RSH","'+'","'-'","'*'","'/'","'%'","UNARY","'!'","'~'",
-"'('","')'","start"
+"'('","')'","start","exp1","exp",""
 };
 #endif
 
@@ -203,13 +223,11 @@ static const short yycheck[] = {     4,
     24,    25,    26,    27,    21,    22,    23,    24,    25,    26,
     27
 };
-#define YYPURE 1
-
 /* -*-C-*-  Note some compilers choke on comments on `#line' lines.  */
 #line 3 "bison.simple"
 
 /* Skeleton output parser for bison,
-   Copyright (C) 1984 Bob Corbett and Richard Stallman
+   Copyright (C) 1984, 1989, 1990 Bob Corbett and Richard Stallman
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -226,13 +244,19 @@ static const short yycheck[] = {     4,
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
+#ifndef alloca
 #ifdef __GNUC__
 #define alloca __builtin_alloca
 #else /* Not GNU C.  */
 #if (!defined (__STDC__) && defined (sparc)) || defined (__sparc__)
 #include <alloca.h>
-#endif /* Sparc.  */
+#else /* Not sparc */
+#ifdef MSDOS
+#include <malloc.h>
+#endif /* MSDOS */
+#endif /* Not sparc.  */
 #endif /* Not GNU C.  */
+#endif /* alloca not defined.  */
 
 /* This is the parser code that is written into each bison parser
   when the %semantic_parser declaration is not specified in the grammar.
@@ -247,25 +271,45 @@ static const short yycheck[] = {     4,
 #define yyclearin	(yychar = YYEMPTY)
 #define YYEMPTY		-2
 #define YYEOF		0
-#define YYFAIL		goto yyerrlab;
 #define YYACCEPT	return(0)
 #define YYABORT 	return(1)
-#define YYERROR		goto yyerrlab
+#define YYERROR		goto yyerrlab1
+/* Like YYERROR except do call yyerror.
+   This remains here temporarily to ease the
+   transition to the new meaning of YYERROR, for GCC.
+   Once GCC version 2 has supplanted version 1, this can go.  */
+#define YYFAIL		goto yyerrlab
+#define YYRECOVERING()  (!!yyerrstatus)
+#define YYBACKUP(token, value) \
+do								\
+  if (yychar == YYEMPTY && yylen == 1)				\
+    { yychar = (token), yylval = (value);			\
+      yychar1 = YYTRANSLATE (yychar);				\
+      YYPOPSTACK;						\
+      goto yybackup;						\
+    }								\
+  else								\
+    { yyerror ("syntax error: cannot back up"); YYERROR; }	\
+while (0)
 
 #define YYTERROR	1
 #define YYERRCODE	256
 
-#ifndef YYIMPURE
+#ifndef YYPURE
 #define YYLEX		yylex()
 #endif
 
-#ifndef YYPURE
+#ifdef YYPURE
+#ifdef YYLSP_NEEDED
 #define YYLEX		yylex(&yylval, &yylloc)
+#else
+#define YYLEX		yylex(&yylval)
+#endif
 #endif
 
 /* If nonreentrant, generate the variables here */
 
-#ifndef YYIMPURE
+#ifndef YYPURE
 
 int	yychar;			/*  the lookahead symbol		*/
 YYSTYPE	yylval;			/*  the semantic value of the		*/
@@ -277,7 +321,7 @@ YYLTYPE yylloc;			/*  location data for the lookahead	*/
 #endif
 
 int yynerrs;			/*  number of parse errors so far       */
-#endif  /* YYIMPURE */
+#endif  /* not YYPURE */
 
 #if YYDEBUG != 0
 int yydebug;			/*  nonzero means print parse trace	*/
@@ -285,18 +329,24 @@ int yydebug;			/*  nonzero means print parse trace	*/
    from coexisting.  */
 #endif
 
-/*  YYMAXDEPTH indicates the initial size of the parser's stacks	*/
+/*  YYINITDEPTH indicates the initial size of the parser's stacks	*/
 
-#ifndef	YYMAXDEPTH
-#define YYMAXDEPTH 200
+#ifndef	YYINITDEPTH
+#define YYINITDEPTH 200
 #endif
 
-/*  YYMAXLIMIT is the maximum size the stacks can grow to
+/*  YYMAXDEPTH is the maximum size the stacks can grow to
     (effective only if the built-in stack extension method is used).  */
 
-#ifndef YYMAXLIMIT
-#define YYMAXLIMIT 10000
+#if YYMAXDEPTH == 0
+#undef YYMAXDEPTH
 #endif
+
+#ifndef YYMAXDEPTH
+#define YYMAXDEPTH 10000
+#endif
+
+#ifndef __cplusplus
 
 /* This is the most reliable way to avoid incompatibilities
    in available built-in functions on various systems.  */
@@ -314,7 +364,24 @@ __yy_bcopy (from, to, count)
     *t++ = *f++;
 }
 
-#line 111 "bison.simple"
+#else /* __cplusplus */
+
+/* This is the most reliable way to avoid incompatibilities
+   in available built-in functions on various systems.  */
+static void
+__yy_bcopy (char *from, char *to, int count)
+{
+  register char *f = from;
+  register char *t = to;
+  register int i = count;
+
+  while (i-- > 0)
+    *t++ = *f++;
+}
+
+#endif
+
+#line 160 "bison.simple"
 int
 yyparse()
 {
@@ -325,8 +392,8 @@ yyparse()
   int yyerrstatus;	/*  number of tokens to shift before error messages enabled */
   int yychar1;		/*  lookahead token as an internal (translated) token number */
 
-  short	yyssa[YYMAXDEPTH];	/*  the state stack			*/
-  YYSTYPE yyvsa[YYMAXDEPTH];	/*  the semantic value stack		*/
+  short	yyssa[YYINITDEPTH];	/*  the state stack			*/
+  YYSTYPE yyvsa[YYINITDEPTH];	/*  the semantic value stack		*/
 
   short *yyss = yyssa;		/*  refer to the stacks thru separate pointers */
   YYSTYPE *yyvs = yyvsa;	/*  to allow yyoverflow to reallocate them elsewhere */
@@ -334,12 +401,16 @@ yyparse()
 #ifdef YYLSP_NEEDED
   YYLTYPE *yyls = yylsa;
   YYLTYPE *yylsp;
-  YYLTYPE yylsa[YYMAXDEPTH];	/*  the location stack			*/
+  YYLTYPE yylsa[YYINITDEPTH];	/*  the location stack			*/
+
+#define YYPOPSTACK   (yyvsp--, yysp--, yylsp--)
+#else
+#define YYPOPSTACK   (yyvsp--, yysp--)
 #endif
 
-  int yymaxdepth = YYMAXDEPTH;
+  int yystacksize = YYINITDEPTH;
 
-#ifndef YYPURE
+#ifdef YYPURE
   int yychar;
   YYSTYPE yylval;
   int yynerrs;
@@ -381,7 +452,7 @@ yynewstate:
 
   *++yyssp = yystate;
 
-  if (yyssp >= yyss + yymaxdepth - 1)
+  if (yyssp >= yyss + yystacksize - 1)
     {
       /* Give user a chance to reallocate the stack */
       /* Use copies of these so that the &'s don't force the real ones into memory. */
@@ -403,7 +474,7 @@ yynewstate:
 #ifdef YYLSP_NEEDED
 		 &yyls1, size * sizeof (*yylsp),
 #endif
-		 &yymaxdepth);
+		 &yystacksize);
 
       yyss = yyss1; yyvs = yyvs1;
 #ifdef YYLSP_NEEDED
@@ -411,17 +482,20 @@ yynewstate:
 #endif
 #else /* no yyoverflow */
       /* Extend the stack our own way.  */
-      if (yymaxdepth >= YYMAXLIMIT)
-	yyerror("parser stack overflow");
-      yymaxdepth *= 2;
-      if (yymaxdepth > YYMAXLIMIT)
-	yymaxdepth = YYMAXLIMIT;
-      yyss = (short *) alloca (yymaxdepth * sizeof (*yyssp));
+      if (yystacksize >= YYMAXDEPTH)
+	{
+	  yyerror("parser stack overflow");
+	  return 2;
+	}
+      yystacksize *= 2;
+      if (yystacksize > YYMAXDEPTH)
+	yystacksize = YYMAXDEPTH;
+      yyss = (short *) alloca (yystacksize * sizeof (*yyssp));
       __yy_bcopy ((char *)yyss1, (char *)yyss, size * sizeof (*yyssp));
-      yyvs = (YYSTYPE *) alloca (yymaxdepth * sizeof (*yyvsp));
+      yyvs = (YYSTYPE *) alloca (yystacksize * sizeof (*yyvsp));
       __yy_bcopy ((char *)yyvs1, (char *)yyvs, size * sizeof (*yyvsp));
 #ifdef YYLSP_NEEDED
-      yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
+      yyls = (YYLTYPE *) alloca (yystacksize * sizeof (*yylsp));
       __yy_bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
 #endif
 #endif /* no yyoverflow */
@@ -434,10 +508,10 @@ yynewstate:
 
 #if YYDEBUG != 0
       if (yydebug)
-	fprintf(stderr, "Stack size increased to %d\n", yymaxdepth);
+	fprintf(stderr, "Stack size increased to %d\n", yystacksize);
 #endif
 
-      if (yyssp >= yyss + yymaxdepth - 1)
+      if (yyssp >= yyss + yystacksize - 1)
 	YYABORT;
     }
 
@@ -445,6 +519,8 @@ yynewstate:
   if (yydebug)
     fprintf(stderr, "Entering state %d\n", yystate);
 #endif
+
+ yybackup:
 
 /* Do appropriate processing given the current state.  */
 /* Read a lookahead token if we need one and don't already have one.  */
@@ -555,12 +631,15 @@ yyreduce:
 #if YYDEBUG != 0
   if (yydebug)
     {
-      if (yylen == 1)
-	fprintf (stderr, "Reducing 1 value via rule %d (line %d), ",
-		 yyn, yyrline[yyn]);
-      else
-	fprintf (stderr, "Reducing %d values via rule %d (line %d), ",
-		 yylen, yyn, yyrline[yyn]);
+      int i;
+
+      fprintf (stderr, "Reducing via rule %d (line %d), ",
+	       yyn, yyrline[yyn]);
+
+      /* Print the symboles being reduced, and their result.  */
+      for (i = yyprhs[yyn]; yyrhs[i] > 0; i++)
+	fprintf (stderr, "%s ", yytname[yyrhs[i]]);
+      fprintf (stderr, " -> %s\n", yytname[yyr1[yyn]]);
     }
 #endif
 
@@ -568,38 +647,38 @@ yyreduce:
   switch (yyn) {
 
 case 1:
-#line 75 "ccdir/cexp.y"
+#line 75 "./cexp.y"
 { expression_value = yyvsp[0].integer.value; ;
     break;}
 case 3:
-#line 81 "ccdir/cexp.y"
+#line 81 "./cexp.y"
 { yyval.integer = yyvsp[0].integer; ;
     break;}
 case 4:
-#line 86 "ccdir/cexp.y"
+#line 86 "./cexp.y"
 { yyval.integer.value = - yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[0].integer.unsignedp; ;
     break;}
 case 5:
-#line 89 "ccdir/cexp.y"
+#line 89 "./cexp.y"
 { yyval.integer.value = ! yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = 0; ;
     break;}
 case 6:
-#line 92 "ccdir/cexp.y"
+#line 92 "./cexp.y"
 { yyval.integer = yyvsp[0].integer; ;
     break;}
 case 7:
-#line 94 "ccdir/cexp.y"
+#line 94 "./cexp.y"
 { yyval.integer.value = ~ yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[0].integer.unsignedp; ;
     break;}
 case 8:
-#line 97 "ccdir/cexp.y"
+#line 97 "./cexp.y"
 { yyval.integer = yyvsp[-1].integer; ;
     break;}
 case 9:
-#line 102 "ccdir/cexp.y"
+#line 102 "./cexp.y"
 { yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp;
 			  if (yyval.integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value * yyvsp[0].integer.value;
@@ -607,7 +686,7 @@ case 9:
 			    yyval.integer.value = yyvsp[-2].integer.value * yyvsp[0].integer.value; ;
     break;}
 case 10:
-#line 108 "ccdir/cexp.y"
+#line 108 "./cexp.y"
 { if (yyvsp[0].integer.value == 0)
 			    {
 			      error ("division by zero in #if");
@@ -620,7 +699,7 @@ case 10:
 			    yyval.integer.value = yyvsp[-2].integer.value / yyvsp[0].integer.value; ;
     break;}
 case 11:
-#line 119 "ccdir/cexp.y"
+#line 119 "./cexp.y"
 { if (yyvsp[0].integer.value == 0)
 			    {
 			      error ("division by zero in #if");
@@ -633,17 +712,17 @@ case 11:
 			    yyval.integer.value = yyvsp[-2].integer.value % yyvsp[0].integer.value; ;
     break;}
 case 12:
-#line 130 "ccdir/cexp.y"
+#line 130 "./cexp.y"
 { yyval.integer.value = yyvsp[-2].integer.value + yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 13:
-#line 133 "ccdir/cexp.y"
+#line 133 "./cexp.y"
 { yyval.integer.value = yyvsp[-2].integer.value - yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 14:
-#line 136 "ccdir/cexp.y"
+#line 136 "./cexp.y"
 { yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp;
 			  if (yyval.integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value << yyvsp[0].integer.value;
@@ -651,7 +730,7 @@ case 14:
 			    yyval.integer.value = yyvsp[-2].integer.value << yyvsp[0].integer.value; ;
     break;}
 case 15:
-#line 142 "ccdir/cexp.y"
+#line 142 "./cexp.y"
 { yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp;
 			  if (yyval.integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value >> yyvsp[0].integer.value;
@@ -659,17 +738,17 @@ case 15:
 			    yyval.integer.value = yyvsp[-2].integer.value >> yyvsp[0].integer.value; ;
     break;}
 case 16:
-#line 148 "ccdir/cexp.y"
+#line 148 "./cexp.y"
 { yyval.integer.value = (yyvsp[-2].integer.value == yyvsp[0].integer.value);
 			  yyval.integer.unsignedp = 0; ;
     break;}
 case 17:
-#line 151 "ccdir/cexp.y"
+#line 151 "./cexp.y"
 { yyval.integer.value = (yyvsp[-2].integer.value != yyvsp[0].integer.value);
 			  yyval.integer.unsignedp = 0; ;
     break;}
 case 18:
-#line 154 "ccdir/cexp.y"
+#line 154 "./cexp.y"
 { yyval.integer.unsignedp = 0;
 			  if (yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value <= yyvsp[0].integer.value;
@@ -677,7 +756,7 @@ case 18:
 			    yyval.integer.value = yyvsp[-2].integer.value <= yyvsp[0].integer.value; ;
     break;}
 case 19:
-#line 160 "ccdir/cexp.y"
+#line 160 "./cexp.y"
 { yyval.integer.unsignedp = 0;
 			  if (yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value >= yyvsp[0].integer.value;
@@ -685,7 +764,7 @@ case 19:
 			    yyval.integer.value = yyvsp[-2].integer.value >= yyvsp[0].integer.value; ;
     break;}
 case 20:
-#line 166 "ccdir/cexp.y"
+#line 166 "./cexp.y"
 { yyval.integer.unsignedp = 0;
 			  if (yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value < yyvsp[0].integer.value;
@@ -693,7 +772,7 @@ case 20:
 			    yyval.integer.value = yyvsp[-2].integer.value < yyvsp[0].integer.value; ;
     break;}
 case 21:
-#line 172 "ccdir/cexp.y"
+#line 172 "./cexp.y"
 { yyval.integer.unsignedp = 0;
 			  if (yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp)
 			    yyval.integer.value = (unsigned) yyvsp[-2].integer.value > yyvsp[0].integer.value;
@@ -701,51 +780,51 @@ case 21:
 			    yyval.integer.value = yyvsp[-2].integer.value > yyvsp[0].integer.value; ;
     break;}
 case 22:
-#line 178 "ccdir/cexp.y"
+#line 178 "./cexp.y"
 { yyval.integer.value = yyvsp[-2].integer.value & yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 23:
-#line 181 "ccdir/cexp.y"
+#line 181 "./cexp.y"
 { yyval.integer.value = yyvsp[-2].integer.value ^ yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 24:
-#line 184 "ccdir/cexp.y"
+#line 184 "./cexp.y"
 { yyval.integer.value = yyvsp[-2].integer.value | yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 25:
-#line 187 "ccdir/cexp.y"
+#line 187 "./cexp.y"
 { yyval.integer.value = (yyvsp[-2].integer.value && yyvsp[0].integer.value);
 			  yyval.integer.unsignedp = 0; ;
     break;}
 case 26:
-#line 190 "ccdir/cexp.y"
+#line 190 "./cexp.y"
 { yyval.integer.value = (yyvsp[-2].integer.value || yyvsp[0].integer.value);
 			  yyval.integer.unsignedp = 0; ;
     break;}
 case 27:
-#line 193 "ccdir/cexp.y"
+#line 193 "./cexp.y"
 { yyval.integer.value = yyvsp[-4].integer.value ? yyvsp[-2].integer.value : yyvsp[0].integer.value;
 			  yyval.integer.unsignedp = yyvsp[-2].integer.unsignedp || yyvsp[0].integer.unsignedp; ;
     break;}
 case 28:
-#line 196 "ccdir/cexp.y"
+#line 196 "./cexp.y"
 { yyval.integer = yylval.integer; ;
     break;}
 case 29:
-#line 198 "ccdir/cexp.y"
+#line 198 "./cexp.y"
 { yyval.integer = yylval.integer; ;
     break;}
 case 30:
-#line 200 "ccdir/cexp.y"
+#line 200 "./cexp.y"
 { yyval.integer.value = 0;
 			  yyval.integer.unsignedp = 0; ;
     break;}
 }
    /* the action file gets copied in in place of this dollarsign */
-#line 362 "bison.simple"
+#line 423 "bison.simple"
 
   yyvsp -= yylen;
   yyssp -= yylen;
@@ -841,6 +920,8 @@ yyerrlab:   /* here on detecting error */
 	yyerror("parse error");
     }
 
+yyerrlab1:   /* here on error raised explicitly by an action */
+
   if (yyerrstatus == 3)
     {
       /* if just tried and failed to reuse lookahead token after an error, discard it.  */
@@ -930,7 +1011,7 @@ yyerrhandle:
   yystate = yyn;
   goto yynewstate;
 }
-#line 203 "ccdir/cexp.y"
+#line 203 "./cexp.y"
 
 
 /* During parsing of a C expression, the pointer to the next character

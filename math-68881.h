@@ -293,9 +293,9 @@ __inline static const double pow (const double x, const double y)
 	  int i = (int) y;
 	  
 	  if ((i & 1) == 0)			/* even */
-	    return exp (y * log (x));
+	    return exp (y * log (-x));
 	  else
-	    return - exp (y * log (x));
+	    return - exp (y * log (-x));
         }
       else
         {

@@ -42,12 +42,12 @@ Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 15 January 1991
+@center last updated 3 June 1991
 @sp 1
-@center for version 1.39
+@center for version 1.40
 @page
 @vskip 0pt plus 1filll
-Copyright @copyright{} 1988, 1989, 1990 Free Software Foundation, Inc.
+Copyright @copyright{} 1988, 1989, 1990, 1991 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -1522,7 +1522,6 @@ Here is the procedure for installing GNU CC on a Unix system.
 * SCO Install::   See below for installation on SCO System V 3.2.  (Or ESIX.)
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
-* MIPS Install::  See below for installation on MIPS.
 * Tower Install:: See below for installation on an NCR Tower.
 @end menu
 @iftex
@@ -1567,23 +1566,23 @@ Intel 386 PCs or PS/2s running AIX.
 @item sun2
 Sun 2 running system version 2 or 3.
 @item sun3
-Sun 3 running system version 2 or 3, with 68881.
+Sun 3 running system version 4, with 68881.
 Note there we do not provide a configuration file to use an FPA
 by default, because programs that establish signal handlers for
 floating point traps inherently cannot work with the FPA.
 @item sun3-nfp
-Sun 3 running system version 2 or 3, without 68881.
+Sun 3 running system version 4, without 68881.
 @item sun4
-Sun 4 running system version 2 or 3.  @xref{Incompatibilities},
+Sun 4 running system version 4.  @xref{Incompatibilities},
 for calling convention incompatibilities on the Sun 4 (sparc).
 @item sun2-os4
 Sun 2 running system version 4.
-@item sun3-os4
-Sun 3 running system version 4, with 68881.
-@item sun3-nfp-os4
-Sun 3 running system version 4, without 68881.
-@item sun4-os4
-Sun 4 running system version 4.  @xref{Incompatibilities},
+@item sun3-os3
+Sun 3 running system version 2 or 3, with 68881.
+@item sun3-nfp-os3
+Sun 3 running system version 2 or 3, without 68881.
+@item sun4-os3
+Sun 4 running system version 2 or 3.  @xref{Incompatibilities},
 for calling convention incompatibilities on the Sun 4 (sparc).
 @item sun386
 Sun 386 (``roadrunner'').
@@ -1629,9 +1628,11 @@ Another variant of the Mips computer, the Silicon Graphics Iris 4D.
 Note that GNU CC cannot generate debugging information in the unusual
 format used on the Mips.
 @item convex-c1
-Convex C1 computer.
+Convex C1 computer.  With operating system version 9, use @samp{cc -pcc}
+as the compilation command when building stage 1 of GNU CC.
 @item convex-c2
-Convex C2 computer.
+Convex C2 computer.  With operating system version 9, use @samp{cc -pcc}
+as the compilation command when building stage 1 of GNU CC.
 @item pyramid
 Pyramid computer.
 @item hp9k320
@@ -1649,6 +1650,12 @@ older than 6.5.  Note there is no support in GNU CC for HP's debugger;
 thus, @samp{-g} is not available in this configuration.
 @item hp9k320-bsd
 HP 9000 series 300 running BSD.
+@item hp9k200-bsd
+HP 9000 series 200 running BSD.  Note that the C compiler that comes
+with this system cannot compile GNU CC; contact @code{law@@super.org} to
+get binaries of GNU CC for bootstrapping.  Additionally, a minor patch
+is necessary if you wish to build kernels with GNU CC; contact
+@code{law@@super.org} to get a copy of the patch.
 @item isi68
 ISI 68000 or 68020 system with a 68881.
 @item isi68-nfp
@@ -1975,6 +1982,10 @@ installed it, by specifying the Make variable @code{prefix} or
 Note that some systems are starting to come with ANSI C system header
 files.  On these systems, don't run @file{fixincludes}; it may not work,
 and is certainly not necessary.
+
+@strong{Warning:} @file{fixincludes} does not work on many MIPS systems,
+because those systems come with circular symbolic links which cause
+@samp{ls -lR} to go into an infinite loop.
 @end enumerate
 
 If you cannot install the compiler's passes and run-time support in
@@ -2234,6 +2245,25 @@ requires editing all the @code{gcc} commands in @file{make-cc1.com}.
 have a working 1.33 or newer GNU CC, you can change this file back.
 @end enumerate
 
+Due to the differences between the filesystems of Unix and VMS, the
+preprocessor attempts to translate the names of include files into
+something that VMS will understand.  The basic strategy is to prepend a
+prefix to the specification of the include file, convert the whole
+filename to a VMS filename, and then try to open the file.  The
+preprocessor tries various prefixes until one of them succeeds.
+
+The first prefix is the @samp{GNU_CC_INCLUDE:} logical name: this is
+where GNU_C header files are traditionally stored.  If a header file is
+not found there, @samp{SYS$SYSROOT:[SYSLIB.]} is tried next.  If the
+preprocessor is still unable to locate the file, it then assumes that
+the include file specification is a valid VMS filename all by itself,
+and it uses this filename to attempt to open the include file.  If none
+of these strategies succeeds, the preprocessor reports an error.
+
+If you wish to store header files in non-standard locations, then you
+can assign the logical @samp{GNU_CC_INCLUDE} to be a search list, where
+each element of the list is suitable for use with a rooted logical.
+
 With this version of GNU CC, @code{const} global variables now work
 properly.  Unless, however, the @code{const} modifier is also specified
 in every external declaration of the variable in all of the source files
@@ -2242,23 +2272,62 @@ attributes for the variable, since the linker does not know if the
 variable should be read-only.  The program will still work, but the
 variable will be placed in writable storage.
 
+Due to an assembler bug, offsets to static constants are sometimes
+incorrectly evaluated.  This bug is present in GAS 1.38.1, and should be
+fixed in the next version.
+
 Under previous versions of GNU CC, the generated code would occasionally
 give strange results when linked to the sharable @file{VAXCRTL} library.
 Now this should work.
 
-Even with this version, however, GNU CC itself should not be linked to
-the sharable @file{VAXCRTL}, unless you force the linker to use the
-@code{qsort} routine from @file{gcclib.olb}.  The @file{qsort} routine
-supplied with @file{VAXCRTL} has a bug which causes a compiler crash.
-The executable that is generated by @file{make-cc1.com} uses the
-non-shared version of @file{VAXCRTL} (and thus the @file{qsort} routine
-from @file{gcclib.olb}).
+Even with this version, however, GNU CC itself should not be linked to the
+sharable @file{VAXCRTL}. The @file{qsort} routine supplied with @file{VAXCRTL}
+has a bug which can cause a compiler crash.
+
+Similarly, the preprocessor should not be linked to the sharable
+@file{VAXCRTL}. The @code{strncat} routine supplied with @file{VAXCRTL} has a
+bug which can cause the preprocessor to go into an infinite loop. 
+
+It should be pointed out that if you attempt to link to the sharable
+@file{VAXCRTL}, the VMS linker will strongly resist any effort to force
+it to use the @code{qsort} and @code{strncat} routines from
+@file{gcclib}.  Until the bugs in @file{VAXCRTL} have been fixed,
+linking any of the compiler components to the sharable VAXCRTL is not
+recommended.  (These routines can be bypassed by placing duplicate copies
+of @code{qsort} and @code{strncat} in @file{gcclib} under different
+names, and patching the compiler sources to use these routines).  Both
+of the bugs in @file{VAXCRTL} are still present in VMS version 5.4-1,
+which is the most recent version as of this writing.
+
+The executables that are generated by @file{make-cc1.com} and
+@file{make-cccp.com} use the non-shared version of @file{VAXCRTL} (and
+thus use the @code{qsort} and @code{strncat} routines from
+@file{gcclib.olb}).
 
 Note that GNU CC on VMS now generates debugging information to describe
 the programs symbols to the VMS debugger.  However, you need version 1.37
 or later of GAS in order to output them properly in the object file.
 
-@node HPUX Install, MIPS Install, VMS Install, Installation
+The VMS linker does not distinguish between upper and lower case letters
+in function and variable names.  However, usual practice in C is to
+distinguish case.  Normally GNU C (by means of the assembler GAS)
+implements usual C behavior by augmenting each name that is not all
+lower-case.  A name is augmented by truncating it to at most 23
+characters and then adding more characters at the end which encode the
+case pattern the rest.
+
+Name augmentation yields bad results for programs that use precompiled
+libraries (such as Xlib) which were generated by another compiler.  Use
+the compiler option @samp{/NOCASE_HACK} to inhibits augmentation; it
+makes external C functions and variables case-independent as is usual on
+VMS.  Alternatively, you could write all references to the functions and
+variables in such libraries using lower case; this will work on VMS, but
+is not portable to other systems.  In cases where you need to
+selectively inhibit augmentation, you can define a macro for each mixed
+case symbol for which you wish to inhibit augmentation, where the macro
+expands into the lower case equivalent of the name.
+
+@node HPUX Install, Tower Install, VMS Install, Installation
 @section Installing GNU CC on HPUX
 
 To install GNU CC on HPUX, you must start by editing the file
@@ -2290,17 +2359,7 @@ follows:
 make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -I../binutils/hp-include"
 @end example
 
-@node MIPS Install, Tower Install, HPUX Install, Installation
-@section Installing GNU CC on MIPS
-
-To avoid errors when linking programs with @samp{-g}, create an empty
-library named @file{libg.a}.  An easy way to do this is:
-
-@example
-ar rc /usr/local/lib/libg.a
-@end example
-
-@node Tower Install,, MIPS Install, Installation
+@node Tower Install,, HPUX Install, Installation
 @section Installing GNU CC on an NCR Tower
 
 On an NCR Tower model 4x0 or 6x0, you may have trouble because the
@@ -2349,12 +2408,6 @@ it is the only way to win.)
 It is now possible to overcome these problems by defining macros such
 as @code{REAL_VALUE_TYPE}.  But doing so is a substantial amount of
 work for each target machine.  @xref{Cross-compilation}.
-
-@item
-DBX rejects some files produced by GNU CC, though it accepts similar
-constructs in output from PCC.  Until someone can supply a coherent
-description of what is valid DBX input and what is not, there is
-nothing I can do about these problems.  You are on your own.
 
 @item
 Users often think it is a bug when GNU CC reports an error for code
@@ -2406,6 +2459,8 @@ the definition of @code{struct mumble} above the prototype.  I don't
 think it's worth being incompatible for.
 @end itemize
 
+Additional problems are described in @ref{Incompatibilities}.
+
 @node Service, Incompatibilities, Trouble, Top
 @chapter How To Get Help with GNU CC
 
@@ -2416,7 +2471,7 @@ ways to find it:
 @item
 Send a message to a suitable network mailing list.  First try
 @code{bug-gcc@@prep.ai.mit.edu}, and if that brings no response, try
-@code{info-gcc@@prep.ai.mit.edu}.
+@code{help-gcc@@prep.ai.mit.edu}.
 
 @item
 Look in the service directory for someone who might help you for a fee.
@@ -2579,7 +2634,11 @@ method is not used in GNU CC because it is slower and nonreentrant.
 
 You can tell GNU CC to use the PCC convention with the option
 @samp{-fpcc-struct-return}.
+@end itemize
 
+There are also system-specific incompatibilities.
+
+@itemize @bullet
 @item
 On the Sparc, GNU CC uses an incompatible calling convention for
 structures.  It passes them by including their contents in the argument
@@ -2588,9 +2647,38 @@ reference.
 
 This really ought to be fixed, but such calling conventions are not
 yet supported in GNU CC, so it isn't straightforward to fix it.
+GNU CC version 2 will use a compatible calling convention.
 
 The convention for structure returning is also incompatible, and
 @samp{-fpcc-struct-return} does not help.
+
+@item 
+The Sparc version of @code{setjmp} interacts badly with unexpected stack
+adjustments.  With rare exceptions, you cannot use @code{setjmp} in a
+function which moves the stack pointer.
+
+In the current version of GNU CC, there are three ways that the stack
+pointer can change value: (1) calls to @code{alloca}, (2) use of
+variable-sized objects, and (3) calls to functions with parameters that
+do not all fit in the argument-passing registers (e.g., more than 6
+parameters).  You should avoid all three in functions that call
+@code{setjmp}.
+
+The cause of the problem is the way that Sun implemented register
+windows.  The 64 bytes at addresses @code{%sp} through @code{%sp+63}
+correspond to the register window save area.  When a register window
+must be spilled, its stack pointer is located, and the registers are
+dumped starting at that address.  Similarly, when a register window must
+be restored, its stack pointer is located, and the registers are
+restored from that address.
+
+When @code{setjmp} is called, the current register window's registers
+are saved into the register save area, and when @code{longjmp} is
+called, they are restored (actually, @emph{all} register windows are
+restored from all valid register windows at the time @code{longjmp} is
+called).  If there is a change in the value of the stack pointer bewteen
+the @code{setjmp} and @code{longjmp} calls, when the registers are
+restored, they are restored with random values.
 
 @item
 On Ultrix, the Fortran compiler expects registers 2 through 5 to be saved
@@ -2606,6 +2694,12 @@ Fortran compiler:
 @example
 -fcall-saved-r2 -fcall-saved-r3 -fcall-saved-r4 -fcall-saved-r5
 @end example
+
+@item
+DBX rejects some files produced by GNU CC, though it accepts similar
+constructs in output from PCC.  Until someone can supply a coherent
+description of what is valid DBX input and what is not, there is
+nothing I can do about these problems.  You are on your own.
 @end itemize
 
 @node Extensions, Bugs, Incompatibilities, Top
@@ -3734,8 +3828,8 @@ bug-gcc@@prep.ai.mit.edu
 @{ucbvax|mit-eddie|uunet@}!prep.ai.mit.edu!bug-gcc
 @end example
 
-@strong{Do not send bug reports to @samp{info-gcc}, or to the newsgroup
-@samp{gnu.gcc}.} Most users of GNU CC do not want to receive bug
+@strong{Do not send bug reports to @samp{help-gcc}, or to the newsgroup
+@samp{gnu.gcc.help}.}  Most users of GNU CC do not want to receive bug
 reports.  Those that do, have asked to be on @samp{bug-gcc}.
 
 The mailing list @samp{bug-gcc} has a newsgroup which serves as a
@@ -3751,7 +3845,8 @@ As a last resort, send bug reports on paper to:
 
 @example
 GNU Compiler Bugs
-545 Tech Sq
+Free Software Foundation
+675 Mass Ave
 Cambridge, MA 02139
 @end example
 
@@ -7840,7 +7935,7 @@ compiler source files include @file{config.h}.
 * Registers::           Naming and describing the hardware registers.
 * Register Classes::    Defining the classes of hardware registers.
 * Stack Layout::        Defining which way the stack grows and by how much.
-* Library Names::       Specifying names of subroutines to call automatically.
+* Library Calls::       Specifying how to call certain library routines.
 * Addressing Modes::    Defining addressing modes valid for memory operands.
 * Delayed Branch::      Do branches execute the following instruction?
 * Condition Code::      Defining how insns update the condition code.
@@ -8572,7 +8667,7 @@ so, 0 otherwise.  If @var{c} is not one of those letters, the value should
 be 0 regardless of @var{value}.
 @end table
 
-@node Stack Layout, Library Names, Register Classes, Machine Macros
+@node Stack Layout, Library Calls, Register Classes, Machine Macros
 @section Describing Stack Layout
 
 @table @code
@@ -9034,8 +9129,8 @@ from the stack frames, rather than from those saved specifically by
 across a call to @code{setjmp} on such machines.
 @end table
 
-@node Library Names, Addressing Modes, Stack Layout, Machine Macros
-@section Library Subroutine Names
+@node Library Calls, Addressing Modes, Stack Layout, Machine Macros
+@section Implicit Use of Library Routines
 
 @table @code
 @item MULSI3_LIBCALL
@@ -9078,9 +9173,17 @@ not define this macro, the default name is used, which is
 Define this macro if GNU CC should generate calls to the System V
 (and ANSI C) library functions @code{memcpy} and @code{memset}
 rather than the BSD functions @code{bcopy} and @code{bzero}.
+
+@item GNULIB_NEEDS_DOUBLE
+Define this macro if only @code{float} arguments cannot be passed to
+library routines (so they must be converted to @code{double}).  This
+macro affects both how library calls are generated and how the library
+routines in @file{gnulib.c} accept their arguments.  It is useful on
+machines where floating and fixed point arguments are passed
+differently, such as the i860.
 @end table
 
-@node Addressing Modes, Delayed Branch, Library Names, Machine Macros
+@node Addressing Modes, Delayed Branch, Library Calls, Machine Macros
 @section Addressing Modes
 
 @table @code
@@ -9654,6 +9757,14 @@ command given to the linker.
 
 If this macro is not defined, a default is provided that
 loads the standard C library from the usual place.  See @file{gcc.c}.
+
+@item LIBG_SPEC
+Another C string constant used much like @code{LINK_SPEC}.
+This controls whether to link @file{libg.a} when debugging.
+Some systems expect this; others do not have any @file{libg.a}.
+
+If this macro is not defined, a default is provided that loads the
+@file{libg.a} provided @samp{-g} is specified.  See @file{gcc.c}.
 
 @item STARTFILE_SPEC
 Another C string constant used much like @code{LINK_SPEC}.  The

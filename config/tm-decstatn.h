@@ -22,4 +22,6 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "tm-mips.h"
 
 #undef CPP_PREDEFINES
-#define CPP_PREDEFINES "-Dultrix -Dbsd4_2 -DMIPSEL -Dhost_mips -Dmips -Dunix -DR3000 -DLANGUAGE_C -DSYSTYPE_BSD"
+#define CPP_PREDEFINES "-D__ANSI_COMPAT \
+-D__LANGUAGE_C -D__MIPSEL -D__R3000 -D__SYSTYPE_BSD -D__bsd4_2 -D__host_mips -D__mips -D__ultrix -D__unix \
+-DLANGUAGE_C -DMIPSEL -DR3000 -DSYSTYPE_BSD -Dbsd4_2 -Dhost_mips -Dmips -Dultrix -Dunix"

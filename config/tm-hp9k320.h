@@ -61,13 +61,15 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE} -D__HPUX_ASM__"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__\
+ -D_HPUX_SOURCE -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE} -D__HPUX_ASM__"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__\
+ -D_HPUX_SOURCE -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
 
 #endif /* default is -msoft-float */
 
@@ -77,13 +79,15 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}\
+ -D_HPUX_SOURCE -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}\
+ -D_HPUX_SOURCE -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
 
 #endif /* default is -msoft-float */
 
@@ -93,9 +97,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
  "%{m68000:-mc68000}%{mc68000:-mc68000}%{!mc68000:%{!m68000:-mc68020}}"
 
 /* special directory for gnu libs on hp-ux system */
-#ifndef STANDARD_STARTFILE_PREFIX
+#undef STANDARD_STARTFILE_PREFIX
 #define STANDARD_STARTFILE_PREFIX "/usr/local/lib/gnu/"
-#endif
 
 #endif /* Not HPUX_ASM */
 
@@ -104,7 +107,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* These are the ones defined by HPUX cc, plus mc68000 for uniformity with
    GCC on other 68000 systems.  */
 
-#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dhpux -Dunix -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
+#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dhpux -Dunix"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 

@@ -1044,7 +1044,30 @@ pushdecl (x)
 	 take effect at top level no matter where they are.  */
       if (flag_traditional && TREE_EXTERNAL (x)
 	  && lookup_name (name) == 0)
-	b = global_binding_level;
+	{
+	  tree type = TREE_TYPE (x);
+
+	  /* But don't do this if the type contains temporary nodes.  */
+	  while (type)
+	    {
+	      if (! TREE_PERMANENT (type))
+		{
+		  warning_with_decl (x, "Type of `extern' decl is not global");
+		  break;
+		}
+	      else if (TREE_CODE (type) == FUNCTION_TYPE
+		       && TYPE_ARG_TYPES (type) != 0)
+		/* The types might not be truly local,
+		   but the list of arg types certainly is temporary.
+		   Since prototypes are nontraditional,
+		   ok not to do the traditional thing.  */
+		break;
+	      type = TREE_TYPE (type);
+	    }
+
+	  if (type == 0)
+	    b = global_binding_level;
+	}
 
       /* This name is new in its binding level.
 	 Install the new declaration and return it.  */
@@ -2350,17 +2373,25 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
   if (specbits & ((1 << (int) RID_LONG) | (1 << (int) RID_SHORT)
 		  | (1 << (int) RID_UNSIGNED) | (1 << (int) RID_SIGNED)))
     {
-      if (!explicit_int && !explicit_char && !pedantic)
-	error ("long, short, signed or unsigned used invalidly for `%s'", name);
-      else if ((specbits & 1 << (int) RID_LONG) && (specbits & 1 << (int) RID_SHORT))
+      if (TREE_CODE (type) == REAL_TYPE)
+	error ("short, signed or unsigned invalid for `%s'", name);
+      else if (TREE_CODE (type) != INTEGER_TYPE)
+	error ("long, short, signed or unsigned invalid for `%s'", name);
+      else if ((specbits & 1 << (int) RID_LONG)
+	       && (specbits & 1 << (int) RID_SHORT))
 	error ("long and short specified together for `%s'", name);
-      else if (((specbits & 1 << (int) RID_LONG) || (specbits & 1 << (int) RID_SHORT))
+      else if (((specbits & 1 << (int) RID_LONG)
+		|| (specbits & 1 << (int) RID_SHORT))
 	       && explicit_char)
 	error ("long or short specified with char for `%s'", name);
-      else if ((specbits & 1 << (int) RID_SIGNED) && (specbits & 1 << (int) RID_UNSIGNED))
+      else if ((specbits & 1 << (int) RID_SIGNED)
+	       && (specbits & 1 << (int) RID_UNSIGNED))
 	error ("signed and unsigned given together for `%s'", name);
       else
 	{
+	  if (!explicit_int && !explicit_char && pedantic)
+	    warning ("long, short, signed or unsigned used invalidly for `%s'",
+		     name);
 	  if (specbits & 1 << (int) RID_UNSIGNED)
 	    {
 	      if (longlong)
@@ -3506,6 +3537,7 @@ finish_enum (enumtype, values)
      register tree enumtype, values;
 {
   register tree pair;
+  tree maximum = 0, minimum = 0;
   register long maxvalue = 0;
   register long minvalue = 0;
   register int i;
@@ -3515,48 +3547,65 @@ finish_enum (enumtype, values)
 
   TYPE_VALUES (enumtype) = values;
 
-  /* Calculate the maximum value of any enumerator in this type.  */
+  /* Calculate the maximum and minimum values
+     of any enumerator in this type.  */
 
   for (pair = values; pair; pair = TREE_CHAIN (pair))
     {
-      int value = TREE_INT_CST_LOW (TREE_VALUE (pair));
+      tree value = TREE_VALUE (pair);
       if (pair == values)
-	minvalue = maxvalue = value;
+	maximum = minimum = value;
       else
 	{
-	  if (value > maxvalue)
-	    maxvalue = value;
-	  if (value < minvalue)
-	    minvalue = value;
+	  if (tree_int_cst_lt (maximum, value))
+	    maximum = value;
+	  if (tree_int_cst_lt (value, minimum))
+	    minimum = value;
 	}
     }
 
+  TYPE_MIN_VALUE (enumtype) = minimum;
+  TYPE_MAX_VALUE (enumtype) = maximum;
+
+  /* An enum can have some negative values; then it is signed.  */
+  if (tree_int_cst_lt (minimum, integer_zero_node))
+    TREE_UNSIGNED (enumtype) = 0;
+
   if (flag_short_enums)
     {
-      /* Determine the precision this type needs, lay it out, and define it.  */
+      /* Determine the precision this type needs, lay it out, and define it. */
+      int maxvalue = TREE_INT_CST_LOW (maximum);
+      int minvalue = TREE_INT_CST_LOW (minimum);
+      int prec = floor_log2 (maxvalue) + 1;
 
-      for (i = maxvalue; i; i >>= 1)
-	TYPE_PRECISION (enumtype)++;
+      if (! tree_int_cst_lt (minimum, integer_zero_node))
+	{
+	  /* All values are nonnegatives.  */
+	  if (prec == 0)
+	    prec = 1;
 
-      if (!TYPE_PRECISION (enumtype))
-	TYPE_PRECISION (enumtype) = 1;
+	  TYPE_PRECISION (enumtype) = prec;
+	}
+      else
+	{
+	  int negprec = floor_log2 (-1 - minvalue) + 1;
+
+	  if (prec < negprec)
+	    prec = negprec;
+	  TYPE_PRECISION (enumtype) = prec + 1;
+	}
+
+      /* Increase the size till it becomes the size of some mode.  */
+
+      TYPE_PRECISION (enumtype) = round_size (TYPE_PRECISION (enumtype));
 
       /* Cancel the laying out previously done for the enum type,
 	 so that fixup_unsigned_type will do it over.  */
       TYPE_SIZE (enumtype) = 0;
 
-      fixup_unsigned_type (enumtype);
+      layout_type (enumtype);
     }
 
-  TREE_INT_CST_LOW (TYPE_MAX_VALUE (enumtype)) = maxvalue;
-
-  /* An enum can have some negative values; then it is signed.  */
-  if (minvalue < 0)
-    {
-      TREE_INT_CST_LOW (TYPE_MIN_VALUE (enumtype)) = minvalue;
-      TREE_INT_CST_HIGH (TYPE_MIN_VALUE (enumtype)) = -1;
-      TREE_UNSIGNED (enumtype) = 0;
-    }
   return enumtype;
 }
 
@@ -3938,7 +3987,12 @@ store_parm_decls ()
 		}
 	      /* Type for passing arg must be consistent
 		 with that declared for the arg.  */
-	      if (! comptypes (DECL_ARG_TYPE (parm), TREE_VALUE (type)))
+	      if (! comptypes (DECL_ARG_TYPE (parm), TREE_VALUE (type))
+		  /* If -traditional, allow `unsigned int' instead of `int'
+		     in the prototype.  */
+		  && (! (flag_traditional
+			 && DECL_ARG_TYPE (parm) == integer_type_node
+			 && TREE_VALUE (type) == unsigned_type_node)))
 		{
 		  error ("argument `%s' doesn't match function prototype",
 			 IDENTIFIER_POINTER (DECL_NAME (parm)));

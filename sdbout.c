@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
-#define MAYBE
+#define SDB_NO_FORWARD_REFS
 
 #include "config.h"
 
@@ -465,9 +465,13 @@ plain_type_1 (type)
     case ENUMERAL_TYPE:
       {
 	char *tag;
+#ifndef SDB_NO_FORWARD_REFS /* Taken out because this sets KNOWN_TYPE_TAG.
+		 If we don't want forward references,
+		 this is clearly not needed.  */
 	sdbout_record_type_name (type);
+#endif
 	if (TREE_ASM_WRITTEN (type)
-#ifdef MAYBE
+#ifdef SDB_NO_FORWARD_REFS
 	    && KNOWN_TYPE_TAG (type)
 #endif
 	    )
@@ -590,7 +594,7 @@ sdbout_symbol (decl, local)
       sdbout_types (nreverse (get_permanent_types ()));
     }
 
-#ifdef MAYBE
+#ifdef SDB_NO_FORWARD_REFS
   sdbout_one_type (type);
 #endif
 
@@ -773,7 +777,7 @@ sdbout_field_types (type)
   tree tail;
   for (tail = TYPE_FIELDS (type); tail; tail = TREE_CHAIN (tail))
     {
-#ifdef MAYBE
+#ifdef SDB_NO_FORWARD_REFS
       if (TREE_CODE (TREE_TYPE (tail)) == POINTER_TYPE)
 	sdbout_one_type (TREE_TYPE (TREE_TYPE (tail)));
       else
@@ -810,7 +814,7 @@ sdbout_one_type (type)
 	return;
 
       TREE_ASM_WRITTEN (type) = 1;
-#ifndef MAYBE
+#ifdef SDB_NO_FORWARD_REFS
       /* Before really doing anything, output types we want to refer to.  */
       if (TREE_CODE (type) != ENUMERAL_TYPE)
 	sdbout_field_types (type);

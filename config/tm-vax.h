@@ -772,12 +772,12 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define CHECK_FLOAT_VALUE(mode, d) \
   if ((mode) == SFmode) \
     { \
-      if ((d) > 1.7014117331926443e+38) \
+      if ((d) > 1.7014117331926444e+38) \
 	{ error ("magnitude of constant too large for `float'"); \
-	  (d) = 1.7014117331926443e+38; } \
-      else if ((d) < -1.7014117331926443e+38) \
+	  (d) = 1.7014117331926444e+38; } \
+      else if ((d) < -1.7014117331926444e+38) \
 	{ error ("magnitude of constant too large for `float'"); \
-	  (d) = -1.7014117331926443e+38; } \
+	  (d) = -1.7014117331926444e+38; } \
       else if (((d) > 0) && ((d) < 2.9387358770557188e-39)) \
 	{ warning ("`float' constant truncated to zero"); \
 	  (d) = 0.0; } \

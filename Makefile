@@ -238,15 +238,15 @@ CPLUS_TREE_H = $(TREE_H) cplus-tree.h c-tree.h
 # because all that file does, when not compiling with GCC,
 # is include the system varargs.h.
 
-all: config.status gnulib gcc cc1 cpp float.h gnulib2 libg # cc1plus
+all: config.status gnulib gcc cc1 cpp float.h gnulib2 # cc1plus
 
 # Use this instead of `all' if you need to convert the libraries
 # before you can use the compiler.
 # Don't forget to do `make gnulib2' before installation.
-all-libconvert: config.status gnulib gcc cc1 cpp float.h libg # cc1plus
+all-libconvert: config.status gnulib gcc cc1 cpp float.h # cc1plus
 
-lang-c: config.status gnulib gcc cc1 cpp gnulib2 libg
-# lang-cplus: config.status gnulib gcc cc1plus cpp gnulib2 libg
+lang-c: config.status gnulib gcc cc1 cpp gnulib2
+# lang-cplus: config.status gnulib gcc cc1plus cpp gnulib2
 
 config.status:
 	@echo You must configure gcc.  Look at the INSTALL file for details.
@@ -266,12 +266,6 @@ cc1: $(C_OBJS) $(OBJS) $(LIBDEPS)
 
 cc1plus: $(CPLUS_OBJS) $(OBJS) $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o cc1plus $(CPLUS_OBJS) $(OBJS) $(LIBS)
-
-# Make sure there is some libg.a to be found,
-# in case compiling with a GCC that was built but not installed.
-libg:
-	if [ ! -f /lib/libg.a -a ! -f /usr/lib/libg.a ]; \
-	then ar rc libg.a; else true; fi
 
 #Library of arithmetic subroutines
 # Don't compile this with gcc!
@@ -321,7 +315,10 @@ float.h:
 # instead of GNU make.  And the system's make might not support VPATH.
 # However, the compilation of hard-params should not need to use VPATH,
 # due to the explicit use of `$(srcdir)'.
-	make hard-params
+	make hard-params \
+		HARD_PARAMS_FLAGS="$(HARD_PARAMS_FLAGS)" \
+		CPPFLAGS="$(CPPFLAGS)" \
+		LDFLAGS="$(LDFLAGS)"
 	-./hard-params -f > float.h
 
 # Compile hard-params with standard cc.  It avoids some headaches.
@@ -634,19 +631,6 @@ install: all $(USER_H) float.h gvarargs.h gstdarg.h gcc.1
 	-chmod a-x $(libdir)/gcc-include/*.h
 	$(INSTALL) $(srcdir)/gcc.1 $(mandir)/gcc.$(manext)
 	-chmod a-x $(mandir)/gcc.$(manext)
-# Make sure -lg won't get an error message from the linker:
-# create a library libg.a if there isn't one.
-	-if [ -f /lib/libg.a -o -f /usr/lib/libg.a ]; then \
-		: ; \
-	else \
-		echo Installing a dummy libg.a into /usr/lib; \
-		echo "_no_libg(){}" > _no_libg.c; \
-		./gcc -B./ -c _no_libg.c; \
-		$(AR) rc libg.a _no_libg.o; \
-		$(INSTALL) libg.a /usr/lib/libg.a; \
-		if [ -f /usr/bin/ranlib -o -f /bin/ranlib ] ; then (cd /usr/lib; $(RANLIB) libg.a) ; else true; fi; \
-		rm -f _no_libg.[co] libg.a; \
-	fi
 
 # do make -f ../gcc/Makefile maketest DIR=../gcc
 # in the intended test directory to make it a suitable test directory.
@@ -660,7 +644,7 @@ maketest:
 	ln -s $(DIR)/config.gcc .
 	ln -s $(DIR)/move-if-change .
 # The then and else were swapped to avoid a problem on Ultrix.
-	if [ ! -f Makefile ] ; then ln -s $(DIR)/Makefile . ; else false; fi
+	-if [ ! -f Makefile ] ; then ln -s $(DIR)/Makefile . ; else false; fi
 	-rm tm.h aux-output.c config.h md
 	make clean
 # You must then run config.gcc to set up for compilation.

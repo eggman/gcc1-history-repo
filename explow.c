@@ -465,7 +465,7 @@ force_not_mem (x)
      rtx x;
 {
   register rtx temp;
-  if (GET_CODE (x) != MEM)
+  if (GET_CODE (x) != MEM || GET_MODE (x) == BLKmode)
     return x;
   temp = gen_reg_rtx (GET_MODE (x));
   emit_move_insn (temp, x);

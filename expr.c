@@ -639,7 +639,8 @@ convert_to_mode (mode, x, unsignedp)
     return x;
   if (integer_mode_p (mode)
       && GET_MODE_SIZE (mode) <= GET_MODE_SIZE (GET_MODE (x))
-      && ! (GET_CODE (x) == MEM && MEM_VOLATILE_P (x)))
+      && (GET_CODE (x) == REG || GET_CODE (x) == CONST_DOUBLE
+	  || (GET_CODE (x) == MEM && ! MEM_VOLATILE_P (x))))
     return gen_lowpart (mode, x);
   temp = gen_reg_rtx (mode);
   convert_move (temp, x, unsignedp);
@@ -1577,6 +1578,10 @@ emit_library_call (va_alist)
 	 for a move or push insn.  */
       /* ??? It is wrong to do it here; must do it earlier
 	 where we know the signedness of the arg.  */
+#ifdef GNULIB_NEEDS_DOUBLE
+      if (GNULIB_NEEDS_DOUBLE && mode == SFmode)
+	mode = DFmode;
+#endif
       if (GET_MODE (val) != mode && GET_MODE (val) != VOIDmode)
 	{
 	  val = gen_reg_rtx (mode);
@@ -2439,7 +2444,7 @@ expand_expr (exp, target, tmode, modifier)
 	  tree variant_type = build_type_variant (type,
 						  TREE_READONLY (exp),
 						  TREE_THIS_VOLATILE (exp));
-	  tree array_adr = build (ADDR_EXPR, TYPE_POINTER_TO (variant_type),
+	  tree array_adr = build (ADDR_EXPR, build_pointer_type (variant_type),
 				  TREE_OPERAND (exp, 0));
 	  tree index = TREE_OPERAND (exp, 1);
 	  tree elt;
@@ -2565,6 +2570,13 @@ expand_expr (exp, target, tmode, modifier)
 	op0 = expand_expr (tem, 0, VOIDmode,
 			   (modifier == EXPAND_CONST_ADDRESS
 			    ? modifier : EXPAND_NORMAL));
+
+	/* Don't forget about volatility even if this is a bitfield.  */
+	if (GET_CODE (op0) == MEM && volstruct && ! MEM_VOLATILE_P (op0))
+	  {
+	    op0 = copy_rtx (op0);
+	    MEM_VOLATILE_P (op0) = 1;
+	  }
 
 	if (mode1 == BImode || GET_CODE (op0) == REG
 	    || GET_CODE (op0) == SUBREG)
@@ -3483,7 +3495,8 @@ expand_builtin (exp, target, subtarget, mode, ignore)
       op0 = expand_expr (TREE_VALUE (arglist), subtarget, VOIDmode, 0);
       /* Compute ffs, into TARGET if possible.
 	 Set TARGET to wherever the result comes back.  */
-      target = expand_unop (GET_MODE (op0), ffs_optab, op0, target, 1);
+      target = expand_unop (TYPE_MODE (TREE_TYPE (TREE_VALUE (arglist))),
+			    ffs_optab, op0, target, 1);
       if (target == 0)
 	abort ();
       return target;
@@ -4254,7 +4267,7 @@ expand_call (exp, target, ignore)
 	  args[i].partial
 	    = FUNCTION_ARG_PARTIAL_NREGS (args_so_far,
 					  TYPE_MODE (type), type,
-					  i < n_named_args);
+					  argpos < n_named_args);
 #endif
 	}
 
@@ -4368,7 +4381,7 @@ expand_call (exp, target, ignore)
 	 have been used, etc.  */
 
       FUNCTION_ARG_ADVANCE (args_so_far, TYPE_MODE (type), type,
-			    i < n_named_args);
+			    argpos < n_named_args);
     }
 
   /* If we would have to push a partially-in-regs parm
@@ -4745,7 +4758,9 @@ expand_call (exp, target, ignore)
     }
   else if (target && GET_MODE (target) == TYPE_MODE (TREE_TYPE (exp)))
     {
-      if (!rtx_equal_p (target, valreg))
+      if (GET_CODE (target) != REG && !cse_not_expected)
+	result_copy_insn = emit_move_insn (target, copy_to_reg (valreg));
+      else if (!rtx_equal_p (target, valreg))
 	result_copy_insn = emit_move_insn (target, valreg);
       else
 	/* This tells expand_inline_function to copy valreg to its target.  */
@@ -4908,13 +4923,15 @@ store_one_arg (arg, argblock, may_be_alloca)
 	 Note that in C the default argument promotions
 	 will prevent such mismatches.  */
 
-      used = size = GET_MODE_SIZE (TYPE_MODE (TREE_TYPE (pval)));
+      size = GET_MODE_SIZE (TYPE_MODE (TREE_TYPE (pval)));
       /* Compute how much space the push instruction will push.
 	 On many machines, pushing a byte will advance the stack
 	 pointer by a halfword.  */
 #ifdef PUSH_ROUNDING
       size = PUSH_ROUNDING (size);
 #endif
+      used = size;
+
       /* Compute how much space the argument should get:
 	 round up to a multiple of the alignment for arguments.  */
       if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), const0_rtx))

@@ -907,19 +907,25 @@ output_fp_move_double (operands)
 	  }
 	else if (GET_CODE (XEXP (operands[1], 0)) == PLUS)
 	  {
+	    rtx memref = operands[1];
 	    rtx inc_reg = XEXP (XEXP (operands[1], 0), 0);
 	    if (inc_reg == frame_pointer_rtx
 		&& GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == REG
-		&& XEXP (XEXP (operands[1], 0), 0) != frame_pointer_rtx)
+		&& XEXP (XEXP (operands[1], 0), 1) != frame_pointer_rtx)
 	      inc_reg = XEXP (XEXP (operands[1], 0), 1);
 	    if (inc_reg == frame_pointer_rtx)
 	      {
 		output_asm_insn ("mov %%fp,%%g1", xoperands);
 		inc_reg = gen_rtx (REG, SImode, 1);
+		memref = gen_rtx (GET_CODE (operands[1]),
+				  GET_MODE (operands[1]),
+				  gen_rtx (PLUS, GET_MODE (XEXP (operands[1], 0)),
+					   inc_reg,
+					   XEXP (XEXP (operands[1], 0), 1)));
 	      }
 	    xoperands[1] = inc_reg;
 	    output_asm_insn ("add 4,%1,%1", xoperands);
-	    xoperands[1] = operands[1];
+	    xoperands[1] = memref;
 	    output_asm_insn ("ld %1,%0", xoperands);
 	    xoperands[1] = inc_reg;
 	    output_asm_insn ("add -4,%1,%1", xoperands);
@@ -988,19 +994,25 @@ output_fp_move_double (operands)
 	  }
 	else if (GET_CODE (XEXP (operands[0], 0)) == PLUS)
 	  {
+	    rtx memref = operands[0];
 	    rtx inc_reg = XEXP (XEXP (operands[0], 0), 0);
 	    if (inc_reg == frame_pointer_rtx
 		&& GET_CODE (XEXP (XEXP (operands[0], 0), 1)) == REG
-		&& XEXP (XEXP (operands[0], 0), 0) != frame_pointer_rtx)
+		&& XEXP (XEXP (operands[0], 0), 1) != frame_pointer_rtx)
 	      inc_reg = XEXP (XEXP (operands[0], 0), 1);
 	    if (inc_reg == frame_pointer_rtx)
 	      {
 		output_asm_insn ("mov %%fp,%%g1", xoperands);
 		inc_reg = gen_rtx (REG, SImode, 1);
+		memref = gen_rtx (GET_CODE (operands[0]),
+				  GET_MODE (operands[0]),
+				  gen_rtx (PLUS, GET_MODE (XEXP (operands[0], 0)),
+					   inc_reg,
+					   XEXP (XEXP (operands[0], 0), 1)));
 	      }
 	    xoperands[0] = inc_reg;
 	    output_asm_insn ("add 4,%0,%0", xoperands);
-	    xoperands[0] = operands[0];
+	    xoperands[0] = memref;
 	    output_asm_insn ("st %r1,%0", xoperands);
 	    xoperands[0] = inc_reg;
 	    output_asm_insn ("add -4,%0,%0", xoperands);
@@ -1413,12 +1425,21 @@ output_block_move (operands)
   xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
   xoperands[4] = gen_rtx (CONST_INT, VOIDmode, align);
 
+#ifdef NO_UNDERSCORES
+  if (align == 1)
+    output_asm_insn ("\n.Lm%3:\n\tldub [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge .Lm%3\n\tstb %%g1,[%0+%2]", xoperands);
+  else if (align == 2)
+    output_asm_insn ("\n.Lm%3:\n\tlduh [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge .Lm%3\n\tsth %%g1,[%0+%2]", xoperands);
+  else
+    output_asm_insn ("\n.Lm%3:\n\tld [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge .Lm%3\n\tst %%g1,[%0+%2]", xoperands);
+#else
   if (align == 1)
     output_asm_insn ("\nLm%3:\n\tldub [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tstb %%g1,[%0+%2]", xoperands);
   else if (align == 2)
     output_asm_insn ("\nLm%3:\n\tlduh [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tsth %%g1,[%0+%2]", xoperands);
   else
     output_asm_insn ("\nLm%3:\n\tld [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tst %%g1,[%0+%2]", xoperands);
+#endif
   return "";
 }
 

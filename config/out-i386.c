@@ -1013,7 +1013,8 @@ print_operand (file, x, code)
 	{
 	  if (GET_CODE (x) == CONST_INT)
 	    PRINT_IMMED_PREFIX (file);
-	  else if (GET_CODE (x) == CONST || GET_CODE (x) == SYMBOL_REF)
+	  else if (GET_CODE (x) == CONST || GET_CODE (x) == SYMBOL_REF
+		   || GET_CODE (x) == LABEL_REF)
 	    PRINT_OFFSET_PREFIX (file);
 	}
       output_addr_const (file, x);
@@ -1308,7 +1309,8 @@ call_top_dead_p (insn)
 }
 
 /* Return 1 if current val of fpu top-of-stack appears unused
-   in rest of this basic block.  */
+   in rest of this basic block and also through a jump insn.
+   This is called from top_dead_p and from fp_call_internal.  */
 
 static int
 fp_top_dead_p1 (insn)
@@ -1316,7 +1318,7 @@ fp_top_dead_p1 (insn)
 {
   extern int optimize;
 
-  int past_label = 0;
+  int past_jump = 0;
 
   for (insn = NEXT_INSN (insn); insn; insn = NEXT_INSN (insn))
     {
@@ -1327,20 +1329,21 @@ fp_top_dead_p1 (insn)
 	  return 1;
 
 	case JUMP_INSN:
+	  /* Follow one jump in case of cross-jumping,
+	     which could insert such a jump into one basic block.  */
 	  if (! optimize)
 	    /* Can't use JUMP_LABEL, but there's no cross-jumping either.  */
 	    return 1;
 	  if (JUMP_LABEL (insn) == 0)
 	    return 1;
+	  /* Don't scan past a jump and another jump.  */
+	  if (past_jump)
+	    return 1;
+	  past_jump = 1;
 	  insn = JUMP_LABEL (insn);
 	case CODE_LABEL:
-	  /* Go past one label or follow one jump in case of cross-jumping,
-	     which could insert such a label or jump into one basic block.  */
 	  if (! optimize)
 	    return 1;
-	  if (past_label)
-	    return 1;
-	  past_label = 1;
 	  break;
 
 	case INSN:
@@ -1348,7 +1351,7 @@ fp_top_dead_p1 (insn)
 	    {
 	      if ((mentions_fp_top (SET_SRC (PATTERN (insn)))))
 		return 0;
-	      else if (FP_REG_P (SET_DEST (PATTERN (insn))))
+	      else if (mentions_fp_top (SET_DEST (PATTERN (insn))))
 		return 1;
 	    }
 	  else if (mentions_fp_top (PATTERN (insn)))

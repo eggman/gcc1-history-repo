@@ -89,7 +89,7 @@ static int yylex ();
 #ifndef YYLTYPE
 typedef
   struct yyltype
-    {
+ {
       int timestamp;
       int first_line;
       int first_column;
@@ -97,7 +97,7 @@ typedef
       int last_column;
       char *text;
    }
-  yyltype;
+ yyltype;
 
 #define YYLTYPE yyltype
 #endif
@@ -149,6 +149,138 @@ static const char yytranslate[] = {     0,
     42,    43,    49,    50,    51,    52,    53
 };
 
+static const short yyprhs[] = {     0,
+     0,     1,     3,     4,     7,     8,    12,    14,    16,    22,
+    26,    31,    36,    39,    42,    45,    48,    50,    51,    52,
+    60,    65,    66,    67,    75,    80,    81,    82,    89,    93,
+    95,    97,    99,   101,   103,   105,   107,   109,   111,   113,
+   114,   116,   118,   122,   124,   127,   130,   133,   138,   141,
+   146,   148,   153,   161,   163,   167,   171,   175,   179,   183,
+   187,   191,   195,   199,   203,   207,   211,   215,   219,   225,
+   229,   233,   235,   237,   239,   243,   247,   248,   253,   258,
+   263,   267,   271,   274,   277,   279,   282,   283,   285,   287,
+   289,   292,   295,   296,   301,   306,   309,   312,   315,   319,
+   320,   323,   326,   328,   330,   333,   336,   339,   343,   344,
+   347,   349,   351,   353,   358,   363,   365,   367,   369,   371,
+   375,   377,   381,   382,   387,   388,   395,   399,   400,   407,
+   411,   412,   419,   421,   425,   427,   432,   437,   439,   442,
+   446,   451,   453,   455,   459,   461,   463,   467,   471,   476,
+   480,   484,   486,   490,   495,   499,   503,   505,   509,   513,
+   517,   522,   526,   528,   529,   536,   541,   544,   545,   552,
+   557,   560,   561,   569,   570,   577,   580,   581,   583,   584,
+   586,   588,   591,   592,   596,   599,   603,   607,   609,   610,
+   612,   616,   619,   624,   627,   629,   633,   635,   639,   642,
+   645,   646,   648,   650,   653,   654,   657,   661,   665,   668,
+   672,   677,   681,   684,   688,   691,   693,   696,   699,   700,
+   702,   705,   706,   708,   711,   714,   720,   725,   730,   731,
+   738,   740,   743,   744,   749,   751,   752,   753,   761,   762,
+   763,   773,   774,   775,   776,   789,   790,   797,   798,   804,
+   805,   810,   813,   816,   819,   823,   830,   839,   850,   863,
+   867,   868,   873,   875,   876,   878,   879,   881,   882,   884,
+   886,   890,   895,   897,   901,   902,   905,   906,   909,   912,
+   915,   918,   921,   924,   925,   927,   931,   933,   937,   940,
+   943,   946,   949,   952,   954
+};
+
+static const short yyrhs[] = {    -1,
+    66,     0,     0,    67,    69,     0,     0,    66,    68,    69,
+     0,    71,     0,    70,     0,    27,    55,    88,    57,    58,
+     0,    91,   101,    58,     0,    95,    91,   101,    58,     0,
+    93,    91,   100,    58,     0,    95,    58,     0,    93,    58,
+     0,     1,    58,     0,     1,    59,     0,    58,     0,     0,
+     0,    93,    91,   112,    72,    89,    73,   139,     0,    93,
+    91,   112,     1,     0,     0,     0,    95,    91,   115,    74,
+    89,    75,   139,     0,    95,    91,   115,     1,     0,     0,
+     0,    91,   115,    76,    89,    77,   139,     0,    91,   115,
+     1,     0,     3,     0,     4,     0,    39,     0,    45,     0,
+    44,     0,    50,     0,    51,     0,    60,     0,    61,     0,
+    82,     0,     0,    82,     0,    85,     0,    82,    62,    85,
+     0,    86,     0,    46,    84,     0,    79,    84,     0,    11,
+    83,     0,    11,    55,   130,    57,     0,    29,    83,     0,
+    29,    55,   130,    57,     0,    83,     0,    55,   130,    57,
+    84,     0,    55,   130,    57,    63,   111,   121,    59,     0,
+    84,     0,    85,    44,    85,     0,    85,    45,    85,     0,
+    85,    46,    85,     0,    85,    47,    85,     0,    85,    48,
+    85,     0,    85,    42,    85,     0,    85,    43,    85,     0,
+    85,    41,    85,     0,    85,    40,    85,     0,    85,    39,
+    85,     0,    85,    37,    85,     0,    85,    38,    85,     0,
+    85,    36,    85,     0,    85,    35,    85,     0,    85,    33,
+   157,    34,    85,     0,    85,    32,    85,     0,    85,    31,
+    85,     0,     3,     0,     8,     0,    88,     0,    55,    80,
+    57,     0,    55,     1,    57,     0,     0,    55,    87,   140,
+    57,     0,    86,    55,    81,    57,     0,    86,    56,    80,
+    64,     0,    86,    54,    78,     0,    86,    53,    78,     0,
+    86,    50,     0,    86,    51,     0,     9,     0,    88,     9,
+     0,     0,    90,     0,    92,     0,   137,     0,    90,    92,
+     0,    92,   137,     0,     0,    93,    91,   100,    58,     0,
+    95,    91,   101,    58,     0,    93,    58,     0,    95,    58,
+     0,    98,    94,     0,    95,    98,    94,     0,     0,    94,
+    99,     0,    94,     5,     0,     7,     0,     5,     0,    95,
+     7,     0,    95,     5,     0,    98,    97,     0,   132,    98,
+    97,     0,     0,    97,    99,     0,     6,     0,   116,     0,
+     4,     0,    28,    55,    80,    57,     0,    28,    55,   130,
+    57,     0,     6,     0,     7,     0,   116,     0,   103,     0,
+   100,    62,   103,     0,   105,     0,   101,    62,   103,     0,
+     0,    27,    55,    88,    57,     0,     0,   112,   102,   107,
+    32,   104,   110,     0,   112,   102,   107,     0,     0,   115,
+   102,   107,    32,   106,   110,     0,   115,   102,   107,     0,
+     0,    30,    55,    55,   108,    57,    57,     0,   109,     0,
+   108,    62,   109,     0,     3,     0,     3,    55,     8,    57,
+     0,     3,    55,   171,    57,     0,    85,     0,    63,    59,
+     0,    63,   111,    59,     0,    63,   111,    62,    59,     0,
+     1,     0,   110,     0,   111,    62,   110,     0,   113,     0,
+   115,     0,    55,   113,    57,     0,   113,    55,   164,     0,
+   113,    56,    80,    64,     0,   113,    56,    64,     0,    46,
+   133,   113,     0,     4,     0,   114,    55,   164,     0,   114,
+    56,    80,    64,     0,   114,    56,    64,     0,    46,   133,
+   114,     0,     4,     0,   115,    55,   164,     0,    55,   115,
+    57,     0,    46,   133,   115,     0,   115,    56,    80,    64,
+     0,   115,    56,    64,     0,     3,     0,     0,    13,    78,
+    63,   117,   123,    59,     0,    13,    63,   123,    59,     0,
+    13,    78,     0,     0,    14,    78,    63,   118,   123,    59,
+     0,    14,    63,   123,    59,     0,    14,    78,     0,     0,
+    12,    78,    63,   119,   128,   122,    59,     0,     0,    12,
+    63,   120,   128,   122,    59,     0,    12,    78,     0,     0,
+    62,     0,     0,    62,     0,   124,     0,   124,   125,     0,
+     0,   124,   125,    58,     0,   124,    58,     0,    96,    91,
+   126,     0,   132,    91,   126,     0,     1,     0,     0,   127,
+     0,   126,    62,   127,     0,   112,   107,     0,   112,    34,
+    85,   107,     0,    34,    85,     0,   129,     0,   128,    62,
+   129,     0,    78,     0,    78,    32,    85,     0,    96,   131,
+     0,   132,   131,     0,     0,   134,     0,     7,     0,   132,
+     7,     0,     0,   133,     7,     0,    55,   134,    57,     0,
+    46,   133,   134,     0,    46,   133,     0,   134,    55,   162,
+     0,   134,    56,    80,    64,     0,   134,    56,    64,     0,
+    55,   162,     0,    56,    80,    64,     0,    56,    64,     0,
+   143,     0,   135,   143,     0,   135,   137,     0,     0,   135,
+     0,     1,    58,     0,     0,   140,     0,     1,   140,     0,
+    63,    59,     0,    63,   138,    90,   136,    59,     0,    63,
+   138,     1,    59,     0,    63,   138,   135,    59,     0,     0,
+    15,    55,    80,    57,   142,   143,     0,   140,     0,    80,
+    58,     0,     0,   141,    16,   144,   143,     0,   141,     0,
+     0,     0,    17,   145,    55,    80,    57,   146,   143,     0,
+     0,     0,    18,   147,   143,    17,   148,    55,    80,    57,
+    58,     0,     0,     0,     0,    19,    55,   157,    58,   149,
+   157,    58,   150,   157,    57,   151,   143,     0,     0,    20,
+    55,    80,    57,   152,   143,     0,     0,    21,    80,    34,
+   153,   143,     0,     0,    22,    34,   154,   143,     0,    23,
+    58,     0,    24,    58,     0,    25,    58,     0,    25,    80,
+    58,     0,    27,   156,    55,    88,    57,    58,     0,    27,
+   156,    55,    88,    34,   158,    57,    58,     0,    27,   156,
+    55,    88,    34,   158,    34,   158,    57,    58,     0,    27,
+   156,    55,    88,    34,   158,    34,   158,    34,   161,    57,
+    58,     0,    26,    78,    58,     0,     0,    78,    34,   155,
+   143,     0,    58,     0,     0,     7,     0,     0,    80,     0,
+     0,   159,     0,   160,     0,   159,    62,   160,     0,     9,
+    55,    80,    57,     0,    88,     0,   161,    62,    88,     0,
+     0,   163,   167,     0,     0,   165,   166,     0,   168,    57,
+     0,   171,    57,     0,     1,    57,     0,   168,    57,     0,
+     1,    57,     0,     0,   169,     0,   169,    62,    10,     0,
+   170,     0,   169,    62,   170,     0,    93,   114,     0,    93,
+   115,     0,    93,   131,     0,    95,   115,     0,    95,   131,
+     0,     3,     0,   171,    62,     3,     0
+};
+
 #if YYDEBUG != 0
 static const short yyrline[] = { 0,
    177,   178,   185,   187,   187,   188,   190,   192,   193,   200,
@@ -183,14 +315,25 @@ static const short yyrline[] = { 0,
   1288,  1290,  1292,  1297,  1300
 };
 
-static const char * const yytname[] = {     0,
+static const char * const yytname[] = {   "$",
 "error","$illegal.","IDENTIFIER","TYPENAME","SCSPEC","TYPESPEC","TYPE_QUAL","CONSTANT","STRING","ELLIPSIS",
 "SIZEOF","ENUM","STRUCT","UNION","IF","ELSE","WHILE","DO","FOR","SWITCH",
 "CASE","DEFAULT","BREAK","CONTINUE","RETURN","GOTO","ASM","TYPEOF","ALIGNOF","ATTRIBUTE",
 "ASSIGN","'='","'?'","':'","OROR","ANDAND","'|'","'^'","'&'","EQCOMPARE",
 "ARITHCOMPARE","LSHIFT","RSHIFT","'+'","'-'","'*'","'/'","'%'","UNARY","PLUSPLUS",
 "MINUSMINUS","HYPERUNARY","POINTSAT","'.'","'('","'['","')'","';'","'}'","'~'",
-"'!'","','","'{'","']'","program"
+"'!'","','","'{'","']'","program","extdefs","@1","@2","extdef","datadef",
+"fndef","@3","@4","@5","@6","@7","@8","identifier","unop","expr",
+"exprlist","nonnull_exprlist","unary_expr","cast_expr","expr_no_commas","primary","@9","string","xdecls","decls",
+"setspecs","decl","typed_declspecs","reserved_declspecs","declmods","typed_typespecs","reserved_typespecquals","typespec","typespecqual_reserved","initdecls",
+"notype_initdecls","maybeasm","initdcl","@10","notype_initdcl","@11","maybe_attribute","attribute_list","attrib","init",
+"initlist","declarator","after_type_declarator","parm_declarator","notype_declarator","structsp","@12","@13","@14","@15",
+"maybecomma","maybecomma_warn","component_decl_list","component_decl_list2","component_decl","components","component_declarator","enumlist","enumerator","typename",
+"absdcl","nonempty_type_quals","type_quals","absdcl1","stmts","xstmts","errstmt","pushlevel","compstmt_or_error","compstmt",
+"simple_if","@16","stmt","@17","@18","@19","@20","@21","@22","@23",
+"@24","@25","@26","@27","@28","maybe_type_qual","xexpr","asm_operands","nonnull_asm_operands","asm_operand",
+"asm_clobbers","parmlist","@29","parmlist_or_identifiers","@30","parmlist_or_identifiers_1","parmlist_1","parmlist_2","parms","parm",
+"identifiers",""
 };
 #endif
 
@@ -725,10 +868,8 @@ static const short yycheck[] = {    34,
     47,    48,    38,    39,    40,    41,    42,    43,    44,    45,
     46,    47,    48
 };
-#define YYPURE 1
-
 /* -*-C-*-  Note some compilers choke on comments on `#line' lines.  */
-#line 3 "/usr/local/lib/bison.simple"
+#line 3 "bison.simple"
 
 /* Skeleton output parser for bison,
    Copyright (C) 1984, 1989, 1990 Bob Corbett and Richard Stallman
@@ -748,6 +889,7 @@ static const short yycheck[] = {    34,
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
+#ifndef alloca
 #ifdef __GNUC__
 #define alloca __builtin_alloca
 #else /* Not GNU C.  */
@@ -755,6 +897,7 @@ static const short yycheck[] = {    34,
 #include <alloca.h>
 #endif /* Sparc.  */
 #endif /* Not GNU C.  */
+#endif /* alloca not defined.  */
 
 /* This is the parser code that is written into each bison parser
   when the %semantic_parser declaration is not specified in the grammar.
@@ -793,17 +936,21 @@ while (0)
 #define YYTERROR	1
 #define YYERRCODE	256
 
-#ifndef YYIMPURE
+#ifndef YYPURE
 #define YYLEX		yylex()
 #endif
 
-#ifndef YYPURE
+#ifdef YYPURE
+#ifdef YYLSP_NEEDED
 #define YYLEX		yylex(&yylval, &yylloc)
+#else
+#define YYLEX		yylex(&yylval)
+#endif
 #endif
 
 /* If nonreentrant, generate the variables here */
 
-#ifndef YYIMPURE
+#ifndef YYPURE
 
 int	yychar;			/*  the lookahead symbol		*/
 YYSTYPE	yylval;			/*  the semantic value of the		*/
@@ -815,7 +962,7 @@ YYLTYPE yylloc;			/*  location data for the lookahead	*/
 #endif
 
 int yynerrs;			/*  number of parse errors so far       */
-#endif  /* YYIMPURE */
+#endif  /* not YYPURE */
 
 #if YYDEBUG != 0
 int yydebug;			/*  nonzero means print parse trace	*/
@@ -839,6 +986,8 @@ int yydebug;			/*  nonzero means print parse trace	*/
 #ifndef YYMAXDEPTH
 #define YYMAXDEPTH 10000
 #endif
+
+#ifndef __cplusplus
 
 /* This is the most reliable way to avoid incompatibilities
    in available built-in functions on various systems.  */
@@ -856,7 +1005,24 @@ __yy_bcopy (from, to, count)
     *t++ = *f++;
 }
 
-#line 131 "/usr/local/lib/bison.simple"
+#else /* __cplusplus */
+
+/* This is the most reliable way to avoid incompatibilities
+   in available built-in functions on various systems.  */
+static void
+__yy_bcopy (char *from, char *to, int count)
+{
+  register char *f = from;
+  register char *t = to;
+  register int i = count;
+
+  while (i-- > 0)
+    *t++ = *f++;
+}
+
+#endif
+
+#line 156 "bison.simple"
 int
 yyparse()
 {
@@ -885,7 +1051,7 @@ yyparse()
 
   int yystacksize = YYINITDEPTH;
 
-#ifndef YYPURE
+#ifdef YYPURE
   int yychar;
   YYSTYPE yylval;
   int yynerrs;
@@ -995,7 +1161,7 @@ yynewstate:
     fprintf(stderr, "Entering state %d\n", yystate);
 #endif
 
-/* yybackup: */
+ yybackup:
 
 /* Do appropriate processing given the current state.  */
 /* Read a lookahead token if we need one and don't already have one.  */
@@ -1106,12 +1272,15 @@ yyreduce:
 #if YYDEBUG != 0
   if (yydebug)
     {
-      if (yylen == 1)
-	fprintf (stderr, "Reducing 1 value via rule %d (line %d), ",
-		 yyn, yyrline[yyn]);
-      else
-	fprintf (stderr, "Reducing %d values via rule %d (line %d), ",
-		 yylen, yyn, yyrline[yyn]);
+      int i;
+
+      fprintf (stderr, "Reducing via rule %d (line %d), ",
+	       yyn, yyrline[yyn]);
+
+      /* Print the symboles being reduced, and their result.  */
+      for (i = yyprhs[yyn]; yyrhs[i] > 0; i++)
+	fprintf (stderr, "%s ", yytname[yyrhs[i]]);
+      fprintf (stderr, " -> %s\n", yytname[yyr1[yyn]]);
     }
 #endif
 
@@ -2341,7 +2510,7 @@ case 295:
     break;}
 }
    /* the action file gets copied in in place of this dollarsign */
-#line 391 "/usr/local/lib/bison.simple"
+#line 419 "bison.simple"
 
   yyvsp -= yylen;
   yyssp -= yylen;
@@ -2437,7 +2606,7 @@ yyerrlab:   /* here on detecting error */
 	yyerror("parse error");
     }
 
-/* yyerrlab1:   /* here on error raised explicitly by an action */
+yyerrlab1:   /* here on error raised explicitly by an action */
 
   if (yyerrstatus == 3)
     {
@@ -2593,7 +2762,9 @@ combine_strings (strings)
       q = p;
       for (t = strings; t; t = TREE_CHAIN (t))
 	{
-	  int len = TREE_STRING_LENGTH (t) - 1;
+	  int len = (TREE_STRING_LENGTH (t) 
+		     - ((TREE_TYPE (t) == int_array_type_node)
+			? UNITS_PER_WORD : 1));
 	  if ((TREE_TYPE (t) == int_array_type_node) == wide_flag)
 	    {
 	      bcopy (TREE_STRING_POINTER (t), q, len);
@@ -2607,7 +2778,14 @@ combine_strings (strings)
 	      q += len * UNITS_PER_WORD;
 	    }
 	}
-      *q = 0;
+      if (wide_flag)
+	{
+	  int i;
+	  for (i = 0; i < UNITS_PER_WORD; i++)
+	    *q++ = 0;
+	}
+      else
+	*q = 0;
 
       value = make_node (STRING_CST);
       TREE_STRING_POINTER (value) = p;
@@ -2846,7 +3024,7 @@ init_lex ()
   maxtoken = 40;
   token_buffer = (char *) xmalloc (maxtoken + 2);
   max_wide = 40;
-  wide_buffer = (int *) xmalloc (max_wide + 1);
+  wide_buffer = (int *) xmalloc ((max_wide + 1) * UNITS_PER_WORD);
 
   ridpointers[(int) RID_INT] = get_identifier ("int");
   ridpointers[(int) RID_CHAR] = get_identifier ("char");
@@ -3945,7 +4123,9 @@ yylex ()
 		  {
 		    int n = widep - wide_buffer;
 		    max_wide *= 2;
-		    wide_buffer = (int *) xrealloc (wide_buffer, max_wide + 1);
+		    wide_buffer
+		      = (int *) xrealloc (wide_buffer,
+					  (max_wide + 1) * UNITS_PER_WORD);
 		    widep = wide_buffer + n;
 		  }
 		*widep++ = c;

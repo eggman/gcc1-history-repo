@@ -1,3 +1,6 @@
+$! Set the def dir to proper place for use in batch. Works for interactive too.
+$flnm = f$enviroment("PROCEDURE")     ! get current procedure name
+$set default 'f$parse(flnm,,,"DEVICE")''f$parse(flnm,,,"DIRECTORY")'
 $!
 $!	Build the GNU "C" compiler on VMS
 $!   (To try to build with VAX C, replace `gcc' with `cc/noopt'
@@ -142,6 +145,9 @@ varasm,rtl,rtlanal,expr,stmt,expmed,explow,optabs,symout,dbxout,emit-rtl,insn-em
 jump,cse,loop,flow,stupid,combine,regclass,local-alloc,global-alloc,reload,-
 reload1,insn-peep,final,recog,insn-recog,insn-extract,insn-output,obstack,-
 integrate,caller-save,version
+$!
+$! CAUTION: If you want to link gcc-cc1 to the sharable image library
+$! VAXCRTL, see the notes in gcc.texinfo (or INSTALL) first.
 $!
 $!	Done
 $!

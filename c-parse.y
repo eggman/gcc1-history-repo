@@ -1364,7 +1364,9 @@ combine_strings (strings)
       q = p;
       for (t = strings; t; t = TREE_CHAIN (t))
 	{
-	  int len = TREE_STRING_LENGTH (t) - 1;
+	  int len = (TREE_STRING_LENGTH (t) 
+		     - ((TREE_TYPE (t) == int_array_type_node)
+			? UNITS_PER_WORD : 1));
 	  if ((TREE_TYPE (t) == int_array_type_node) == wide_flag)
 	    {
 	      bcopy (TREE_STRING_POINTER (t), q, len);
@@ -1378,7 +1380,14 @@ combine_strings (strings)
 	      q += len * UNITS_PER_WORD;
 	    }
 	}
-      *q = 0;
+      if (wide_flag)
+	{
+	  int i;
+	  for (i = 0; i < UNITS_PER_WORD; i++)
+	    *q++ = 0;
+	}
+      else
+	*q = 0;
 
       value = make_node (STRING_CST);
       TREE_STRING_POINTER (value) = p;
@@ -1617,7 +1626,7 @@ init_lex ()
   maxtoken = 40;
   token_buffer = (char *) xmalloc (maxtoken + 2);
   max_wide = 40;
-  wide_buffer = (int *) xmalloc (max_wide + 1);
+  wide_buffer = (int *) xmalloc ((max_wide + 1) * UNITS_PER_WORD);
 
   ridpointers[(int) RID_INT] = get_identifier ("int");
   ridpointers[(int) RID_CHAR] = get_identifier ("char");
@@ -2716,7 +2725,9 @@ yylex ()
 		  {
 		    int n = widep - wide_buffer;
 		    max_wide *= 2;
-		    wide_buffer = (int *) xrealloc (wide_buffer, max_wide + 1);
+		    wide_buffer
+		      = (int *) xrealloc (wide_buffer,
+					  (max_wide + 1) * UNITS_PER_WORD);
 		    widep = wide_buffer + n;
 		  }
 		*widep++ = c;
