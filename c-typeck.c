@@ -781,6 +781,8 @@ build_array_ref (array, index)
   if (TREE_CODE (TREE_TYPE (array)) == ARRAY_TYPE
       && TREE_CODE (array) != INDIRECT_REF)
     {
+      tree rval;
+
       index = default_conversion (index);
       if (index != error_mark_node
 	  && TREE_CODE (TREE_TYPE (index)) != INTEGER_TYPE)
@@ -800,9 +802,12 @@ build_array_ref (array, index)
       if (pedantic && !lvalue_p (array))
 	warning ("ANSI C forbids subscripting non-lvalue array");
 
-      return require_complete_type (build (ARRAY_REF,
-					   TREE_TYPE (TREE_TYPE (array)),
-					   array, index));
+      rval = build (ARRAY_REF, TREE_TYPE (TREE_TYPE (array)), array, index);
+      /* Array ref is const/volatile if the array elements are.  */
+      TREE_READONLY (rval) |= TREE_READONLY (TREE_TYPE (TREE_TYPE (array)));
+      TREE_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
+      TREE_THIS_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
+      return require_complete_type (rval);
     }
 
   {
@@ -1290,12 +1295,14 @@ build_binary_op_nodefault (code, op0, op1)
 	}
       else if (code0 == POINTER_TYPE && code1 == INTEGER_TYPE)
 	{
+	  result_type = integer_type_node;
 	  if (! flag_traditional)
 	    warning ("comparison between pointer and integer");
 	  op1 = convert (TREE_TYPE (op0), op1);
 	}
       else if (code0 == INTEGER_TYPE && code1 == POINTER_TYPE)
 	{
+	  result_type = integer_type_node;
 	  if (! flag_traditional)
 	    warning ("comparison between pointer and integer");
 	  op0 = convert (TREE_TYPE (op1), op0);
@@ -2480,23 +2487,29 @@ build_conditional_expr (ifexp, op1, op2)
 	  result_type = build_pointer_type (void_type_node);
 	}
     }
-  else if (code1 == POINTER_TYPE && TREE_CODE (op2) == INTEGER_CST)
+  else if (code1 == POINTER_TYPE && code2 == INTEGER_TYPE)
     {
       if (!integer_zerop (op2))
 	warning ("pointer/integer type mismatch in conditional expression");
-      if (pedantic && TREE_CODE (type1) == FUNCTION_TYPE)
-	warning ("ANSI C forbids conditional expr between 0 and function pointer");
+      else
+	{
+	  op2 = null_pointer_node;
+	  if (pedantic && TREE_CODE (type1) == FUNCTION_TYPE)
+	    warning ("ANSI C forbids conditional expr between 0 and function pointer");
+	}
       result_type = type1;
-      op2 = null_pointer_node;
     }
-  else if (code2 == POINTER_TYPE && TREE_CODE (op1) == INTEGER_CST)
+  else if (code2 == POINTER_TYPE && code1 == INTEGER_TYPE)
     {
       if (!integer_zerop (op1))
 	warning ("pointer/integer type mismatch in conditional expression");
-      if (pedantic && TREE_CODE (type2) == FUNCTION_TYPE)
-	warning ("ANSI C forbids conditional expr between 0 and function pointer");
+      else
+	{
+	  op1 = null_pointer_node;
+	  if (pedantic && TREE_CODE (type2) == FUNCTION_TYPE)
+	    warning ("ANSI C forbids conditional expr between 0 and function pointer");
+	}
       result_type = type2;
-      op1 = null_pointer_node;
     }
 
   if (!result_type)
@@ -3273,8 +3286,8 @@ process_init_constructor (type, init, elts)
    Arguments are same as for expand_asm_operands.  */
 
 void
-c_expand_asm_operands (string, outputs, inputs, vol)
-     tree string, outputs, inputs;
+c_expand_asm_operands (string, outputs, inputs, clobbers, vol)
+     tree string, outputs, inputs, clobbers;
      int vol;
 {
   int noutputs = list_length (outputs);
@@ -3290,7 +3303,7 @@ c_expand_asm_operands (string, outputs, inputs, vol)
   /* Generate the ASM_OPERANDS insn;
      store into the TREE_VALUEs of OUTPUTS some trees for
      where the values were actually stored.  */
-  expand_asm_operands (string, outputs, inputs, vol);
+  expand_asm_operands (string, outputs, inputs, clobbers, vol);
 
   /* Copy all the intermediate outputs into the specified outputs.  */
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)

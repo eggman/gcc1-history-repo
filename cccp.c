@@ -2025,13 +2025,17 @@ handle_directive (ip, op)
 
 	case '\'':
 	case '\"':
-	  if (traditional)
-	    break;
 	  bp = skip_quoted_string (bp - 1, limit, ip->lineno, &ip->lineno, &copy_command, &unterminated);
 	  /* Don't bother calling the directive if we already got an error
 	     message due to unterminated string.  Skip everything and pretend
 	     we called the directive.  */
 	  if (unterminated) {
+	    if (traditional) {
+	      /* Traditional preprocessing permits unterminated strings.  */
+	      --bp;
+	      ip->bufp = bp;
+	      goto endloop1;
+	    }
 	    ip->bufp = bp;
 	    return 1;
 	  }
@@ -2776,6 +2780,7 @@ collect_expansion (buf, end, nargs, arglist)
   /* Pointer to first nonspace after last single-# seen.  */
   U_CHAR *stringify = 0;
   int maxsize;
+  int expected_delimiter = '\0';
 
   /* Scan thru the replacement list, ignoring comments and quoted
      strings, picking up on the macro calls.  It does a linear search
@@ -2821,10 +2826,10 @@ collect_expansion (buf, end, nargs, arglist)
 
     *exp_p++ = c;
 
-    switch (c) {
-    case '\'':
-    case '\"':
-      if (!traditional) {
+    if (!traditional) {
+      switch (c) {
+      case '\'':
+      case '\"':
 	for (; p < limit && *p != c; p++) {
 	  *exp_p++ = *p;
 	  if (*p == '\\') {
@@ -2832,60 +2837,82 @@ collect_expansion (buf, end, nargs, arglist)
 	  }
 	}
 	*exp_p++ = *p++;
-      }
-      break;
-
-      /* Special hack: if a \# is written in the #define
-	 include a # in the definition.  This is useless for C code
-	 but useful for preprocessing other things.  */
-
-    case '\\':
-      if (p < limit && *p == '#') {
-	/* Pass through this # */
-	exp_p--;
-	*exp_p++ = *p++;
-      }
-      break;
-
-    case '/':
-      if (*p == '*') {
-	/* If we find a comment that wasn't removed by handle_directive,
-	   this must be -traditional.  So replace the comment with
-	   nothing at all.  */
-	exp_p--;
-	p += 1;
-	while (p < limit && !(p[-2] == '*' && p[-1] == '/'))
-	  p++;
-	/* Mark this as a concatenation-point, as if it had been ##.  */
-	concat = p;
-      }
-      break;
-
-    case '#':
-      if (traditional)
 	break;
-      if (p < limit && *p == '#') {
-	/* ##: concatenate preceding and following tokens.  */
-	/* Take out the first #, discard preceding whitespace.  */
-	exp_p--;
-	while (exp_p > lastp && is_hor_space[exp_p[-1]])
-	  --exp_p;
-	/* Skip the second #.  */
-	p++;
-	/* Discard following whitespace.  */
-	SKIP_WHITE_SPACE (p);
-	concat = p;
-      } else {
-	/* Single #: stringify following argument ref.
-	   Don't leave the # in the expansion.  */
-	exp_p--;
-	SKIP_WHITE_SPACE (p);
-	if (p == limit || ! is_idstart[*p] || nargs <= 0)
-	  error ("# operator should be followed by a macro argument name\n");
-	else
-	  stringify = p;
+
+	/* Special hack: if a \# is written in the #define
+	   include a # in the definition.  This is useless for C code
+	   but useful for preprocessing other things.  */
+
+      case '\\':
+	if (p < limit && *p == '#') {
+	  /* Pass through this # */
+	  exp_p--;
+	  *exp_p++ = *p++;
+	}
+	break;
+
+      case '#':
+	if (p < limit && *p == '#') {
+	  /* ##: concatenate preceding and following tokens.  */
+	  /* Take out the first #, discard preceding whitespace.  */
+	  exp_p--;
+	  while (exp_p > lastp && is_hor_space[exp_p[-1]])
+	    --exp_p;
+	  /* Skip the second #.  */
+	  p++;
+	  /* Discard following whitespace.  */
+	  SKIP_WHITE_SPACE (p);
+	  concat = p;
+	} else {
+	  /* Single #: stringify following argument ref.
+	     Don't leave the # in the expansion.  */
+	  exp_p--;
+	  SKIP_WHITE_SPACE (p);
+	  if (p == limit || ! is_idstart[*p] || nargs <= 0)
+	    error ("# operator should be followed by a macro argument name\n");
+	  else
+	    stringify = p;
+	}
+	break;
       }
-      break;
+    } else {
+      /* In -traditional mode, recognize arguments inside strings and
+	 and character constants, and ignore special properties of #.
+	 Arguments inside strings are considered "stringified", but no
+	 extra quote marks are supplied.  */
+      switch (c) {
+      case '\'':
+      case '\"':
+	if (expected_delimiter != '\0') {
+	  if (c == expected_delimiter)
+	    expected_delimiter = '\0';
+	} else
+	  expected_delimiter = c;
+	break;
+
+      case '\\':
+	if (expected_delimiter != '\0' && p < limit) {
+	  *exp_p++ = *p++;
+	  continue;
+	}
+	break;
+
+      case '/':
+	if (expected_delimiter != '\0') /* No comments inside strings.  */
+	  break;
+	if (*p == '*') {
+	  /* If we find a comment that wasn't removed by handle_directive,
+	     this must be -traditional.  So replace the comment with
+	     nothing at all.  */
+	  exp_p--;
+	  p += 1;
+	  while (p < limit && !(p[-2] == '*' && p[-1] == '/'))
+	    p++;
+	  /* Mark this as a concatenation-point, as if it had been ##.  */
+	  concat = p;
+	}
+	break;
+      }
     }
 
     if (is_idchar[c] && nargs > 0) {
@@ -2909,9 +2936,10 @@ collect_expansion (buf, end, nargs, arglist)
 	       the pat list */
 	    tpat = (struct reflist *) xmalloc (sizeof (struct reflist));
 	    tpat->next = NULL;
-	    tpat->stringify = stringify == id_beg;
 	    tpat->raw_before = concat == id_beg;
 	    tpat->raw_after = 0;
+	    tpat->stringify = (traditional ? expected_delimiter != '\0'
+			       : stringify == id_beg);
 
 	    if (endpat == NULL)
 	      defn->pattern = tpat;
@@ -3714,6 +3742,11 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
 	  *eofp = 1;
 	break;
       }
+      if (traditional) {	/* Unterminated strings are 'legal'.  */
+	if (eofp)
+	  *eofp = 1;
+	break;
+      }
       if (count_newlines)
 	++*count_newlines;
     } else if (c == match)
@@ -3915,7 +3948,8 @@ macroexpand (hp, op)
 	    while (i < arglen
 		   && (c = arg->raw[arglen - 1], is_space[c]))
 	      arglen--;
-	    xbuf[totlen++] = '\"'; /* insert beginning quote */
+	    if (!traditional)
+	      xbuf[totlen++] = '\"'; /* insert beginning quote */
 	    for (; i < arglen; i++) {
 	      c = arg->raw[i];
 
@@ -3953,7 +3987,8 @@ macroexpand (hp, op)
 		totlen += 4;
 	      }
 	    }
-	    xbuf[totlen++] = '\"'; /* insert ending quote */
+	    if (!traditional)
+	      xbuf[totlen++] = '\"'; /* insert ending quote */
 	  } else if (ap->raw_before || ap->raw_after) {
 	    U_CHAR *p1 = arg->raw;
 	    U_CHAR *l1 = p1 + arg->raw_length;
@@ -4149,7 +4184,7 @@ macarg (argptr)
       buf++;
     while (buf != lim && is_space[lim[-1]])
       lim--;
-    totlen = 2;		/* Count opening and closing quote.  */
+    totlen = traditional ? 0 : 2;	/* Count opening and closing quote.  */
     while (buf != lim) {
       register U_CHAR c = *buf++;
       totlen++;

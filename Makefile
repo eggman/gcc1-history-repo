@@ -95,6 +95,9 @@ LIBFUNCS = _eprintf \
    _floatsidf _floatdidf _truncdfsf2 _extendsfdf2 \
    _addsf3 _negsf2 _subsf3 _cmpsf2 _mulsf3 _divsf3
 
+# Header files that are made available to programs compiled with gcc.
+USER_H = stddef.h stdarg.h assert.h varargs.h va-*.h limits.h
+
 # If you want to recompile everything, just do rm *.o.
 # CONFIG_H = config.h tm.h
 CONFIG_H =
@@ -184,7 +187,7 @@ integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h \
 jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
-cse.o : cse.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h hard-reg-set.h
+cse.o : cse.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h hard-reg-set.h flags.h
 loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
@@ -334,6 +337,12 @@ clean:
 	-rm -f *.s *.s[0-9] *.co *.greg *.lreg *.combine *.flow *.cse *.jump *.rtl *.tree *.loop
 	-rm -f core
 
+# Get rid of every file that's generated from some other file (except INSTALL).
+realclean: clean
+	-rm -f cpp.aux cpp.cps cpp.fns cpp.info cpp.kys cpp.pgs cpp.tps cpp.vrs
+	-rm -f c-parse.tab.c c-parse.output errs gnulib cexp.c TAGS 
+	-rm -f internals internals-* internals.?? internals.??s
+
 # Copy the files into directories where they will be run.
 install: all
 	install cc1 $(libdir)/gcc-cc1
@@ -342,7 +351,8 @@ install: all
 	install cpp $(libdir)/gcc-cpp
 	install gcc $(bindir)
 	-mkdir $(libdir)/gcc-include
-	cp stddef.h stdarg.h assert.h varargs.h limits.h $(libdir)/gcc-include
+	cd $(libdir)/gcc-include; rm -f $(USER_H)
+	cp $(USER_H) $(libdir)/gcc-include
 
 # do make -f ../gcc/Makefile maketest DIR=../gcc
 # in the intended test directory to make it a suitable test directory.
@@ -363,19 +373,24 @@ maketest:
 stage1: force
 	-mkdir stage1
 	mv $(STAGESTUFF) $(STAGE_GCC) stage1
-	ln gnulib stage1
+	-rm stage1/gnulib
+	-ln gnulib stage1 || cp gnulib stage1
 
 stage2: force
 	-mkdir stage2
 	mv $(STAGESTUFF) $(STAGE_GCC) stage2
-	ln gnulib stage2
+	-rm stage2/gnulib
+	-ln gnulib stage2 || cp gnulib stage2
 
 stage3: force
 	-mkdir stage3
 	mv $(STAGESTUFF) $(STAGE_GCC) stage3
-	ln gnulib stage3
+	-rm stage3/gnulib
+	-ln gnulib stage3 || cp gnulib stage3
 
-.PHONY: stage1 stage2 stage3 #In GNU Make, ignore whether `stage*' exists.
+#In GNU Make, ignore whether `stage*' exists.
+.PHONY: stage1 stage2 stage3 clean realclean
+
 force:
 
 TAGS: force

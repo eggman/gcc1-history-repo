@@ -1163,6 +1163,9 @@ expand_mult (mode, op0, op1, target, unsignedp)
       int negate = INTVAL (op1) < 0;
       int absval = INTVAL (op1) * (negate ? -1 : 1);
 
+      if (absval == 1)
+	return negate ? negate_rtx (op0) : op0;
+
       /* Is multiplier a power of 2, or minus that?  */
       foo = exact_log2 (absval);
       if (foo >= 0)

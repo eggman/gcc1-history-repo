@@ -298,7 +298,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define PUSH_ROUNDING(BYTES) (BYTES)
 
 /* Offset of first parameter from the argument pointer register value.  */
-#define FIRST_PARM_OFFSET 4
+#define FIRST_PARM_OFFSET(FNDECL) 4
 
 /* Value is 1 if returning from a function call automatically
    pops the arguments described by the number-of-args field in the call.

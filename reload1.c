@@ -144,6 +144,10 @@ static char regs_explicitly_used[FIRST_PSEUDO_REGISTER];
 
 static char spill_indirect_ok;
 
+/* Record the stack slot for each spilled hard register.  */
+
+static rtx spill_stack_slot[FIRST_PSEUDO_REGISTER];
+
 /* Indexed by basic block number, nonzero if there is any need
    for a spill register in that basic block.
    The pointer is 0 if we did stupid allocation and don't know
@@ -212,6 +216,9 @@ reload (first, global, dumpfile)
      pseudo regs have been allocated.  */
   bcopy (regs_ever_live, regs_explicitly_used, sizeof regs_ever_live);
 
+  /* We don't have a stack slot for any spill reg yet.  */
+  bzero (spill_stack_slot, sizeof spill_stack_slot);
+
   /* Compute which hard registers are now in use
      as homes for pseudo registers.
      This is done here rather than (eg) in global_alloc
@@ -277,7 +284,7 @@ reload (first, global, dumpfile)
      Assign stack slots to the pseudos that lack hard regs or equivalents.  */
 
   for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
-    alter_reg (i);
+    alter_reg (i, -1);
 
 #ifndef REGISTER_CONSTRAINTS
   /* If all the pseudo regs have hard regs,
@@ -1014,9 +1021,18 @@ alter_frame_pointer_addresses (x, depth)
   return x;
 }
 
+/* Modify the home of pseudo-reg I.
+   The new home is present in reg_renumber[I].
+
+   FROM_REG may be the hard reg that the pseudo-reg is being spilled from;
+   or it may be -1, meaning there is none or it is not relevant.
+   This is used so that all pseudos spilled from a given hard reg
+   can share one stack slot.  */
+
 static void
-alter_reg (i)
+alter_reg (i, from_reg)
      register int i;
+     int from_reg;
 {
   /* If the reg got changed to a MEM at rtl-generation time,
      ignore it.  */
@@ -1045,9 +1061,19 @@ alter_reg (i)
       && reg_equiv_constant[i] == 0
       && reg_equiv_mem[i] == 0)
     {
-      register rtx x = assign_stack_local (GET_MODE (regno_reg_rtx[i]),
-					   PSEUDO_REGNO_BYTES (i));
-      register rtx addr = XEXP (x, 0);
+      register rtx x, addr;
+
+      if (from_reg == -1)
+	x = assign_stack_local (GET_MODE (regno_reg_rtx[i]),
+				PSEUDO_REGNO_BYTES (i));
+      else if (spill_stack_slot[from_reg] != 0)
+	x = spill_stack_slot[from_reg];
+      else
+	spill_stack_slot[from_reg] = x
+	  = assign_stack_local (GET_MODE (regno_reg_rtx[i]),
+				PSEUDO_REGNO_BYTES (i));
+      addr = XEXP (x, 0);
+
       /* If the stack slot is directly addressable, substitute
 	 the MEM we just got directly for the old REG.
 	 Otherwise, record the address; we will generate hairy code
@@ -1128,7 +1154,7 @@ spill_hard_reg (regno, global, dumpfile)
 		spill_hard_reg (FRAME_POINTER_REGNUM, global, dumpfile);
 	      }
 	  }
-	alter_reg (i);
+	alter_reg (i, regno);
 	if (dumpfile)
 	  {
 	    if (reg_renumber[i] == -1)
@@ -1256,6 +1282,7 @@ reload_as_needed (first, live_known)
 {
   register rtx insn;
   register int i;
+  int this_block = 0;
 
   /* Often (MEM (REG n)) is still valid even if (REG n) is put on the stack.
      Set spill_indirect_ok if so.  */
@@ -1277,6 +1304,12 @@ reload_as_needed (first, live_known)
   for (insn = first; insn;)
     {
       register rtx next = NEXT_INSN (insn);
+
+      /* Notice when we move to a new basic block.  */
+      if (basic_block_needs && this_block + 1 < n_basic_blocks
+	  && insn == basic_block_head[this_block+1])
+	++this_block;
+
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	  || GET_CODE (insn) == CALL_INSN)
 	{
@@ -1291,6 +1324,22 @@ reload_as_needed (first, live_known)
 
 	  if (n_reloads > 0)
 	    {
+	      /* If this block has not had spilling done,
+		 deactivate any optional reloads lest they
+		 try to use a spill-reg which isn't available here.
+		 If we have any non-optionals that need a spill reg, abort.  */
+	      if (basic_block_needs != 0
+		  && basic_block_needs[this_block] == 0)
+		{
+		  for (i = 0; i < n_reloads; i++)
+		    {
+		      if (reload_optional[i])
+			reload_in[i] = reload_out[i] = 0;
+		      else if (reload_reg_rtx[i] == 0)
+			abort ();
+		    }
+		}
+
 	      /* Now compute which reload regs to reload them into.  Perhaps
 		 reusing reload regs from previous insns, or else output
 		 load insns to reload them.  Maybe output store insns too.
@@ -1473,14 +1522,14 @@ choose_reload_targets (insn)
       register rtx new;
       enum machine_mode reload_mode = reload_inmode[r];
 
+      /* Ignore reloads that got marked inoperative.  */
+      if (reload_out[r] == 0 && reload_in[r] == 0)
+	continue;
+
       if (GET_MODE_SIZE (reload_outmode[r]) > GET_MODE_SIZE (reload_mode))
 	reload_mode = reload_outmode[r];
       if (reload_strict_low[r])
 	reload_mode = GET_MODE (SUBREG_REG (reload_out[r]));
-
-      /* Ignore reloads that got marked inoperative.  */
-      if (reload_out[r] == 0 && reload_in[r] == 0)
-	continue;
 
       /* No need to find a reload-register if find_reloads chose one.  */
 
@@ -1884,7 +1933,7 @@ choose_reload_targets (insn)
 		      && reg_n_sets[REGNO (old)] == 1)
 		    {
 		      reg_renumber[REGNO (old)] = REGNO (reload_reg_rtx[j]);
-		      alter_reg (REGNO (old));
+		      alter_reg (REGNO (old), -1);
 		    }
 		}
 	      else
@@ -2054,7 +2103,7 @@ choose_reload_targets (insn)
 		  /* For the debugging info,
 		     say the pseudo lives in this reload reg.  */
 		  reg_renumber[REGNO (old)] = REGNO (reload_reg_rtx[j]);
-		  alter_reg (REGNO (old));
+		  alter_reg (REGNO (old), -1);
 		still_used: ;
 		}
 	    }

@@ -93,6 +93,10 @@ enum reg_class reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
 
 enum reg_class reg_class_subunion[N_REG_CLASSES][N_REG_CLASSES];
 
+/* Array containing all of the register names */
+
+char *reg_names[] = REGISTER_NAMES;
+
 
 /* Function called only once to initialize the above data on reg usage.
    Once this is done, various switches may override.  */
@@ -218,7 +222,6 @@ fix_register (name, fixed, call_used)
      char *name;
      int fixed, call_used;
 {
-  static char *reg_names[] = REGISTER_NAMES;
   int i;
 
   /* Decode the name and update the primary form of
@@ -764,6 +767,12 @@ short *regno_first_uid;
 
 short *regno_last_uid;
 
+/* Maximum number of parallel sets and clobbers in any insn in this fn.
+   Always at least 3, since the combiner could put that many togetherm
+   and we want this to remain correct for all the remaining passes.  */
+
+int max_parallel;
+
 void reg_scan_mark_refs ();
 
 void
@@ -782,11 +791,18 @@ reg_scan (f, nregs, repeat)
     regno_last_uid = (short *) oballoc (nregs * sizeof (short));
   bzero (regno_last_uid, nregs * sizeof (short));
 
+  max_parallel = 3;
+
   for (insn = f; insn; insn = NEXT_INSN (insn))
     if (GET_CODE (insn) == INSN
 	|| GET_CODE (insn) == CALL_INSN
 	|| GET_CODE (insn) == JUMP_INSN)
-      reg_scan_mark_refs (PATTERN (insn), INSN_UID (insn));
+      {
+	if (GET_CODE (PATTERN (insn)) == PARALLEL
+	    && XVECLEN (PATTERN (insn), 0) > max_parallel)
+	  max_parallel = XVECLEN (PATTERN (insn), 0);
+	reg_scan_mark_refs (PATTERN (insn), INSN_UID (insn));
+      }
 }
 
 void

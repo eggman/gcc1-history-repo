@@ -96,13 +96,13 @@ extern int target_flags;
 #define POINTER_SIZE 32
 
 /* Allocation boundary (in *bits*) for storing pointers in memory.  */
-#define POINTER_BOUNDARY 16
+#define POINTER_BOUNDARY 32
 
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
 #define PARM_BOUNDARY 32
 
 /* Allocation boundary (in *bits*) for the code of a function.  */
-#define FUNCTION_BOUNDARY 16
+#define FUNCTION_BOUNDARY 32
 
 /* Alignment of field after `int : 0' in a structure. */
 
@@ -334,11 +334,18 @@ enum reg_class {
    In general this is just CLASS; but on some machines
    in some cases it is preferable to use a more restrictive class.
    On the 80386 series, we prevent floating constants from being
-   reloaded into floating registers (since no move-insn can do that).  */
-#define PREFERRED_RELOAD_CLASS(X,CLASS)		\
-  (GET_CODE (X) == CONST_DOUBLE			\
+   reloaded into floating registers (since no move-insn can do that)
+   and we ensure that QImodes aren't reloaded into the esi or edi reg.  */
+
+#define PREFERRED_RELOAD_CLASS(X,CLASS)			\
+  (GET_CODE (X) == CONST_DOUBLE				\
    ? ((CLASS) == GENERAL_REGS || (CLASS) == ALL_REGS	\
-      ? GENERAL_REGS : NO_REGS)			\
+      ? GENERAL_REGS : NO_REGS)				\
+   : GET_MODE (X) == QImode				\
+   ? ((CLASS) == GENERAL_REGS || (CLASS) == ALL_REGS	\
+      ? Q_REGS						\
+      : (CLASS) == INDEX_REGS ? (abort (), INDEX_REGS)	\
+      : (CLASS))					\
    : (CLASS))
 
 /* Return the maximum number of consecutive registers
@@ -377,7 +384,7 @@ enum reg_class {
 #define PUSH_ROUNDING(BYTES) BYTES
 
 /* Offset of first parameter from the argument pointer register value.  */
-#define FIRST_PARM_OFFSET 8
+#define FIRST_PARM_OFFSET(FNDECL) 8
 
 /* Value is 1 if returning from a function call automatically
    pops the arguments described by the number-of-args field in the call.
@@ -783,6 +790,11 @@ enum reg_class {
    and some other value for true.  This is the value stored for true.  */
 
 #define STORE_FLAG_VALUE 1
+
+/* When a prototype says `char' or `short', really pass an `int'.
+   (The 386 can't easily push less than an int.)  */
+
+#define PROMOTE_PROTOTYPES
 
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction

@@ -75,6 +75,7 @@ actually doing the reloads, not when just counting them.
 #include "reload.h"
 #include "regs.h"
 #include "hard-reg-set.h"
+#include "flags.h"
 
 /* The variables set up by `find_reloads' are:
 
@@ -246,6 +247,16 @@ push_reload (in, out, inloc, outloc, class,
       if (GET_CODE (XEXP (in, 0)) == PRE_INC
 	  || GET_CODE (XEXP (in, 0)) == PRE_DEC)
 	out = gen_rtx (MEM, GET_MODE (out), XEXP (XEXP (out, 0), 0));
+    }
+
+  /* If we are reloading a (SUBREG (MEM ...) ...),
+     really reload just the MEM in the MEM's own mode.  */
+
+  if (in != 0 && GET_CODE (in) == SUBREG && GET_CODE (SUBREG_REG (in)) == MEM)
+    {
+      inloc = &SUBREG_REG (in);
+      in = *inloc;
+      inmode = GET_MODE (in);
     }
 
   /* If IN appears in OUT, we can't share any input-only reload for IN.  */
@@ -1206,12 +1217,15 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		break;
 
 	      case 'm':
+		if (force_reload)
+		  break;
 		if (GET_CODE (operand) == MEM
 		    || (GET_CODE (operand) == REG
 			&& REGNO (operand) >= FIRST_PSEUDO_REGISTER
 			&& reg_renumber[REGNO (operand)] < 0))
 		  win = 1;
-		if (GET_CODE (operand) == CONST_DOUBLE)
+		if (GET_CODE (operand) == CONST_DOUBLE
+		    || CONSTANT_P (operand))
 		  badop = 0;
 		break;
 
@@ -1231,6 +1245,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 
 		/* Memory operand whose address is offsettable.  */
 	      case 'o':
+		if (force_reload)
+		  break;
 		if ((GET_CODE (operand) == MEM
 		     && offsetable_memref_p (operand))
 		    || (GET_CODE (operand) == REG
@@ -1238,6 +1254,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 			&& reg_renumber[REGNO (operand)] < 0))
 		  win = 1;
 		if (GET_CODE (operand) == CONST_DOUBLE
+		    || CONSTANT_P (operand)
 		    || (GET_CODE (operand) == MEM
 			&& GET_CODE (XEXP (operand, 0)) != POST_INC
 			&& GET_CODE (XEXP (operand, 0)) != POST_DEC
@@ -1290,10 +1307,11 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		break;
 
 	      case 'g':
-		if (GENERAL_REGS == ALL_REGS
-		    || GET_CODE (operand) != REG
-		    || (REGNO (operand) >= FIRST_PSEUDO_REGISTER
-			&& reg_renumber[REGNO (operand)] < 0))
+		if (! force_reload
+		    && (GENERAL_REGS == ALL_REGS
+			|| GET_CODE (operand) != REG
+			|| (REGNO (operand) >= FIRST_PSEUDO_REGISTER
+			    && reg_renumber[REGNO (operand)] < 0)))
 		  win = 1;
 		/* Drop through into 'r' case */
 
@@ -1508,13 +1526,18 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
      into memory locations are here changed into memory references.  */
   for (i = 0; i < noperands; i++)
     if (! goal_alternative_win[i]
-	&& GET_CODE (recog_operand[i]) == CONST_DOUBLE
+	&& (GET_CODE (recog_operand[i]) == CONST_DOUBLE
+	    || CONSTANT_P (recog_operand[i]))
 	&& (PREFERRED_RELOAD_CLASS (recog_operand[i],
 				    (enum reg_class) goal_alternative[i])
 	    == NO_REGS))
       {
+	enum machine_mode mode = GET_MODE (recog_operand[i]);
 	*recog_operand_loc[i] = recog_operand[i]
-	  = force_const_double_mem (recog_operand[i]);
+	  = (GET_CODE (recog_operand[i]) == CONST_DOUBLE
+	     ? force_const_double_mem (recog_operand[i])
+	     : force_const_mem (mode != VOIDmode ? mode : SImode,
+				recog_operand[i]));
 	find_reloads_toplev (recog_operand[i]);
 	if (alternative_allows_memconst (constraints1[i], goal_alternative_number))
 	  goal_alternative_win[i] = 1;
@@ -2394,6 +2417,11 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
   else if (GET_CODE (goal) == MEM)
     {
       enum rtx_code code = GET_CODE (XEXP (goal, 0));
+      if (goal->volatil)
+	return 0;
+      if (flag_float_store
+	  && (GET_MODE (goal) == DFmode || GET_MODE (goal) == SFmode))
+	return 0;
       /* An address with side effects must be reexecuted.  */
       switch (code)
 	{

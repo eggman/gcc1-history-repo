@@ -2150,7 +2150,7 @@
 
 (define_insn "return"
   [(return)]
-  ""
+  "0"
   "ret 0")
 
 (define_insn "abssf2"

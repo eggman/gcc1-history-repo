@@ -84,6 +84,8 @@ static int fp_delta;
 /* Return a copy of an rtx (as needed), substituting pseudo-register,
    labels, and frame-pointer offsets as necessary.  */
 static rtx copy_rtx_and_substitute ();
+/* Variant, used for memory addresses that are not memory_address_p.  */
+static rtx copy_address ();
 
 static void copy_parm_decls ();
 static void copy_decl_tree ();
@@ -114,11 +116,11 @@ function_cannot_inline_p (fndecl)
      message about that if `inline' is specified.  This code
      it put in to catch the volunteers.  */
   if (last && TREE_VALUE (last) != void_type_node)
-    return "varargs function `%s' cannot be inline";
+    return "varargs function cannot be inline";
 
   /* If its not even close, don't even look.  */
   if (get_max_uid () > 2 * max_insns)
-    return "function `%s' too large to be inline";
+    return "function too large to be inline";
 
   /* Don't inline functions which have BLKmode arguments.
      Don't inline functions that take the address of
@@ -126,9 +128,9 @@ function_cannot_inline_p (fndecl)
   for (parms = DECL_ARGUMENTS (fndecl); parms; parms = TREE_CHAIN (parms))
     {
       if (TYPE_MODE (TREE_TYPE (parms)) == BLKmode)
-	return "function `%s' with large aggregate parameter cannot be inline";
+	return "function with large aggregate parameter cannot be inline";
       if (last == NULL_TREE && TREE_ADDRESSABLE (parms))
-	return "function `%s' without prototype uses address of parameter;\n cannot be inline";
+	return "no prototype, and parameter address used; cannot be inline";
     }
 
   if (get_max_uid () > max_insns)
@@ -143,7 +145,7 @@ function_cannot_inline_p (fndecl)
 	}
 
       if (ninsns >= max_insns)
-	return "function `%s' too large to be inline";
+	return "function too large to be inline";
     }
 
   return 0;
@@ -175,6 +177,9 @@ static tree *parmdecl_map;
 
 /* Keep track of first pseudo-register beyond those that are parms.  */
 static int max_parm_reg;
+
+/* Offset from arg ptr to the first parm of this inline function.  */
+static int first_parm_offset;
 
 /* On machines that perform a function return with a single
    instruction, such as the VAX, these return insns must be
@@ -291,7 +296,7 @@ save_for_inline (fndecl)
     reg_map[i] = (rtx)obstack_copy (&maybepermanent_obstack, regno_reg_rtx[i], len);
   bcopy (reg_map + FIRST_PSEUDO_REGISTER,
 	 regno_reg_rtx + FIRST_PSEUDO_REGISTER,
-	 (max_reg_num () - FIRST_PSEUDO_REGISTER) * sizeof (rtx));
+	 (max_reg - FIRST_PSEUDO_REGISTER) * sizeof (rtx));
 
   /* Likewise each label rtx must have a unique rtx as its copy.  */
 
@@ -313,6 +318,9 @@ save_for_inline (fndecl)
       switch (GET_CODE (insn))
 	{
 	case NOTE:
+	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
+	    continue;
+
 	  copy = rtx_alloc (NOTE);
 	  NOTE_SOURCE_FILE (copy) = NOTE_SOURCE_FILE (insn);
 	  NOTE_LINE_NUMBER (copy) = NOTE_LINE_NUMBER (insn);
@@ -514,11 +522,14 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   rtx *arg_vec;
   rtx return_label = 0;
   rtx follows_call = 0;
+  rtx this_struct_value_rtx = 0;
 
   if (max_regno < FIRST_PSEUDO_REGISTER)
     abort ();
 
   nargs = list_length (DECL_ARGUMENTS (fndecl));
+
+  first_parm_offset = FIRST_PARM_OFFSET (fndecl);
 
   /* We expect PARMS to have the right length; don't crash if not.  */
   if (list_length (parms) != nargs)
@@ -542,10 +553,9 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
     {
       tree arg = TREE_VALUE (actual); /* this has already been converted */
       enum machine_mode tmode = TYPE_MODE (TREE_TYPE (formal));
-      tree decl = formal;
       rtx copy;
 
-      emit_note (DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
+      emit_note (DECL_SOURCE_FILE (formal), DECL_SOURCE_LINE (formal));
 
       if (TREE_ADDRESSABLE (formal))
 	{
@@ -587,7 +597,17 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   /* Pass the function the address in which to return a structure value.  */
   if (structure_value_addr)
-    emit_move_insn (struct_value_rtx, structure_value_addr);
+    {
+      if (GET_CODE (struct_value_rtx) == MEM)
+	{
+	  this_struct_value_rtx = force_reg (Pmode, structure_value_addr);
+	}
+      else
+	{
+	  this_struct_value_rtx = struct_value_rtx;
+	  emit_move_insn (this_struct_value_rtx, structure_value_addr);
+	}
+    }
 
   /* Now prepare for copying the insns.
      Set up reg_map, parm_map and label_map saying how to translate
@@ -601,21 +621,63 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
       tree decl = DECL_ARGUMENTS (fndecl);
       tree last = tree_last (decl);
       int offset = FUNCTION_ARGS_SIZE (header);
+
       parm_map =
 	(rtx *)alloca ((offset / UNITS_PER_WORD) * sizeof (rtx));
       bzero (parm_map, (offset / UNITS_PER_WORD) * sizeof (rtx));
-      parm_map -= FIRST_PARM_OFFSET / UNITS_PER_WORD;
+      parm_map -= first_parm_offset / UNITS_PER_WORD;
 
       for (formal = decl, i = 0; formal; formal = TREE_CHAIN (formal), i++)
 	{
 	  /* Create an entry in PARM_MAP that says what pseudo register
 	     is associated with an address we might compute.  */
-	  parm_map[DECL_OFFSET (formal) / BITS_PER_WORD] = arg_vec[i];
+	  if (DECL_OFFSET (formal) >= 0)
+	    {
+	      /* This parameter has a home in the stack.  */
+	      parm_map[DECL_OFFSET (formal) / BITS_PER_WORD] = arg_vec[i];
+	    }
+	  else
+	    {
+	      /* Parameter that was passed in a register;
+		 does it have a home on the stack (as a local)?  */
+	      rtx frtx = DECL_RTL (formal);
+	      rtx offset = 0;
+	      if (GET_CODE (frtx) == MEM)
+		{
+		  frtx = XEXP (frtx, 0);
+		  if (GET_CODE (frtx) == PLUS)
+		    {
+		      if (XEXP (frtx, 0) == frame_pointer_rtx
+			  && GET_CODE (XEXP (frtx, 1)) == CONST_INT)
+			offset = XEXP (frtx, 1);
+		      else if (XEXP (frtx, 1) == frame_pointer_rtx
+			       && GET_CODE (XEXP (frtx, 0)) == CONST_INT)
+			offset = XEXP (frtx, 0);
+		    }
+		  if (offset)
+		    parm_map[INTVAL (offset) / UNITS_PER_WORD] = arg_vec[i];
+		  else abort ();
+		}
+	      else if (GET_CODE (frtx) != REG)
+		abort ();
+	    }
 	  /* Create an entry in REG_MAP that says what rtx is associated
 	     with a pseudo register from the function being inlined.  */
 	  if (GET_CODE (DECL_RTL (formal)) == REG)
 	    reg_map[REGNO (DECL_RTL (formal))] = arg_vec[i];
 	}
+
+      /* Make certain that we can map struct_value_{incoming_rtx,rtx},
+	 and map it.  If it is a hard register, it is mapped automagically.  */
+      if (GET_CODE (struct_value_incoming_rtx) == REG)
+	;
+      else if (GET_CODE (struct_value_incoming_rtx) == MEM
+	       && XEXP (XEXP (struct_value_incoming_rtx, 0), 0) == frame_pointer_rtx
+	       && GET_CODE (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) == CONST_INT)
+	parm_map[INTVAL (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) / UNITS_PER_WORD]
+	  = this_struct_value_rtx;
+      else
+	abort ();
     }
   else
     {
@@ -828,7 +890,10 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  break;
 
 	case NOTE:
-	  copy = emit_note (NOTE_SOURCE_FILE (insn), NOTE_LINE_NUMBER (insn));
+	  if (NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)
+	    copy = emit_note (NOTE_SOURCE_FILE (insn), NOTE_LINE_NUMBER (insn));
+	  else
+	    copy = 0;
 	  break;
 
 	default:
@@ -1074,7 +1139,7 @@ copy_rtx_and_substitute (orig)
 			copy_rtx_and_substitute (XEXP (orig, 1)));
 
       return temp;
-      
+
     case MEM:
       /* Take care of easiest case here.  */
       copy = XEXP (orig, 0);
@@ -1092,6 +1157,11 @@ copy_rtx_and_substitute (orig)
       if (GET_CODE (copy) == PRE_INC && XEXP (copy, 0) == stack_pointer_rtx)
 	return orig;
 #endif
+
+      /* If this is some other sort of address that isn't generally valid,
+	 break out all the registers referred to.  */
+      if (! memory_address_p (mode, copy))
+	return gen_rtx (MEM, mode, copy_address (copy));
 
       if (GET_CODE (copy) == PLUS)
 	{
@@ -1112,8 +1182,7 @@ copy_rtx_and_substitute (orig)
 		{
 		  int c = INTVAL (copy);
 
-		  if (reg == arg_pointer_rtx
-		      && c >= FIRST_PARM_OFFSET)
+		  if (reg == arg_pointer_rtx && c >= first_parm_offset)
 		    {
 		      copy = parm_map[c / UNITS_PER_WORD];
 
@@ -1181,6 +1250,98 @@ copy_rtx_and_substitute (orig)
 
     case RETURN:
       abort ();
+    }
+
+  copy = rtx_alloc (code);
+  PUT_MODE (copy, mode);
+  copy->in_struct = orig->in_struct;
+  copy->volatil = orig->volatil;
+  copy->unchanging = orig->unchanging;
+
+  format_ptr = GET_RTX_FORMAT (GET_CODE (copy));
+
+  for (i = 0; i < GET_RTX_LENGTH (GET_CODE (copy)); i++)
+    {
+      rtx new;
+
+      switch (*format_ptr++)
+	{
+	case '0':
+	  break;
+
+	case 'e':
+	  XEXP (copy, i) = copy_rtx_and_substitute (XEXP (orig, i));
+	  break;
+
+	case 'u':
+	  /* Change any references to old-insns to point to the
+	     corresponding copied insns.  */
+	  return insn_map[INSN_UID (XEXP (orig, i))];
+
+	case 'E':
+	  XVEC (copy, i) = XVEC (orig, i);
+	  if (XVEC (orig, i) != NULL && XVECLEN (orig, i) != 0)
+	    {
+	      XVEC (copy, i) = rtvec_alloc (XVECLEN (orig, i));
+	      for (j = 0; j < XVECLEN (copy, i); j++)
+		XVECEXP (copy, i, j) = copy_rtx_and_substitute (XVECEXP (orig, i, j));
+	    }
+	  break;
+
+	case 'i':
+	  XINT (copy, i) = XINT (orig, i);
+	  break;
+
+	case 's':
+	  XSTR (copy, i) = XSTR (orig, i);
+	  break;
+
+	default:
+	  abort ();
+	}
+    }
+  return copy;
+}
+
+/* Like copy_rtx_and_substitute but produces different output, suitable
+   for an ideosyncractic address that isn't memory_address_p.
+   The output resembles the input except that REGs and MEMs are replaced
+   with new psuedo registers.  All the "real work" is done in separate
+   insns which set up the values of these new registers.  */
+
+static rtx
+copy_address (orig)
+     register rtx orig;
+{
+  register rtx copy, temp;
+  register int i, j;
+  register RTX_CODE code;
+  register enum machine_mode mode;
+  register char *format_ptr;
+  int regno;
+
+  if (orig == 0)
+    return 0;
+
+  code = GET_CODE (orig);
+  mode = GET_MODE (orig);
+
+  switch (code)
+    {
+    case REG:
+    case MEM:
+      return copy_to_reg (copy_rtx_and_substitute (code));
+
+    case CODE_LABEL:
+    case LABEL_REF:
+      return copy_rtx_and_substitute (code);
+
+    case PC:
+    case CC0:
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case SYMBOL_REF:
+      return orig;
     }
 
   copy = rtx_alloc (code);

@@ -103,7 +103,9 @@ plus_constant (x, c)
   if (c != 0)
     x = gen_rtx (PLUS, mode, x, gen_rtx (CONST_INT, VOIDmode, c));
 
-  if (all_constant)
+  if (GET_CODE (x) == SYMBOL_REF || GET_CODE (x) == LABEL_REF)
+    return x;
+  else if (all_constant)
     return gen_rtx (CONST, mode, x);
   else
     return x;

@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 17 August 1988
+@center last updated 6 September 1988
 @sp 1
-@center for version 1.26
+@center for version 1.27
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -430,14 +430,15 @@ to @code{unsigned int}.
 Out-of-range floating point literals are not an error.
 
 @item
-In the preprocessor, comments convert to nothing at all, rather than to
-a space.  This allows traditional token concatenation.
+In the preprocessor, comments convert to nothing at all, rather than
+to a space.  This allows traditional token concatenation.
 
 @item
-In the preprocessor, single and double quote characters are ignored
-when scanning macro definitions, so that macro arguments can be replaced
-even within a string or character constant.  Quote characters are also
-ignored when skipping text inside a failing conditional directive.
+In the preprocessor, macro arguments are recognized within string
+constants in a macro definition (and their values are stringified,
+though without additional quote marks, when they appear in such a
+context).  The preprocessor always considers a string constant to end
+at a newline.
 @end itemize
 
 @item -O
@@ -587,6 +588,15 @@ Warn whenever a comment-start sequence @samp{/*} appears in a comment.
 @item -Wall
 All of the above @samp{-W} options combined.
 
+@item -Wwrite-strings
+Give string constants the type @code{const char[@var{length}]} so that
+copying the address of one into a non-@code{const} @code{char *}
+pointer will get a warning.  These warnings will help you find at
+compile time code that can try to write into a string constant, but
+only if you have been very careful about using @code{const} in
+declarations and prototypes.  Otherwise, it will just be a nuisance;
+this is why we did not make @samp{-Wall} request these warnings.
+
 @item -p
 Generate extra code to write profile information suitable for the
 analysis program @code{prof}.
@@ -633,15 +643,20 @@ description:
 
 @table @samp
 @item -m68020
+@itemx -mc68020
 Generate output for a 68020 (rather than a 68000).  This is the
 default if you use the unmodified sources.
 
 @item -m68000
+@item -mc68000
 Generate output for a 68000 (rather than a 68020).
 
 @item -m68881
 Generate output containing 68881 instructions for floating point.
 This is the default if you use the unmodified sources.
+
+@item -mfpa
+Generate output containing Sun FPA instructions for floating point.
 
 @item -msoft-float
 Generate output containing library calls for floating point.
@@ -1149,6 +1164,11 @@ program looks for them.  It also copies the driver program @file{gcc}
 into the directory @file{/usr/local}, so that it appears in typical
 execution search paths.@refill
 
+@strong{Warning: there is a bug in @code{alloca} in the Sun library.
+To avoid this bug, install the binaries of GNU CC that were compiled
+by GNU CC.  They use @code{alloca} as a built-in function and never
+the one in the library.}
+
 @strong{Warning: the GNU CPP may not work for @file{ioctl.h},
 @file{ttychars.h} and other system header files unless the
 @samp{-traditional} option is used.}  The bug is in the header files:
@@ -1375,6 +1395,12 @@ flag cannot alter it.
 @item
 PCC allows typedef names to be used as function parameters.  The
 difficulty described immediately above applies here too.
+
+@item
+PCC allows whitespace in the middle of compound assignment operators
+such as @samp{+=}.  GNU CC, following the ANSI standard, does not
+allow this.  The difficulty described immediately above applies here
+too.
 
 @item
 When compiling functions that return @code{float}, PCC converts it to
@@ -1995,7 +2021,10 @@ operands in any instruction pattern in the machine description.
 Output operand expressions must be lvalues; the compiler can check this.
 The input operands need not be lvalues.  The compiler cannot check whether
 the operands have data types that are reasonable for the instruction being
-executed.
+executed.  It does not parse the assembler instruction template and does
+not know what it means, or whether it is valid assembler input.  The
+extended @code{asm} feature is most often used for machine instructions
+that the compiler itself does not know exist.
 
 If there are no output operands, and there are input operands, then you
 should write two colons in a row where the output operands would go.
@@ -2020,12 +2049,40 @@ asm ("combine %2,%0" : "=r" (foo) : "0" (foo), "g" (bar));
 The constraint @samp{"0"} for operand 1 says that it must occupy the same
 location as operand 0.
 
+Only a digit in the constraint can guarantee that one operand will be in
+the same place as another.  The mere fact that @code{foo} is the value of
+both operands is not enough to guarantee that they will be in the same
+place in the generated assembler code.  The following would not work:
+
+@example
+asm ("combine %2,%0" : "=r" (foo) : "r" (foo), "g" (bar));
+@end example
+
+Various optimizations or reloading could cause operands 0 and 1 to be in
+different registers; GNU CC knows no reason not to do so.  For example, the
+compiler might find a copy of the value of @code{foo} in one register and
+use it for operand 1, but generate the output operand 0 in a different
+register (copying it afterward to @code{foo}'s own address).  Of course,
+since the register for operand 1 is not even mentioned in the assembler
+code, the result will not work, but GNU CC can't tell that.
+
 Unless an output operand has the @samp{&} constraint modifier, GNU CC may
 allocate it in the same register as an unrelated input operand, on the
 assumption that the inputs are consumed before the outputs are produced.
 This assumption may be false if the assembler code actually consists of
 more than one instruction.  In such a case, use @samp{&} for each output
 operand that may not overlap an input.  @xref{Modifiers}.
+
+Some instructions clobber specific hard registers.  To describe this,
+write a third colon after the input operands, followed by the names of
+the clobbered hard registers (given as strings).  For example, on the vax,
+
+@example
+asm volatile ("movc3 %0,%1,%2"
+              : /* no outputs */
+              : "g" (from), "g" (to), "g" (count)
+              : "r0", "r1", "r2", "r3", "r4", "r5");
+@end example
 
 Usually the most convenient way to use these @code{asm} instructions is to
 encapsulate them in macros that look like functions.  For example,
@@ -3654,8 +3711,10 @@ used.
 
 @item (call @var{function} @var{nargs})
 Represents a function call.  @var{function} is a @samp{mem} expression
-whose address is the address of the function to be called.  @var{nargs}
-is an expression representing the number of words of argument.
+whose address is the address of the function to be called.
+@var{nargs} is an expression which can be used for two purposes: on
+some machines it represents the number of bytes of stack argument; on
+others, it represents the number of argument registers.
 
 Each machine has a standard machine mode which @var{function} must
 have.  The machine description defines macro @code{FUNCTION_MODE} to
@@ -3713,6 +3772,15 @@ says unambiguously that the values of hard register 1 and the memory
 location addressed by it are interchanged.  In both places where
 @code{(reg:SI 1)} appears as a memory address it refers to the value
 in register 1 @emph{before} the execution of the instruction.
+
+Peephole optimization, which takes place in the last jump-optimization
+pass, can produce insns whose patterns consist of a @samp{parallel}
+whose elements are the operands needed to output the resulting
+assembler code--often @samp{reg}, @samp{mem} or constant expressions.
+This would not be well-formed RTL at any other stage in compilation,
+but it is ok then because no further optimization remains to be done.
+However, the definition of the macro @code{NOTICE_UPDATE_CC} may need
+to deal with such insns.
 
 @item (sequence [@var{insns} @dots{}])
 Represents a sequence of insns.  Each of the @var{insns} that appears
@@ -4972,6 +5040,12 @@ means of constraints requiring operands 1 and 0 to be the same location.
 @item @samp{sub@var{m}3}, @samp{mul@var{m}3}, @samp{umul@var{m}3}, @samp{div@var{m}3}, @samp{udiv@var{m}3}, @samp{mod@var{m}3}, @samp{umod@var{m}3}, @samp{and@var{m}3}, @samp{ior@var{m}3}, @samp{xor@var{m}3}
 Similar, for other arithmetic operations.
 
+There are special considerations for register classes for logical-and
+instructions, affecting also the macro @code{PREFERRED_RELOAD_CLASS}.
+They apply not only to the patterns with these standard names, but to
+any patterns that will match such an instruction.  @xref{Register
+Classes}.
+
 @item @samp{andcb@var{m}3}
 Bitwise logical-and operand 1 with the complement of operand 2
 and store the result in operand 0.
@@ -5016,6 +5090,12 @@ Logical and arithmetic left shift are the same.  Machines that do not
 allow negative shift counts often have only one instruction for
 shifting left.  On such machines, you should define a pattern named
 @samp{ashl@var{m}3} and leave @samp{lshl@var{m}3} undefined.
+
+There are special considerations for register classes for shift
+instructions, affecting also the macro @code{PREFERRED_RELOAD_CLASS}.
+They apply not only to the patterns with these standard names, but to
+any patterns that will match such an instruction.  @xref{Register
+Classes}.
 
 @item @samp{neg@var{m}2}
 Negate operand 1 and store the result in operand 0.
@@ -5166,7 +5246,10 @@ function to call; operand 1 is the number of bytes of arguments pushed
 (in mode @code{SImode}, except it is normally a @samp{const_int});
 operand 2 is the number of registers used as operands.
 
-On most machines, operand 2 is not actually stored into the RTL pattern.
+On most machines, operand 2 is not actually stored into the RTL
+pattern.  It is supplied for the sake of some RISC machines which need
+to put this information into the assembler code; they can put it in
+the RTL instead of operand 1.
 
 Operand 0 should be a @samp{mem} RTX whose address is the address of
 the function.
@@ -6223,6 +6306,16 @@ classes: for each class, which classes contain it and which ones are
 contained in it; for each pair of classes, the largest class contained
 in their union.
 
+Register classes used for input-operands of bitwise-and or shift
+instructions have a special requirement: each such class must have, for
+each fixed-point machine mode, a subclass whose registers can transfer that
+mode to or from memory.  For example, on some machines, the operations for
+single-byte values (@code{QImode}) are limited to certain registers.  When
+this is so, each register class that is used in a bitwise-and or shift
+instruction must have a subclass consisting of registers from which
+single-byte values can be loaded or stored.  This is so that
+@code{PREFERRED_RELOAD_CLASS} can always have a possible value to return.
+
 @table @code
 @item enum reg_class
 An enumeral type that must be defined with all the register class names
@@ -6305,25 +6398,42 @@ only if neither labeling works.
 A C expression that places additional restrictions on the register class
 to use when it is necessary to copy value @var{x} into a register in class
 @var{class}.  The value is a register class; perhaps @var{class}, or perhaps
-another, smaller class.  @var{class} is always safe as a value.  In fact,
-the definition
+another, smaller class.  On many machines, the definition
 
 @example
 #define PREFERRED_RELOAD_CLASS(X,CLASS) CLASS
 @end example
 
 @noindent
-is always safe.  However, sometimes returning a more restrictive class
-makes better code.  For example, on the 68000, when @var{x} is an
-integer constant that is in range for a @samp{moveq} instruction,
-the value of this macro is always @code{DATA_REGS} as long as
-@var{class} includes the data registers.  Requiring a data register
-guarantees that a @samp{moveq} will be used.
+is safe.
+
+Sometimes returning a more restrictive class makes better code.  For
+example, on the 68000, when @var{x} is an integer constant that is in range
+for a @samp{moveq} instruction, the value of this macro is always
+@code{DATA_REGS} as long as @var{class} includes the data registers.
+Requiring a data register guarantees that a @samp{moveq} will be used.
 
 If @var{x} is a @samp{const_double}, by returning @code{NO_REGS}
 you can force @var{x} into a memory constant.  This is useful on
 certain machines where immediate floating values cannot be loaded into
 certain kinds of registers.
+
+In a shift instruction or a bitwise-and instruction, the mode of @var{x},
+the value being reloaded, may not be the same as the mode of the
+instruction's operand.  (They will both be fixed-point modes, however.)  In
+such a case, @var{class} may not be a safe value to return.  @var{class} is
+certainly valid for the instruction, but it may not be valid for reloading
+@var{x}.  This problem can occur on machines such as the 68000 and 80386
+where some registers can handle full-word values but cannot handle
+single-byte values.
+
+On such machines, this macro must examine the mode of @var{x} and return a
+subclass of @var{class} which can handle loads and stores of that mode.  On
+the 68000, where address registers cannot handle @code{QImode}, if @var{x}
+has @code{QImode} then you must return @code{DATA_REGS}.  If @var{class} is
+@code{ADDR_REGS}, then there is no correct value to return; but the shift
+and bitwise-and instructions don't use @code{ADDR_REGS}, so this fatal case
+never arises.
 
 @item CLASS_MAX_NREGS (@var{class}, @var{mode})
 A C expression for the maximum number of consecutive registers
@@ -6406,8 +6516,11 @@ alignment.  Then the definition should be
 #define PUSH_ROUNDING(BYTES) (((BYTES) + 1) & ~1)
 @end example
 
-@item FIRST_PARM_OFFSET
-Offset from the argument pointer register to the first argument's address.
+@item FIRST_PARM_OFFSET (@var{fundecl})
+Offset from the argument pointer register to the first argument's
+address.  On some machines it may depend on the data type of the
+function.  (In the next version of GNU CC, the argument will be
+changed to the function data type rather than its declaration.)
 
 @item RETURN_POPS_ARGS (@var{funtype})
 A C expression that should be 1 if a function pops its own arguments
@@ -6656,6 +6769,13 @@ On some machines, there is a single instruction that does all the work
 of returning from the function.  On these machines, give that
 instruction the name @samp{return} and do not define the macro
 @code{FUNCTION_EPILOGUE} at all.
+
+Do not define a pattern named @samp{return} if you want the
+@code{FUNCTION_EPILOGUE} to be used.  If you want the target switches
+to control whether return instructions or epilogues are used, define a
+@samp{return} pattern with a validity condition that tests the target
+switches appropriately.  If the @samp{return} pattern's validity
+condition is false, epilogues will be used.
 
 On machines where functions may or may not have frame-pointers, the
 function exit code must vary accordingly.  Sometimes the code for
@@ -7024,6 +7144,14 @@ this, it will no longer be true that it reflects the contents of
 @samp{a4@@(102)}.  Therefore, @code{NOTICE_UPDATE_CC} must alter
 @code{cc_status} in this case to say that nothing is known about the
 condition code value.
+
+The definition of @code{NOTICE_UPDATE_CC} must be prepared to deal
+with the results of peephole optimization: insns whose patterns are
+@samp{parallel} RTXs containing various @samp{reg}, @samp{mem} or
+constants which are just the operands.  The RTL structure of these
+insns is not sufficient to indicate what the insns actually do.  What
+@code{NOTICE_UPDATE_CC} should do when it sees one is just to run
+@code{CC_STATUS_INIT}.
 @end table
 
 @node Assembler Format,, Condition Code, Machine Macros

@@ -69,9 +69,11 @@ extern int target_flags;
 
 #define TARGET_SWITCHES  \
   { { "68020", 5},				\
+    { "c68020", 5},				\
     { "68881", 2},				\
     { "bitfield", 4},				\
     { "68000", -5},				\
+    { "c68000", -5},				\
     { "soft-float", -0102},			\
     { "nobitfield", -4},			\
     { "rtd", 8},				\
@@ -420,12 +422,17 @@ extern enum reg_class regno_reg_class[];
    In general this is just CLASS; but on some machines
    in some cases it is preferable to use a more restrictive class.
    On the 68000 series, use a data reg if possible when the
-   value is a constant in the range where moveq could be used.  */
+   value is a constant in the range where moveq could be used
+   and we ensure that QImodes are reloaded into data regs.  */
+
 #define PREFERRED_RELOAD_CLASS(X,CLASS)  \
-  ((GET_CODE (X) == CONST_INT				\
+  ((GET_CODE (X) == CONST_INT			\
     && (unsigned) (INTVAL (X) + 0x80) < 0x100	\
-    && (CLASS) != ADDR_REGS)				\
-   ? DATA_REGS : (CLASS))
+    && (CLASS) != ADDR_REGS)			\
+   ? DATA_REGS					\
+   : GET_MODE (X) == QImode			\
+   ? DATA_REGS					\
+   : (CLASS))
 
 /* Return the maximum number of consecutive registers
    needed to represent mode MODE in a register of class CLASS.  */
@@ -459,7 +466,7 @@ extern enum reg_class regno_reg_class[];
 #define PUSH_ROUNDING(BYTES) (((BYTES) + 1) & ~1)
 
 /* Offset of first parameter from the argument pointer register value.  */
-#define FIRST_PARM_OFFSET 8
+#define FIRST_PARM_OFFSET(FNDECL) 8
 
 /* Value is 1 if returning from a function call automatically
    pops the arguments described by the number-of-args field in the call.

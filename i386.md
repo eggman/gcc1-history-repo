@@ -318,8 +318,8 @@
 }")
 
 (define_insn "movqi"
-  [(set (match_operand:QI 0 "general_operand" "=q,x,m")
-	(match_operand:QI 1 "general_operand" "g,q,qi"))]
+  [(set (match_operand:QI 0 "general_operand" "=q,*r,m")
+	(match_operand:QI 1 "general_operand" "*g,q,qi"))]
   ""
   "*
 {
@@ -412,7 +412,7 @@
 }")
 
 (define_insn "movdf"
-  [(set (match_operand:DF 0 "general_operand" "=rmf,rmf,!rm")
+  [(set (match_operand:DF 0 "general_operand" "=&rmf,rmf,!rm")
 	(match_operand:DF 1 "general_operand" "m,fr,F"))]
   ""
   "*
@@ -427,7 +427,7 @@
 }")
 
 (define_insn "movdi"
-  [(set (match_operand:DI 0 "general_operand" "=r,rm")
+  [(set (match_operand:DI 0 "general_operand" "=&r,rm")
 	(match_operand:DI 1 "general_operand" "m,ri"))]
   ""
   "*
@@ -560,7 +560,7 @@
 	(sign_extend:HI
 	 (match_operand:QI 1 "general_operand" "qm")))]
   ""
-  "movs%B%L %1,%0")
+  "movs%B%W %1,%0")
 
 (define_insn "extendqisi2"
   [(set (match_operand:SI 0 "general_operand" "=r")
@@ -1686,7 +1686,7 @@
 
 (define_insn "return"
   [(return)]
-  ""
+  "0"
   "ret")
 
 

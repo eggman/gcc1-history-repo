@@ -20,10 +20,6 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
-/* Note that some other tm- files include this one and then override
-   many of the definitions that relate to assembler syntax.  */
-
-
 /* Names to predefine in the preprocessor for this target machine.  */
 
 #define CPP_PREDEFINES "-Dsparc -Dsun -Dunix"
@@ -43,9 +39,16 @@ extern int target_flags;
 /* Nonzero if we should generate code to use the fpu.  */
 #define TARGET_FPU (target_flags & 1)
 
+/* Nonzero if we should use FUNCTION_EPILOGUE.  Otherwise, we
+   use fast return insns, but lose some generality.  */
+#define TARGET_EPILOGUE (target_flags & 2)
+
 /* Nonzero if we expect to be passed through the Sun
    optimizing assembler.  This requires us to generate
-   code which we otherwise would not (for example, pointers-to-functions). */
+   code which we otherwise would not.  For example,
+   calls via pointers-to-functions must be output
+   specially because Sun assemble does not do proper flow
+   analysis for this case. */
 #define TARGET_SUN_ASM (target_flags & 4)
 
 /* Macro to define tables used to set the flags.
@@ -57,10 +60,12 @@ extern int target_flags;
 #define TARGET_SWITCHES  \
   { {"fpu", 1},			\
     {"soft-float", -1},		\
+    {"epilogue", 2},		\
+    {"no-epilogue", -2},	\
     {"sun-asm", 4},		\
     { "", TARGET_DEFAULT}}
 
-#define TARGET_DEFAULT 1
+#define TARGET_DEFAULT 3
 
 /* target machine storage layout */
 
@@ -217,11 +222,17 @@ extern int target_flags;
 /* Register in which static-chain is passed to a function.  */
 /* ??? */
 #define STATIC_CHAIN_REGNUM 1
-
-/* Register in which address to store a structure value
-   is passed to a function.  */
-#define STRUCT_VALUE_REGNUM 8
-#define STRUCT_VALUE_INCOMING_REGNUM 24
+  
+/* Functions which return large structures get the address
+   to place the wanted value at offset 64 from the frame.  */
+#define STRUCT_VALUE \
+  gen_rtx (MEM, Pmode,					\
+	   gen_rtx (PLUS, SImode, stack_pointer_rtx,	\
+		    gen_rtx (CONST_INT, VOIDmode, 64)))
+#define STRUCT_VALUE_INCOMING \
+  gen_rtx (MEM, Pmode,					\
+	   gen_rtx (PLUS, SImode, frame_pointer_rtx,	\
+		    gen_rtx (CONST_INT, VOIDmode, 64)))
 
 /* Define the classes of registers for register constraints in the
    machine description.  Also define ranges of constants.
@@ -339,8 +350,10 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /*  #define PUSH_ROUNDING(BYTES) */
 
 /* Offset of first parameter from the argument pointer register value.
-   This is 64 for the ins and locals, plus 4 for the struct-return reg.  */
-#define FIRST_PARM_OFFSET 68
+   This is 64 for the ins and locals, plus 4 for the struct-return reg
+   if this function isn't going to use it.  */
+#define FIRST_PARM_OFFSET(FNDECL) \
+  (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode ? 64 : 68)
 
 /* When a parameter is passed in a register, stack space is still
    allocated for it.  */
@@ -519,7 +532,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
   for (i = 32; i < FIRST_PSEUDO_REGISTER; i++)			\
     if (regs_ever_live[i] && ! call_used_regs[i])		\
       n_fregs++;						\
-  for (i = 24; i < 32; i++)					\
+  for (i = 16; i < 32; i++)					\
     if (regs_ever_live[i]) { n_iregs = 96; break; }		\
   fprintf (FILE, "\t!#PROLOGUE# 0\n");				\
   actual_fsize = fsize + n_iregs + (n_fregs*4+7 & -8);		\
@@ -601,7 +614,7 @@ extern union tree_node *current_function_decl;
   for (i = 32, n_fregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
     if (regs_ever_live[i] && ! call_used_regs[i])		\
       n_fregs++;						\
-  for (i = 24; i < 32; i++)					\
+  for (i = 16; i < 32; i++)					\
     if (regs_ever_live[i]) { n_iregs = 96; break; }		\
   actual_fsize = fsize + n_iregs + (n_fregs*4+7 & -8);		\
   actual_fsize += current_function_pretend_args_size+7 & -8;	\
@@ -664,12 +677,6 @@ extern union tree_node *current_function_decl;
       offset -= 4;							\
       ADDR = plus_constant (regs, offset + (DEPTH)); } }
 
-/* Define this if we will cache certain rtl expressions throughout
-   the enire compilation.  */
-#define INIT_EMIT_MDEP init_emit_mdep ()
-
-extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
-
 /* Addressing modes, and classification of registers for them.  */
 
 /* #define HAVE_POST_INCREMENT */
@@ -715,7 +722,7 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.
 
-   I think that this is toxic for SPARC.  */
+   Anything but a CONST_DOUBLE can be made to work.  */
 
 #define LEGITIMATE_CONSTANT_P(X)		\
  (GET_CODE (X) != CONST_DOUBLE)
@@ -843,6 +850,16 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 /* On Sun 4, this limit is 2048.  We use 2000 to be safe.  */
 #define DBX_CONTIN_LENGTH 2000
 
+/* We assume that the store-condition-codes instructions store 0 for false
+   and some other value for true.  This is the value stored for true.  */
+
+#define STORE_FLAG_VALUE 1
+
+/* Define if shifts truncate the shift count
+   which implies one can omit a sign-extension or zero-extension
+   of a shift count.  */
+#define SHIFT_COUNT_TRUNCATED
+
 /* Value is 1 if truncating an integer of INPREC bits to OUTPREC bits
    is done just by pretending it is already truncated.  */
 #define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
@@ -903,9 +920,6 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-/* The SPARC allows us to be more intelligent about these
-   condition codes, but that will come later.  */
-
 #define NOTICE_UPDATE_CC(EXP) \
 { if (GET_CODE (EXP) == SET)					\
     { if (SET_DEST (EXP) == cc0_rtx)				\
@@ -945,9 +959,15 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
 	{ CC_STATUS_INIT; }					\
     }								\
+  /* insn-peep has changed this insn beyond recognition
+     by NOTICE_UPDATE_CC.  However, we know it is either
+     a call or a branch with a delay slot filled, so we can
+     give up on knowing condition codes in any case.  */	\
+  else if (GET_CODE (EXP) == PARALLEL				\
+	   && GET_CODE (XVECEXP (EXP, 0, 0)) == REG)		\
+    { CC_STATUS_INIT; }						\
   else if (GET_CODE (EXP) == CALL)				\
     { /* all bets are off */ CC_STATUS_INIT; }			\
-  else { /* nothing happens? CC_STATUS_INIT; */}		\
 }
 
 /* Control the assembler format that we output.  */
@@ -990,8 +1010,6 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 /* How to renumber registers for dbx and gdb.  */
 
 #define DBX_REGISTER_NUMBER(REGNO) (REGNO)
-
-/* */
 
 /* This is how to output a note to DBX telling it the line number
    to which the following sequence of instructions corresponds.
@@ -1142,9 +1160,7 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
    and an immediate zero should be represented as `r0'.  */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
-{ /* if ((CODE) == 'x')						\
-    fprintf (FILE, "%d", tree_uid (current_function_decl)); */	\
-  if (GET_CODE (X) == REG)					\
+{ if (GET_CODE (X) == REG)					\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);			\
   else if (GET_CODE (X) == MEM)					\
     {								\
@@ -1176,14 +1192,11 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 	offset = INTVAL (XEXP (addr, 1)), base = XEXP (addr, 0);\
       else							\
 	base = XEXP (addr, 0), index = XEXP (addr, 1);		\
-      fprintf (FILE, "%s+", reg_name [REGNO (base)]);		\
+      fprintf (FILE, "%s", reg_name [REGNO (base)]);		\
       if (index == 0)						\
-        if (offset < 0)						\
-	  fprintf (FILE, "-0x%x", -offset);			\
-	else							\
-	  fprintf (FILE, "0x%x", offset);			\
+	fprintf (FILE, "%+d", offset);				\
       else							\
-	fprintf (FILE, "%s", reg_name [REGNO (index)]);		\
+	fprintf (FILE, "+%s", reg_name [REGNO (index)]);	\
     }								\
   else								\
     {								\

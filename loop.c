@@ -275,6 +275,9 @@ scan_loop (loop_start, end, nregs)
      since in that case saving an insn makes more difference
      and more registers are available.  */
   int threshold = loop_has_call ? 17 : 34;
+  /* Nonzero if the insn that jumps into the real loop
+     is not the very first thing after the loop-beginning note.  */
+  int something_before_entry_jump = 0;
 
   n_times_set = (short *) alloca (nregs * sizeof (short));
   n_times_used = (short *) alloca (nregs * sizeof (short));
@@ -284,7 +287,11 @@ scan_loop (loop_start, end, nregs)
      to a test at the end.  */
   while (p != end
 	 && GET_CODE (p) != CODE_LABEL && GET_CODE (p) != JUMP_INSN)
-    p = NEXT_INSN (p);
+    {
+      if (GET_CODE (p) == CALL_INSN || GET_CODE (p) == INSN)
+	something_before_entry_jump = 1;
+      p = NEXT_INSN (p);
+    }
 
   /* "Loop" contains neither jumps nor labels;
      it must have been a dummy.  Think no more about it.  */
@@ -334,7 +341,8 @@ scan_loop (loop_start, end, nregs)
 	 with a new test to jump around it entirely.
 	 (The latter is considered outside the loop.)
 	 If this is done, we no longer enter with a jump.  */
-      if (loop_skip_over (loop_start, end, loop_entry_jump))
+      if (! something_before_entry_jump
+	  && loop_skip_over (loop_start, end, loop_entry_jump))
 	loop_top = 0;
       else
 	/* We really do enter with a jump;

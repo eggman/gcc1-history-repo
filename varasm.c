@@ -251,12 +251,6 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
     }
 
-  /* Output no assembler code for a function declaration.
-     Only definitions of functions output anything.  */
-
-  if (TREE_CODE (decl) == FUNCTION_DECL)
-    return;
-
   /* Normally no need to say anything for external references,
      since assembler considers all undefined symbols external.  */
 
@@ -268,6 +262,13 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 #endif
       return;
     }
+
+  /* Output no assembler code for a function declaration.
+     Only definitions of functions output anything.  */
+
+  if (TREE_CODE (decl) == FUNCTION_DECL)
+    return;
+
   /* Don't output anything when a tentative file-scope definition is seen.
      But at end of compilation, do output code for them.  */
   if (! at_end && top_level
@@ -384,7 +385,7 @@ assemble_name (file, name)
 
 /* Chain of all CONST_DOUBLE rtx's constructed for the current function.
    They are chained through the third operand slot, XEXP (r, 3).
-   A CONST_DOUBLE rtx has XEXP (r, 2) != 0 iff it is on this chain.
+   A CONST_DOUBLE rtx has XEXP (r, 2) != cc0_rtx iff it is on this chain.
    XEXP (r, 2) is either a MEM, or const0_rtx if no MEM has been made.  */
 
 static rtx real_constant_chain;
@@ -439,20 +440,13 @@ immed_real_const_1 (d, mode)
 }
 
 /* Return a CONST_DOUBLE rtx for a value specified by EXP,
-   which must be a REAL_CST tree node.  Make only one CONST_DOUBLE
-   for each distinct value.  */
+   which must be a REAL_CST tree node.  */
 
 rtx
 immed_real_const (exp)
      tree exp;
 {
-  register rtx r;
-  r = immed_real_const_1 (TREE_REAL_CST (exp), TYPE_MODE (TREE_TYPE (exp)));
-
-  /* Associate exp and with this rtl value.  */
-  TREE_CST_RTL (exp) = r;
-
-  return r;
+  return immed_real_const_1 (TREE_REAL_CST (exp), TYPE_MODE (TREE_TYPE (exp)));
 }
 
 /* Given a CONST_DOUBLE, cause a constant in memory to be created
@@ -464,7 +458,7 @@ rtx
 force_const_double_mem (r)
      rtx r;
 {
-  if (XEXP (r, 2) == 0)
+  if (XEXP (r, 2) == cc0_rtx)
     {
       XEXP (r, 3) = real_constant_chain;
       real_constant_chain = r;
@@ -483,11 +477,11 @@ force_const_double_mem (r)
   return gen_rtx (MEM, GET_MODE (r), XEXP (XEXP (r, 2), 0));
 }
 
-/* At the start of a function, forget the memory-constants
-   previously made for CONST_DOUBLEs.
+/* At the end of a function, forget the memory-constants
+   previously made for CONST_DOUBLEs.  Mark them as not on real_constant_chain.
    Also clear out real_constant_chain and clear out all the chain-pointers.  */
 
-static void
+void
 clear_const_double_mem ()
 {
   register rtx r, next;
@@ -496,7 +490,7 @@ clear_const_double_mem ()
     {
       next = XEXP (r, 3);
       XEXP (r, 3) = 0;
-      XEXP (r, 2) = 0;
+      XEXP (r, 2) = cc0_rtx;
     }
   real_constant_chain = 0;
 }
@@ -917,6 +911,9 @@ output_constant_def (exp)
   register rtx def;
   char label[10];
 
+  if (TREE_CODE (exp) == INTEGER_CST)
+    abort ();			/* No TREE_CST_RTL slot in these.  */
+
   if (TREE_CST_RTL (exp))
     return TREE_CST_RTL (exp);
 
@@ -950,7 +947,6 @@ void
 init_const_rtx_hash_table ()
 {
   bzero (const_rtx_hash_table, sizeof const_rtx_hash_table);
-  clear_const_double_mem ();
 }
 
 struct rtx_const
@@ -968,12 +964,13 @@ struct rtx_const
    They are stored into VALUE.  */
 
 static void
-decode_rtx_const (x, value)
+decode_rtx_const (mode, x, value)
+     enum machine_mode mode;
      rtx x;
      struct rtx_const *value;
 {
   value->kind = RTX_INT;	/* Most usual kind. */
-  value->mode = GET_MODE (x);
+  value->mode = mode;
   value->un.addr.base = 0;
   value->un.addr.offset = 0;
 
@@ -1029,14 +1026,15 @@ decode_rtx_const (x, value)
 /* Compute a hash code for a constant RTL expression.  */
 
 int
-const_hash_rtx (x)
+const_hash_rtx (mode, x)
+     enum machine_mode mode;
      rtx x;
 {
   register int hi, i, len;
   register char *p;
 
   struct rtx_const value;
-  decode_rtx_const (x, &value);
+  decode_rtx_const (mode, x, &value);
 
   /* Compute hashing function */
   hi = 0;
@@ -1052,7 +1050,8 @@ const_hash_rtx (x)
    Return 1 if DESC describes a constant with the same value as X.  */
 
 static int
-compare_constant_rtx (x, desc)
+compare_constant_rtx (mode, x, desc)
+     enum machine_mode mode;
      rtx x;
      struct constant_descriptor *desc;
 {
@@ -1061,7 +1060,7 @@ compare_constant_rtx (x, desc)
   register int len;
   struct rtx_const value;
 
-  decode_rtx_const (x, &value);
+  decode_rtx_const (mode, x, &value);
   strp = (int *) &value;
   len = sizeof value / sizeof (int);
 
@@ -1077,14 +1076,15 @@ compare_constant_rtx (x, desc)
    It is up to the caller to enter the descriptor in the hash table.  */
 
 static struct constant_descriptor *
-record_constant_rtx (x)
+record_constant_rtx (mode, x)
+     enum machine_mode mode;
      rtx x;
 {
   struct constant_descriptor *ptr = 0;
   int buf;
   struct rtx_const value;
 
-  decode_rtx_const (x, &value);
+  decode_rtx_const (mode, x, &value);
 
   obstack_grow (saveable_obstack, &ptr, sizeof ptr);
   obstack_grow (saveable_obstack, &buf, sizeof buf);
@@ -1113,10 +1113,10 @@ force_const_mem (mode, x)
      to see if any of them describes X.  If yes, the descriptor records
      the label number already assigned.  */
 
-  hash = const_hash_rtx (x);
+  hash = const_hash_rtx (mode, x);
 
   for (desc = const_rtx_hash_table[hash]; desc; desc = desc->next)
-    if (compare_constant_rtx (x, desc))
+    if (compare_constant_rtx (mode, x, desc))
       {
 	found = desc->label;
 	break;
@@ -1131,7 +1131,7 @@ force_const_mem (mode, x)
 	 Assign the label number and record it in the descriptor for
 	 future calls to this function to find.  */
 
-      desc = record_constant_rtx (x);
+      desc = record_constant_rtx (mode, x);
       desc->next = const_rtx_hash_table[hash];
       const_rtx_hash_table[hash] = desc;
 
@@ -1164,7 +1164,20 @@ force_const_mem (mode, x)
 	    ASM_OUTPUT_FLOAT (asm_out_file, u.d);
 	}
       else
-	ASM_OUTPUT_INT (asm_out_file, x);
+	switch (mode)
+	  {
+	  case SImode:
+	    ASM_OUTPUT_INT (asm_out_file, x);
+	    break;
+
+	  case HImode:
+	    ASM_OUTPUT_SHORT (asm_out_file, x);
+	    break;
+
+	  case QImode:
+	    ASM_OUTPUT_CHAR (asm_out_file, x);
+	    break;
+	  }
 
       /* Create a string containing the label name, in LABEL.  */
       ASM_GENERATE_INTERNAL_LABEL (label, "LC", const_labelno);
@@ -1275,6 +1288,35 @@ output_constant (exp, size)
     case POINTER_TYPE:
       while (TREE_CODE (exp) == NOP_EXPR || TREE_CODE (exp) == CONVERT_EXPR)
 	exp = TREE_OPERAND (exp, 0);
+
+      if (TYPE_MODE (TREE_TYPE (exp)) == DImode)
+	{
+	  if (TREE_CODE (exp) == INTEGER_CST)
+	    {
+#ifdef WORDS_BIG_ENDIAN
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode,
+				       TREE_INT_CST_LOW (exp)));
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode,
+				       TREE_INT_CST_HIGH (exp)));
+#else
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode,
+				       TREE_INT_CST_HIGH (exp)));
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode,
+				       TREE_INT_CST_LOW (exp)));
+#endif
+	      size -= 8;
+	      break;
+	    }
+	  else
+	    error ("8-byte integer constant expression too complicated");
+
+	  break;
+	}
+
       x = expand_expr (exp, 0, VOIDmode, EXPAND_SUM);
 
       if (size == 1)

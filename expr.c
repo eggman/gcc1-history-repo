@@ -71,6 +71,10 @@ static int current_args_size;
 #define NO_DEFER_POP current_args_size += 1
 #define OK_DEFER_POP current_args_size -= 1
 
+/* A list of all cleanup which belong to the arguments of
+   function calls being expanded by expand_call.  */
+static tree cleanups_of_this_call;
+
 /* Nonzero means current function may call alloca.  */
 int may_call_alloca;
 
@@ -1250,6 +1254,11 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      xsize = ((xsize + PARM_BOUNDARY / BITS_PER_UNIT - 1)
 		       / (PARM_BOUNDARY / BITS_PER_UNIT)
 		       * (PARM_BOUNDARY / BITS_PER_UNIT));
+#ifdef TARGET_MEM_FUNCTIONS
+	      /* If we are calling bcopy, we push one arg before TEMP.
+		 If calling memcpy, we push two.  */
+	      xsize *= 2;
+#endif
 #ifdef STACK_GROWS_DOWNWARD
 	      temp = plus_constant (temp, xsize);
 #else
@@ -2013,33 +2022,39 @@ expand_expr (exp, target, tmode, modifier)
     case INTEGER_CST:
       if (GET_MODE_BITSIZE (mode) <= HOST_BITS_PER_INT)
 	return gen_rtx (CONST_INT, VOIDmode, TREE_INT_CST_LOW (exp));
-      /* If optimized, generate immediate CONST_DOUBLE
+      /* Generate immediate CONST_DOUBLE
 	 which will be turned into memory by reload if necessary.  */
-      if (!cse_not_expected)
-	return immed_double_const (TREE_INT_CST_LOW (exp),
-				   TREE_INT_CST_HIGH (exp),
-				   mode);
-      output_constant_def (exp);
-      return TREE_CST_RTL (exp);
+#ifdef WORDS_BIG_ENDIAN
+      return immed_double_const (TREE_INT_CST_HIGH (exp),
+				 TREE_INT_CST_LOW (exp),
+				 mode);
+#else
+      return immed_double_const (TREE_INT_CST_LOW (exp),
+				 TREE_INT_CST_HIGH (exp),
+				 mode);
+#endif
 
     case CONST_DECL:
       return expand_expr (DECL_INITIAL (exp), target, VOIDmode, 0);
 
     case REAL_CST:
-      if (TREE_CST_RTL (exp))
-	return TREE_CST_RTL (exp);
       /* If optimized, generate immediate CONST_DOUBLE
 	 which will be turned into memory by reload if necessary.  */
       if (!cse_not_expected)
 	return immed_real_const (exp);
-      output_constant_def (exp);
-      return TREE_CST_RTL (exp);
-
     case COMPLEX_CST:
     case STRING_CST:
-      if (TREE_CST_RTL (exp))
-	return TREE_CST_RTL (exp);
-      output_constant_def (exp);
+      if (! TREE_CST_RTL (exp))
+	output_constant_def (exp);
+
+      /* TREE_CST_RTL probably contains a constant address.
+	 On RISC machines where a constant address isn't valid,
+	 make some insns to get that address into a register.  */
+      if (GET_CODE (TREE_CST_RTL (exp)) == MEM
+	  && modifier != EXPAND_CONST_ADDRESS
+	  && !memory_address_p (mode, XEXP (TREE_CST_RTL (exp), 0)))
+	return change_address (TREE_CST_RTL (exp), VOIDmode,
+			       copy_rtx (XEXP (TREE_CST_RTL (exp), 0)));
       return TREE_CST_RTL (exp);
 
     case SAVE_EXPR:
@@ -2567,7 +2582,7 @@ expand_expr (exp, target, tmode, modifier)
 
     case MAX_EXPR:
     case MIN_EXPR:
-      mode = TYPE_MODE (TREE_OPERAND (exp, 1));
+      mode = TYPE_MODE (TREE_TYPE (TREE_OPERAND (exp, 1)));
       op1 = expand_expr (TREE_OPERAND (exp, 1), 0, VOIDmode, 0);
       if (target == 0 || GET_CODE (target) != REG || target == op1)
 	target = gen_reg_rtx (mode);
@@ -2907,17 +2922,10 @@ expand_expr (exp, target, tmode, modifier)
 	  tree thenexp;
 	  rtx thenv = 0;
 
-#if 1
-	  /* We can't risk storing in the supplied target
-	     since it might be used in operand 1.  */
-	  target = gen_reg_rtx (mode);
-#else
-	  /* Don't store intermediate results in a fixed register.  */
-	  if (target != 0 && GET_CODE (target) == REG
-	      && REGNO (target) < FIRST_PSEUDO_REGISTER)
-	    target = 0;
+	  /* TARGET gets a reg in which we can perform the computation.
+	     Use the specified target if it's a pseudo reg and safe.  */
+	  target = validate_subtarget (subtarget, TREE_OPERAND (exp, 1));
 	  if (target == 0) target = gen_reg_rtx (mode);
-#endif
 
 	  /* Compute X into the target.  */
 	  store_expr (TREE_OPERAND (exp, 0), target, 0);
@@ -3014,6 +3022,16 @@ expand_builtin (exp, target, subtarget, mode)
 	}
       /* Push that much space (rounding it up).  */
       do_pending_stack_adjust ();
+
+#ifdef STACK_POINTER_OFFSET
+      /* If we will have to round the result up, make sure we
+	 have extra space so the user still gets at least as much
+	 space as he asked for.  */
+      if ((STACK_POINTER_OFFSET + STACK_BYTES - 1) / STACK_BYTES
+	  != STACK_POINTER_OFFSET / STACK_BYTES)
+	op0 = plus_constant (op0, STACK_BYTES);
+#endif
+
 #ifdef STACK_GROWS_DOWNWARD
       anti_adjust_stack (round_push (op0));
 #endif
@@ -3026,13 +3044,15 @@ expand_builtin (exp, target, subtarget, mode)
       /* If the contents of the stack pointer reg are offset from the
 	 actual top-of-stack address, add the offset here.  */
       if (GET_CODE (target) == REG)
-	emit_insn (gen_add2_insn (target, gen_rtx (CONST_INT, VOIDmode,
-						   STACK_POINTER_OFFSET)));
+	emit_insn (gen_add2_insn (target,
+				  gen_rtx (CONST_INT, VOIDmode,
+					   (STACK_POINTER_OFFSET + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES)));
       else
 	{
 	  rtx temp =
 	    expand_binop (GET_MODE (target), add_optab, target,
-			  gen_rtx (CONST_INT, VOIDmode, STACK_POINTER_OFFSET),
+			  gen_rtx (CONST_INT, VOIDmode,
+				   (STACK_POINTER_OFFSET + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES),
 			  target,
 			  1, OPTAB_DIRECT);
 	  if (temp == 0) abort ();
@@ -3401,36 +3421,80 @@ expand_call (exp, target, ignore)
      rtx target;
      int ignore;
 {
+  /* List of actual parameters.  */
   tree actparms = TREE_OPERAND (exp, 1);
-  tree funtype;
+  /* RTX for the function to be called.  */
   rtx funexp;
-  register tree p = TREE_OPERAND (exp, 0);
-  struct args_size args_size;
-  register int i;
-  register tree *argvec;
-  rtx *regvec;
-  rtx *valvec;
-  int *partial;
-  struct args_size *arg_offset;
-  struct args_size *arg_size;
-  int num_actuals;
-  rtx structure_value_addr = 0;
+  /* Data type of the function.  */
+  tree funtype;
+  /* Declaration of the function being called,
+     or 0 if the function is computed (not known by name).  */
   tree fndecl = 0;
-  int may_be_alloca;
-  int inc;
-  int is_setjmp;
-  int is_integrable = 0;
-  rtx argblock = 0;
-  CUMULATIVE_ARGS args_so_far;
-  int reg_parm_seen = 0;
-  rtx valreg;
-  rtx old_stack_level;
-  int old_pending_adj;
-  int old_current_args_size = current_args_size;
 
+  /* Register in which non-BLKmode value will be returned,
+     or 0 if no value or if value is BLKmode.  */
+  rtx valreg;
+  /* Address where we should return a BLKmode value;
+     0 if value not BLKmode.  */
+  rtx structure_value_addr = 0;
+  /* Nonzero if that address is being passed by treating it as
+     an extra, implicit first parameter.  Otherwise,
+     it is passed by being copied directly into struct_value_rtx.  */
+  int structure_value_addr_parm = 0;
+
+  /* Number of actual parameters in this call, including struct value addr.  */
+  int num_actuals;
   /* Number of named args.  Args after this are anonymous ones
      and they must all go on the stack.  */
   int n_named_args;
+
+  /* The following vectors number the parms in the order they will be pushed,
+     not the order they are written.  */
+  /* Elt N is offset in bytes in parmlist on stack of parm N.  */
+  struct args_size *arg_offset;
+  /* Elt N is size in bytes of parm N.  */
+  struct args_size *arg_size;
+  /* Elt N is the tree expression for parm N.  */
+  register tree *argvec;
+  /* Elt N is the precomputed RTX value for parm N,
+     or 0 if this parm was not precomputed.  */
+  rtx *valvec;
+  /* Elt N is the hard register for passing parm N, 
+     or 0 if it is passed in memory.  */
+  rtx *regvec;
+  /* Elt N is the number of bytes of parm N to pass in that register.
+     0 means pass all of parm N in its register
+     (provided the register isn't also 0).  */
+  int *partial;
+
+  /* Total size in bytes of all the stack-parms scanned so far.  */
+  struct args_size args_size;
+  /* Data on reg parms scanned so far.  */
+  CUMULATIVE_ARGS args_so_far;
+  /* Nonzero if a reg parm has been scanned.  */
+  int reg_parm_seen = 0;
+  /* 1 if scanning parms front to back, -1 if scanning back to front.  */
+  int inc;
+  /* Address of space preallocated for stack parms
+     (on machines that lack push insns), or 0 if space not preallocated.  */
+  rtx argblock = 0;
+
+  /* Nonzero if it is plausible that this is a call to alloca.  */
+  int may_be_alloca;
+  /* Nonzero if this is a call to setjmp or a related function.  */
+  int is_setjmp;
+  /* Nonzero if this is a call to an inline function.  */
+  int is_integrable = 0;
+  /* Nonzero if this is a call to __builtin_new.  */
+  int is_builtin_new;
+
+  rtx old_stack_level;
+  int old_pending_adj;
+  int old_current_args_size = current_args_size;
+  tree old_cleanups = cleanups_of_this_call;
+
+  register tree p;
+  register int i;
 
   args_size.constant = 0;
   args_size.var = 0;
@@ -3438,6 +3502,7 @@ expand_call (exp, target, ignore)
   /* See if we can find a DECL-node for the actual function.
      As a result, decide whether this is a call to an integrable function.  */
 
+  p = TREE_OPERAND (exp, 0);
   if (TREE_CODE (p) == ADDR_EXPR)
     {
       fndecl = TREE_OPERAND (p, 0);
@@ -3482,8 +3547,14 @@ expand_call (exp, target, ignore)
 				     ignore, TREE_TYPE (exp),
 				     structure_value_addr);
 
-      if (temp != (rtx)-1)
+      /* If inlining succeeded, return.  */
+      if ((int) temp != -1)
 	return temp;
+
+      /* If inlining failed, mark FNDECL as needing to be compiled
+	 separately after all.  */
+      TREE_ADDRESSABLE (fndecl) = 1;
+      TREE_ADDRESSABLE (DECL_NAME (fndecl)) = 1;
     }
 
 #if 0
@@ -3511,6 +3582,10 @@ expand_call (exp, target, ignore)
        && (!strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "setjmp")
 	   || !strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "_setjmp")));
 
+  is_builtin_new
+    = (fndecl != 0
+       && (!strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "__builtin_new")));
+
   if (may_be_alloca)
     {
       frame_pointer_needed = 1;
@@ -3534,13 +3609,27 @@ expand_call (exp, target, ignore)
   if (TREE_CODE (funtype) == METHOD_TYPE)
     funtype = TREE_TYPE (funtype);
 
-  /* Pass the function the address in which to return a structure value.  */
+  /* If the address for a structure value should be in memory,
+     and it would go in memory if treated as an extra parameter,
+     treat it that way.  */
   if (structure_value_addr && GET_CODE (struct_value_rtx) == MEM)
-    actparms = tree_cons (error_mark_node,
-			  build (SAVE_EXPR,
-				 type_for_size (BITS_PER_WORD, 0),
-				 0, structure_value_addr),
-			  actparms);
+    {
+      rtx tem;
+
+      INIT_CUMULATIVE_ARGS (args_so_far, funtype);
+      tem = FUNCTION_ARG (args_so_far, Pmode,
+			  build_pointer_type (TREE_TYPE (funtype)), 1);
+      if (GET_CODE (tem) == MEM)
+	{
+	  actparms = tree_cons (error_mark_node,
+				build (SAVE_EXPR,
+				       type_for_size (GET_MODE_BITSIZE (Pmode), 0),
+				       0,
+				       force_reg (Pmode, structure_value_addr)),
+				actparms);
+	  structure_value_addr_parm = 1;
+	}
+    }
 
   /* Count the arguments and set NUM_ACTUALS.  */
   for (p = actparms, i = 0; p; p = TREE_CHAIN (p)) i++;
@@ -3870,7 +3959,7 @@ expand_call (exp, target, ignore)
   emit_queue ();
 
   /* Pass the function the address in which to return a structure value.  */
-  if (structure_value_addr && GET_CODE (struct_value_rtx) != MEM)
+  if (structure_value_addr && ! structure_value_addr_parm)
     emit_move_insn (struct_value_rtx, structure_value_addr);
 
   /* All arguments and registers used for the call must be set up by now!  */
@@ -3920,6 +4009,38 @@ expand_call (exp, target, ignore)
   if (is_setjmp)
     emit_note (IDENTIFIER_POINTER (DECL_NAME (fndecl)), NOTE_INSN_SETJMP);
 
+  /* For calls to __builtin_new, note that it can never return 0.
+     This is because a new handler will be called, and 0 it not
+     among the numbers it is supposed to return.  */
+#if 0
+  if (is_builtin_new)
+    emit_note (IDENTIFIER_POINTER (DECL_NAME (fndecl)), NOTE_INSN_BUILTIN_NEW);
+#endif
+
+  /* If value type not void, return an rtx for the value.  */
+
+  if (TYPE_MODE (TREE_TYPE (exp)) == VOIDmode
+      || ignore)
+    {
+      target = 0;
+    }
+  else if (structure_value_addr)
+    {
+      if (target == 0)
+	target = gen_rtx (MEM, BLKmode,
+			  memory_address (BLKmode, structure_value_addr));
+    }
+  else if (target && GET_MODE (target) == TYPE_MODE (TREE_TYPE (exp)))
+    {
+      if (!rtx_equal_p (target, valreg))
+	emit_move_insn (target, valreg);
+      else
+	/* This tells expand_inline_function to copy valreg to its target.  */
+	emit_insn (gen_rtx (USE, VOIDmode, valreg));
+    }
+  else
+    target = copy_to_reg (valreg);
+
   /* If size of args is variable, restore saved stack-pointer value.  */
 
   if (args_size.var != 0)
@@ -3928,30 +4049,14 @@ expand_call (exp, target, ignore)
       pending_stack_adjust = old_pending_adj;
     }
 
-  /* If value type not void, return an rtx for the value.  */
-
-  if (TYPE_MODE (TREE_TYPE (exp)) == VOIDmode
-      || ignore)
-    return 0;
-
-  if (structure_value_addr)
+  /* C++.  We have evaluated our function.  Expand all cleanups
+     which are needed by its temporaries.  */
+  while (cleanups_of_this_call != old_cleanups)
     {
-      if (target)
-	return target;
-      return gen_rtx (MEM, BLKmode,
-		      memory_address (BLKmode, structure_value_addr));
+      expand_expr (TREE_VALUE (cleanups_of_this_call), 0, VOIDmode, 0);
+      cleanups_of_this_call = TREE_CHAIN (cleanups_of_this_call);
     }
-
- if (target && GET_MODE (target) == TYPE_MODE (TREE_TYPE (exp)))
-    {
-      if (!rtx_equal_p (target, valreg))
-	emit_move_insn (target, valreg);
-      else
-	/* This tells expand_inline_function to copy valreg to its target.  */
-	emit_insn (gen_rtx (USE, VOIDmode, valreg));
-      return target;
-    }
-  return copy_to_reg (valreg);
+  return target;
 }
 
 /* Expand conditional expressions.  */

@@ -384,9 +384,17 @@ asm_noperands (body)
   else if (GET_CODE (body) == PARALLEL
 	   && GET_CODE (XVECEXP (body, 0, 0)) == SET
 	   && GET_CODE (SET_SRC (XVECEXP (body, 0, 0))) == ASM_OPERANDS)
-    /* Multiple outputs: BODY is
-       (parallel [(set OUTPUT0 (asm_operands ...)) ...]).  */
-    return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + XVECLEN (body, 0);
+    {
+      /* Multiple output operands:
+	 body is [(set OUTPUT (asm_operands ...))... (clobber (reg ...))...].
+	 Count backwards through CLOBBERs to determine number of SETs.  */
+      int i;
+      for (i = XVECLEN (body, 0) - 1; i >= 0; i--)
+	if (GET_CODE (XVECEXP (body, 0, i)) == SET)
+	  break;
+      
+      return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + i + 1;
+    }
   else
     return 0;
 }
@@ -471,10 +479,27 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
   else
     {
       rtx asmop = SET_SRC (XVECEXP (body, 0, 0));
-      int nout = XVECLEN (body, 0);
+      int nparallel = XVECLEN (body, 0); /* Includes CLOBBERs.  */
       int nin = XVECLEN (asmop, 3);
+      int nout = 0;		/* Does not include CLOBBERs.  */
 
-      noperands = XVECLEN (asmop, 3) + XVECLEN (body, 0);
+      /* The outputs are in the SETs.
+	 Their constraints are in the ASM_OPERANDS itself.  */
+      for (i = 0; i < nparallel; i++)
+	{
+	  if (GET_CODE (XVECEXP (body, 0, i)) == CLOBBER)
+	    break;		/* Past last SET */
+	  
+	  if (operands)
+	    operands[i] = SET_DEST (XVECEXP (body, 0, i));
+	  if (operand_locs)
+	    operand_locs[i] = &SET_DEST (XVECEXP (body, 0, i));
+	  if (constraints)
+	    constraints[i] = XSTR (SET_SRC (XVECEXP (body, 0, i)), 1);
+	  if (modes)
+	    modes[i] = GET_MODE (SET_DEST (XVECEXP (body, 0, i)));
+	  nout++;
+	}
 
       /* The input operands are found in the 1st element vector.  */
       /* Constraints for inputs are in the 2nd element vector.  */
@@ -489,19 +514,7 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
 	  if (modes)
 	    modes[i + nout] = GET_MODE (XVECEXP (asmop, 4, i));
 	}
-      /* The outputs are in the SETs.
-	 Their constraints are in the ASM_OPERANDS itself.  */
-      for (i = 0; i < nout; i++)
-	{
-	  if (operands)
-	    operands[i] = SET_DEST (XVECEXP (body, 0, i));
-	  if (operand_locs)
-	    operand_locs[i] = &SET_DEST (XVECEXP (body, 0, i));
-	  if (constraints)
-	    constraints[i] = XSTR (SET_SRC (XVECEXP (body, 0, i)), 1);
-	  if (modes)
-	    modes[i] = GET_MODE (SET_DEST (XVECEXP (body, 0, i)));
-	}
+
       template = XSTR (asmop, 0);
     }
 

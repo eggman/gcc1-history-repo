@@ -431,6 +431,12 @@ extern rtx adj_offsetable_operand ();
 
 extern int emit_to_sequence;
 
+/* Maximum number of parallel sets and clobbers in any insn in this fn.
+   Always at least 3, since the combiner could put that many togetherm
+   and we want this to remain correct for all the remaining passes.  */
+
+extern int max_parallel;
+
 extern int asm_noperands ();
 extern char *decode_asm_operands ();
 

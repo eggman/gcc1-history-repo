@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for Sun SPARC.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@mcc.com)
 
 This file is part of GNU CC.
@@ -22,25 +22,75 @@ and this notice must be preserved on all copies.  */
 /* Global variables for machine-dependend things.  */
 
 /* This should go away if we pass floats to regs via
-   the stack instead of the frame.  */
+   the stack instead of the frame, and if we learn how
+   to renumber all the registers when we don't do a save (hard!).  */
 extern int frame_pointer_needed;
 
 static rtx find_addr_reg ();
 
-#if 0
-/* RTL expressions that we will cache during the entire compilation.  */
-rtx reg_o0_rtx, reg_o1_rtx, reg_o2_rtx, reg_i7_rtx;
-
-void
-init_emit_mdep ()
+/* Return non-zero if this pattern, as a source to a "SET",
+   is known to yield an instruction of unit size.  */
+int
+single_insn_src_p (op, mode)
+     rtx op;
+     enum machine_mode mode;
 {
-  /* These may be freely shared.  */
-  reg_o0_rtx = gen_rtx (REG, SImode, 8);
-  reg_o1_rtx = gen_rtx (REG, SImode, 9);
-  reg_o2_rtx = gen_rtx (REG, SImode, 10);
-  reg_i7_rtx = gen_rtx (REG, SImode, 31);
+  switch (GET_CODE (op))
+    {
+    case CONST_INT:
+      if (SMALL_INT (op))
+	return 1;
+      return 0;
+
+    case REG:
+    case MEM:
+      return 1;
+
+      /* We never need to negate or complement constants.  */
+    case NOT:
+    case NEG:
+      return 1;
+
+    case PLUS:
+    case MINUS:
+    case AND:
+    case IOR:
+    case XOR:
+    case LSHIFT:
+    case ASHIFT:
+    case ASHIFTRT:
+    case LSHIFTRT:
+      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
+	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
+	return 0;
+      return 1;
+
+    case SUBREG:
+      if (SUBREG_WORD (op) != 0)
+	return 0;
+      return single_insn_src_p (SUBREG_REG (op), mode);
+
+    case SIGN_EXTEND:
+    case ZERO_EXTEND:
+      /* Lazy... could check for these.  */
+      return 0;
+
+      /* Not doing floating point, since they probably
+	 take longer than the branch slot they might fill.  */
+    case FLOAT_EXTEND:
+    case FLOAT_TRUNCATE:
+    case FLOAT:
+    case FIX:
+    case UNSIGNED_FLOAT:
+    case UNSIGNED_FIX:
+      return 0;
+
+    default:
+      return 0;
+    }
 }
-#endif
+
+/* ??? Comment needed here */
 
 int
 arith_operand (op, mode)
@@ -50,6 +100,8 @@ arith_operand (op, mode)
   return (register_operand (op, mode)
 	  || (GET_CODE (op) == CONST_INT && SMALL_INT (op)));
 }
+
+/* ??? Comment needed here */
 
 int
 arith32_operand (op, mode)
@@ -189,37 +241,49 @@ output_move_double (operands)
       else
 	op1 = operands[1], op2 = XEXP (operands[0], 0);
 
-      /* We know structs are properly aligned.  */
-      if (operands[1]->in_struct)
-	return "ldd %1,%0";
-      if (operands[0]->in_struct)
-	return "std %1,%0";
-
-      /* Otherwise, only trust global variables
-	 and even offsets from the frame pointer.  */
+      /* Trust global variables.  */
       if (GET_CODE (op2) == SYMBOL_REF
 	  || GET_CODE (op2) == CONST
 	  || GET_CODE (op2) == REG)
-	base = op2;
-      else if (GET_CODE (op2) == PLUS)
-	if (GET_CODE (XEXP (op2, 0)) == REG)
-	  base = XEXP (op2, 0),
-	  offset = XEXP (op2, 1);
-	else if (GET_CODE (XEXP (op2, 1)) == REG)
-	  base = XEXP (op2, 1),
-	  offset = XEXP (op2, 0);
+	{
+	  if (op1 == operands[0])
+	    return "ldd %1,%0";
+	  else
+	    return "std %1,%0";
+	}
 
+      if (GET_CODE (op2) == PLUS)
+	{
+	  if (GET_CODE (XEXP (op2, 0)) == REG)
+	    base = XEXP (op2, 0), offset = XEXP (op2, 1);
+	  else if (GET_CODE (XEXP (op2, 1)) == REG)
+	    base = XEXP (op2, 1), offset = XEXP (op2, 0);
+	}
+
+      /* Trust round enough offsets from the stack or frame pointer.  */
       if (base
-	  && (GET_CODE (base) != REG
-	      || (REGNO (base) == FRAME_POINTER_REGNUM
-		  && GET_CODE (offset) == CONST_INT
-		  && INTVAL (offset) & 0x7 == 0)))
-	if (op1 == operands[0])
-	  return "ldd %1,%0";
-	else
-	  return "std %1,%0";
+	  && (REGNO (base) == FRAME_POINTER_REGNUM
+	      || REGNO (base) == STACK_POINTER_REGNUM))
+	{
+	  if (GET_CODE (offset) == CONST_INT
+	      && (INTVAL (offset) & 0x7) == 0)
+	    {
+	      if (op1 == operands[0])
+		return "ldd %1,%0";
+	      else
+		return "std %1,%0";
+	    }
+	}
+      else
+	{
+	  /* We know structs not on the stack are properly aligned.  */
+	  if (operands[1]->in_struct)
+	    return "ldd %1,%0";
+	  else if (operands[0]->in_struct)
+	    return "std %1,%0";
+	}
     }
-      
+
   if (optype0 == REGOP && optype1 == REGOP
       && REGNO (operands[0]) == REGNO (latehalf[1]))
     {
@@ -299,6 +363,21 @@ output_fp_move_double (operands)
 	      return "";
 	    }
 	}
+      if (GET_CODE (XEXP (operands[1], 0)) == PLUS
+	  && (XEXP (XEXP (operands[1], 0), 0) == frame_pointer_rtx
+	      || XEXP (XEXP (operands[1], 0), 0) == stack_pointer_rtx)
+	  && GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == CONST_INT
+	  && (INTVAL (XEXP (XEXP (operands[1], 0), 1)) & 0x7) != 0)
+	{
+	  rtx xoperands[2];
+	  output_asm_insn ("ld %1,%0", operands);
+	  xoperands[0] = gen_rtx (REG, GET_MODE (operands[0]),
+				  REGNO (operands[0]) + 1);
+	  xoperands[1] = gen_rtx (MEM, GET_MODE (operands[1]),
+				  plus_constant (XEXP (operands[1], 0), 4));
+	  output_asm_insn ("ld %1,%0", xoperands);
+	  return "";
+	}
       return "ldd %1,%0";
     }
   else if (FP_REG_P (operands[1]))
@@ -316,6 +395,21 @@ output_fp_move_double (operands)
 	      output_asm_insn ("std %2,[%%fp-8]\n\tld [%%fp-4],%1\n\tld [%%fp-8],%0", xoperands);
 	      return "";
 	    }
+	}
+      if (GET_CODE (XEXP (operands[0], 0)) == PLUS
+	  && (XEXP (XEXP (operands[0], 0), 0) == frame_pointer_rtx
+	      || XEXP (XEXP (operands[0], 0), 0) == stack_pointer_rtx)
+	  && GET_CODE (XEXP (XEXP (operands[0], 0), 1)) == CONST_INT
+	  && (INTVAL (XEXP (XEXP (operands[0], 0), 1)) & 0x7) != 0)
+	{
+	  rtx xoperands[2];
+	  output_asm_insn ("st %1,%0", operands);
+	  xoperands[1] = gen_rtx (REG, GET_MODE (operands[1]),
+				  REGNO (operands[1]) + 1);
+	  xoperands[0] = gen_rtx (MEM, GET_MODE (operands[0]),
+				  plus_constant (XEXP (operands[0], 0), 4));
+	  output_asm_insn ("st %1,%0", xoperands);
+	  return "";
 	}
       return "std %1,%0";
     }
@@ -511,7 +605,7 @@ output_block_move (operands)
   xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
   xoperands[4] = gen_rtx (CONST_INT, VOIDmode, align);
 
-  output_asm_insn ("\nLm%3:\n\tld [%1+%2],%%o7\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tst %%o7,[%0+%2]", xoperands);
+  output_asm_insn ("\nLm%3:\n\tld [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tst %%g1,[%0+%2]", xoperands);
   return "";
 }
 
@@ -525,7 +619,7 @@ output_mul_by_constant (insn, operands, unsignedp)
 {
   int c;			/* Size of constant */
   int shifts[BITS_PER_WORD];	/* Table of shifts */
-  int p, log;			/* A power of two, and its log */
+  unsigned int p, log;		/* A power of two, and its log */
   int d1, d2;			/* Differences of c and p */
   int first = 1;		/* True if dst has unknown data in it */
   int i;
@@ -797,4 +891,125 @@ make_f0_contain_0 (size)
     output_asm_insn ("ld [%%fp-16],%%f0", 0);
   else if (size == 2)
     output_asm_insn ("ldd [%%fp-16],%%f0", 0);
+}
+
+/* Output reasonable peephole for set-on-condition-code insns.
+   Note that these insns assume a particular way of defining
+   labels.  Therefore, *both* tm-sparc.h and this function must
+   be changed if a new syntax is needed.  */
+
+char *
+output_scc_insn (code, operands)
+     enum rtx_code code;
+     rtx *operands;
+{
+  rtx xoperands[2];
+  rtx label = gen_label_rtx ();
+
+  xoperands[0] = operands[0];
+  xoperands[1] = label;
+
+  switch (code)
+    {
+    case NE:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fbne,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("bne,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case EQ:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fbe,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("be,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case GE:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fbge,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("bge,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case GT:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fbg,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("bg,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case LE:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fble,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("ble,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case LT:
+      if (cc_status.flags & CC_IN_FCCR)
+	output_asm_insn ("fbl,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      else
+	output_asm_insn ("bl,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case GEU:
+      if (cc_status.flags & CC_IN_FCCR)
+	abort ();
+      else
+	output_asm_insn ("bgeu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case GTU:
+      if (cc_status.flags & CC_IN_FCCR)
+	abort ();
+      else
+	output_asm_insn ("bgu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case LEU:
+      if (cc_status.flags & CC_IN_FCCR)
+	abort ();
+      else
+	output_asm_insn ("bleu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    case LTU:
+      if (cc_status.flags & CC_IN_FCCR)
+	abort ();
+      else
+	output_asm_insn ("blu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+      break;
+    default:
+      abort ();
+    }
+  return "";
+}
+
+/* ??? Comment needed here */
+
+char *
+output_delay_insn (template, operands, insn)
+     char *template;
+     rtx *operands;
+     rtx insn;
+{
+  extern char *insn_template[];
+  extern char *(*insn_outfun[])();
+  rtx pat = gen_rtx (SET, VOIDmode,
+		     XVECEXP (PATTERN (insn), 0, 0),
+		     XVECEXP (PATTERN (insn), 0, 1));
+  rtx delay_insn = gen_rtx (INSN, VOIDmode, 0, 0, 0, pat, -1, 0, 0);
+  int insn_code_number;
+
+  /* Output the branch instruction first.  */
+  output_asm_insn (template, operands);
+
+  /* Now recognize the insn which we put in its delay slot.
+     We must do this after outputing the branch insn,
+     since operands may just be a pointer to `recog_operands'.  */
+  insn_code_number = recog (pat, delay_insn);
+  if (insn_code_number == -1)
+    abort ();
+
+  /* Now get the template for what this insn would
+     have been, without the branch.  Its operands are
+     exactly the same as they would be, so we don't
+     need to do an insn_extract.  */
+  template = insn_template[insn_code_number];
+  if (template == 0)
+    template = (*insn_outfun[insn_code_number]) (operands, delay_insn);
+  output_asm_insn (template, operands);
+  return "";
 }

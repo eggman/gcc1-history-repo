@@ -1324,6 +1324,8 @@ mark_set_1 (needed, dead, x, insn, significant)
 	    {
 	      register int i;
 	      i = HARD_REGNO_NREGS (regno, GET_MODE (reg));
+	      if (i == 0)
+		i = 1;
 	      do
 		regs_ever_live[regno + --i] = 1;
 	      while (i > 0);
@@ -1538,6 +1540,8 @@ mark_used_regs (needed, live, x, final, insn)
 
 		  register int i;
 		  i = HARD_REGNO_NREGS (regno, GET_MODE (x));
+		  if (i == 0)
+		    i = 1;
 		  do
 		    regs_ever_live[regno + --i] = 1;
 		  while (i > 0);

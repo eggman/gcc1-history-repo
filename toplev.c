@@ -77,7 +77,8 @@ int target_flags;
 char *input_filename;
 
 /* Name of top-level original source file (what was input to cpp).
-   This comes from the first #-command in the actual input.  */
+   This comes from the #-command at the beginning of the actual input.
+   If there isn't any there, then this is the cc1 input file name.  */
 
 char *main_input_filename;
 
@@ -350,6 +351,13 @@ fatal (s, v)
   error (s, v);
   exit (34);
 }
+
+static int need_error_newline;
+
+/* Function of last error message;
+   more generally, function such that if next error message is in it
+   then we don't have to mention the function name.  */
+static tree last_error_function = NULL;
 
 /* Called when the start of a function definition is parsed,
    this function prints on stderr the name of the function.  */
@@ -363,34 +371,30 @@ announce_function (decl)
       fprintf (stderr, " %s", IDENTIFIER_POINTER (DECL_NAME (decl)));
       fflush (stderr);
     }
+  need_error_newline = 1;
+  last_error_function = current_function_decl;
 }
-
+
 /* Prints out, if necessary, the name of the current function
    which caused an error.  Called from all error and warning functions.  */
 
 void
 report_error_function()
 {
-  static tree last_error_function = NULL;
+  if (need_error_newline)
+    {
+      fprintf (stderr, "\n");
+      need_error_newline = 0;
+    }
 
   if (last_error_function != current_function_decl)
     {
       if (current_function_decl == NULL)
-	{
-	  if (!quiet_flag)
-	    fprintf (stderr, "\n");
-	  fprintf (stderr, "At top level:\n");
-	}
+	fprintf (stderr, "At top level:\n");
       else
-	{
-	  if (!quiet_flag)
-	    /* We already know this info.  Don't print it twice.
-	       But make sure we are at the beginning of a line.  */
-	    fprintf (stderr, "\n");
-	  else
-	    fprintf (stderr, "In function %s:\n",
-		     IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
-	}
+	fprintf (stderr, "In function %s:\n",
+		 IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
+
       last_error_function = current_function_decl;
     }
 }
@@ -780,6 +784,11 @@ compile_file (name)
   /* With luck, we discover the real source file's name from that
      and put it in input_filename.  */
   ungetc (check_newline (), finput);
+
+  /* If the input doesn't start with a #line, use the input name
+     as the official input file name.  */
+  if (main_input_filename == 0)
+    main_input_filename = name;
 
   ASM_FILE_START (asm_out_file);
 
@@ -1319,6 +1328,11 @@ rest_of_compilation (decl)
 
  exit_rest_of_compilation:
 
+  /* Clear out the real_constant_chain before some of the rtx's
+     it runs through become garbage.  */
+
+  clear_const_double_mem ();
+
   /* The parsing time is all the time spent in yyparse
      *except* what is spent in this function.  */
 
@@ -1489,12 +1503,6 @@ main (argc, argv, envp)
 	  inhibit_warnings = 1;
 	else if (!strcmp (str, "W"))
 	  extra_warnings = 1;
-	else if (!strcmp (str, "Wall"))
-	  {
-	    extra_warnings = 1;
-	    warn_implicit = 1;
-	    warn_return_type = 1;
-	  }
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
 	else if (!strcmp (str, "gg"))

@@ -79,10 +79,12 @@ and this notice must be preserved on all copies.  */
 /* Number of attempts to combine instructions in this function.  */
 
 static int combine_attempts;
+static int distrib_attempts;
 
 /* Number of attempts that got as far as substitution in this function.  */
 
 static int combine_merges;
+static int distrib_merges_1, distrib_merges_2;
 
 /* Number of instructions combined with added SETs in this function.  */
 
@@ -91,10 +93,12 @@ static int combine_extras;
 /* Number of instructions combined in this function.  */
 
 static int combine_successes;
+static int distrib_successes;
 
 /* Totals over entire compilation.  */
 
 static int total_attempts, total_merges, total_extras, total_successes;
+static int total_distrib_attempts, total_distrib_merges_1, total_distrib_merges_2, total_distrib_successes;
 
 
 /* Vector mapping INSN_UIDs to cuids.
@@ -168,15 +172,18 @@ static struct undobuf undobuf;
 static int n_occurrences;
 
 static void move_deaths ();
+static void move_deaths_2 ();
 void remove_death ();
 static void record_dead_and_set_regs ();
 int regno_dead_p ();
 static int use_crosses_set_p ();
 static int try_combine ();
+static rtx try_distrib ();
 static rtx subst ();
 static void undo_all ();
 static void copy_substitutions ();
 static void add_links ();
+static void remove_links ();
 static void add_incs ();
 static int insn_has_inc_p ();
 static int adjacent_insns_p ();
@@ -201,6 +208,10 @@ combine_instructions (f, nregs)
   combine_merges = 0;
   combine_extras = 0;
   combine_successes = 0;
+  distrib_attempts = 0;
+  distrib_merges_1 = 0;
+  distrib_merges_2 = 0;
+  distrib_successes = 0;
 
   reg_last_death = (rtx *) alloca (nregs * sizeof (rtx));
   reg_last_set = (rtx *) alloca (nregs * sizeof (rtx));
@@ -274,6 +285,27 @@ combine_instructions (f, nregs)
 		  if (try_combine (insn, prev, XEXP (nextlinks, 0)))
 		    goto retry;
 	    }
+
+	  /* Try to apply the distributive law to this insn
+	     and two insns that compute the operands of this one.  */
+	  for (links = LOG_LINKS (insn); links; links = XEXP (links, 1))
+	    if (GET_CODE (XEXP (links, 0)) != NOTE)
+	      for (nextlinks = XEXP (links, 1); nextlinks; nextlinks = XEXP (nextlinks, 1))
+		if (GET_CODE (XEXP (nextlinks, 0)) != NOTE)
+		  {
+		    rtx try_from = 0;
+
+		    if (GET_CODE (PATTERN (XEXP (links, 0))) == SET
+			&& find_reg_note (insn, REG_DEAD, SET_DEST (PATTERN (XEXP (links, 0))))
+			&& GET_CODE (PATTERN (XEXP (nextlinks, 0))) == SET
+			&& find_reg_note (insn, REG_DEAD, SET_DEST (PATTERN (XEXP (nextlinks, 0)))))
+		      try_from = try_distrib (insn, XEXP (links, 0), XEXP (nextlinks, 0));
+		    if (try_from != 0)
+		      {
+			insn = try_from;
+			goto retry;
+		      }
+		  }
 #if 0
 /* Turned off because on 68020 it takes four insns to make
    something like (a[b / 32] & (1 << (31 - (b % 32)))) != 0
@@ -697,7 +729,9 @@ subst (x, from, to)
    because (SUBREG (MEM...)) is guaranteed to cause the MEM to be reloaded.
    If not for that, MEM's would very rarely be safe.  */
 
-#define FAKE_EXTEND_SAFE_P(MODE, FROM) (GET_CODE (FROM) == REG || GET_CODE (FROM) == MEM)
+#define FAKE_EXTEND_SAFE_P(MODE, FROM) \
+  (GET_CODE (FROM) == REG || GET_CODE (FROM) == SUBREG \
+   || GET_CODE (FROM) == MEM)
 
   if (x == from)
     return to;
@@ -998,9 +1032,21 @@ subst (x, from, to)
       break;
 
     case ZERO_EXTEND:
+      /* Nested zero-extends are equivalent to just one.  */
       if (was_replaced[0]
 	  && GET_CODE (to) == ZERO_EXTEND)
 	SUBST (XEXP (x, 0), XEXP (to, 0));
+      /* Zero extending a constant int can be replaced
+	 by a zero-extended constant.  */
+      if (was_replaced[0]
+	  && HOST_BITS_PER_INT >= GET_MODE_BITSIZE (GET_MODE (from))
+	  && GET_CODE (to) == CONST_INT)
+	{
+	  int intval = INTVAL (to) & GET_MODE_MASK (GET_MODE (from));
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  return gen_rtx (CONST_INT, VOIDmode, intval);
+	}
       /* Zero-extending the result of an and with a constant can be done
 	 with a wider and.  */
       if (was_replaced[0]
@@ -1028,12 +1074,66 @@ subst (x, from, to)
 	{
 	  return XEXP (XEXP (x, 0), 0);
 	}
+      /* Change (zero_extend:M (subreg:N (and:M ... <const>) 0))
+	 to (and:M ...) if the significant bits fit in mode N.  */
+      if (GET_CODE (XEXP (x, 0)) == SUBREG
+	  && SUBREG_REG (XEXP (x, 0)) == to
+	  && SUBREG_WORD (XEXP (x, 0)) == 0
+	  && GET_CODE (to) == AND
+	  && GET_CODE (XEXP (to, 1)) == CONST_INT
+	  && FAKE_EXTEND_SAFE_P (GET_MODE (x), XEXP (to, 0))
+	  /* Avoid getting wrong result if the constant has high bits set
+	     that are irrelevant in the narrow mode where it is being used.  */
+	  && 0 == (INTVAL (XEXP (to, 1))
+		   & ~ GET_MODE_MASK (GET_MODE (to))))
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  return gen_rtx (AND, GET_MODE (x),
+			  gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)),
+			  XEXP (to, 1));
+	}
+      /* In (zero_extend:M (subreg:N (lshiftrt:M (zero_extend:M (any:N ...)))))
+	 remove the outer zero extension.  */
+      if (GET_CODE (XEXP (x, 0)) == SUBREG
+	  && SUBREG_REG (XEXP (x, 0)) == to
+	  && SUBREG_WORD (XEXP (x, 0)) == 0
+	  && GET_CODE (to) == LSHIFTRT)
+	{
+	  rtx tmp = XEXP (to, 0);
+
+	  if (GET_CODE (tmp) == REG)
+	    if (reg_n_sets[REGNO (tmp)] == 1)
+	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
+	    else
+	      break;
+
+	  if (GET_CODE (tmp) == ZERO_EXTEND
+	      && GET_MODE (tmp) == GET_MODE (x)
+	      && GET_MODE (XEXP (tmp, 0)) == GET_MODE (XEXP (x, 0)))
+	    return SUBREG_REG (XEXP (x, 0));
+	}
       break;
 
     case SIGN_EXTEND:
+      /* Nested sign-extends are equivalent to just one.  */
       if (was_replaced[0]
 	  && GET_CODE (to) == SIGN_EXTEND)
 	SUBST (XEXP (x, 0), XEXP (to, 0));
+      /* Sign extending a constant int can be replaced
+	 by a sign-extended constant.  */
+      if (was_replaced[0]
+	  && HOST_BITS_PER_INT >= GET_MODE_BITSIZE (GET_MODE (from))
+	  && GET_CODE (to) == CONST_INT)
+	{
+	  int intval = INTVAL (to);
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  if (intval > 0
+	      && (intval & (1 << (GET_MODE_BITSIZE (GET_MODE (from)) - 1))))
+	    intval |= ~ GET_MODE_MASK (GET_MODE (from));
+	  return gen_rtx (CONST_INT, VOIDmode, intval);
+	}
       /* Sign-extending the result of an and with a constant can be done
 	 with a wider and, provided the high bit of the constant is 0.  */
       if (was_replaced[0]
@@ -1050,6 +1150,46 @@ subst (x, from, to)
 			  gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)),
 			  XEXP (to, 1));
 	 } 
+      /* hacks added by tiemann.  */
+      /* Change (sign_extend:M (subreg:N (and:M ... <const>) 0))
+	 to (and:M ...), provided the result fits in mode N,
+	 and the high bit of the constant is 0.  */
+      if (GET_CODE (XEXP (x, 0)) == SUBREG
+	  && SUBREG_REG (XEXP (x, 0)) == to
+	  && SUBREG_WORD (XEXP (x, 0)) == 0
+	  && GET_CODE (to) == AND
+	  && GET_CODE (XEXP (to, 1)) == CONST_INT
+	  && FAKE_EXTEND_SAFE_P (GET_MODE (x), XEXP (to, 0))
+	  && ((INTVAL (XEXP (to, 1))
+	       & (-1 << (GET_MODE_BITSIZE (GET_MODE (to)) - 1)))
+	      == 0))
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  return gen_rtx (AND, GET_MODE (x),
+			  gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)),
+			  XEXP (to, 1));
+	} 
+      /* In (sign_extend:M (subreg:N (ashiftrt:M (sign_extend:M (any:N ...)))))
+	 remove the outer sign extension.  */
+      if (GET_CODE (XEXP (x, 0)) == SUBREG
+	  && SUBREG_REG (XEXP (x, 0)) == to
+	  && SUBREG_WORD (XEXP (x, 0)) == 0
+	  && GET_CODE (to) == ASHIFTRT)
+	{
+	  rtx tmp = XEXP (to, 0);
+
+	  if (GET_CODE (tmp) == REG)
+	    if (reg_n_sets[REGNO (tmp)] == 1)
+	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
+	    else
+	      break;
+
+	  if (GET_CODE (tmp) == SIGN_EXTEND
+	      && GET_MODE (tmp) == GET_MODE (x)
+	      && GET_MODE (XEXP (tmp, 0)) == GET_MODE (XEXP (x, 0)))
+	    return SUBREG_REG (XEXP (x, 0));
+	}
       break;
 
     case SET:
@@ -1492,6 +1632,13 @@ gen_lowpart_for_combine (mode, x)
   if (GET_CODE (x) == MEM)
     {
       register int offset = 0;
+
+      /* If we want to refer to something bigger than the original memref,
+	 generate a perverse subreg instead.  That will force a reload
+	 of the original memref X.  */
+      if (GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (mode))
+	return gen_rtx (SUBREG, mode, x, 0);
+
 #ifdef WORDS_BIG_ENDIAN
       offset = (max (GET_MODE_SIZE (GET_MODE (x)), UNITS_PER_WORD)
 		- max (GET_MODE_SIZE (mode), UNITS_PER_WORD));
@@ -1758,30 +1905,6 @@ regno_dead_p (regno, insn)
   return 0;
 }
 
-/* Remove register number REGNO from the dead registers list of INSN.  */
-
-void
-remove_death (regno, insn)
-     int regno;
-     rtx insn;
-{
-  register rtx link, next;
-  while ((link = REG_NOTES (insn))
-	 && REG_NOTE_KIND (link) == REG_DEAD
-	 && REGNO (XEXP (link, 0)) == regno)
-    REG_NOTES (insn) = XEXP (link, 1);
-
-  if (link)
-    while (next = XEXP (link, 1))
-      {
-	if (REG_NOTE_KIND (next) == REG_DEAD
-	    && REGNO (XEXP (next, 0)) == regno)
-	  XEXP (link, 1) = XEXP (next, 1);
-	else
-	  link = next;
-      }
-}
-
 /* Return nonzero if J is the first insn following I,
    not counting labels, line numbers, etc.
    We assume that J follows I.  */
@@ -1839,6 +1962,28 @@ add_links (insn, oinsn, all_links)
       XEXP (prev, 1) = links;
     }
 }
+  
+/* Delete any LOG_LINKS of INSN which point at OINSN.  */
+
+static void
+remove_links (insn, oinsn)
+     rtx insn, oinsn;
+{
+  register rtx next = LOG_LINKS (insn), prev = 0;
+  while (next)
+    {
+      if (XEXP (next, 0) == oinsn)
+	{
+	  if (prev)
+	    XEXP (prev, 1) = XEXP (next, 1);
+	  else
+	    LOG_LINKS (insn) = XEXP (next, 1);
+	}
+      else
+	prev = next;
+      next = XEXP (next, 1);
+    }
+}
 
 /* Concatenate the any elements of the list of reg-notes INCS
    which are of type REG_INC
@@ -1854,6 +1999,30 @@ add_incs (insn, incs)
     if (REG_NOTE_KIND (tail) == REG_INC)
       REG_NOTES (insn)
 	= gen_rtx (EXPR_LIST, REG_INC, XEXP (tail, 0), REG_NOTES (insn));
+}
+
+/* Remove register number REGNO from the dead registers list of INSN.  */
+
+void
+remove_death (regno, insn)
+     int regno;
+     rtx insn;
+{
+  register rtx link, next;
+  while ((link = REG_NOTES (insn))
+	 && REG_NOTE_KIND (link) == REG_DEAD
+	 && REGNO (XEXP (link, 0)) == regno)
+    REG_NOTES (insn) = XEXP (link, 1);
+
+  if (link)
+    while (next = XEXP (link, 1))
+      {
+	if (REG_NOTE_KIND (next) == REG_DEAD
+	    && REGNO (XEXP (next, 0)) == regno)
+	  XEXP (link, 1) = XEXP (next, 1);
+	else
+	  link = next;
+      }
 }
 
 /* For each register (hardware or pseudo) used within expression X,
@@ -1904,14 +2073,317 @@ move_deaths (x, from_cuid, to_insn)
     }
 }
 
+/* Like move_deaths, but deaths are moving both forward
+   (from FROM_CUID to TO_INSN), and backwards
+   (from FROM_INSN to TO_INSN).  This is what happens
+   when an insn is removed after applying the distributive law.  */
+
+static void
+move_deaths_2 (x, from_cuid, from_insn, to_insn)
+     rtx x;
+     int from_cuid;
+     rtx from_insn, to_insn;
+{
+  register char *fmt;
+  register int len, i;
+  register enum rtx_code code = GET_CODE (x);
+
+  if (code == REG)
+    {
+      register rtx where_dead = reg_last_death[REGNO (x)];
+
+      if (where_dead && INSN_CUID (where_dead) >= from_cuid
+	  && INSN_CUID (where_dead) < INSN_CUID (to_insn))
+	{
+	  remove_death (REGNO (x), reg_last_death[REGNO (x)]);
+	  if (! dead_or_set_p (to_insn, x))
+	    REG_NOTES (to_insn)
+	      = gen_rtx (EXPR_LIST, REG_DEAD, x, REG_NOTES (to_insn));
+	}
+      /* Can't use where_dead for from_insn because it has
+	 not been computed yet.  */
+      else if (dead_or_set_p (from_insn, x))
+	{
+	  remove_death (REGNO (x), from_insn);
+	  if (! dead_or_set_p (to_insn, x))
+	    REG_NOTES (to_insn)
+	      = gen_rtx (EXPR_LIST, REG_DEAD, x, REG_NOTES (to_insn));
+	}
+      return;
+    }
+
+  len = GET_RTX_LENGTH (code);
+  fmt = GET_RTX_FORMAT (code);
+
+  for (i = 0; i < len; i++)
+    {
+      if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = XVECLEN (x, i) - 1; j >= 0; j--)
+	    move_deaths_2 (XVECEXP (x, i, j), from_cuid, from_insn, to_insn);
+	}
+      else if (fmt[i] == 'e')
+	move_deaths_2 (XEXP (x, i), from_cuid, from_insn, to_insn);
+    }
+}
+
+/* The distrib combiner rewrites groups of insns so that optimizations
+   can be more easily recognized.  The front-end does not know how to
+   group certain kinds of operations for efficient execution, and the
+   resulting code can be quite poor.  For example, on a machine without
+   bitfield instructions, bitfield references look like
+
+	(and (lshiftrt ... n) m)
+
+   When combining two bitfield operations, such as with ||, this can
+   yield code like
+
+	(set z
+	     (or (and (lshiftrt x n) 1)
+		 (and (lshiftrt y n) 1)))
+
+   which can be more efficiently executed as
+
+	(set z
+	     (lshiftrt (and (or x y)
+			    (1 << m)) n))
+
+   From there, the combiner attempts to rewrite the insns,
+   keeping flow information accurate for later passes,
+   and reducing the total number of insns executed.
+
+   This function returns the point at which we should try
+   looking for more simplifications.  This will be before
+   INSN if the call succeeds.  We do not need to fear
+   infinite loops, since this function is guaranteed to
+   eliminate at least one (non-note) instruction if it returns
+   successfully.  */
+
+static rtx
+try_distrib (insn, xprev1, xprev2)
+     rtx insn, xprev1, xprev2;
+{
+  rtx pat = PATTERN (insn);
+  rtx prev1, prev2, pat1, pat2, src1, src2;
+  rtx to_prev, to_insn;
+  enum rtx_code code;
+  int insn_code_number, prev_code_number, regno, length;
+  rtx new_insn_pat, new_prev_pat;
+
+  distrib_attempts++;
+
+  /* ??? Need to implement a test that PREV2 and PREV1
+     are completely independent.  Right now their
+     recognition ability is sufficiently limited that
+     it should not be necessary, but better safe than sorry.  */
+
+  /* Let PREV1 be the later of the two insns, and PREV2 the earlier.  */
+  if (INSN_CUID (xprev1) > INSN_CUID (xprev2))
+    {
+      prev1 = xprev1;
+      prev2 = xprev2;
+    }
+  else
+    {
+      prev1 = xprev2;
+      prev2 = xprev1;
+    }
+
+  pat1 = PATTERN (prev1);
+  pat2 = PATTERN (prev2);
+
+  /* First, see if INSN, PREV1, and PREV2 have patterns we can expect
+     to simplify.  */
+
+  if (GET_CODE (pat) != SET
+      || GET_CODE (pat1) != SET
+      || GET_CODE (pat2) != SET)
+    return 0;
+
+  code = GET_CODE (SET_SRC (pat));
+  src1 = SET_SRC (pat1);
+  src2 = SET_SRC (pat2);
+
+  switch (code)
+    {
+    default:
+      return 0;
+
+    case IOR:
+    case AND:
+    case XOR:
+    case PLUS:
+      ;
+    }
+
+  /* Don't bother if modes don't match.  */
+  if (GET_MODE (src1) != GET_MODE (src2))
+    return 0;
+
+  /* PREV1 and PREV2 must compute the same operation.
+     Actually, there are other cases that could be handled,
+     but are not implemented.  For example:
+
+     (set (reg:SI 94)
+	  (and:SI (reg:SI 73)
+		  (const_int 223)))
+
+     (set (reg:SI 95)
+	  (zero_extend:SI (subreg:QI (reg:SI 91) 0)))
+
+     (set (reg:SI 96)
+	  (ior:SI (reg:SI 94)
+		  (reg:SI 95)))
+
+     In this case, we know that because (reg:SI 94) has
+     been anded with 223, there is no need to zero_extend
+     (reg:SI 91), and we could eliminate (reg:SI 95).  */
+
+  if (GET_CODE (src1) != GET_CODE (src2))
+    return 0;
+
+  /* The SETs in PREV1 and PREV2 do not need to be kept around.  */
+
+  undobuf.num_undo = 0;
+  undobuf.storage = 0;
+
+  /* Substitute in the latest insn for the regs set by the earlier ones.  */
+  subst_insn = insn;
+  n_occurrences = 0;	/* `subst' counts here */
+
+  switch (GET_CODE (src1))
+    {
+    case LSHIFTRT:
+    case ASHIFTRT:
+      if (code == PLUS)
+	return 0;
+
+    case AND:
+    case LSHIFT:
+    case ASHIFT:
+    case IOR:
+    case XOR:
+      /* Try changing (+ (* x c) (* y c)) to (* (+ (x y) c)).  */
+
+      if (GET_CODE (XEXP (src1, 1)) != CONST_INT
+	  || GET_CODE (XEXP (src2, 1)) != CONST_INT
+	  || INTVAL (XEXP (src1, 1)) != INTVAL (XEXP (src2, 1)))
+	return 0;
+      to_prev = gen_rtx (code, GET_MODE (src1),
+			 XEXP (src1, 0), XEXP (src2, 0));
+      to_insn = gen_rtx (GET_CODE (src1), GET_MODE (src1), SET_DEST (pat1), XEXP (src1, 1));
+      break;
+
+    case ZERO_EXTEND:
+    case SIGN_EXTEND:
+      {
+	rtx inner1 = XEXP (src1, 0), inner2 = XEXP (src2, 0);
+	int subreg_needed = 0;
+
+	/* Try changing (+ ($ x) ($ y)) to ($ (+ (x y))).  */
+	/* But keep extend insns together with their subregs.  */
+	if (GET_CODE (inner1) == SUBREG)
+	  if (SUBREG_WORD (inner1) != 0)
+	    return 0;
+	  else
+	    {
+	      subreg_needed = 1;
+	      inner1 = SUBREG_REG (inner1);
+	    }
+
+	if (GET_CODE (inner2) == SUBREG)
+	  if (SUBREG_WORD (inner2) != 0)
+	    return 0;
+	  else
+	    {
+	      subreg_needed = 1;
+	      inner2 = SUBREG_REG (inner2);
+	    }
+
+	to_prev = gen_rtx (code, GET_MODE (src1), inner1, inner2);
+	to_insn = gen_rtx (GET_CODE (src1), GET_MODE (src1),
+			   subreg_needed
+			   ? gen_rtx (SUBREG, GET_MODE (XEXP (src1, 0)),
+				      SET_DEST (pat1), 0)
+			   : SET_DEST (pat1));
+      }
+      break;
+
+    default:
+      return 0;
+    }
+
+  /* Are the results of this "substitution" a valid instruction?  */
+
+  new_insn_pat = subst (PATTERN (insn), SET_SRC (PATTERN (insn)), to_insn);
+  distrib_merges_1++;
+
+  insn_code_number = recog (new_insn_pat, insn);
+  if (insn_code_number < 0)
+    {
+      undo_all ();
+      return 0;
+    }
+
+  subst_insn = prev1;
+  new_prev_pat = subst (pat1, src1, to_prev);
+  distrib_merges_2++;
+
+  prev_code_number = recog (new_prev_pat, prev1);
+  if (prev_code_number < 0)
+    {
+      undo_all ();
+      return 0;
+    }
+
+  /* Everything worked; install the new patterns.  */
+  INSN_CODE (insn) = insn_code_number;
+  PATTERN (insn) = new_insn_pat;
+
+  INSN_CODE (prev1) = prev_code_number;
+  PATTERN (prev1) = new_prev_pat;
+
+  /* Need to change LOG_LINKS around...PREV1 now gets
+     whatever flowed into PREV2.  PREV2 is going to
+     become a NOTE, so we clear out its LOG_LINKS.  */
+  remove_links (insn, prev2);
+  add_links (prev1, prev2, adjacent_insns_p (prev2, prev1));
+
+  /* Registers which died in PREV2 now die in PREV1.
+     Also, registers born in PREV2 dying in INSN now die in PREV1.  */
+  move_deaths_2 (src2, INSN_CUID (prev2), insn, prev1);
+
+  regno = REGNO (SET_DEST (pat2));
+
+  reg_n_sets[regno]--;
+  if (reg_n_sets[regno] == 0
+      && ! (basic_block_live_at_start[0][regno / HOST_BITS_PER_INT]
+	    & (1 << (regno % HOST_BITS_PER_INT))))
+    reg_n_refs[regno] = 0;
+  remove_death (regno, insn);
+
+  PUT_CODE (prev2, NOTE);
+  NOTE_LINE_NUMBER (prev2) = NOTE_INSN_DELETED;
+  NOTE_SOURCE_FILE (prev2) = 0;
+
+  distrib_successes++;
+  return prev1;
+}
+
 void
 dump_combine_stats (file)
      char *file;
 {
   fprintf
     (file,
-     ";; Combiner statistics: %d attempts, %d substitutions (%d requiring new space),\n;; %d successes.\n\n"
-     , combine_attempts, combine_merges, combine_extras, combine_successes);
+     ";; Combiner statistics: %d attempts, %d substitutions (%d requiring new space),\n;; %d successes.\n\n",
+     combine_attempts, combine_merges, combine_extras, combine_successes);
+  fprintf
+    (file,
+     ";; Distributer statistics: %d attempts, %d:%d substitutions,\n;; %d successes.\n\n",
+     distrib_attempts, distrib_merges_1,
+     distrib_merges_2, distrib_successes);
 }
 
 void
@@ -1922,4 +2394,9 @@ dump_combine_total_stats (file)
     (file,
      "\n;; Combiner totals: %d attempts, %d substitutions (%d requiring new space),\n;; %d successes.\n",
      total_attempts, total_merges, total_extras, total_successes);
+  fprintf
+    (file,
+     "\n;; Distributer totals: %d attempts, %d:%d substitutions,\n;; %d successes.\n",
+     total_distrib_attempts, total_distrib_merges_1,
+     total_distrib_merges_2, total_distrib_successes);
 }

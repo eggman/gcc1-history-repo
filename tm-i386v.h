@@ -32,9 +32,9 @@ and this notice must be preserved on all copies.  */
 /* Use crt1.o as a startup file and crtn.o as a closing file.  */
 
 #define STARTFILE_SPEC  \
-  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt1.o%s}}"
+  "%{pg:gcrt1.o%s}%{!pg:%{p:mcrt1.o%s}%{!p:crt1.o%s}}"
 
-#define LIB_SPEC "%{!p:%{!pg:-lc crtn.o%s}}%{p:-lc_p}%{pg:-lc_p}"
+#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} crtn.o%s"
 
 /* Specify predefined symbols in preprocessor.  */
 

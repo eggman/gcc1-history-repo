@@ -24,6 +24,7 @@ and this notice must be preserved on all copies.  */
 #include "insn-config.h"
 #include "regs.h"
 #include "hard-reg-set.h"
+#include "flags.h"
 
 /* The basic idea of common subexpression elimination is to go
    through the code, keeping a record of expressions that would
@@ -3023,6 +3024,11 @@ cse_insn (insn)
       {
 	register rtx dest = SET_DEST (set[i]);
 	register struct table_elt *elt;
+
+	if (flag_float_store
+	    && GET_CODE (dest) == MEM
+	    && (GET_MODE (dest) == SFmode || GET_MODE (dest) == DFmode))
+	  continue;
 
 	/* STRICT_LOW_PART isn't part of the value BEING set,
 	   and neither is the SUBREG inside it.

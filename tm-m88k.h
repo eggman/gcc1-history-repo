@@ -321,7 +321,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* Offset of first parameter from the argument pointer register value.  */
 /* For the 88000, this must be non-zero so that addresses of the parms
    can always be distinguished.  */
-#define FIRST_PARM_OFFSET 0
+#define FIRST_PARM_OFFSET(FNDECL) 0
 
 /* Value is 1 if returning from a function call automatically
    pops the arguments described by the number-of-args field in the call.

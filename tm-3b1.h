@@ -119,7 +119,7 @@ and this notice must be preserved on all copies.  */
 
 #define ASM_FORMAT_PRIVATE_NAME(OUTPUT, NAME, LABELNO)	\
 ( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 12),	\
-  sprintf ((OUTPUT), "%s%%%d", (NAME), (LABELNO)))
+  sprintf ((OUTPUT), "%s_%%%d", (NAME), (LABELNO)))
 
 /* The unixpc doesn't know about double's and float's */
 

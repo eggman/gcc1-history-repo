@@ -194,7 +194,12 @@ gen_rtx (va_alist)
       int arg1 = va_arg (p, int);
       if (arg0 == XINT (fconst0_rtx, 0)
 	  && arg1 == XINT (fconst0_rtx, 1))
-	return (mode == DFmode ? dconst0_rtx : fconst0_rtx);
+	{
+	  if (mode == DFmode)
+	    return dconst0_rtx;
+	  if (mode == SFmode)
+	    return fconst0_rtx;
+	}
       rt_val = rtx_alloc (code);
       rt_val->mode = mode;
       XINT (rt_val, 0) = arg0;
@@ -1128,6 +1133,17 @@ emit_note (file, line)
   add_insn (note);
   return note;
 }
+
+/* Emit a NOTE, and don't omit it even if LINE matches the previous note.  */
+
+rtx
+emit_note_force (file, line)
+     char *file;
+     int line;
+{
+  last_linenum = -1;
+  return emit_note (file, line);
+}
 
 /* Return an indication of which type of insn should have X as a body.
    The value is CODE_LABEL, INSN, CALL_INSN or JUMP_INSN.  */
@@ -1453,7 +1469,7 @@ init_emit_once ()
     u.d = 0;
     XINT (fconst0_rtx, 0) = u.i[0];
     XINT (fconst0_rtx, 1) = u.i[1];
-    XEXP (fconst0_rtx, 2) = 0;
+    XEXP (fconst0_rtx, 2) = cc0_rtx;
   }
   PUT_MODE (fconst0_rtx, SFmode);
 
@@ -1463,7 +1479,7 @@ init_emit_once ()
     u.d = 0;
     XINT (dconst0_rtx, 0) = u.i[0];
     XINT (dconst0_rtx, 1) = u.i[1];
-    XEXP (dconst0_rtx, 2) = 0;
+    XEXP (dconst0_rtx, 2) = cc0_rtx;
   }
   PUT_MODE (dconst0_rtx, DFmode);
 

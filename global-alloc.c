@@ -414,7 +414,7 @@ global_conflicts ()
 	{
 	  register RTX_CODE code = GET_CODE (insn);
 	  register rtx link;
-	  rtx regs_set[MAX_SETS_PER_INSN + MAX_CLOBBERS_PER_INSN];
+	  rtx *regs_set = (rtx *) alloca (max_parallel * sizeof (rtx));
 	  int n_regs_set = 0;
 
 	  if (code == INSN || code == CALL_INSN || code == JUMP_INSN)

@@ -1076,7 +1076,7 @@ main (argc, argv)
   if (vflag)
     {
       extern char *version_string;
-      printf ("gcc version %s\n", version_string);
+      fprintf (stderr, "gcc version %s\n", version_string);
       if (n_infiles == 0)
 	exit (0);
     }

@@ -20,8 +20,6 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
-#include "tm-i386.h"
-
 /* Use the Sequent Symmetry assembler syntax.  */
 
 #define TARGET_VERSION printf (" (80386, BSD syntax)");

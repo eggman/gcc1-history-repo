@@ -132,7 +132,7 @@ extern int errno;
 %type <ttype> SCSPEC TYPESPEC TYPE_QUAL nonempty_type_quals maybe_type_qual
 %type <ttype> initdecls notype_initdecls initdcl notype_initdcl
 %type <ttype> init initlist maybeasm
-%type <ttype> asm_operands nonnull_asm_operands asm_operand
+%type <ttype> asm_operands nonnull_asm_operands asm_operand asm_clobbers
 
 %type <ttype> declarator
 %type <ttype> notype_declarator after_type_declarator
@@ -198,7 +198,7 @@ datadef:
 	  setspecs notype_initdecls ';'
 		{ if (pedantic)
 		    error ("ANSI C forbids data definition lacking type or storage class");
-		  else
+		  else if (!flag_traditional)
 		    warning ("data definition lacks type or storage class"); }
         | declmods setspecs notype_initdecls ';'
 	  {}
@@ -988,14 +988,22 @@ stmt:
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
 		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
-		  c_expand_asm_operands ($4, $6, NULL_TREE,
+		  c_expand_asm_operands ($4, $6, NULL_TREE, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	/* This is the case with input operands as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
 		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
-		  c_expand_asm_operands ($4, $6, $8,
+		  c_expand_asm_operands ($4, $6, $8, NULL_TREE,
+					 $2 == ridpointers[(int)RID_VOLATILE]); }
+	/* This is the case with clobbered registers as well.  */
+	| ASM maybe_type_qual '(' string ':' asm_operands ':'
+  	  asm_operands ':' asm_clobbers ')' ';'
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  c_expand_asm_operands ($4, $6, $8, $10,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	| GOTO identifier ';'
 		{ tree decl;
@@ -1037,8 +1045,15 @@ nonnull_asm_operands:
 	;
 
 asm_operand:
-	STRING '(' expr ')'
+	  STRING '(' expr ')'
 		{ $$ = build_tree_list ($1, $3); }
+	;
+
+asm_clobbers:
+	  STRING
+		{ $$ = tree_cons (NULL_TREE, $1, NULL_TREE); }
+	| asm_clobbers ',' STRING
+		{ $$ = tree_cons (NULL_TREE, $3, $1); }
 	;
 
 /* This is what appears inside the parens in a function declarator.
@@ -1202,9 +1217,22 @@ combine_strings (strings)
 	wide_flag = 1;
     }
 
-  TREE_TYPE (value)
-    = build_array_type (wide_flag ? integer_type_node : char_type_node,
-			make_index_type (build_int_2 (length - 1, 0)));
+  /* Create the array type for the string constant.
+     -Wwrite-strings says make the string constant an array of const char
+     so that copying it to a non-const pointer will get a warning.  */
+  if (warn_write_strings)
+    {
+      tree elements
+	= build_type_variant (wide_flag ? integer_type_node : char_type_node,
+			      1, 0);
+      TREE_TYPE (value)
+	= build_array_type (elements,
+			    build_index_type (build_int_2 (length - 1, 0)));
+    }
+  else
+    TREE_TYPE (value)
+      = build_array_type (wide_flag ? integer_type_node : char_type_node,
+			  build_index_type (build_int_2 (length - 1, 0)));
   TREE_LITERAL (value) = 1;
   TREE_STATIC (value) = 1;
   return value;
@@ -1678,8 +1706,10 @@ readescape ()
       return 033;
 
     case '?':
-      /* `\(' is used at the beginning of a line to avoid confusing Emacs.  */
+      /* `\(', etc, are used at beginning of line to avoid confusing Emacs.  */
     case '(':
+    case '{':
+    case '[':
       return c;
     }
   if (c >= 040 && c <= 0177)
@@ -1870,7 +1900,9 @@ yylex ()
 	   we store only 8 live bits in each short,
 	   giving us 64 bits of reliable precision */
 	short shorts[8];
-	int floatflag = 0;  /* Set 1 if we learn this is a floating constant */
+
+	enum { NOT_FLOAT, AFTER_POINT, TOO_MANY_POINTS} floatflag
+	  = NOT_FLOAT;
 
 	for (count = 0; count < 8; count++)
 	  shorts[count] = 0;
@@ -1898,13 +1930,20 @@ yylex ()
 	while (c == '.'
 	       || (isalnum (c) && (c != 'l') && (c != 'L')
 		   && (c != 'u') && (c != 'U')
-		   && (!floatflag || ((c != 'f') && (c != 'F')))))
+		   && (floatflag == NOT_FLOAT || ((c != 'f') && (c != 'F')))))
 	  {
 	    if (c == '.')
 	      {
 		if (base == 16)
 		  error ("floating constant may not be in radix 16");
-		floatflag = 1;
+		if (floatflag == AFTER_POINT)
+		  {
+		    error ("malformed floating constant");
+		    floatflag = TOO_MANY_POINTS;
+		  }
+		else
+		  floatflag = AFTER_POINT;
+
 		base = 10;
 		*p++ = c = getc (finput);
 		/* Accept '.' as the start of a floating-point number
@@ -1944,7 +1983,7 @@ yylex ()
 		    if ((c&~040) == 'E')
 		      {
 			base = 10;
-			floatflag = 1;
+			floatflag = AFTER_POINT;
 			break;   /* start of exponent */
 		      }
 		    error ("nondigits in number and not hexadecimal");
@@ -1988,7 +2027,7 @@ yylex ()
 	/* Remove terminating char from the token buffer and delimit the string */
 	*--p = 0;
 
-	if (floatflag)
+	if (floatflag != NOT_FLOAT)
 	  {
 	    tree type = double_type_node;
 	    char f_seen = 0;

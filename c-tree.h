@@ -113,6 +113,12 @@ extern int warn_implicit;
 
 extern int warn_return_type;
 
+/* Nonzero means give string constants the type `const char *'
+   to get extra warnings from them.  These warnings will be too numerous
+   to be useful, except in thoroughly ANSIfied programs.  */
+
+extern int warn_write_strings;
+
 /* Nonzero means do some things the same way PCC does.  */
 
 extern int flag_traditional;

@@ -1655,6 +1655,28 @@ build_pointer_type (to_type)
   return t;
 }
 
+/* Create a type of integers to be the TYPE_DOMAIN of an ARRAY_TYPE.
+   MAXVAL should be the maximum value in the domain
+   (one less than the length of the array).  */
+
+tree
+build_index_type (maxval)
+     tree maxval;
+{
+  register tree itype = make_node (INTEGER_TYPE);
+  int maxint = TREE_INT_CST_LOW (maxval);
+  TYPE_PRECISION (itype) = BITS_PER_WORD;
+  TYPE_MIN_VALUE (itype) = build_int_2 (0, 0);
+  TREE_TYPE (TYPE_MIN_VALUE (itype)) = itype;
+  TYPE_MAX_VALUE (itype) = maxval;
+  TREE_TYPE (maxval) = itype;
+  TYPE_MODE (itype) = SImode;
+  TYPE_SIZE (itype) = TYPE_SIZE (sizetype);
+  TYPE_SIZE_UNIT (itype) = TYPE_SIZE_UNIT (sizetype);
+  TYPE_ALIGN (itype) = TYPE_ALIGN (sizetype);
+  return type_hash_canon (maxint > 0 ? maxint : - maxint, itype);
+}
+
 /* Construct, lay out and return the type of arrays of elements with ELT_TYPE
    and number of elements specified by the range of values of INDEX_TYPE.
    If such a type has already been constructed, reuse it.  */

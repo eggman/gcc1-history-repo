@@ -210,10 +210,12 @@ jump_optimize (f, cross_jump, noop_moves)
 		      /* If machine uses explicit RETURN insns, no epilogue,
 			 then this note precedes the drop-through RETURN.  */
 		      || (GET_CODE (insn) == JUMP_INSN
-			  && GET_CODE (PATTERN (insn)) == RETURN)))
+			  && GET_CODE (PATTERN (insn)) == RETURN)
+		      || (GET_CODE (insn) == NOTE
+			  && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
 	insn = PREV_INSN (insn);
 
-      if (GET_CODE (insn) == NOTE
+      if (insn && GET_CODE (insn) == NOTE
 	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
 	  && ! insn->volatil)
 	{
@@ -614,9 +616,12 @@ jump_optimize (f, cross_jump, noop_moves)
 		  /* If machine uses explicit RETURN insns, no epilogue,
 		     then this note precedes the drop-through RETURN.  */
 		  || (GET_CODE (insn) == JUMP_INSN
-		      && GET_CODE (PATTERN (insn)) == RETURN)))
+		      && GET_CODE (PATTERN (insn)) == RETURN)
+		  || (GET_CODE (insn) == NOTE
+		      && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
     insn = PREV_INSN (insn);
-  if (GET_CODE (insn) == NOTE && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
+  if (insn && GET_CODE (insn) == NOTE
+      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
     {
       extern int current_function_returns_null;
       current_function_returns_null = 1;
@@ -1091,12 +1096,14 @@ delete_jump (insn)
 	 CC's are always set explicitly
 	 and always immediately before the jump that
 	 will use them.  So if the previous insn
-	 exists to set the CC's, delete it.  */
+	 exists to set the CC's, delete it
+	 (unless it performs auto-increments, etc.).  */
       while (prev && GET_CODE (prev) == NOTE)
 	prev = PREV_INSN (prev);
       if (prev && GET_CODE (prev) == INSN
 	  && GET_CODE (PATTERN (prev)) == SET
-	  && SET_DEST (PATTERN (prev)) == cc0_rtx)
+	  && SET_DEST (PATTERN (prev)) == cc0_rtx
+	  && !find_reg_note (prev, REG_INC, 0))
 	delete_insn (prev);
     }
 }

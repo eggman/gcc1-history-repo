@@ -46,7 +46,6 @@ enum decl_context
 
 static tree grokparms (), grokdeclarator ();
 tree pushdecl ();
-tree make_index_type ();
 static void builtin_function ();
 
 static tree lookup_tag ();
@@ -209,6 +208,12 @@ int warn_implicit;
 
 int warn_return_type;
 
+/* Nonzero means give string constants the type `const char *'
+   to get extra warnings from them.  These warnings will be too numerous
+   to be useful, except in thoroughly ANSIfied programs.  */
+
+int warn_write_strings;
+
 /* Nonzero means `$' can be in an identifier.
    See cccp.c for reasons why this breaks some obscure ANSI C programs.  */
 
@@ -244,10 +249,18 @@ lang_decode_option (p)
     warn_implicit = 1;
   else if (!strcmp (p, "-Wreturn-type"))
     warn_return_type = 1;
+  else if (!strcmp (p, "-Wwrite-strings"))
+    warn_write_strings = 1;
   else if (!strcmp (p, "-Wcomment"))
     ; /* cpp handles this one.  */
   else if (!strcmp (p, "-Wtrigraphs"))
     ; /* cpp handles this one.  */
+  else if (!strcmp (p, "-Wall"))
+    {
+      extra_warnings = 1;
+      warn_implicit = 1;
+      warn_return_type = 1;
+    }
   else
     return 0;
 
@@ -588,7 +601,12 @@ duplicate_decls (new, old)
     }
   else
     {
-      if (!types_match)
+      if (flag_traditional && TREE_CODE (new) == FUNCTION_DECL
+	  && IDENTIFIER_IMPLICIT_DECL (DECL_NAME (new)) != 0)
+	/* If -traditional, avoid error for redeclaring fcn
+	   after implicit decl.  */
+	;
+      else if (!types_match)
 	{
 	  error_with_decl (new, "conflicting types for `%s'");
 	  error_with_decl (old, "previous declaration of `%s'");
@@ -720,6 +738,12 @@ pushdecl (x)
 	{
 	  /* Install a global value.  */
 	  
+	  /* If the first global decl is external, warn if we later see
+	     static one.  */
+	  if (IDENTIFIER_GLOBAL_VALUE (name) == 0
+	      && TREE_EXTERNAL (x))
+	    TREE_PUBLIC (name) = 1;
+
 	  IDENTIFIER_GLOBAL_VALUE (name) = x;
 
 	  if (IDENTIFIER_IMPLICIT_DECL (name) != 0
@@ -1125,6 +1149,10 @@ init_decl_processing ()
   pushdecl (build_decl (TYPE_DECL, get_identifier ("char"),
 			char_type_node));
 
+  long_integer_type_node = make_signed_type (BITS_PER_WORD);
+  pushdecl (build_decl (TYPE_DECL, get_identifier ("long int"),
+			long_integer_type_node));
+
 #ifdef INT_TYPE_SIZE
   unsigned_type_node = make_unsigned_type (INT_TYPE_SIZE);
 #else
@@ -1137,20 +1165,22 @@ init_decl_processing ()
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long unsigned int"),
 			long_unsigned_type_node));
 
-  /* `unsigned long' or `unsigned int' is the type for sizeof.  */
+  /* `unsigned long' or `unsigned int' is the standard type for sizeof.
+     Traditionally, use a signed type.  */
 #ifdef INT_TYPE_SIZE
   if (INT_TYPE_SIZE != BITS_PER_WORD)
-    sizetype = long_unsigned_type_node;
+    sizetype = flag_traditional ? long_integer_type_node : long_unsigned_type_node;
   else
-    sizetype = unsigned_type_node;
+    sizetype = flag_traditional ? integer_type_node : unsigned_type_node;
 #else
-  sizetype = unsigned_type_node;
+  sizetype = flag_traditional ? integer_type_node : unsigned_type_node;
 #endif
 
   TREE_TYPE (TYPE_SIZE (integer_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (char_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (unsigned_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (long_unsigned_type_node)) = sizetype;
+  TREE_TYPE (TYPE_SIZE (long_integer_type_node)) = sizetype;
 
   error_mark_node = make_node (ERROR_MARK);
   TREE_TYPE (error_mark_node) = error_mark_node;
@@ -1158,10 +1188,6 @@ init_decl_processing ()
   short_integer_type_node = make_signed_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short int"),
 			short_integer_type_node));
-
-  long_integer_type_node = make_signed_type (BITS_PER_WORD);
-  pushdecl (build_decl (TYPE_DECL, get_identifier ("long int"),
-			long_integer_type_node));
 
   long_long_integer_type_node = make_signed_type (2 * BITS_PER_WORD);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long long int"),
@@ -1664,7 +1690,7 @@ complete_array_type (type, initial_value, do_default)
 
   if (maxindex)
     {
-      TYPE_DOMAIN (type) = make_index_type (maxindex);
+      TYPE_DOMAIN (type) = build_index_type (maxindex);
       if (!TREE_TYPE (maxindex))
 	TREE_TYPE (maxindex) = TYPE_DOMAIN (type);
     }
@@ -2026,17 +2052,23 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 		  size = integer_one_node;
 		}
 	      if (TREE_LITERAL (size))
-		itype = make_index_type (build_int_2 (TREE_INT_CST_LOW (size) - 1, 0));
+		itype = build_index_type (build_int_2 (TREE_INT_CST_LOW (size) - 1, 0));
 	      else
 		{
 		  if (pedantic)
 		    warning ("ANSI C forbids variable-size array `%s'", name);
 		  itype = build_binary_op (MINUS_EXPR, size, integer_one_node);
-		  itype = make_index_type (itype);
+		  itype = build_index_type (itype);
 		}
 	    }
 
-	  /* Build the array type itself.  */
+	  /* Build the array type itself.
+	     Merge any constancy or volatility into the target type.  */
+
+	  if (constp || volatilep)
+	    type = build_type_variant (type, constp, volatilep);
+	  constp = 0;
+	  volatilep = 0;
 
 	  type = build_array_type (type, itype);
 	}
@@ -2324,28 +2356,6 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
   }
 }
 
-/* Create a type of integers to be the TYPE_DOMAIN of an ARRAY_TYPE.
-   MAXVAL should be the maximum value in the domain
-   (one less than the length of the array).  */
-
-tree
-make_index_type (maxval)
-     tree maxval;
-{
-  register tree itype = make_node (INTEGER_TYPE);
-  int maxint = TREE_INT_CST_LOW (maxval);
-  TYPE_PRECISION (itype) = BITS_PER_WORD;
-  TYPE_MIN_VALUE (itype) = build_int_2 (0, 0);
-  TREE_TYPE (TYPE_MIN_VALUE (itype)) = itype;
-  TYPE_MAX_VALUE (itype) = maxval;
-  TREE_TYPE (maxval) = itype;
-  TYPE_MODE (itype) = SImode;
-  TYPE_SIZE (itype) = TYPE_SIZE (long_integer_type_node);
-  TYPE_SIZE_UNIT (itype) = TYPE_SIZE_UNIT (long_integer_type_node);
-  TYPE_ALIGN (itype) = TYPE_ALIGN (long_integer_type_node);
-  return type_hash_canon (maxint > 0 ? maxint : - maxint, itype);
-}
-
 /* Decode the parameter-list info for a function type or function definition.
    The argument is the value returned by `get_parm_info' (or made in parse.y
    if there is an identifier list instead of a parameter decl list).

@@ -1128,7 +1128,7 @@ symout_finish (filename, filetime)
      int filetime;
 {
   int *blockvector = (int *) alloca ((total_blocks + 1) * sizeof (int));
-  int *typevector = (int *) alloca ((total_types + 1) * sizeof (int));
+  int *typevector;
   int now = time (0);
   register int i;
   struct symbol_root buffer;
@@ -1136,6 +1136,8 @@ symout_finish (filename, filetime)
 
   /* Output dummy entries for any undefined structure references.  */
   symout_types (filter_undefined_types (permanent_fwd_refs));
+
+  typevector = (int *) alloca ((total_types + 1) * sizeof (int));
 
   buffer.language = language_c;
   buffer.blockvector = (struct blockvector *) next_address;

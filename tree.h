@@ -193,7 +193,10 @@ struct tree_common
    In LABEL_DECL nodes, it means a goto for this label has been seen 
    from a place outside all binding contours that restore stack levels,
    or that an error message about jumping into such a binding contour
-   has been printed for this label.  */
+   has been printed for this label.
+   In ..._TYPE nodes, it means that objects of this type must
+   be fully addressable.  This means that pieces of this
+   object cannot go into register parameters, for example.  */
 #define TREE_ADDRESSABLE(NODE) ((NODE)->common.addressable_attr)
 
 /* In VAR_DECL nodes, nonzero means declared `register'.  */
@@ -618,6 +621,7 @@ extern tree make_unsigned_type ();
 extern void fixup_unsigned_type ();
 extern tree build_pointer_type ();
 extern tree build_reference_type ();
+extern tree build_index_type ();
 extern tree build_array_type ();
 extern tree build_function_type ();
 extern tree build_method_type ();
