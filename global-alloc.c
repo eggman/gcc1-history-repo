@@ -330,7 +330,12 @@ allocno_compare (v1, v2)
     = (((double) (floor_log2 (reg_n_refs[r2]) * reg_n_refs[r2])
 	/ (reg_live_length[r2] * allocno_size[*v2]))
        * 10000);
-  return pri2 - pri1;
+  if (pri2 - pri1)
+    return pri2 - pri1;
+
+  /* If regs are equally good, sort by allocno,
+     so that the results of qsort leave nothing to chance.  */
+  return *v1 - *v2;
 }
 
 /* Scan the rtl code and record all conflicts in the conflict matrices.  */
@@ -341,6 +346,9 @@ global_conflicts ()
   register int b, i;
   register rtx insn;
   short *block_start_allocnos;
+
+  /* Make a vector that mark_reg_{store,clobber} will store in.  */
+  regs_set = (rtx *) alloca (max_parallel * sizeof (rtx) * 2);
 
   block_start_allocnos = (short *) alloca (max_allocno * sizeof (short));
 
@@ -409,13 +417,13 @@ global_conflicts ()
 	  register RTX_CODE code = GET_CODE (insn);
 	  register rtx link;
 
-	  /* Make a vector that mark_reg_{store,clobber} will store in.  */
-	  regs_set = (rtx *) alloca (max_parallel * sizeof (rtx));
+	  /* Make regs_set an empty set.  */
+
 	  n_regs_set = 0;
 
 	  if (code == INSN || code == CALL_INSN || code == JUMP_INSN)
 	    {
-	      /* Mark any registers clobbered INSN as live,
+	      /* Mark any registers clobbered by INSN as live,
 		 so they conflict with the inputs.  */
 
 	      note_stores (PATTERN (insn), mark_reg_clobber);
@@ -427,7 +435,9 @@ global_conflicts ()
 		  mark_reg_death (XEXP (link, 0));
 
 	      /* Mark any registers set in INSN as live,
-		 and mark them as conflicting with all other live regs.  */
+		 and mark them as conflicting with all other live regs.
+		 Clobbers are processed again, so they conflict with
+		 the registers that are set.  */
 
 	      note_stores (PATTERN (insn), mark_reg_store);
 
@@ -774,24 +784,22 @@ record_conflicts (allocno_vec, len)
    This is because those other regs could be considered after this.
 
    REG might actually be something other than a register;
-   if so, we do nothing.  Also ignore CLOBBERs; they are
-   processed at a different time using mark_reg_clobber
-   and we don't want to do them twice.  */
+   if so, we do nothing.
+
+   CLOBBERs are processed here by calling mark_reg_clobber.  */ 
 
 static void
-mark_reg_store (reg, setter)
-     rtx reg, setter;
+mark_reg_store (orig_reg, setter)
+     rtx orig_reg, setter;
 {
   register int regno;
+  register rtx reg = orig_reg;
 
   /* WORD is which word of a multi-register group is being stored.
      For the case where the store is actually into a SUBREG of REG.
      Except we don't use it; I believe the entire REG needs to be
      made live.  */
   int word = 0;
-
-  if (GET_CODE (setter) != SET)
-    return;
 
   if (GET_CODE (reg) == SUBREG)
     {
@@ -801,6 +809,13 @@ mark_reg_store (reg, setter)
 
   if (GET_CODE (reg) != REG)
     return;
+
+  if (GET_CODE (setter) != SET)
+    {
+      /* A clobber of a register should be processed here too.  */
+      mark_reg_clobber (orig_reg, setter);
+      return;
+    }
 
   regs_set[n_regs_set++] = reg;
 

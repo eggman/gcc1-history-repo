@@ -32,7 +32,10 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include <sys/stat.h>
 
 #ifdef USG
+#undef FLOAT
 #include <sys/param.h>
+/* This is for hpux.  It is a real screw.  They should change hpux.  */
+#undef FLOAT
 #include <sys/times.h>
 #include <time.h>   /* Correct for hpux at least.  Is it good on other USG?  */
 #else
@@ -42,6 +45,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #endif
 #endif
 
+#include "input.h"
 #include "tree.h"
 #include "c-tree.h"
 #include "rtl.h"
@@ -66,7 +70,9 @@ extern void dump_local_alloc ();
 void rest_of_decl_compilation ();
 void error ();
 void error_with_file_and_line ();
+void fancy_abort ();
 void set_target_switch ();
+void print_target_switch_defaults ();
 
 /* Bit flags that specify the machine subtype we are compiling for.
    Bits are tested using macros TARGET_... defined in the tm-...h file
@@ -87,7 +93,14 @@ char *main_input_filename;
 
 /* Current line number in real source file.  */
 
-extern int lineno;
+int lineno;
+
+/* Stack of currently pending input files.  */
+
+struct file_stack *input_file_stack;
+
+/* Incremented on each change to input_file_stack.  */
+int input_file_stack_tick;
 
 /* FUNCTION_DECL for function now being parsed or compiled.  */
 
@@ -109,6 +122,7 @@ int combine_dump = 0;
 int local_reg_dump = 0;
 int global_reg_dump = 0;
 int jump2_opt_dump = 0;
+int dbr_sched_dump = 0;
 
 /* 1 => write gdb debugging output (using symout.c).  -g
    2 => write dbx debugging output (using dbxout.c).  -G
@@ -124,6 +138,14 @@ int use_gdb_dbx_extensions;
 /* Nonzero means do optimizations.  -opt.  */
 
 int optimize = 0;
+
+/* Nonzero means `char' should be signed.  */
+
+int flag_signed_char;
+
+/* Nonzero means give an enum type only as many bytes as it needs.  */
+
+int flag_short_enums;
 
 /* Nonzero for -fcaller-saves: allocate values in regs that need to
    be saved across function calls, if that produces overall better code.
@@ -193,6 +215,10 @@ int flag_no_peephole = 0;
 
 int flag_volatile;
 
+/* Nonzero means just do syntax checking; don't output anything.  */
+
+int flag_syntax_only = 0;
+
 /* Nonzero means do stupid register allocation.  -noreg.
    This and `optimize' are controlled by different switches in cc1,
    but normally cc controls them both with the -O switch.  */
@@ -236,6 +262,10 @@ int errorcount = 0;
 int warningcount = 0;
 int sorrycount = 0;
 
+/* Name of program invoked, sans directories.  */
+
+char *progname;
+
 /* Nonzero if generating code to do profiling.  */
 
 int profile_flag = 0;
@@ -260,13 +290,17 @@ int flag_inline_functions;
 
 int flag_keep_inline_functions;
 
-/* Nonzero if we are only using compiler to check syntax errors.  */
-
-int flag_syntax_only;
-
 /* Nonzero means make the text shared if supported.  */
 
 int flag_shared_data;
+
+/* Nonzero means schedule into delayed branch slots if supported.  */
+
+int flag_delayed_branch;
+
+/* Copy of arguments to main.  */
+int save_argc;
+char **save_argv;
 
 /* Name for output file of assembly code, specified with -o.  */
 
@@ -300,7 +334,8 @@ struct { char *string; int *variable; int on_value;} f_options[] =
   {"syntax-only", &flag_syntax_only, 1},
   {"shared-data", &flag_shared_data, 1},
   {"caller-saves", &flag_caller_saves, 1},
-  {"pcc-struct-return", &flag_pcc_struct_return, 1}
+  {"pcc-struct-return", &flag_pcc_struct_return, 1},
+  {"delayed-branch", &flag_delayed_branch, 1}
 };
 
 /* Output files for assembler code (real compiler output)
@@ -316,6 +351,7 @@ FILE *combine_dump_file;
 FILE *local_reg_dump_file;
 FILE *global_reg_dump_file;
 FILE *jump2_opt_dump_file;
+FILE *dbr_sched_dump_file;
 
 /* Time accumulators, to count the total time spent in various passes.  */
 
@@ -329,6 +365,7 @@ int flow_time;
 int combine_time;
 int local_alloc_time;
 int global_alloc_time;
+int dbr_sched_time;
 int final_time;
 int symout_time;
 int dump_time;
@@ -409,7 +446,7 @@ void
 pfatal_with_name (name)
      char *name;
 {
-  fprintf (stderr, "cc1: ");
+  fprintf (stderr, "%s: ", progname);
   perror (name);
   exit (35);
 }
@@ -418,16 +455,30 @@ void
 fatal_io_error (name)
      char *name;
 {
-  fprintf (stderr, "cc1:%s: I/O error\n", name);
+  fprintf (stderr, "%s: %s: I/O error\n", progname, name);
   exit (35);
 }
 
 void
 fatal (s, v)
      char *s;
+     int v;
 {
   error (s, v);
   exit (34);
+}
+
+/* Called from insn-extract to give a better error message when we
+   don't have an insn to match what we are looking for, rather
+   than just calling abort().  */
+
+void
+fatal_insn_not_found (insn)
+     rtx insn;
+{
+  error ("The following insn was not recognizable:", 0);
+  debug_rtx (insn);
+  abort ();
 }
 
 static int need_error_newline;
@@ -436,6 +487,9 @@ static int need_error_newline;
    more generally, function such that if next error message is in it
    then we don't have to mention the function name.  */
 static tree last_error_function = NULL;
+
+/* Used to detect when input_file_stack has changed since last described.  */
+static int last_error_tick;
 
 /* Called when the start of a function definition is parsed,
    this function prints on stderr the name of the function.  */
@@ -446,7 +500,7 @@ announce_function (decl)
 {
   if (! quiet_flag)
     {
-      fprintf (stderr, " %s", IDENTIFIER_POINTER (DECL_NAME (decl)));
+      fprintf (stderr, " %s", DECL_PRINT_NAME (decl));
       fflush (stderr);
       need_error_newline = 1;
       last_error_function = current_function_decl;
@@ -456,10 +510,12 @@ announce_function (decl)
 /* Prints out, if necessary, the name of the current function
    which caused an error.  Called from all error and warning functions.  */
 
-static void
+void
 report_error_function (file)
      char *file;
 {
+  struct file_stack *p;
+
   if (need_error_newline)
     {
       fprintf (stderr, "\n");
@@ -473,11 +529,27 @@ report_error_function (file)
 
       if (current_function_decl == NULL)
 	fprintf (stderr, "At top level:\n");
+      else if (TREE_CODE (TREE_TYPE (current_function_decl)) == METHOD_TYPE)
+	fprintf (stderr, "In method %s:\n",
+		 DECL_PRINT_NAME (current_function_decl));
       else
 	fprintf (stderr, "In function %s:\n",
-		 IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
+		 DECL_PRINT_NAME (current_function_decl));
 
       last_error_function = current_function_decl;
+    }
+  if (input_file_stack && input_file_stack->next != 0
+      && input_file_stack_tick != last_error_tick)
+    {
+      fprintf (stderr, "In file included");
+      for (p = input_file_stack->next; p; p = p->next)
+	{
+	  fprintf (stderr, " from %s:%d", p->name, p->line);
+	  if (p->next)
+	    fprintf (stderr, ",");
+	}
+      fprintf (stderr, ":\n");
+      last_error_tick = input_file_stack_tick;
     }
 }
 
@@ -511,7 +583,7 @@ error_with_file_and_line (file, line, s, v, v2)
   if (file)
     fprintf (stderr, "%s:%d: ", file, line);
   else
-    fprintf (stderr, "cc1: ");
+    fprintf (stderr, "%s: ", progname);
   fprintf (stderr, s, v, v2);
   fprintf (stderr, "\n");
 }
@@ -532,7 +604,9 @@ error_with_decl (decl, s, v)
   fprintf (stderr, "%s:%d: ",
 	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
 
-  if (DECL_NAME (decl))
+  if (DECL_PRINT_NAME (decl))
+    fprintf (stderr, s, DECL_PRINT_NAME (decl), v);
+  else if (DECL_NAME (decl))
     fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)), v);
   else
     fprintf (stderr, s, "((anonymous))", v);
@@ -571,7 +645,7 @@ error_for_asm (insn, s, v, v2)
 
   filename = ASM_OPERANDS_SOURCE_FILE (asmop);
   line = ASM_OPERANDS_SOURCE_LINE (asmop);
-  
+
   error_with_file_and_line (filename, line, s, v, v2);
 }
 
@@ -594,7 +668,7 @@ warning_with_file_and_line (file, line, s, v, v2)
   if (file)
     fprintf (stderr, "%s:%d: ", file, line);
   else
-    fprintf (stderr, "cc1: ");
+    fprintf (stderr, "%s: ", progname);
 
   fprintf (stderr, "warning: ");
   fprintf (stderr, s, v, v2);
@@ -614,7 +688,8 @@ warning (s, v, v2)
 }
 
 /* Report a warning at the declaration DECL.
-   S is string which uses %s to substitute the declaration name.  */
+   S is string which uses %s to substitute the declaration name.
+   V is a second parameter that S can refer to.  */
 
 void
 warning_with_decl (decl, s, v)
@@ -631,7 +706,9 @@ warning_with_decl (decl, s, v)
 	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
 
   fprintf (stderr, "warning: ");
-  if (DECL_NAME (decl))
+  if (DECL_PRINT_NAME (decl))
+    fprintf (stderr, s, DECL_PRINT_NAME (decl), v);
+  else if (DECL_NAME (decl))
     fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)), v);
   else
     fprintf (stderr, s, "((anonymous))", v);
@@ -650,7 +727,7 @@ sorry (s, v, v2)
   if (input_filename)
     fprintf (stderr, "%s:%d: ", input_filename, lineno);
   else
-    fprintf (stderr, "cc1: ");
+    fprintf (stderr, "%s: ", progname);
 
   fprintf (stderr, "sorry, not implemented: ");
   fprintf (stderr, s, v, v2);
@@ -675,6 +752,15 @@ really_sorry (s, v, v2)
   fatal (" (fatal)\n");
 }
 
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
+}
+
 /* When `malloc.c' is compiled with `rcheck' defined,
    it calls this function to report clobberage.  */
 
@@ -799,6 +885,7 @@ compile_file (name)
   combine_time = 0;
   local_alloc_time = 0;
   global_alloc_time = 0;
+  dbr_sched_time = 0;
   final_time = 0;
   symout_time = 0;
   dump_time = 0;
@@ -923,8 +1010,19 @@ compile_file (name)
 	pfatal_with_name (dumpname);
     }
 
+  /* If dbr_sched dump desired, open the output file.  */
+  if (dbr_sched_dump)
+    {
+      register char *dumpname = (char *) xmalloc (dump_base_name_length + 7);
+      strcpy (dumpname, dump_base_name);
+      strcat (dumpname, ".dbr");
+      dbr_sched_dump_file = fopen (dumpname, "w");
+      if (dbr_sched_dump_file == 0)
+	pfatal_with_name (dumpname);
+    }
+
   /* Open assembler code output file.  */
- 
+
   if (! name_specified && asm_file_name == 0)
     asm_out_file = stdout;
   else
@@ -963,6 +1061,12 @@ compile_file (name)
      as the official input file name.  */
   if (main_input_filename == 0)
     main_input_filename = name;
+
+  /* Put an entry on the input file stack for the main input file.  */
+  input_file_stack
+    = (struct file_stack *) xmalloc (sizeof (struct file_stack));
+  input_file_stack->next = 0;
+  input_file_stack->name = input_filename;
 
   ASM_FILE_START (asm_out_file);
 
@@ -1018,6 +1122,7 @@ compile_file (name)
 
   parse_time += gettime () - start_time;
 
+  parse_time -= integration_time;
   parse_time -= varconst_time;
 
   globals = getdecls ();
@@ -1032,11 +1137,28 @@ compile_file (name)
       {
 	if (TREE_CODE (decl) == VAR_DECL && TREE_STATIC (decl)
 	    && ! TREE_ASM_WRITTEN (decl))
-	  rest_of_decl_compilation (decl, 0, 1, 1);
+	  {
+	    /* Don't write out static consts, unless we needed
+	       to take their address for some reason.  */
+	    if (! TREE_READONLY (decl)
+		|| TREE_PUBLIC (decl)
+		|| TREE_ADDRESSABLE (decl))
+	      rest_of_decl_compilation (decl, 0, 1, 1);
+	    /* Otherwise maybe mention them just for the debugger.  */
+#ifdef DBX_DEBUGGING_INFO
+	    else if (DECL_INITIAL (decl) && write_symbols == DBX_DEBUG)
+	      TIMEVAR (varconst_time, dbxout_symbol (decl, 0));
+#endif
+#ifdef SDB_DEBUGGING_INFO
+	    else if (DECL_INITIAL (decl) && write_symbols == SDB_DEBUG)
+	      TIMEVAR (varconst_time, sdbout_symbol (decl, 0));
+#endif
+	  }
 	if (TREE_CODE (decl) == FUNCTION_DECL
 	    && ! TREE_ASM_WRITTEN (decl)
 	    && DECL_INITIAL (decl) != 0
-	    && TREE_ADDRESSABLE (decl))
+	    && TREE_ADDRESSABLE (decl)
+	    && ! TREE_EXTERNAL (decl))
 	  output_inline_function (decl);
 
 	/* Warn about any function declared static but not defined.  */
@@ -1094,6 +1216,10 @@ compile_file (name)
 
   end_final (main_input_filename);
 
+#ifdef ASM_FILE_END
+  ASM_FILE_END (asm_out_file);
+#endif
+
   /* Close the dump files.  */
 
   if (rtl_dump)
@@ -1126,12 +1252,16 @@ compile_file (name)
   if (jump2_opt_dump)
     fclose (jump2_opt_dump_file);
 
-  /* Close non-debugging input and output files.  */
+  if (dbr_sched_dump)
+    fclose (dbr_sched_dump_file);
+
+  /* Close non-debugging input and output files.  Take special care to note
+     whether fclose returns an error, since the pages might still be on the
+     buffer chain while the file is open.  */
 
   fclose (finput);
-  if (ferror (asm_out_file) != 0)
+  if (ferror (asm_out_file) != 0 || fclose (asm_out_file) != 0)
     fatal_io_error (asm_file_name);
-  fclose (asm_out_file);
 
   /* Print the times.  */
 
@@ -1147,6 +1277,7 @@ compile_file (name)
       print_time ("combine", combine_time);
       print_time ("local-alloc", local_alloc_time);
       print_time ("global-alloc", global_alloc_time);
+      print_time ("dbranch", dbr_sched_time);
       print_time ("final", final_time);
       print_time ("varconst", varconst_time);
       print_time ("symout", symout_time);
@@ -1167,7 +1298,7 @@ compile_file (name)
 void
 rest_of_decl_compilation (decl, asmspec, top_level, at_end)
      tree decl;
-     tree asmspec;
+     char *asmspec;
      int top_level;
      int at_end;
 {
@@ -1185,6 +1316,16 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
 			  || DECL_INITIAL (decl) == error_mark_node)))
 		 assemble_variable (decl, top_level, write_symbols, at_end);
 	     });
+  else if (TREE_REGDECL (decl) && asmspec != 0)
+    {
+      if (decode_reg_name (asmspec) >= 0)
+	{
+	  DECL_RTL (decl) = 0;
+	  make_decl_rtl (decl, asmspec, top_level);
+	}
+      else
+	error ("invalid register name `%s' for register variable", asmspec);
+    }
 #ifdef DBX_DEBUGGING_INFO
   else if (write_symbols == DBX_DEBUG && TREE_CODE (decl) == TYPE_DECL)
     TIMEVAR (varconst_time, dbxout_symbol (decl, 0));
@@ -1268,14 +1409,18 @@ rest_of_compilation (decl)
 	 finish_compilation will call rest_of_compilation again
 	 for those functions that need to be output.  */
 
-      if (TREE_PUBLIC (decl) == 0
-	  && TREE_INLINE (decl)
-	  && ! flag_keep_inline_functions)
+      if (((! TREE_PUBLIC (decl) && ! TREE_ADDRESSABLE (decl)
+	    && ! flag_keep_inline_functions)
+	   || TREE_EXTERNAL (decl))
+	  && TREE_INLINE (decl))
 	goto exit_rest_of_compilation;
     }
 
-  if (rtl_dump_and_exit)
-    goto exit_rest_of_compilation;
+  if (rtl_dump_and_exit || flag_syntax_only)
+    {
+      get_temporary_types ();
+      goto exit_rest_of_compilation;
+    }
 
   TREE_ASM_WRITTEN (decl) = 1;
 
@@ -1501,6 +1646,26 @@ rest_of_compilation (decl)
 	       fflush (jump2_opt_dump_file);
 	     });
 
+  /* If a scheduling pass for delayed branches is to be done,
+     call the scheduling code. */
+
+#ifdef HAVE_DELAYED_BRANCH
+  if (optimize && flag_delayed_branch)
+    {
+      TIMEVAR (dbr_sched_time, dbr_schedule (insns, dbr_sched_dump_file));
+      if (dbr_sched_dump)
+	{
+	  TIMEVAR (dump_time,
+		 {
+		   fprintf (dbr_sched_dump_file, "\n;; Function %s\n\n",
+			    IDENTIFIER_POINTER (DECL_NAME (decl)));
+		   print_rtl (dbr_sched_dump_file, insns);
+		   fflush (dbr_sched_dump_file);
+		 });
+	}
+    }
+#endif
+
   /* Now turn the rtl into assembler code.  */
 
   TIMEVAR (final_time,
@@ -1569,6 +1734,15 @@ main (argc, argv, envp)
   register int i;
   char *filename = 0;
   int print_mem_flag = 0;
+  char *p;
+
+  /* save in case md file wants to emit args as a comment.  */
+  save_argc = argc;
+  save_argv = argv;
+
+  p = argv[0] + strlen (argv[0]);
+  while (p != argv[0] && p[-1] != '/') --p;
+  progname = p;
 
 #ifdef RLIMIT_STACK
   /* Get rid of any avoidable limit on stack size.  */
@@ -1588,6 +1762,10 @@ main (argc, argv, envp)
 
   /* Initialize whether `char' is signed.  */
   flag_signed_char = DEFAULT_SIGNED_CHAR;
+#ifdef DEFAULT_SHORT_ENUMS
+  /* Initialize how much space enums occupy, by default.  */
+  flag_short_enums = DEFAULT_SHORT_ENUMS;
+#endif
 
   /* This is zeroed by -O.  */
   obey_regdecls = 1;
@@ -1619,6 +1797,9 @@ main (argc, argv, envp)
 		{
 		case 'c':
 		  combine_dump = 1;
+		  break;
+		case 'd':
+		  dbr_sched_dump = 1;
 		  break;
 		case 'f':
 		  flow_dump = 1;
@@ -1690,7 +1871,7 @@ main (argc, argv, envp)
 	    else if (!strncmp (p, "call-saved-", 11))
 	      fix_register (&p[11], 0, 0);
 	    else if (! lang_decode_option (argv[i]))
-	      error ("Invalid option `%s'", argv[i]);	      
+	      error ("Invalid option `%s'", argv[i]);
 	  }
 	else if (!strcmp (str, "noreg"))
 	  ;
@@ -1719,6 +1900,7 @@ main (argc, argv, envp)
 #else
 	    fprintf (stderr, " compiled by CC.\n");
 #endif
+	    print_target_switch_defaults ();
 	  }
 	else if (!strcmp (str, "w"))
 	  inhibit_warnings = 1;
@@ -1757,15 +1939,29 @@ main (argc, argv, envp)
 	else if (!strcmp (str, "gg"))
 	  write_symbols = GDB_DEBUG;
 #ifdef DBX_DEBUGGING_INFO
+	else if (!strcmp (str, "g0"))
+	  write_symbols = DBX_DEBUG;
+	else if (!strcmp (str, "G0"))
+	  write_symbols = DBX_DEBUG;
 	else if (!strcmp (str, "g"))
-	  write_symbols = DBX_DEBUG;
+	  {
+	    write_symbols = DBX_DEBUG;
+	    use_gdb_dbx_extensions = 1;
+	  }
 	else if (!strcmp (str, "G"))
-	  write_symbols = DBX_DEBUG;
+	  {
+	    write_symbols = DBX_DEBUG;
+	    use_gdb_dbx_extensions = 1;
+	  }
 #endif
 #ifdef SDB_DEBUGGING_INFO
 	else if (!strcmp (str, "g"))
 	  write_symbols = SDB_DEBUG;
 	else if (!strcmp (str, "G"))
+	  write_symbols = SDB_DEBUG;
+	else if (!strcmp (str, "g0"))
+	  write_symbols = SDB_DEBUG;
+	else if (!strcmp (str, "G0"))
 	  write_symbols = SDB_DEBUG;
 #endif
 	else if (!strcmp (str, "symout"))
@@ -1799,8 +1995,8 @@ main (argc, argv, envp)
   if (print_mem_flag)
     {
       extern char **environ;
-      caddr_t lim = (caddr_t) sbrk (0);
-      
+      char *lim = (char *) sbrk (0);
+
       fprintf (stderr, "Data size %d.\n",
 	       (int) lim - (int) &environ);
       fflush (stderr);
@@ -1846,4 +2042,22 @@ set_target_switch (name)
 	return;
       }
   error ("Invalid option `%s'", name);
+}
+
+/* Print default target switches for -version.  */
+
+void
+print_target_switch_defaults ()
+{
+  register int j;
+  register int mask = TARGET_DEFAULT;
+  fprintf (stderr, "default target switches:");
+  for (j = 0; j < sizeof target_switches / sizeof target_switches[0]; j++)
+    if (target_switches[j].name[0] != '\0'
+	&& target_switches[j].value > 0
+	&& (target_switches[j].value & mask) == target_switches[j].value)
+
+      fprintf (stderr, " -m%s", target_switches[j].name);
+
+  fprintf (stderr, "\n");
 }

@@ -407,14 +407,15 @@ dbxout_type (type, full)
 	      CONTIN;
 	    fprintf (asmfile, "%s:", IDENTIFIER_POINTER (DECL_NAME (tem)));
 	    CHARS (2 + IDENTIFIER_LENGTH (DECL_NAME (tem)));
-	    if (use_gdb_dbx_extensions)
+#ifdef TREE_PRIVATE
+	    if (use_gdb_dbx_extensions
+		&& (TREE_PRIVATE (tem) || TREE_PROTECTED (tem)
+		    || TREE_CODE (tem) != FIELD_DECL))
 	      {
 		putc ('/', asmfile);
-#ifdef TREE_PRIVATE
 		putc ((TREE_PRIVATE (tem) ? '0'
 		       : TREE_PROTECTED (tem) ? '1' : '2'),
 		      asmfile);
-#endif
 		CHARS (2);
 		if (TREE_CODE (tem) == FUNCTION_DECL)
 		  {
@@ -433,6 +434,7 @@ dbxout_type (type, full)
 		  dbxout_type (TREE_TYPE (tem), 0);
 	      }
 	    else
+#endif
 	      dbxout_type (TREE_TYPE (tem), 0);
 
 	    if (TREE_CODE (tem) == VAR_DECL)
@@ -688,7 +690,10 @@ dbxout_symbol (decl, local)
 	 S for static storage and file scope,
 	 V for static storage and local scope,
 	    for those two, use N_LCSYM if data is in bss segment,
-	    N_STSYM otherwise.  (N_FUN confuses GDB.)
+	    N_STSYM if in data segment, N_FUN otherwise.
+	    (We used N_FUN originally, then changed to N_STSYM
+	    to please GDB.  However, it seems that confused ld.
+	    Now GDB has been fixed to like N_FUN, says Kingdon.)
 	 no letter at all, and N_LSYM, for auto variable,
 	 r and N_RSYM for register variable.  */
 
@@ -708,17 +713,18 @@ dbxout_symbol (decl, local)
 
 	      if (!DECL_INITIAL (decl))
 		current_sym_code = N_LCSYM;
-#if 0  /* Note: N_FUN confuses GDB, since GDB expects it to start a new
-	  nest of N_LBRAC/N_RBRAC, etc.  But N_STSYM probably does not
-	  work either, since it relocates as data segment.
-	  Probably no standard N_ code works, so we must invent one.  */
 	      else if (TREE_READONLY (decl) && ! TREE_VOLATILE (decl))
 		/* This is not quite right, but it's the closest
 		   of all the codes that Unix defines.  */
 		current_sym_code = N_FUN;
-#endif
 	      else
-		current_sym_code = N_STSYM;
+		{
+/* Ultrix `as' seems to need this.  */
+#ifdef DBX_STATIC_STAB_DATA_SECTION
+		  data_section ();
+#endif
+		  current_sym_code = N_STSYM;
+		}
 	    }
 	}
       else if (GET_CODE (DECL_RTL (decl)) == REG)
@@ -753,7 +759,11 @@ dbxout_symbol (decl, local)
 	      current_sym_value = INTVAL (XEXP (XEXP (XEXP (DECL_RTL (decl), 0), 0), 1));
 	    }
 
-	  type = build_pointer_type (TREE_TYPE (decl));
+	  /* Effectively do build_pointer_type, but don't cache this type,
+	     since it might be temporary whereas the type it points to
+	     might have been saved for inlining.  */
+	  type = make_node (POINTER_TYPE);
+	  TREE_TYPE (type) = TREE_TYPE (decl);
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
 	       && GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
@@ -904,6 +914,10 @@ dbxout_parms (parms)
 	  fprintf (asmfile, ".stabs \"%s:p",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 
+#if 0 /* This is actually the case in which a parameter
+	 is passed in registers but lives on the stack in a local slot.
+	 The address we are using is already correct, so don't change it.  */
+
 	  /* This is the case where the parm is passed as an int or double
 	     and it is converted to a char, short or float and stored back
 	     in the parmlist.  In this case, describe the parm
@@ -915,6 +929,7 @@ dbxout_parms (parms)
 	    current_sym_value += (GET_MODE_SIZE (TYPE_MODE (DECL_ARG_TYPE (parms)))
 				  - GET_MODE_SIZE (GET_MODE (DECL_RTL (parms))));
 #endif
+#endif /* 0 */
 
 	  dbxout_type (TREE_TYPE (parms), 0);
 	  dbxout_finish_symbol ();
@@ -1082,6 +1097,9 @@ dbxout_block (stmt, depth, args)
 	  break;
 
 	case LET_STMT:
+	  /* Ignore LET_STMTs for blocks never really used to make RTL.  */
+	  if (! TREE_USED (stmt))
+	    break;
 	  /* In dbx format, the syms of a block come before the N_LBRAC.  */
 	  dbxout_tags (STMT_TYPE_TAGS (stmt));
 	  dbxout_syms (STMT_VARS (stmt));
@@ -1102,8 +1120,8 @@ dbxout_block (stmt, depth, args)
 	      fprintf (asmfile, "\n");
 	    }
 
-	  /* Output the interior of the block.  */
-	  dbxout_block (STMT_BODY (stmt), depth + 1, 0);
+	  /* Output the subblocks.  */
+	  dbxout_block (STMT_SUBBLOCKS (stmt), depth + 1, 0);
 
 	  /* Refer to the marker for the end of the block.  */
 	  if (depth > 0)

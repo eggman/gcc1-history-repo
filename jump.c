@@ -225,45 +225,6 @@ jump_optimize (f, cross_jump, noop_moves)
       return;
     }
 
-#if 0
-#ifdef EXIT_IGNORE_STACK
-  /* If the last insn just adjusts the stack,
-     we can delete it on certain machines,
-     provided we have a frame pointer.  */
-
-  if (frame_pointer_needed && EXIT_IGNORE_STACK)
-    {
-      insn = last_insn;
-      while (insn)
-	{
-	  rtx prev;
-	  /* Back up to a real insn.  */
-	  if (GET_CODE (insn) != INSN && GET_CODE (insn) != JUMP_INSN
-	      && GET_CODE (insn) != CALL_INSN)
-	    insn = prev_real_insn (insn);
-	  if (insn == 0)
-	    break;
-	  prev = PREV_INSN (insn);
-	  /* If this insn is a stack adjust, delete it.  */
-	  if (GET_CODE (insn) == INSN
-	      && GET_CODE (PATTERN (insn)) == SET
-	      && GET_CODE (SET_DEST (PATTERN (insn))) == REG
-	      && REGNO (SET_DEST (PATTERN (insn))) == STACK_POINTER_REGNUM)
-	    {
-	      delete_insn (insn);
-	      if (insn == last_insn)
-		last_insn = prev;
-	    }
-	  else
-	    /* If we find an insn that isn't a stack adjust, stop deleting.  */
-	    break;
-	  /* Back up to insn before the deleted one and try to delete more.  */
-	  insn = prev;
-	}
-    }
-#endif
-#endif
-
   if (noop_moves)
     for (insn = f; insn; )
       {
@@ -363,32 +324,31 @@ jump_optimize (f, cross_jump, noop_moves)
 		changed |= tension_vector_labels (PATTERN (insn), 1, noop_moves);
 	    }
 
+	  /* Don't allow dropping through into a dispatch table.
+	     That means the dispatch insn itself was deleted,
+	     so delete the table too.  */
+
+	  if (GET_CODE (insn) == JUMP_INSN)
+	    {
+	      /* Note: the corresponding job for ADDR_VEC is done
+		 in delete_insn.  */
+
+	      /* A vector of offsets is unused if its label
+		 is used only once (i.e., from the vector).  */
+	      if (GET_CODE (PATTERN (insn)) == ADDR_DIFF_VEC
+		  && LABEL_NUSES (XEXP (XEXP (PATTERN (insn), 0), 0)) == 1)
+		{
+		  /* So delete both label and vector.  */
+		  delete_insn (PREV_INSN (insn));
+		  delete_insn (insn);
+		  changed = 1;
+		}
+	    }
+
 	  if (GET_CODE (insn) == JUMP_INSN && JUMP_LABEL (insn))
 	    {
 	      register rtx reallabelprev = prev_real_insn (JUMP_LABEL (insn));
 	      rtx temp;
-
-	      /* Delete insns that adjust stack pointer before a return,
-		 if this is the last jump-optimization before final
-		 and we need to have a frame pointer.  */
-#if 0   /* These are now deleted by flow.c as dead stores.  */
-#ifdef EXIT_IGNORE_STACK
-	      if (noop_moves && frame_pointer_needed && EXIT_IGNORE_STACK
-		  && NEXT_INSN (JUMP_LABEL (insn)) == 0)
-		{
-		  rtx prev = prev_real_insn (insn);
-		  if (prev != 0
-		      && GET_CODE (prev) == INSN
-		      && GET_CODE (PATTERN (prev)) == SET
-		      && GET_CODE (SET_DEST (PATTERN (prev))) == REG
-		      && REGNO (SET_DEST (PATTERN (prev))) == STACK_POINTER_REGNUM)
-		    {
-		      delete_insn (prev);
-		      changed = 1;
-		    }
-		}
-#endif
-#endif
 
 	      /* Detect jump to following insn.  */
 	      if (reallabelprev == insn && condjump_p (insn))
@@ -747,7 +707,10 @@ do_cross_jump (insn, newjpos, newlpos)
   /* Find an existing label at this point
      or make a new one if there is none.  */
   label = PREV_INSN (newlpos);
-  if (GET_CODE (label) != CODE_LABEL)
+  while (label && GET_CODE (label) == NOTE)
+    label = PREV_INSN (label);
+
+  if (label == 0 || GET_CODE (label) != CODE_LABEL)
     {
       label = gen_label_rtx ();
       emit_label_after (label, PREV_INSN (newlpos));
@@ -794,7 +757,8 @@ jump_back_p (insn, target)
   /* Verify that the condition code was based on a fixed-point computation.
      Using reverse_condition is invalid for IEEE floating point with nans.  */
   prev = prev_real_insn (insn);
-  if (! (GET_CODE (prev) == INSN
+  if (! (prev != 0
+	 && GET_CODE (prev) == INSN
 	 && GET_CODE (PATTERN (prev)) == SET
 	 && SET_DEST (PATTERN (prev)) == cc0_rtx
 	 && (GET_MODE_CLASS (GET_MODE (SET_SRC (PATTERN (prev)))) == MODE_INT
@@ -1187,13 +1151,12 @@ delete_insn (insn)
   register rtx next = NEXT_INSN (insn);
   register rtx prev = PREV_INSN (insn);
 
+  while (next && INSN_DELETED_P (next))
+    next = NEXT_INSN (next);
+
+  /* This insn is already deleted => return first following nondeleted.  */
   if (INSN_DELETED_P (insn))
-    {
-      /* This insn is already deleted => return first following nondeleted.  */
-      while (next && INSN_DELETED_P (next))
-	next = NEXT_INSN (next);
-      return next;
-    }
+    return next;
 
   /* Mark this insn as deleted.  */
 
@@ -1217,6 +1180,9 @@ delete_insn (insn)
 
       if (next)
 	PREV_INSN (next)= prev;
+
+      if (NEXT_INSN (prev) == 0)
+	set_last_insn (prev);
     }
 
   /* If deleting a jump, decrement the count of the label,
@@ -1240,6 +1206,16 @@ delete_insn (insn)
 
   while (prev && (INSN_DELETED_P (prev) || GET_CODE (prev) == NOTE))
     prev = PREV_INSN (prev);
+
+  /* If INSN was a label and a dispatch table follows it,
+     delete the dispatch table.  The tablejump must have gone already.
+     It isn't useful to fall through into a table.  */
+
+  if (GET_CODE (insn) == CODE_LABEL
+      && NEXT_INSN (insn) != 0
+      && GET_CODE (NEXT_INSN (insn)) == JUMP_INSN
+      && GET_CODE (PATTERN (NEXT_INSN (insn))) == ADDR_VEC)
+    next = delete_insn (NEXT_INSN (insn));
 
   /* If INSN was a label, delete insns following it if now unreachable.  */
 

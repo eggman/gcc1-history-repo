@@ -60,6 +60,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    also use the condition code; but in practice such insns would not
    combine anyway.  */
 
+#include <stdio.h>
+
 #include "config.h"
 #include "rtl.h"
 #include "flags.h"
@@ -335,7 +337,8 @@ combine_instructions (f, nregs)
 		      goto retry;
 	    }
 #endif
-	  record_dead_and_set_regs (insn);
+	  if (GET_CODE (insn) != NOTE)
+	    record_dead_and_set_regs (insn);
 	  prev = insn;
 	}
       else if (GET_CODE (insn) != NOTE)
@@ -370,6 +373,7 @@ try_combine (i3, i2, i1)
   rtx i1dest, i1src;
   int maxreg;
   rtx temp;
+  int i;
 
   combine_attempts++;
 
@@ -427,6 +431,12 @@ try_combine (i3, i2, i1)
 	  || find_reg_note (i3, REG_INC, i2dest)
 	  || use_crosses_set_p (i2src, INSN_CUID (i2))))
     return 0;
+  /* Don't substitute for a register intended as a clobberable operand.  */
+  if (GET_CODE (PATTERN (i3)) == PARALLEL)
+    for (i = 0; i < XVECLEN (PATTERN (i3), 0); i++)
+      if (GET_CODE (XVECEXP (PATTERN (i3), 0, i)) == CLOBBER
+	  && XEXP (XVECEXP (PATTERN (i3), 0, i), 0) == i2dest)
+	return 0;
 
   if (i1 != 0)
     {
@@ -450,6 +460,29 @@ try_combine (i3, i2, i1)
 	      || find_reg_note (i3, REG_INC, i1dest)
 	      || find_reg_note (i2, REG_INC, i1dest)
 	      || use_crosses_set_p (i1src, INSN_CUID (i1))))
+	return 0;
+      /* Don't substitute for a register intended as a clobberable operand.  */
+      if (GET_CODE (PATTERN (i3)) == PARALLEL)
+	for (i = 0; i < XVECLEN (PATTERN (i3), 0); i++)
+	  if (GET_CODE (XVECEXP (PATTERN (i3), 0, i)) == CLOBBER
+	      && XEXP (XVECEXP (PATTERN (i3), 0, i), 0) == i1dest)
+	    return 0;
+    }
+
+  /* If it is better that two different modes keep two different pseudos,
+     avoid combining them.  */
+  if (GET_CODE (PATTERN (i3)) == SET)
+    {
+      rtx i3dest = SET_DEST (PATTERN (i3));
+      while (GET_CODE (i3dest) == SUBREG
+	     || GET_CODE (i3dest) == STRICT_LOW_PART
+	     || GET_CODE (i3dest) == SIGN_EXTRACT
+	     || GET_CODE (i3dest) == ZERO_EXTRACT)
+	i3dest = SUBREG_REG (i3dest);
+
+      if (SET_SRC (PATTERN (i3)) == i2dest
+	  && GET_CODE (i3dest) == REG
+	  && ! MODES_TIEABLE_P (GET_MODE (i2dest), GET_MODE (i3dest)))
 	return 0;
     }
 
@@ -934,12 +967,21 @@ subst (x, from, to)
 	    }
 	}
       /* (subreg:A (mem:B X) N) becomes a modified MEM.
+	 If we can't do that safely, then it becomes something nonsensical
+	 so that this combination won't take place.
 	 This avoids producing any (subreg (mem))s except in the special
 	 paradoxical case where gen_lowpart_for_combine makes them.  */
       if (SUBREG_REG (x) == to
 	  && GET_CODE (to) == MEM)
 	{
 	  int endian_offset = 0;
+	  /* Don't combine this if mode A is wider than B.  */
+	  if (GET_MODE_SIZE (GET_MODE (x)) > GET_MODE_SIZE (GET_MODE (to)))
+	    return gen_rtx (CLOBBER, VOIDmode, const0_rtx);
+	  /* Don't change the mode of the MEM
+	     if that would change the meaning of the address.  */
+	  if (mode_dependent_address_p (XEXP (to, 0)))
+	    return gen_rtx (CLOBBER, VOIDmode, const0_rtx);
 #ifdef BYTES_BIG_ENDIAN
 	  if (GET_MODE_SIZE (GET_MODE (x)) < UNITS_PER_WORD)
 	    endian_offset += UNITS_PER_WORD - GET_MODE_SIZE (GET_MODE (x));
@@ -996,7 +1038,34 @@ subst (x, from, to)
 	return XEXP (to, 0);
       break;
 
+#if 0
+    case COMPARE:
+      /* -x>0 if 0>x.  */
+      if (GET_CODE (XEXP (x, 0)) == NEG && XEXP (x, 1) == const0_rtx)
+	{
+	  SUBST (XEXP (x, 1), XEXP (XEXP (x, 0), 0));
+	  SUBST (XEXP (x, 0), const0_rtx);
+	}
+      if (GET_CODE (XEXP (x, 1)) == NEG && XEXP (x, 0) == const0_rtx)
+	{
+	  SUBST (XEXP (x, 0), XEXP (XEXP (x, 1), 0));
+	  SUBST (XEXP (x, 1), const0_rtx);
+	}
+      break;
+#endif
+
     case PLUS:
+#if 0  /* Turned off for caution: turn it on after 1.36.  */
+      /* Identify constant sums as such.  */
+      if ((was_replaced[0] || was_replaced[1])
+	  && CONSTANT_P (XEXP (x, 0))
+	  && CONSTANT_P (XEXP (x, 1)))
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  return gen_rtx (CONST, GET_MODE (x), x);
+	}
+#endif
       /* In (plus <foo> (ashift <bar> <n>))
 	 change the shift to a multiply so we can recognize
 	 scaled indexed addresses.  */
@@ -1142,7 +1211,15 @@ subst (x, from, to)
 			  y,
 			  const1_rtx, XEXP (to, 1)));
 	}
-
+      /* Negation is a no-op before equality test against zero.  */
+      if (GET_CODE (XEXP (x, 0)) == NEG && XEXP (x, 1) == const0_rtx)
+	{
+	  SUBST (XEXP (x, 0), XEXP (XEXP (x, 0), 0));
+	}
+      if (GET_CODE (XEXP (x, 1)) == NEG && XEXP (x, 0) == const0_rtx)
+	{
+	  SUBST (XEXP (x, 1), XEXP (XEXP (x, 1), 0));
+	}
       break;
 
     case ZERO_EXTEND:
@@ -1207,7 +1284,8 @@ subst (x, from, to)
 			  gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)),
 			  XEXP (to, 1));
 	}
-      /* In (zero_extend:M (subreg:N (lshiftrt:M (zero_extend:M (any:N ...)))))
+      /* In (zero_extend:M (subreg:N (lshiftrt:M REG))),
+	 where REG was assigned from (zero_extend:M (any:N ...)),
 	 remove the outer zero extension.  */
       if (GET_CODE (XEXP (x, 0)) == SUBREG
 	  && SUBREG_REG (XEXP (x, 0)) == to
@@ -1216,8 +1294,10 @@ subst (x, from, to)
 	{
 	  rtx tmp = XEXP (to, 0);
 
+	  /* See if arg of LSHIFTRT is a register whose value we can find.  */
 	  if (GET_CODE (tmp) == REG)
-	    if (reg_n_sets[REGNO (tmp)] == 1)
+	    if (reg_n_sets[REGNO (tmp)] == 1
+		&& SET_DEST (PATTERN (reg_last_set[REGNO (tmp)])) == tmp)
 	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
 	    else
 	      break;
@@ -1284,7 +1364,8 @@ subst (x, from, to)
 			  gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)),
 			  XEXP (to, 1));
 	} 
-      /* In (sign_extend:M (subreg:N (ashiftrt:M (sign_extend:M (any:N ...)))))
+      /* In (sign_extend:M (subreg:N (ashiftrt:M REG))),
+	 where REG was assigned from (sign_extend:M (any:N ...)),
 	 remove the outer sign extension.  */
       if (GET_CODE (XEXP (x, 0)) == SUBREG
 	  && SUBREG_REG (XEXP (x, 0)) == to
@@ -1293,8 +1374,10 @@ subst (x, from, to)
 	{
 	  rtx tmp = XEXP (to, 0);
 
+	  /* See if arg of LSHIFTRT is a register whose value we can find.  */
 	  if (GET_CODE (tmp) == REG)
-	    if (reg_n_sets[REGNO (tmp)] == 1)
+	    if (reg_n_sets[REGNO (tmp)] == 1
+		&& SET_DEST (PATTERN (reg_last_set[REGNO (tmp)])) == tmp)
 	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
 	    else
 	      break;
@@ -1354,6 +1437,7 @@ subst (x, from, to)
 	      < GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))))
 	{
 	  int shiftcount;
+	  int newmask;
 #ifdef BITS_BIG_ENDIAN
 	  shiftcount
 	    = GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))
@@ -1362,6 +1446,13 @@ subst (x, from, to)
 	  shiftcount
 	    = INTVAL (XEXP (XEXP (x, 0), 2));
 #endif
+	  newmask = ((INTVAL (XEXP (XEXP (x, 1), 1)) << shiftcount)
+		     + (GET_CODE (XEXP (x, 1)) == AND
+			? (1 << shiftcount) - 1
+			: 0));
+	  if (GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))
+	      < HOST_BITS_PER_INT)
+	    newmask &= (1 << GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))) - 1;
 	  if (!undobuf.storage)
 	    undobuf.storage = (char *) oballoc (0);
 	  return
@@ -1370,12 +1461,7 @@ subst (x, from, to)
 		     gen_rtx (GET_CODE (XEXP (x, 1)),
 			      GET_MODE (XEXP (XEXP (x, 0), 0)),
 			      XEXP (XEXP (XEXP (x, 1), 0), 0),
-			      gen_rtx (CONST_INT, VOIDmode,
-				       (INTVAL (XEXP (XEXP (x, 1), 1))
-					<< shiftcount)
-				       + (GET_CODE (XEXP (x, 1)) == AND
-					  ? (1 << shiftcount) - 1
-					  : 0))));
+			      gen_rtx (CONST_INT, VOIDmode, newmask)));
 	}
       /* Can simplify (set (cc0) (compare (zero/sign_extend FOO) CONST))
 	 to (set (cc0) (compare FOO CONST)) if CONST fits in FOO's mode
@@ -1745,6 +1831,24 @@ simplify_and_const_int (x, to)
       return gen_rtx (AND, GET_MODE (x),
 		      XEXP (to, 0), XEXP (x, 1));
     }
+  /* (and (ashiftrt (zero_extend FOO) N) CONST)
+     may be simplified to (and (ashiftrt (subreg FOO) N) CONST)
+     if CONST masks off the bits changed by extension.  */
+  if ((GET_CODE (varop) == ASHIFTRT || GET_CODE (varop) == LSHIFTRT)
+      && GET_CODE (XEXP (varop, 1)) == CONST_INT
+      && XEXP (varop, 0) == to
+      && (GET_CODE (to) == ZERO_EXTEND || GET_CODE (to) == SIGN_EXTEND)
+      /* Verify the and discards all the extended bits.  */
+      && (((unsigned) constop << INTVAL (XEXP (varop, 1)))
+	  >> GET_MODE_BITSIZE (GET_MODE (XEXP (to, 0)))) == 0
+      && FAKE_EXTEND_SAFE_P (GET_MODE (x), XEXP (to, 0)))
+    {
+      if (!undobuf.storage)
+	undobuf.storage = (char *) oballoc (0);
+      SUBST (XEXP (varop, 0),
+	     gen_lowpart_for_combine (GET_MODE (x), XEXP (to, 0)));
+      return x;
+    }
   /* (and x const) may be converted to (zero_extend (subreg x 0)).  */
   if (constop == GET_MODE_MASK (QImode)
       && GET_CODE (varop) == REG)
@@ -1984,12 +2088,16 @@ record_dead_and_set_regs (insn)
 	  register enum rtx_code code = GET_CODE (elt);
 	  if (code == SET || code == CLOBBER)
 	    {
-	      if (GET_CODE (XEXP (elt, 0)) == REG)
-		reg_last_set[REGNO (XEXP (elt, 0))] = insn;
-	      if (GET_CODE (XEXP (elt, 0)) == SUBREG
-		  && GET_CODE (SUBREG_REG (XEXP (elt, 0))) == REG)
-		reg_last_set[REGNO (SUBREG_REG (XEXP (elt, 0)))] = insn;
-	      else if (GET_CODE (XEXP (elt, 0)) == MEM)
+	      rtx dest = XEXP (elt, 0);
+	      while (GET_CODE (dest) == SUBREG
+		     || GET_CODE (dest) == STRICT_LOW_PART
+		     || GET_CODE (dest) == SIGN_EXTRACT
+		     || GET_CODE (dest) == ZERO_EXTRACT)
+		dest = XEXP (dest, 0);
+	      
+	      if (GET_CODE (dest) == REG)
+		reg_last_set[REGNO (dest)] = insn;
+	      else if (GET_CODE (dest) == MEM)
 		mem_last_set = INSN_CUID (insn);
 	    }
 	}
@@ -1997,13 +2105,17 @@ record_dead_and_set_regs (insn)
   else if (GET_CODE (PATTERN (insn)) == SET
 	   || GET_CODE (PATTERN (insn)) == CLOBBER)
     {
-      register rtx x = XEXP (PATTERN (insn), 0);
-      if (GET_CODE (x) == REG)
-	reg_last_set[REGNO (x)] = insn;
-      if (GET_CODE (x) == SUBREG
-	  && GET_CODE (SUBREG_REG (x)) == REG)
-	reg_last_set[REGNO (SUBREG_REG (x))] = insn;
-      else if (GET_CODE (x) == MEM)
+      register rtx dest = XEXP (PATTERN (insn), 0);
+
+      while (GET_CODE (dest) == SUBREG
+	     || GET_CODE (dest) == STRICT_LOW_PART
+	     || GET_CODE (dest) == SIGN_EXTRACT
+	     || GET_CODE (dest) == ZERO_EXTRACT)
+	dest = XEXP (dest, 0);
+
+      if (GET_CODE (dest) == REG)
+	reg_last_set[REGNO (dest)] = insn;
+      else if (GET_CODE (dest) == MEM)
 	mem_last_set = INSN_CUID (insn);
     }
 }
@@ -2603,7 +2715,7 @@ try_distrib (insn, xprev1, xprev2)
 
 void
 dump_combine_stats (file)
-     char *file;
+     FILE *file;
 {
   fprintf
     (file,
@@ -2618,7 +2730,7 @@ dump_combine_stats (file)
 
 void
 dump_combine_total_stats (file)
-     char *file;
+     FILE *file;
 {
   fprintf
     (file,

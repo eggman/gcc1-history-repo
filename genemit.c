@@ -32,6 +32,7 @@ extern int xmalloc ();
 extern void free ();
 
 void fatal ();
+void fancy_abort ();
 
 int max_opno;
 int max_dup_opno;
@@ -387,11 +388,21 @@ xrealloc (ptr, size)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genemit: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
   exit (FATAL_EXIT_CODE);
+}
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
 }
 
 int
@@ -431,9 +442,10 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"expr.h\"\n");
   printf ("#include \"real.h\"\n");
   printf ("#include \"insn-config.h\"\n\n");
+  printf ("#include \"insn-flags.h\"\n\n");
   printf ("extern char *insn_operand_constraint[][MAX_RECOG_OPERANDS];\n\n");
   printf ("extern rtx recog_operand[];\n");
-  printf ("#define operands recog_operand\n\n");
+  printf ("#define operands emit_operand\n\n");
   printf ("#define FAIL do { end_sequence (); return 0;} while (0)\n\n");
   printf ("#define DONE goto _done\n\n");
 

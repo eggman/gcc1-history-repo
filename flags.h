@@ -87,6 +87,14 @@ extern int pedantic;
 
 /* Now the symbols that are set with `-f' switches.  */
 
+/* Nonzero means `char' should be signed.  */
+
+extern int flag_signed_char;
+
+/* Nonzero means give an enum type only as many bytes as it needs.  */
+
+extern int flag_short_enums;
+
 /* Nonzero for -fcaller-saves: allocate values in regs that need to
    be saved across function calls, if that produces overall better code.
    Optional now, so people can test it.  */
@@ -177,3 +185,7 @@ extern int flag_syntax_only;
 /* Nonzero means make the text shared if supported.  */
 
 extern int flag_shared_data;
+
+/* Nonzero means put things in delayed-branch slots if supported. */
+
+extern int flag_delayed_branch;

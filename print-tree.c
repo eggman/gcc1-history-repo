@@ -387,6 +387,16 @@ dump (node, indent)
       break;
 
     case 't':
+      if (TYPE_NAME (node) != NULL)
+	{
+	  if (TREE_CODE (TYPE_NAME (node)) == IDENTIFIER_NODE)
+	    fprintf (outfile, " type name = %s;",
+		     IDENTIFIER_POINTER (TYPE_NAME (node)));
+	  else if (TREE_CODE (TYPE_NAME (node)) == TYPE_DECL
+		   && DECL_NAME (TYPE_NAME (node)) != NULL)
+	    fprintf (outfile, " type name = %s;",
+		     IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (node))));
+	}
       prtypemodeinfo (node);
       prtypeinfo (node);
 #ifdef PRINT_LANG_TYPE
@@ -475,7 +485,10 @@ dump (node, indent)
 	  if (i >= first_rtl)
 	    {
 	      skip (indent);
-	      print_rtl (outfile, TREE_OPERAND (node, i));
+	      if (TREE_OPERAND (node, i))
+		print_rtl (outfile, TREE_OPERAND (node, i));
+	      else
+		fprintf (outfile, "(nil)");
 	      fprintf (outfile, "\n");
 	    }
 	  else
@@ -511,6 +524,7 @@ dump (node, indent)
 	  part ("supercontext", STMT_SUPERCONTEXT (node));
 	  part ("bind_size", STMT_BIND_SIZE (node));
 	  part ("body", STMT_BODY (node));
+	  part ("subblocks", STMT_SUBBLOCKS (node));
 	  break;
 
 	case CASE_STMT:
@@ -540,6 +554,7 @@ dump (node, indent)
 	  walk (STMT_SUPERCONTEXT (node), node, indent);
 	  walk (STMT_BIND_SIZE (node), node, indent);
 	  walk (STMT_BODY (node), node, indent);
+	  walk (STMT_SUBBLOCKS (node), node, indent);
 	  break;
 
 	case CASE_STMT:
@@ -574,8 +589,8 @@ dump (node, indent)
 #else
 	  {
 	    int i;
-	    fprintf (outfile, " = 0x");
 	    char *p = (char *) &TREE_REAL_CST (node);
+	    fprintf (outfile, " = 0x");
 	    for (i = 0; i < sizeof TREE_REAL_CST (node); i++)
 	      fprintf (outfile, "%02x", *p++);
 	    fprintf (outfile, ";");

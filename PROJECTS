@@ -19,9 +19,10 @@ to point to the constant and cause it to be output.
 
 * More cse
 
-The techniques for doing full global cse are described in the
-red dragon book.  It is likely to be slow and use a lot of memory,
-but it might be worth offering as an additional option.
+The techniques for doing full global cse are described in the red
+dragon book, or (a different version) in Frederick Chow's thesis from
+Stanford.  It is likely to be slow and use a lot of memory, but it
+might be worth offering as an additional option.
 
 It is probably possible to extend cse to a few very frequent cases
 without so much expense.
@@ -48,10 +49,85 @@ You would need to verify in the calling function that it does not
 use the addresses of any local variables and does not use setjmp.
 
 * Put short statics vars at low addresses and use short addressing mode?
+
 Useful on the 68000/68020 and perhaps on the 32000 series,
 provided one has a linker that works with the feature.
 This is said to make a 15% speedup on the 68000.
-This brings to mind Hayes' changes for Stanford MIPS.
+
+* Keep global variables in registers.
+
+Here is a scheme for doing this.  A global variable, or a local variable
+whose address is taken, can be kept in a register for an entire function
+if it does not use non-constant memory addresses and (for globals only)
+does not call other functions.  If the entire function does not meet
+this criterion, a loop may.
+
+The VAR_DECL for such a variable would have to have two RTL expressions:
+the true home in memory, and the pseudo-register used temporarily. 
+It is necessary to emit insns to copy the memory location into the
+pseudo-register at the beginning of the function or loop, and perhaps
+back out at the end.  These insns should have REG_EQUIV notes so that,
+if the pseudo-register does not get a hard register, it is spilled into
+the memory location which exists in any case.
+
+The easiest way to set up these insns is to modify the routine
+put_var_into_stack so that it does not apply to the entire function
+(sparing any loops which contain nothing dangerous) and to call it at
+the end of the function regardless of where in the function the
+address of a local variable is taken.  It would be called
+unconditionally at the end of the function for all relevant global
+variables.
+
+For debugger output, the thing to do is to invent a new binding level
+around the appropriate loop and define the variable name as a register
+variable with that scope.
+
+* Live-range splitting.
+
+Currently a variable is allocated a hard register either for the full
+extent of its use or not at all.  Sometimes it would be good to
+allocate a variable a hard register for just part of a function; for
+example, through a particular loop where the variable is mostly used,
+or outside of a particular loop where the variable is not used.  (The
+latter is nice because it might let the variable be in a register most
+of the time even though the loop needs all the registers.)
+
+It might not be very hard to do this in global-alloc.c when a variable
+fails to get a hard register for its entire life span.
+
+The first step is to find a loop in which the variable is live, but
+which is not the whole life span or nearly so.  It's probably best to
+use a loop in which the variable is heavily used.
+
+Then create a new pseudo-register to represent the variable in that loop.
+Substitute this for the old pseudo-register there, and insert move insns
+to copy between the two at the loop entry and all exits.  (When several
+such moves are inserted at the same place, some new feature should be
+added to say that none of those registers conflict merely because of
+overlap between the new moves.  And the reload pass should reorder them
+so that a store precedes a load, for any given hard register.)
+
+After doing this for all the reasonable candidates, run global-alloc
+over again.  With luck, one of the two pseudo-registers will be fit
+somewhere.  It may even have a much higher priority due to its reduced
+life span.
+
+There will be no room in general for the new pseudo-registers in
+basic_block_live_at_start, so there will need to be a second such
+matrix exclusively for the new ones.  Various other vectors indexed by
+register number will have to be made bigger, or there will have to be
+secondary extender vectors just for global-alloc.
+
+A simple new feature could arrange that both pseudo-registers get the
+same stack slot if they both fail to get hard registers.
+
+Other compilers split live ranges when they are not connected, or
+try to split off pieces `at the edge'.  I think splitting around loops
+will provide more speedup.
+
+Creating a fake binding block and a new like-named variable with
+shorter life span and different address might succeed in describing
+this technique for the debugger.
 
 * Detect dead stores into memory?
 
@@ -212,7 +288,49 @@ desirable.
 Pascal, Modula-2 and Ada require the implementation of functions
 within functions.  Some of the mechanisms for this already exist.
 
-4. Generalize the machine model.
+4. More extensions.
+
+* Label-addresses as expressions.
+
+It would be nice to have access to the addresses of labels; to be able to
+store them in variables, or initialize vectors of them.
+
+Alas, `&label0' is the address of the variable named label0, which is
+unrelated to the label with that name.  Some other syntax is needed.
+Perhaps colon as a unary operator?  That is ambiguous with `?:' with
+the middle operand omitted.  Perhaps ^ as a unary operator?  Perhaps
+`__label__ label0' could mean the value of label0?  Its type could be
+`void *'.  `goto *EXP' could be used to go to a value of type `void
+*'--no ambiguity there.
+
+Jump optimization and flow analysis must know about computed jumps,
+but that is not hard.  Each basic block headed by a possible target of
+computed jumps must be considered a successor of each basic block
+ending in a computed jump.  Aside from this, I believe no other
+optimizer changes are needed.
+
+Next question: stack levels.  In most functions, there is no problem,
+but it would be a shame to make a feature that doesn't work together
+with other features.  Here is an idea:
+
+For each label that might need stack level restoration, construct a
+shadow-label which will restore the stack and jump to the user-label.
+Then use the address of the shadow label for label0 when someone asks
+for that of label0.  Jump optimization will delete all the shadow labels
+if the function has no computed gotos.
+
+* Block structure for labels.
+
+The ({...}) construct should serve as a lexical block for label names,
+so that the same label may be defined both inside and outside of it.
+Then macro definitions could use labels internally safely, by enclosing
+the label and the goto in one of these constructs.
+
+* Generated unique labels.  Have some way of generating distinct labels
+for use in extended asm statements.  I don't know what a good syntax would
+be.
+
+5. Generalize the machine model.
 
 * Some new compiler features may be needed to do a good job on machines
 where static data needs to be addressed using base registers.
@@ -221,7 +339,7 @@ where static data needs to be addressed using base registers.
 for scalars and another for large objects.  The compiler does not
 now have a way to understand this.
 
-5. Precompilation of header files.
+6. Precompilation of header files.
 
 In the future, many programs will use thousands of lines of header files.
 Compiling the headers might be slower than compiling the guts of any one
@@ -292,7 +410,7 @@ of the text being divided up.
 
 JNC@lcs.mit.edu has some ideas on this subject also.
 
-6. Better documentation of how GCC works and how to port it.
+7. Better documentation of how GCC works and how to port it.
 
 Here is an outline proposed by Allan Adler.
 

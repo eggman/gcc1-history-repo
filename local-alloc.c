@@ -330,7 +330,8 @@ block_alloc (b)
   insn = basic_block_end[b];
   while (1)
     {
-      insn_count++;
+      if (GET_CODE (insn) != NOTE)
+	insn_count++;
       if (insn == basic_block_head[b])
 	break;
       insn = PREV_INSN (insn);
@@ -339,7 +340,7 @@ block_alloc (b)
   /* +1 to leave room for a post_mark_life at the last insn.  */
   regs_live_at = (HARD_REG_SET *) alloca ((insn_count + 1)
 					  * sizeof (HARD_REG_SET));
-  bzero (regs_live_at, insn_count * sizeof (HARD_REG_SET));
+  bzero (regs_live_at, (insn_count + 1) * sizeof (HARD_REG_SET));
 
   /* Initialize table of hardware registers currently live.  */
 
@@ -357,7 +358,9 @@ block_alloc (b)
   while (1)
     {
       register rtx body = PATTERN (insn);
-      insn_number++;
+
+      if (GET_CODE (insn) != NOTE)
+	insn_number++;
 
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	  || GET_CODE (insn) == CALL_INSN)
@@ -471,7 +474,9 @@ block_alloc (b)
 		       && general_operand (XEXP (link, 0), VOIDmode)
 		       /* Don't inhibit allocation of a "constant" register
 			  that we have already tied to something else!  */
-		       && combined_regno < 0)
+		       && combined_regno < 0
+		       /* Don't mess with things live during setjmp.  */
+		       && reg_live_length[REGNO (SET_DEST (body))] >= 0)
 		{
 		  i = REGNO (SET_DEST (body));
 		  if (reg_n_sets[i] > 1)
@@ -629,8 +634,12 @@ qty_compare_1 (q1, q2)
 {
   register int tem = (qty_phys_sugg[*q2] >= 0) - (qty_phys_sugg[*q1] >= 0);
   if (tem != 0) return tem;
-  return -((qty_n_refs[*q1] + qty_death[*q1] - qty_birth[*q1]) * qty_size[*q2]
-	   - (qty_n_refs[*q2] + qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
+  tem = -((qty_n_refs[*q1] + qty_death[*q1] - qty_birth[*q1]) * qty_size[*q2]
+	  - (qty_n_refs[*q2] + qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
+  if (tem != 0) return tem;
+  /* If qtys are equally good, sort by qty number,
+     so that the results of qsort leave nothing to chance.  */
+  return *q1 - *q2;
 }
 
 /* Attempt to combine the two registers (rtx's) USEDREG and SETREG.

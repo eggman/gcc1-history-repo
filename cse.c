@@ -206,6 +206,12 @@ static rtx *qty_const_insn;
 
 static int prev_insn_cc0;
 
+/* For machines where CC0 is one bit, we may see CC0 assigned a
+   constant value (after fold_rtx).
+   Record here the value stored in the previous insn (0 if none).  */
+
+static rtx prev_insn_explicit_cc0;
+
 /* Previous actual insn.  0 if at first insn of basic block.  */
 
 static rtx prev_insn;
@@ -262,13 +268,23 @@ static int *consec_ints;
 
 static int cse_skip_to_next_block;
 
-/* UID of insn that starts the basic block currently being cse-processed.  */
+/* CUID of insn that starts the basic block currently being cse-processed.  */
 
 static int cse_basic_block_start;
 
-/* UID of insn that ends the basic block currently being cse-processed.  */
+/* CUID of insn that ends the basic block currently being cse-processed.  */
 
 static int cse_basic_block_end;
+
+/* Vector mapping INSN_UIDs to cuids.
+   The cuids are like uids but increase monononically always.
+   We use them to see whether a reg is used outside a given basic block.  */
+
+static short *uid_cuid;
+
+/* Get the cuid of an insn.  */
+
+#define INSN_CUID(INSN) (uid_cuid[INSN_UID (INSN)])
 
 /* Nonzero if cse has altered conditional jump insns
    in such a way that jump optimization should be redone.  */
@@ -489,6 +505,7 @@ new_basic_block ()
   bzero (table, sizeof table);
 
   prev_insn_cc0 = 0;
+  prev_insn_explicit_cc0 = 0;
   prev_insn = 0;
 }
 
@@ -529,9 +546,10 @@ make_regs_eqv (new, old)
      make it the new canonical replacement for this qty.  */
   if (new >= FIRST_PSEUDO_REGISTER
       && (firstr < FIRST_PSEUDO_REGISTER
-	  || ((regno_last_uid[new] > cse_basic_block_end
-	       || regno_first_uid[new] < cse_basic_block_start)
-	      && regno_last_uid[new] > regno_last_uid[firstr])))
+	  || ((uid_cuid[regno_last_uid[new]] > cse_basic_block_end
+	       || uid_cuid[regno_first_uid[new]] < cse_basic_block_start)
+	      && (uid_cuid[regno_last_uid[new]]
+		  > uid_cuid[regno_last_uid[firstr]]))))
     {
       reg_prev_eqv[firstr] = new;
       reg_next_eqv[new] = firstr;
@@ -897,10 +915,10 @@ lookup_as_function (x, code)
    (((X)->cost < (Y)->cost) ||						\
     ((X)->cost == (Y)->cost						\
      && GET_CODE ((X)->exp) == REG && GET_CODE ((Y)->exp) == REG	\
-     && (regno_last_uid[REGNO ((X)->exp)] > cse_basic_block_end		\
-	 || regno_first_uid[REGNO ((X)->exp)] < cse_basic_block_start)	\
-     && (regno_last_uid[REGNO ((X)->exp)]				\
-	 > regno_last_uid[REGNO ((Y)->exp)])))
+     && (uid_cuid[regno_last_uid[REGNO ((X)->exp)]] > cse_basic_block_end		\
+	 || uid_cuid[regno_first_uid[REGNO ((X)->exp)]] < cse_basic_block_start)	\
+     && (uid_cuid[regno_last_uid[REGNO ((X)->exp)]]			\
+	 > uid_cuid[regno_last_uid[REGNO ((Y)->exp)]])))
 
 static struct table_elt *
 insert (x, classp, hash, mode)
@@ -1401,11 +1419,12 @@ canon_hash (x, mode)
       else if (fmt[i] == 's')
 	{
 	  register char *p = XSTR (x, i);
-	  while (*p)
-	    {
-	      register int tem = *p++;
-	      hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
-	    }
+	  if (p)
+	    while (*p)
+	      {
+		register int tem = *p++;
+		hash += ((1 << HASHBITS) - 1) & (tem + (tem >> HASHBITS));
+	      }
 	}
       else
 	{
@@ -1497,6 +1516,8 @@ exp_equiv_p (x, y, validate)
       else if (fmt[i] == 'E')
 	{
 	  int j;
+	  if (XVECLEN (x, i) != XVECLEN (y, i))
+	    return 0;
 	  for (j = 0; j < XVECLEN (x, i); j++)
 	    if (! exp_equiv_p (XVECEXP (x, i, j), XVECEXP (y, i, j), validate))
 	      return 0;
@@ -1761,6 +1782,7 @@ fold_rtx (x, copyflag)
     return x;
 
   width = GET_MODE_BITSIZE (GET_MODE (x));
+
   code = GET_CODE (x);
   switch (code)
     {
@@ -1949,7 +1971,8 @@ fold_rtx (x, copyflag)
 	}
 #if ! defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
       else if (GET_CODE (const_arg0) == CONST_DOUBLE
-	       && GET_CODE (x) == NEG)
+	       && GET_CODE (x) == NEG
+	       && GET_MODE_CLASS (GET_MODE (x)) == MODE_FLOAT)
 	{
 	  union real_extract u;
 	  register REAL_VALUE_TYPE arg0;
@@ -1966,6 +1989,7 @@ fold_rtx (x, copyflag)
   else if (GET_RTX_LENGTH (code) == 2)
     {
       register int arg0, arg1, arg0s, arg1s;
+      int arithwidth = width;
 
       /* If 1st arg is the condition codes, 2nd must be zero
 	 and this must be a comparison.
@@ -1977,7 +2001,7 @@ fold_rtx (x, copyflag)
 	  if (XEXP (x, 0) == cc0_rtx)
 	    arg0 = prev_insn_cc0;
 	  else
-	    arg0 = fold_cc0 (XEXP (x, 0));
+	    arg0 = fold_cc0 (VOIDmode, XEXP (x, 0));
 
 	  if (arg0 == 0
 	      || const_arg1 != const0_rtx
@@ -2022,6 +2046,9 @@ fold_rtx (x, copyflag)
 	{
 	  /* Even if we can't compute a constant result,
 	     there are some cases worth simplifying.  */
+	  /* Note that we cannot rely on constant args to come last,
+	     even for commutative operators,
+	     because that happens only when the constant is explicit.  */
 	  switch (code)
 	    {
 	    case PLUS:
@@ -2111,6 +2138,10 @@ fold_rtx (x, copyflag)
 		  /* Don't do this in the case of widening multiplication.  */
 		  && GET_MODE (XEXP (x, 0)) == GET_MODE (x))
 		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 0));
+	      if (const_arg0 && GET_CODE (const_arg0) == CONST_INT
+		  && INTVAL (const_arg0) == -1
+		  && GET_MODE (XEXP (x, 1)) == GET_MODE (x))
+		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 1));
 	      if (const_arg1 == const0_rtx || const_arg0 == const0_rtx)
 		new = const0_rtx;
 	      if (const_arg1 == fconst0_rtx || const_arg0 == fconst0_rtx)
@@ -2132,6 +2163,10 @@ fold_rtx (x, copyflag)
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
 		      == GET_MODE_MASK (GET_MODE (x)))
 		new = const_arg1;
+	      if (const_arg0 && GET_CODE (const_arg0) == CONST_INT
+		  && (INTVAL (const_arg0) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		new = const_arg0;
 	      break;
 
 	    case XOR:
@@ -2143,6 +2178,10 @@ fold_rtx (x, copyflag)
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
 		      == GET_MODE_MASK (GET_MODE (x)))
 		return gen_rtx (NOT, GET_MODE (x), XEXP (x, 0));
+	      if (const_arg0 && GET_CODE (const_arg0) == CONST_INT
+		  && (INTVAL (const_arg0) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		return gen_rtx (NOT, GET_MODE (x), XEXP (x, 1));
 	      break;
 
 	    case AND:
@@ -2152,6 +2191,10 @@ fold_rtx (x, copyflag)
 		  && (INTVAL (const_arg1) & GET_MODE_MASK (GET_MODE (x)))
 		      == GET_MODE_MASK (GET_MODE (x)))
 		return XEXP (x, 0);
+	      if (const_arg0 && GET_CODE (const_arg0) == CONST_INT
+		  && (INTVAL (const_arg0) & GET_MODE_MASK (GET_MODE (x)))
+		      == GET_MODE_MASK (GET_MODE (x)))
+		return XEXP (x, 1);
 	      break;
 
 	    case DIV:
@@ -2186,24 +2229,32 @@ fold_rtx (x, copyflag)
 	  return x;
 	}
 
+      if (arithwidth == 0)
+	{
+	  if (GET_MODE (XEXP (x, 0)) != VOIDmode)
+	    arithwidth = GET_MODE_BITSIZE (GET_MODE (XEXP (x, 0)));
+	  if (GET_MODE (XEXP (x, 1)) != VOIDmode)
+	    arithwidth = GET_MODE_BITSIZE (GET_MODE (XEXP (x, 1)));
+	}
+
       /* Get the integer argument values in two forms:
 	 zero-extended in ARG0, ARG1 and sign-extended in ARG0S, ARG1S.  */
 
       arg0 = INTVAL (const_arg0);
       arg1 = INTVAL (const_arg1);
 
-      if (width < HOST_BITS_PER_INT)
+      if (arithwidth < HOST_BITS_PER_INT && arithwidth > 0)
 	{
-	  arg0 &= (1 << width) - 1;
-	  arg1 &= (1 << width) - 1;
+	  arg0 &= (1 << arithwidth) - 1;
+	  arg1 &= (1 << arithwidth) - 1;
 
 	  arg0s = arg0;
-	  if (arg0s & (1 << (width - 1)))
-	    arg0s |= ((-1) << width);
+	  if (arg0s & (1 << (arithwidth - 1)))
+	    arg0s |= ((-1) << arithwidth);
 
 	  arg1s = arg1;
-	  if (arg1s & (1 << (width - 1)))
-	    arg1s |= ((-1) << width);
+	  if (arg1s & (1 << (arithwidth - 1)))
+	    arg1s |= ((-1) << arithwidth);
 	}
       else
 	{
@@ -2352,6 +2403,9 @@ fold_rtx (x, copyflag)
   else if (code == IF_THEN_ELSE && const_arg0 != 0
 	   && GET_CODE (const_arg0) == CONST_INT)
     return XEXP (x, ((INTVAL (const_arg0) != 0) ? 1 : 2));
+  else if (code == IF_THEN_ELSE && XEXP (x, 0) == cc0_rtx
+	   && prev_insn_explicit_cc0 != 0)
+    return XEXP (x, ((INTVAL (prev_insn_explicit_cc0) != 0) ? 1 : 2));
   else if (code == SIGN_EXTRACT || code == ZERO_EXTRACT)
     {
       if (const_arg0 != 0 && const_arg1 != 0 && const_arg2 != 0
@@ -2387,7 +2441,7 @@ fold_rtx (x, copyflag)
      unless they and our sign bit are all one.
      So we get either a reasonable negative value or a reasonable
      unsigned value for this mode.  */
-  if (width < HOST_BITS_PER_INT)
+  if (width < HOST_BITS_PER_INT && width > 0)
     {
       if ((val & ((-1) << (width - 1)))
 	  != ((-1) << (width - 1)))
@@ -2443,10 +2497,13 @@ equiv_constant (x)
    return an integer recording (in the encoding used for prev_insn_cc0)
    how the condition codes would be set by that expression.
    Return 0 if the value is not constant
-   or if there is any doubt what condition codes result from it.  */
+   or if there is any doubt what condition codes result from it.
+
+   MODE is the machine mode to use to interpret X if it is a CONST_INT.  */
 
 static int
-fold_cc0 (x)
+fold_cc0 (mode, x)
+     enum machine_mode mode;
      rtx x;
 {
   if (GET_CODE (x) == COMPARE)
@@ -2526,12 +2583,18 @@ fold_cc0 (x)
     y0 = fold_rtx (x, 0);
 
     m = GET_MODE (y0);
+    if (m == VOIDmode)
+      m = mode;
 
     if (GET_CODE (y0) == REG)
       y0 = qty_const[reg_qty[REGNO (y0)]];
 
     /* Register had no constant equivalent?  We can't do anything.  */
     if (y0 == 0)
+      return 0;
+
+    /* If we don't know the mode, we can't test the sign.  */
+    if (m == VOIDmode)
       return 0;
 
     /* Value is frame-pointer plus a constant?  Or non-explicit constant?
@@ -2546,16 +2609,15 @@ fold_cc0 (x)
       return 0;
 
     s0 = u0 = INTVAL (y0);
-    if (m != VOIDmode)
-      {
-	int width = GET_MODE_BITSIZE (m);
-	if (width < HOST_BITS_PER_INT)
-	  {
-	    s0 = u0 &= ~ ((-1) << GET_MODE_BITSIZE (m));
-	    if (u0 & (1 << (GET_MODE_BITSIZE (m) - 1)))
-	      s0 |= ((-1) << GET_MODE_BITSIZE (m));
-	  }
-      }
+    {
+      int width = GET_MODE_BITSIZE (m);
+      if (width < HOST_BITS_PER_INT)
+	{
+	  s0 = u0 &= ~ ((-1) << GET_MODE_BITSIZE (m));
+	  if (u0 & (1 << (GET_MODE_BITSIZE (m) - 1)))
+	    s0 |= ((-1) << GET_MODE_BITSIZE (m));
+	}
+    }
     return 0100 + ((s0 < 0 ? 7 : s0 > 0) << 3) + (u0 != 0);
   }
 }
@@ -2594,6 +2656,7 @@ predecide_loop_entry (insn)
   /* Trace the flow of control through the end test,
      propagating constants, to see if result is determined.  */
   prev_insn_cc0 = 0;
+  prev_insn_explicit_cc0 = 0;
   /* Avoid infinite loop if we find a cycle of jumps.  */
   while (count < 10)
     {
@@ -2616,7 +2679,10 @@ predecide_loop_entry (insn)
       else if (GET_CODE (p) == INSN && GET_CODE (PATTERN (p)) == SET
 	       && SET_DEST (PATTERN (p)) == cc0_rtx)
 	{
-	  prev_insn_cc0 = fold_cc0 (copy_rtx (SET_SRC (PATTERN (p))));
+	  prev_insn_cc0 = fold_cc0 (GET_MODE (SET_SRC (PATTERN (p))),
+				    copy_rtx (SET_SRC (PATTERN (p))));
+	  if (GET_CODE (SET_SRC (PATTERN (p))) == CONST_INT)
+	    prev_insn_explicit_cc0 = SET_SRC (PATTERN (p));
 	}
       else if (GET_CODE (p) == JUMP_INSN
 	       && GET_CODE (PATTERN (p)) == SET
@@ -2687,6 +2753,8 @@ struct set
   int dest_hash_code;
   /* The SET_DEST, with SUBREG, etc., stripped.  */
   rtx inner_dest;
+  /* Place where the pointer to the INNER_DEST was found.  */
+  rtx *inner_dest_loc;
   /* Nonzero if the SET_SRC is in memory.  */ 
   char src_in_memory;
   /* Nonzero if the SET_SRC is in a structure.  */ 
@@ -2694,6 +2762,8 @@ struct set
   /* Nonzero if the SET_SRC contains something
      whose value cannot be predicted and understood.  */
   char src_volatile;
+  /* Original machine mode, in case it becomes a CONST_INT.  */
+  enum machine_mode mode;
 };
 
 static void
@@ -2707,6 +2777,8 @@ cse_insn (insn)
   /* Records what this insn does to set CC0,
      using same encoding used for prev_insn_cc0.  */
   int this_insn_cc0 = 0;
+  /* Likewise, what to store in prev_insn_explicit_cc0.  */
+  rtx this_insn_explicit_cc0 = 0;
   struct write_data writes_memory;
   static struct write_data init = {0, 0, 0};
 
@@ -2773,13 +2845,38 @@ cse_insn (insn)
 
       sets = (struct set *) alloca (lim * sizeof (struct set));
 
+      /* Find all regs explicitly clobbered in this insn,
+	 and ensure they are not replaced with any other regs
+	 elsewhere in this insn.
+	 When a reg that is clobbered is also used for input,
+	 we should presume that that is for a reason,
+	 and we should not substitute some other register
+	 which is not supposed to be clobbered.  */
+      for (i = 0; i < lim; i++)
+	{
+	  register rtx y = XVECEXP (x, 0, i);
+	  if (GET_CODE (y) == CLOBBER && GET_CODE (XEXP (y, 0)) == REG)
+	    invalidate (XEXP (y, 0));
+	}
+	    
       for (i = 0; i < lim; i++)
 	{
 	  register rtx y = XVECEXP (x, 0, i);
 	  if (GET_CODE (y) == SET)
 	    sets[n_sets++].rtl = y;
 	  else if (GET_CODE (y) == CLOBBER)
-	    note_mem_written (XEXP (y, 0), &writes_memory);
+	    {
+	      /* If we clobber memory, take note of that,
+		 and canon the address.
+		 This does nothing when a register is clobbered
+		 because we have already invalidated the reg.  */
+	      canon_reg (y);
+	      note_mem_written (XEXP (y, 0), &writes_memory);
+	    }
+	  else if (GET_CODE (y) == USE
+		   && ! (GET_CODE (XEXP (y, 0)) == REG
+			 && REGNO (XEXP (y, 0)) < FIRST_PSEUDO_REGISTER))
+	    canon_reg (y);
 	  else if (GET_CODE (y) == CALL)
 	    canon_reg (y);
 	}
@@ -2817,6 +2914,7 @@ cse_insn (insn)
 	 This way we can keep different modes separate.  */
 
       mode = GET_MODE (src) == VOIDmode ? GET_MODE (dest) : GET_MODE (src);
+      sets[i].mode = mode;
 
       /* Replace each registers in SRC with oldest equivalent register,
 	 but if DEST is a register do not replace it if it appears in SRC.  */
@@ -3036,6 +3134,7 @@ cse_insn (insn)
 	  SET_SRC (sets[0].rtl) = src;
 
       do_not_record = 0;
+      sets[i].inner_dest_loc = &SET_DEST (sets[0].rtl);
 
       /* Look within any SIGN_EXTRACT or ZERO_EXTRACT
 	 to the MEM or REG within it.  */
@@ -3046,11 +3145,15 @@ cse_insn (insn)
 	    {
 	      XEXP (dest, 1) = canon_reg (XEXP (dest, 1));
 	      XEXP (dest, 2) = canon_reg (XEXP (dest, 2));
+	      sets[i].inner_dest_loc = &XEXP (dest, 0);
 	      dest = XEXP (dest, 0);
 	    }
 	  else if (GET_CODE (dest) == SUBREG
 		   || GET_CODE (dest) == STRICT_LOW_PART)
-	    dest = XEXP (dest, 0);
+	    {
+	      sets[i].inner_dest_loc = &XEXP (dest, 0);
+	      dest = XEXP (dest, 0);
+	    }
 	  else
 	    break;
 	}
@@ -3124,7 +3227,7 @@ cse_insn (insn)
 			= MEM_VOLATILE_P (sets[i].inner_dest);
 		      MEM_IN_STRUCT_P (dest)
 			= MEM_IN_STRUCT_P (sets[i].inner_dest);
-		      SET_DEST (sets[i].rtl) = dest;
+		      *sets[i].inner_dest_loc = dest;
 		      sets[i].inner_dest = dest;
 		    }
 		}
@@ -3170,7 +3273,10 @@ cse_insn (insn)
 	  && (GET_CODE (src) == COMPARE
 	      || CONSTANT_P (src)
 	      || GET_CODE (src) == REG))
-	this_insn_cc0 = fold_cc0 (src);
+	this_insn_cc0 = fold_cc0 (sets[i].mode, src);
+
+      if (dest == cc0_rtx && GET_CODE (src) == CONST_INT)
+	this_insn_explicit_cc0 = src;
     }
 
   /* Now enter all non-volatile source expressions in the hash table
@@ -3363,19 +3469,23 @@ cse_insn (insn)
 	  NOTE_SOURCE_FILE (insn) = 0;
 	  cse_jumps_altered = 1;
 	  /* If previous insn just set CC0 for us, delete it too.  */
-	  if (prev_insn_cc0 != 0)
+	  if (prev_insn_cc0 != 0 || prev_insn_explicit_cc0 != 0)
 	    {
 	      PUT_CODE (prev_insn, NOTE);
 	      NOTE_LINE_NUMBER (prev_insn) = NOTE_INSN_DELETED;
 	      NOTE_SOURCE_FILE (prev_insn) = 0;
 	    }
+	  /* One less use of the label this insn used to jump to.  */
+	  --LABEL_NUSES (JUMP_LABEL (insn));
 	}
       else if (GET_CODE (SET_SRC (x)) == LABEL_REF)
 	{
+	  rtx label;
+
 	  emit_barrier_after (insn);
 	  cse_jumps_altered = 1;
 	  /* If previous insn just set CC0 for us, delete it too.  */
-	  if (prev_insn_cc0 != 0)
+	  if (prev_insn_cc0 != 0 || prev_insn_explicit_cc0 != 0)
 	    {
 	      PUT_CODE (prev_insn, NOTE);
 	      NOTE_LINE_NUMBER (prev_insn) = NOTE_INSN_DELETED;
@@ -3383,8 +3493,11 @@ cse_insn (insn)
 	    }
 	  /* If jump target is the following label, and this is only use of it,
 	     skip direct to that label and continue optimizing there.  */
-	  if (no_labels_between_p (insn, XEXP (SET_SRC (x), 0))
-	      && LABEL_NUSES (XEXP (SET_SRC (x), 0)) == 1)
+	  label = insn;
+	  while (label != 0 && GET_CODE (label) != CODE_LABEL)
+	    label = NEXT_INSN (label);
+	  if (label == XEXP (SET_SRC (x), 0)
+	      && LABEL_NUSES (label) == 1)
 	    cse_skip_to_next_block = 1;
 	}
     }
@@ -3401,6 +3514,7 @@ cse_insn (insn)
       NOTE_SOURCE_FILE (prev_insn) = 0;
     }
 
+  prev_insn_explicit_cc0 = this_insn_explicit_cc0;
   prev_insn_cc0 = this_insn_cc0;
   prev_insn = insn;
 }
@@ -3489,10 +3603,10 @@ invalidate_from_clobbers (w, x)
     }
 }
 
-/* Find the end of INSN's basic block, and return the uid of its last insn
+/* Find the end of INSN's basic block, and return the cuid of its last insn
    and the total number of SETs in all the insns of the block.  */
 
-struct cse_basic_block_data { int uid, nsets; rtx last; };
+struct cse_basic_block_data { int cuid, nsets; rtx last; };
 
 static struct cse_basic_block_data
 cse_end_of_basic_block (insn)
@@ -3538,7 +3652,7 @@ cse_end_of_basic_block (insn)
       last_uid = INSN_UID (p);
       p = NEXT_INSN (p);
     }
-  val.uid = last_uid;
+  val.cuid = uid_cuid[last_uid];
   val.nsets = nsets;
   val.last = p;
 
@@ -3591,17 +3705,43 @@ cse_main (f, nregs)
   free_element_chain = 0;
   n_elements_made = 0;
 
+  /* Find the largest uid.  */
+
+  for (insn = f, i = 0; insn; insn = NEXT_INSN (insn))
+    if (INSN_UID (insn) > i)
+      i = INSN_UID (insn);
+
+  uid_cuid = (short *) alloca ((i + 1) * sizeof (short));
+  bzero (uid_cuid, (i + 1) * sizeof (short));
+
+  /* Compute the mapping from uids to cuids.
+     CUIDs are numbers assigned to insns, like uids,
+     except that cuids increase monotonically through the code.
+     Don't assign cuids to line-number NOTEs, so that the distance in cuids
+     between two insns is not affected by -g.  */
+
+  for (insn = f, i = 0; insn; insn = NEXT_INSN (insn))
+    {
+      if (GET_CODE (insn) != NOTE
+	  || NOTE_LINE_NUMBER (insn) < 0)
+	INSN_CUID (insn) = ++i;
+      else
+	/* Give a line number note the same cuid as preceding insn.  */
+	INSN_CUID (insn) = i;
+    }
+
   /* Loop over basic blocks.
      Compute the maximum number of qty's needed for each basic block
      (which is 2 for each SET).  */
+  insn = f;
   while (insn)
     {
       struct cse_basic_block_data val;
 
       val = cse_end_of_basic_block (insn);
 
-      cse_basic_block_end = val.uid;
-      cse_basic_block_start = INSN_UID (insn);
+      cse_basic_block_end = val.cuid;
+      cse_basic_block_start = INSN_CUID (insn);
       max_qty = val.nsets * 2;
 
       /* Make MAX_QTY bigger to give us room to optimize
@@ -3681,7 +3821,10 @@ cse_basic_block (from, to)
 	  break;
 	}
 
-      if (cse_skip_to_next_block)
+      /* See if it is ok to keep on going past the label
+	 which used to end our basic block.  */
+      if (cse_skip_to_next_block
+	  || (to != 0 && NEXT_INSN (insn) == to && LABEL_NUSES (to) == 0))
 	{
 	  struct cse_basic_block_data val;
 
@@ -3701,7 +3844,7 @@ cse_basic_block (from, to)
 	  if (val.nsets * 2 + next_qty > max_qty)
 	    break;
 
-	  cse_basic_block_end = val.uid;
+	  cse_basic_block_end = val.cuid;
 	  to = val.last;
 	}
     }

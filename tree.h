@@ -48,11 +48,11 @@ extern int tree_code_length[];
 /* Get the definition of `enum machine_mode' */
 
 #ifndef HAVE_MACHINE_MODES
-#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT)  SYM,
+#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT, WIDER)  SYM,
 
 enum machine_mode {
 #include "machmode.def"
-};
+MAX_MACHINE_MODE };
 
 #undef DEF_MACHMODE
 
@@ -88,6 +88,7 @@ enum built_in_function
   BUILT_IN_GETEXP,
   BUILT_IN_GETMAN,
   BUILT_IN_SAVEREGS,
+  BUILT_IN_CLASSIFY_TYPE,
 
   /* C++ extensions */
   BUILT_IN_NEW,
@@ -128,7 +129,7 @@ struct tree_common
   int uid;
   union tree_node *chain;
   union tree_node *type;
-  enum tree_code code : 8;
+  unsigned int code : 8;
 
   unsigned external_attr : 1;
   unsigned public_attr : 1;
@@ -162,8 +163,8 @@ struct tree_common
 
 /* The tree-code says what kind of node it is.
    Codes are defined in tree.def.  */
-#define TREE_CODE(NODE) ((NODE)->common.code)
-#define TREE_SET_CODE(NODE, VALUE) ((NODE)->common.code = (VALUE))
+#define TREE_CODE(NODE) ((enum tree_code) (NODE)->common.code)
+#define TREE_SET_CODE(NODE, VALUE) ((NODE)->common.code = (int) (VALUE))
 
 /* In all nodes that are expressions, this is the data type of the expression.
    In POINTER_TYPE nodes, this is the type that the pointer points to.
@@ -248,7 +249,10 @@ struct tree_common
 /* Nonzero in a ..._DECL means this variable is ref'd from a nested function.
    Cannot happen in C because it does not allow nested functions, as of now.
    For VAR_DECL nodes, PARM_DECL nodes, and
-   maybe FUNCTION_DECL or LABEL_DECL nodes.  */
+   maybe FUNCTION_DECL or LABEL_DECL nodes.
+
+   Also set in some languages for variables, etc., outside the normal
+   lexical scope, such as class instance variables.  */
 #define TREE_NONLOCAL(NODE) ((NODE)->common.nonlocal_attr)
 
 /* Nonzero means permanent node;
@@ -357,22 +361,12 @@ struct tree_complex
 
 #define IDENTIFIER_LENGTH(NODE) ((NODE)->identifier.length)
 #define IDENTIFIER_POINTER(NODE) ((NODE)->identifier.pointer)
-#define IDENTIFIER_GLOBAL_VALUE(NODE) ((NODE)->identifier.global_value)
-#define IDENTIFIER_LOCAL_VALUE(NODE) ((NODE)->identifier.local_value)
-#define IDENTIFIER_LABEL_VALUE(NODE) ((NODE)->identifier.label_value)
-#define IDENTIFIER_IMPLICIT_DECL(NODE) ((NODE)->identifier.implicit_decl)
-#define IDENTIFIER_ERROR_LOCUS(NODE) ((NODE)->identifier.error_locus)
 
 struct tree_identifier
 {
   char common[sizeof (struct tree_common)];
   int length;
   char *pointer;
-  union tree_node *global_value;
-  union tree_node *local_value;
-  union tree_node *label_value;
-  union tree_node *implicit_decl;
-  union tree_node *error_locus;
 };
 
 /* In a TREE_LIST node.  */
@@ -478,6 +472,8 @@ struct tree_type
 #define DECL_FUNCTION_CODE(NODE) ((enum built_in_function) (NODE)->decl.offset)
 #define DECL_SET_FUNCTION_CODE(NODE,VAL) ((NODE)->decl.offset = (int) (VAL))
 #define DECL_NAME(NODE) ((NODE)->decl.name)
+#define DECL_PRINT_NAME(NODE) ((NODE)->decl.print_name)
+#define DECL_ASSEMBLER_NAME(NODE) ((NODE)->decl.assembler_name)
 #define DECL_CONTEXT(NODE) ((NODE)->decl.context)
 #define DECL_FIELD_CONTEXT(NODE) ((NODE)->decl.context)
 #define DECL_ARGUMENTS(NODE) ((NODE)->decl.arguments)  /* In FUNCTION_DECL.  */
@@ -503,7 +499,7 @@ struct tree_decl
   char *filename;
   int linenum;
   union tree_node *size;
-  enum machine_mode mode;
+  enum machine_mode mode : 8;
   unsigned char size_unit;
   unsigned char align;
   unsigned char voffset_unit;
@@ -514,6 +510,8 @@ struct tree_decl
   union tree_node *arguments;
   union tree_node *result;
   union tree_node *initial;
+  char *print_name;
+  char *assembler_name;
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
   int frame_size;		/* For FUNCTION_DECLs: size of stack frame */
@@ -570,6 +568,7 @@ struct tree_if_stmt
 #define STMT_SUPERCONTEXT(NODE) ((NODE)->bind_stmt.supercontext)
 #define STMT_BIND_SIZE(NODE) ((NODE)->bind_stmt.bind_size)
 #define STMT_TYPE_TAGS(NODE) ((NODE)->bind_stmt.type_tags)
+#define STMT_SUBBLOCKS(NODE) ((NODE)->bind_stmt.subblocks)
 
 struct tree_bind_stmt
 {
@@ -577,6 +576,7 @@ struct tree_bind_stmt
   char *filename;
   int linenum;
   union tree_node *body, *vars, *supercontext, *bind_size, *type_tags;
+  union tree_node *subblocks;
 };
 
 /* For CASE_STMT.  */
@@ -628,6 +628,10 @@ extern tree make_node ();
    iff nodes being made now are permanent.)  */
 
 extern tree copy_node ();
+
+/* Make a copy of a chain of TREE_LIST nodes.  */
+
+extern tree copy_list ();
 
 /* Return the (unique) IDENTIFIER_NODE node for a given name.
    The name is supplied as a char *.  */
@@ -900,23 +904,23 @@ extern int all_types_permanent;
 
 extern tree expand_start_stmt_expr ();
 extern tree expand_end_stmt_expr ();
-extern void expand_expr_stmt(), clear_last_expr();
-extern void expand_label(), expand_goto(), expand_asm();
-extern void expand_start_cond(), expand_end_cond();
-extern void expand_start_else(), expand_end_else();
-extern void expand_start_loop(), expand_start_loop_continue_elsewhere();
-extern void expand_loop_continue_here();
-extern void expand_end_loop();
-extern int expand_continue_loop();
-extern int expand_exit_loop(), expand_exit_loop_if_false();
-extern int expand_exit_something();
+extern void expand_expr_stmt (), clear_last_expr ();
+extern void expand_label (), expand_goto (), expand_asm ();
+extern void expand_start_cond (), expand_end_cond ();
+extern void expand_start_else (), expand_end_else ();
+extern void expand_start_loop (), expand_start_loop_continue_elsewhere ();
+extern void expand_loop_continue_here ();
+extern void expand_end_loop ();
+extern int expand_continue_loop ();
+extern int expand_exit_loop (), expand_exit_loop_if_false ();
+extern int expand_exit_something ();
 
 extern void expand_start_delayed_expr ();
 extern tree expand_end_delayed_expr ();
 extern void expand_emit_delayed_expr ();
 
-extern void expand_null_return(), expand_return();
-extern void expand_start_bindings(), expand_end_bindings();
-extern void expand_start_case(), expand_end_case();
-extern int pushcase(), pushcase_range ();
-extern void expand_start_function(), expand_end_function();
+extern void expand_null_return (), expand_return ();
+extern void expand_start_bindings (), expand_end_bindings ();
+extern void expand_start_case (), expand_end_case ();
+extern int pushcase (), pushcase_range ();
+extern void expand_start_function (), expand_end_function ();

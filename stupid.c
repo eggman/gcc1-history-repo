@@ -52,25 +52,39 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    We use them to see whether a subroutine call came
    between a variable's birth and its death.  */
 
-static short *uid_suid;
+static int *uid_suid;
 
 /* Get the suid of an insn.  */
 
 #define INSN_SUID(INSN) (uid_suid[INSN_UID (INSN)])
 
 /* Record the suid of the last CALL_INSN
-   so we can tell whether a potential combination crosses any calls.  */
+   so we can tell whether a pseudo reg crosses any calls.  */
 
 static int last_call_suid;
+
+/* Record the suid of the last JUMP_INSN
+   so we can tell whether a pseudo reg crosses any jumps.  */
+
+static int last_jump_suid;
+
+/* Record the suid of the last CODE_LABEL
+   so we can tell whether a pseudo reg crosses any labels.  */
+
+static int last_label_suid;
 
 /* Element N is suid of insn where life span of pseudo reg N ends.
    Element is  0 if register N has not been seen yet on backward scan.  */
 
-static short *reg_where_dead;
+static int *reg_where_dead;
 
 /* Element N is suid of insn where life span of pseudo reg N begins.  */
 
-static short *reg_where_born;
+static int *reg_where_born;
+
+/* Element N is 1 if pseudo reg N lives across labels or jumps.  */
+
+static char *reg_crosses_blocks;
 
 /* Numbers of pseudo-regs to be allocated, highest priority first.  */
 
@@ -124,7 +138,7 @@ stupid_life_analysis (f, nregs, file)
       i = INSN_UID (insn);
 
   max_uid = i + 1;
-  uid_suid = (short *) alloca ((i + 1) * sizeof (short));
+  uid_suid = (int *) alloca ((i + 1) * sizeof (int));
 
   /* Compute the mapping from uids to suids.
      Suids are numbers assigned to insns, like uids,
@@ -140,16 +154,21 @@ stupid_life_analysis (f, nregs, file)
     }
 
   last_call_suid = i + 1;
+  last_jump_suid = i + 1;
+  last_label_suid = i + 1;
 
   max_regno = nregs;
 
   /* Allocate tables to record info about regs.  */
 
-  reg_where_dead = (short *) alloca (nregs * sizeof (short));
-  bzero (reg_where_dead, nregs * sizeof (short));
+  reg_where_dead = (int *) alloca (nregs * sizeof (int));
+  bzero (reg_where_dead, nregs * sizeof (int));
 
-  reg_where_born = (short *) alloca (nregs * sizeof (short));
-  bzero (reg_where_born, nregs * sizeof (short));
+  reg_where_born = (int *) alloca (nregs * sizeof (int));
+  bzero (reg_where_born, nregs * sizeof (int));
+
+  reg_crosses_blocks = (char *) alloca (nregs);
+  bzero (reg_crosses_blocks, nregs);
 
   reg_order = (short *) alloca (nregs * sizeof (short));
   bzero (reg_order, nregs * sizeof (short));
@@ -210,6 +229,12 @@ stupid_life_analysis (f, nregs, file)
 	      regs_live[i] = 0;
 	}
 
+      if (GET_CODE (insn) == JUMP_INSN)
+	last_jump_suid = INSN_SUID (insn);
+
+      if (GET_CODE (insn) == CODE_LABEL)
+	last_label_suid = INSN_SUID (insn);
+
       /* Update which hard regs are currently live
 	 and also the birth and death suids of pseudo regs
 	 based on the pattern of this insn.  */
@@ -250,7 +275,8 @@ stupid_life_analysis (f, nregs, file)
 	  reg_renumber[r] = stupid_find_reg (reg_n_calls_crossed[r], class,
 					     PSEUDO_REGNO_MODE (r),
 					     reg_where_born[r],
-					     reg_where_dead[r]);
+					     reg_where_dead[r],
+					     reg_crosses_blocks[r]);
 	}
       else
 	reg_renumber[r] = -1;
@@ -262,7 +288,8 @@ stupid_life_analysis (f, nregs, file)
 					   GENERAL_REGS,
 					   PSEUDO_REGNO_MODE (r),
 					   reg_where_born[r],
-					   reg_where_dead[r]);
+					   reg_where_dead[r],
+					   reg_crosses_blocks[r]);
     }
 
   if (file)
@@ -279,11 +306,17 @@ stupid_reg_compare (r1p, r2p)
   register int r1 = *r1p, r2 = *r2p;
   register int len1 = reg_where_dead[r1] - reg_where_born[r1];
   register int len2 = reg_where_dead[r2] - reg_where_born[r2];
+  int tem;
 
-  if (len1 != len2)
-    return len2 - len1;
+  tem = len2 - len1;
+  if (tem != 0) return tem;
 
-  return reg_n_refs[r1] - reg_n_refs[r2];
+  tem = reg_n_refs[r1] - reg_n_refs[r2];
+  if (tem != 0) return tem;
+
+  /* If regs are equally good, sort by regno,
+     so that the results of qsort leave nothing to chance.  */
+  return r1 - r2;
 }
 
 /* Find a block of SIZE words of hard registers in reg_class CLASS
@@ -293,16 +326,20 @@ stupid_reg_compare (r1p, r2p)
    through the insn whose suid is DEATH,
    and return the number of the first of them.
    Return -1 if such a block cannot be found.
+
    If CALL_PRESERVED is nonzero, insist on registers preserved
-   over subroutine calls, and return -1 if cannot find such.  */
+   over subroutine calls, and return -1 if cannot find such.
+   If CROSSES_BLOCKS is nonzero, reject registers for which
+   PRESERVE_DEATH_INFO_REGNO_P is true.  */
 
 static int
 stupid_find_reg (call_preserved, class, mode,
-		 born_insn, dead_insn)
+		 born_insn, dead_insn, crosses_blocks)
      int call_preserved;
      enum reg_class class;
      enum machine_mode mode;
      int born_insn, dead_insn;
+     int crosses_blocks;
 {
   register int i, ins;
 #ifdef HARD_REG_SET
@@ -324,6 +361,14 @@ stupid_find_reg (call_preserved, class, mode,
       int regno = reg_alloc_order[i];
 #else
       int regno = i;
+#endif
+
+      /* If we need reasonable death info on this hard reg,
+	 don't use it for anything whose life spans a label or a jump.  */
+#ifdef PRESERVE_DEATH_INFO_REGNO_P
+      if (PRESERVE_DEATH_INFO_REGNO_P (regno)
+	  && crosses_blocks)
+	continue;
 #endif
       if (! TEST_HARD_REG_BIT (used, regno)
 	  && HARD_REGNO_MODE_OK (regno, mode))
@@ -410,6 +455,9 @@ stupid_mark_refs (x, insn)
 
 	      if (last_call_suid < reg_where_dead[regno])
 		reg_n_calls_crossed[regno] += 1;
+	      if (last_jump_suid < reg_where_dead[regno]
+		  || last_label_suid < reg_where_dead[regno])
+		reg_crosses_blocks[regno] = 1;
 	    }
 	}
       /* Record references from the value being set,

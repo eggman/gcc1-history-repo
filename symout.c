@@ -25,7 +25,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "gdbfiles.h"
 #include <stdio.h>
 #undef NULL
-#include "stddef.h"
+/* <...> used here so one can prevent use of ./stddef.h
+   by changing the -I options used.  */
+#include <stddef.h>
 
 /* Get N_SO from stab.h if we can expect the file to exist.  */
 #ifdef DBX_DEBUGGING_INFO
@@ -708,7 +710,7 @@ symout_block_symbols (decls, addr_buffer, filter)
 
   for (decl = decls, i = 0; decl; decl = TREE_CHAIN (decl))
     {
-      register name_address = next_address;
+      register int name_address = next_address;
 
       if (filter == (TREE_PUBLIC (decl) ? 1 : 2))
 	continue;
@@ -984,11 +986,14 @@ symout_function (stmt, args, superblock_address)
 	  break;
 
 	case LET_STMT:
+	  /* Ignore LET_STMTs for blocks never really used to make RTL.  */
+	  if (! TREE_USED (stmt))
+	    break;
 	  address =
 	    symout_block (STMT_VARS (stmt), STMT_TYPE_TAGS (stmt), args,
 			  superblock_address);
 
-	  symout_function (STMT_BODY (stmt), 0, address);
+	  symout_function (STMT_SUBBLOCKS (stmt), 0, address);
 	}
       stmt = TREE_CHAIN (stmt);
     }

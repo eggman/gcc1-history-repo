@@ -84,7 +84,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
    life_analysis fills in certain vectors containing information about
    register usage: reg_n_refs, reg_n_deaths, reg_n_sets,
-   reg_live_length, reg_crosses_call and reg_basic_block.  */
+   reg_live_length, reg_n_calls_crosses and reg_basic_block.  */
 
 #include <stdio.h>
 #include "config.h"
@@ -93,6 +93,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "regs.h"
 #include "hard-reg-set.h"
 #include "flags.h"
+
+#include "obstack.h"
+#define obstack_chunk_alloc xmalloc
+#define obstack_chunk_free free
+
+extern int xmalloc ();
+extern void free ();
 
 /* Get the basic block number of an insn.
    This info should not be expected to remain available
@@ -576,6 +583,10 @@ life_analysis (f, nregs)
   register int i;
   rtx insn;
 
+  struct obstack flow_obstack;
+
+  obstack_init (&flow_obstack);
+
   max_regno = nregs;
 
   bzero (regs_ever_live, sizeof regs_ever_live);
@@ -592,17 +603,21 @@ life_analysis (f, nregs)
      Their meanings are documented above, with their declarations.  */
 
   basic_block_live_at_end = (regset *) alloca (n_basic_blocks * sizeof (regset));
-  tem = (regset) alloca (n_basic_blocks * regset_bytes);
+  /* Don't use alloca since that leads to a crash rather than an error message
+     if there isn't enough space.
+     Don't use oballoc since we may need to allocate other things during
+     this function on the temporary obstack.  */
+  tem = (regset) obstack_alloc (&flow_obstack, n_basic_blocks * regset_bytes);
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_live_at_end, tem, n_basic_blocks, regset_bytes);
 
   basic_block_new_live_at_end = (regset *) alloca (n_basic_blocks * sizeof (regset));
-  tem = (regset) alloca (n_basic_blocks * regset_bytes);
+  tem = (regset) obstack_alloc (&flow_obstack, n_basic_blocks * regset_bytes);
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_new_live_at_end, tem, n_basic_blocks, regset_bytes);
 
   basic_block_significant = (regset *) alloca (n_basic_blocks * sizeof (regset));
-  tem = (regset) alloca (n_basic_blocks * regset_bytes);
+  tem = (regset) obstack_alloc (&flow_obstack, n_basic_blocks * regset_bytes);
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_significant, tem, n_basic_blocks, regset_bytes);
 
@@ -748,7 +763,7 @@ life_analysis (f, nregs)
 	    jump = PREV_INSN (head);
 	    if (basic_block_drops_in[i])
 	      {
-		register from_block = BLOCK_NUM (jump);
+		register int from_block = BLOCK_NUM (jump);
 		register int j;
 		for (j = 0; j < regset_size; j++)
 		  basic_block_new_live_at_end[from_block][j]
@@ -761,7 +776,7 @@ life_analysis (f, nregs)
 		   jump != head;
 		   jump = LABEL_NEXTREF (jump))
 		{
-		  register from_block = BLOCK_NUM (CONTAINING_INSN (jump));
+		  register int from_block = BLOCK_NUM (CONTAINING_INSN (jump));
 		  register int j;
 		  for (j = 0; j < regset_size; j++)
 		    basic_block_new_live_at_end[from_block][j]
@@ -806,6 +821,23 @@ life_analysis (f, nregs)
       alloca (0);
 #endif
     }
+
+  /* Something live during a setjmp should not be put in a register
+     on certain machines which restore regs from stack frames
+     rather than from the jmpbuf.
+     But we don't need to do this for the user's variables, since
+     ANSI says only volatile variables need this.  */
+#ifdef LONGJMP_RESTORE_FROM_STACK
+  for (i = FIRST_PSEUDO_REGISTER; i < nregs; i++)
+    if (regs_live_at_setjmp[i / REGSET_ELT_BITS] & (1 << (i % REGSET_ELT_BITS))
+	&& regno_reg_rtx[i] != 0 && ! REG_USERVAR_P (regno_reg_rtx[i]))
+      {
+	reg_live_length[i] = -1;
+	reg_basic_block[i] = -1;
+      }
+#endif
+
+  obstack_free (&flow_obstack, 0);
 }
 
 /* Subroutines of life analysis.  */
@@ -1578,8 +1610,8 @@ mark_used_regs (needed, live, x, final, insn)
 	 => mark it as needed.  */
 
       regno = REGNO (x);
-      if (regno != FRAME_POINTER_REGNUM
-	  && regno != ARG_POINTER_REGNUM)
+      if (regno != FRAME_POINTER_REGNUM)
+	  /* && regno != ARG_POINTER_REGNUM) -- and without this.  */
 	/* && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
 	{
 	  register int offset = regno / REGSET_ELT_BITS;
@@ -1593,9 +1625,10 @@ mark_used_regs (needed, live, x, final, insn)
 	    {
 	      int n;
 
-	      /* For stack ptr, nothing below here can be necessary,
-		 so waste no more time.  */
-	      if (regno == STACK_POINTER_REGNUM)
+	      /* For stack ptr or arg pointer,
+		 nothing below can be necessary, so waste no more time.  */
+	      if (regno == STACK_POINTER_REGNUM
+		  || regno == ARG_POINTER_REGNUM)
 		return;
 	      /* No death notes for global register variables;
 		 their values are live after this function exits.  */
@@ -1997,7 +2030,7 @@ dump_flow_info (file)
 		 jump != head;
 		 jump = LABEL_NEXTREF (jump))
 	      {
-		register from_block = BLOCK_NUM (CONTAINING_INSN (jump));
+		register int from_block = BLOCK_NUM (CONTAINING_INSN (jump));
 		fprintf (file, " %d", from_block);
 	      }
 	  if (basic_block_drops_in[i])

@@ -107,9 +107,10 @@ _obstack_newchunk (h, length)
   register long	new_size;
   register int obj_size = h->next_free - h->object_base;
   register int i;
+  int already;
 
   /* Compute size for new chunk.  */
-  new_size = (obj_size + length) << 1;
+  new_size = (obj_size + length) + (obj_size >> 3) + 100;
   if (new_size < h->chunk_size)
     new_size = h->chunk_size;
 
@@ -119,12 +120,24 @@ _obstack_newchunk (h, length)
   new_chunk->limit = h->chunk_limit = (char *) new_chunk + new_size;
 
   /* Move the existing object to the new chunk.
-     Word at a time is fast and is safe because these
-     structures are aligned at least that much.  */
-  for (i = (obj_size + sizeof (COPYING_UNIT) - 1) / sizeof (COPYING_UNIT) - 1;
-       i >= 0; i--)
-    ((COPYING_UNIT *)new_chunk->contents)[i]
-      = ((COPYING_UNIT *)h->object_base)[i];
+     Word at a time is fast and is safe if the object
+     is sufficiently aligned.  */
+  if (h->alignment_mask + 1 >= DEFAULT_ALIGNMENT)
+    {
+      for (i = obj_size / sizeof (COPYING_UNIT) - 1;
+	   i >= 0; i--)
+	((COPYING_UNIT *)new_chunk->contents)[i]
+	  = ((COPYING_UNIT *)h->object_base)[i];
+      /* We used to copy the odd few remaining bytes as one extra COPYING_UNIT,
+	 but that can cross a page boundary on a machine
+	 which does not do strict alignment for COPYING_UNITS.  */
+      already = obj_size / sizeof (COPYING_UNIT) * sizeof (COPYING_UNIT);
+    }
+  else
+    already = 0;
+  /* Copy remaining bytes one by one.  */
+  for (i = already; i < obj_size; i++)
+    new_chunk->contents[i] = h->object_base[i];
 
   h->object_base = new_chunk->contents;
   h->next_free = h->object_base + obj_size;
@@ -184,6 +197,18 @@ _obstack_free (h, obj)
     /* obj is not in any of the chunks! */
     abort ();
 }
+
+/* Let same .o link with output of gcc and other compilers.  */
+
+#ifdef __STDC__
+void
+_obstack_free (h, obj)
+     struct obstack *h;
+     POINTER obj;
+{
+  obstack_free (h, obj);
+}
+#endif
 
 #if 0
 /* These are now turned off because the applications do not use it

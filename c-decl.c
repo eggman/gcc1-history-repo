@@ -43,15 +43,38 @@ enum decl_context
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
-static tree grokparms (), grokdeclarator ();
-tree pushdecl ();
-static void builtin_function ();
+#ifndef CHAR_TYPE_SIZE
+#define CHAR_TYPE_SIZE BITS_PER_UNIT
+#endif
 
-static tree lookup_tag ();
-static tree lookup_tag_reverse ();
-static tree lookup_name_current_level ();
-static char *redeclaration_error_message ();
+#ifndef SHORT_TYPE_SIZE
+#define SHORT_TYPE_SIZE (BITS_PER_UNIT * MIN ((UNITS_PER_WORD + 1) / 2, 2))
+#endif
 
+#ifndef INT_TYPE_SIZE
+#define INT_TYPE_SIZE BITS_PER_WORD
+#endif
+
+#ifndef LONG_TYPE_SIZE
+#define LONG_TYPE_SIZE BITS_PER_WORD
+#endif
+
+#ifndef LONG_LONG_TYPE_SIZE
+#define LONG_LONG_TYPE_SIZE (BITS_PER_WORD * 2)
+#endif
+
+#ifndef FLOAT_TYPE_SIZE
+#define FLOAT_TYPE_SIZE BITS_PER_WORD
+#endif
+
+#ifndef DOUBLE_TYPE_SIZE
+#define DOUBLE_TYPE_SIZE (BITS_PER_WORD * 2)
+#endif
+
+#ifndef LONG_DOUBLE_TYPE_SIZE
+#define LONG_DOUBLE_TYPE_SIZE (BITS_PER_WORD * 2)
+#endif
+
 /* a node which has tree code ERROR_MARK, and whose type is itself.
    All erroneous expressions are replaced with this node.  All functions
    that accept nodes as arguments should avoid generating error messages
@@ -178,12 +201,107 @@ int current_function_returns_null;
    whose return type is defaulted, if warnings for this are desired.  */
 
 static int warn_about_return_type;
+
+/* Nonzero when starting a function delcared `extern inline'.  */
+
+static int current_extern_inline;
+
+/* For each binding contour we allocate a binding_level structure
+ * which records the names defined in that contour.
+ * Contours include:
+ *  0) the global one
+ *  1) one for each function definition,
+ *     where internal declarations of the parameters appear.
+ *  2) one for each compound statement,
+ *     to record its declarations.
+ *
+ * The current meaning of a name can be found by searching the levels from
+ * the current one out to the global one.
+ */
+
+/* Note that the information in the `names' component of the global contour
+   is duplicated in the IDENTIFIER_GLOBAL_VALUEs of all identifiers.  */
+
+struct binding_level
+  {
+    /* A chain of _DECL nodes for all variables, constants, functions,
+       and typedef types.  These are in the reverse of the order supplied.
+     */
+    tree names;
+
+    /* A list of structure, union and enum definitions,
+     * for looking up tag names.
+     * It is a chain of TREE_LIST nodes, each of whose TREE_PURPOSE is a name,
+     * or NULL_TREE; and whose TREE_VALUE is a RECORD_TYPE, UNION_TYPE,
+     * or ENUMERAL_TYPE node.
+     */
+    tree tags;
+
+    /* For each level, a list of shadowed outer-level local definitions
+       to be restored when this level is popped.
+       Each link is a TREE_LIST whose TREE_PURPOSE is an identifier and
+       whose TREE_VALUE is its old definition (a kind of ..._DECL node).  */
+    tree shadowed;
+
+    /* For each level (except not the global one),
+       a chain of LET_STMT nodes for all the levels
+       that were entered and exited one level down.  */
+    tree blocks;
+
+    /* The binding level which this one is contained in (inherits from).  */
+    struct binding_level *level_chain;
+
+    /* Nonzero for the level that holds the parameters of a function.  */
+    char parm_flag;
+
+    /* Nonzero if this level "doesn't exist" for tags.  */
+    char tag_transparent;
+
+    /* Nonzero means make a LET_STMT for this level regardless of all else.  */
+    char keep;
+
+    /* Number of decls in `names' that have incomplete 
+       structure or union types.  */
+    int n_incomplete;
+  };
+
+#define NULL_BINDING_LEVEL (struct binding_level *) NULL
+  
+/* The binding level currently in effect.  */
+
+static struct binding_level *current_binding_level;
+
+/* A chain of binding_level structures awaiting reuse.  */
+
+static struct binding_level *free_binding_level;
+
+/* The outermost binding level, for names of file scope.
+   This is created when the compiler is started and exists
+   through the entire run.  */
+
+static struct binding_level *global_binding_level;
+
+/* Binding level structures are initialized by copying this one.  */
+
+static struct binding_level clear_binding_level
+  = {NULL, NULL, NULL, NULL, NULL, 0, 0, 0};
+
+/* Nonzero means unconditionally make a LET_STMT for the next level pushed.  */
+
+static int keep_next_level_flag;
+
+/* Forward declarations.  */
+
+static tree grokparms (), grokdeclarator ();
+tree pushdecl ();
+static void builtin_function ();
+
+static tree lookup_tag ();
+static tree lookup_tag_reverse ();
+static tree lookup_name_current_level ();
+static char *redeclaration_error_message ();
 
 /* C-specific option variables.  */
-
-/* Nonzero means `char' should be signed.  */
-
-int flag_signed_char;
 
 /* Nonzero means allow type mismatches in conditional expressions;
    just make their values `void'.   */
@@ -241,11 +359,12 @@ char *language_string = "GNU C";
    Return 1 if it is recognized (and handle it);
    return 0 if not recognized.  */
    
+int
 lang_decode_option (p)
      char *p;
 {
-  if (!strcmp (p, "-ftraditional"))
-    flag_traditional = 1, dollars_in_ident = 1;
+  if (!strcmp (p, "-ftraditional") || !strcmp (p, "-traditional"))
+    flag_traditional = 1, dollars_in_ident = 1, flag_writable_strings = 1;
   else if (!strcmp (p, "-fsigned-char"))
     flag_signed_char = 1;
   else if (!strcmp (p, "-funsigned-char"))
@@ -254,6 +373,10 @@ lang_decode_option (p)
     flag_signed_char = 0;
   else if (!strcmp (p, "-fno-unsigned-char"))
     flag_signed_char = 1;
+  else if (!strcmp (p, "-fshort-enums"))
+    flag_short_enums = 1;
+  else if (!strcmp (p, "-fno-short-enums"))
+    flag_short_enums = 0;
   else if (!strcmp (p, "-fcond-mismatch"))
     flag_cond_mismatch = 1;
   else if (!strcmp (p, "-fno-cond-mismatch"))
@@ -262,8 +385,6 @@ lang_decode_option (p)
     flag_no_asm = 0;
   else if (!strcmp (p, "-fno-asm"))
     flag_no_asm = 1;
-  else if (!strcmp (p, "-traditional"))
-    flag_traditional = 1, dollars_in_ident = 1;
   else if (!strcmp (p, "-ansi"))
     flag_no_asm = 1, dollars_in_ident = 0;
   else if (!strcmp (p, "-Wimplicit"))
@@ -298,83 +419,6 @@ lang_decode_option (p)
   return 1;
 }
 
-/* For each binding contour we allocate a binding_level structure
- * which records the names defined in that contour.
- * Contours include:
- *  0) the global one
- *  1) one for each function definition,
- *     where internal declarations of the parameters appear.
- *  2) one for each compound statement,
- *     to record its declarations.
- *
- * The current meaning of a name can be found by searching the levels from
- * the current one out to the global one.
- */
-
-/* Note that the information in the `names' component of the global contour
-   is duplicated in the IDENTIFIER_GLOBAL_VALUEs of all identifiers.  */
-
-struct binding_level
-  {
-    /* A chain of _DECL nodes for all variables, constants, functions,
-       and typedef types.  These are in the reverse of the order supplied.
-     */
-    tree names;
-
-    /* A list of structure, union and enum definitions,
-     * for looking up tag names.
-     * It is a chain of TREE_LIST nodes, each of whose TREE_PURPOSE is a name,
-     * or NULL_TREE; and whose TREE_VALUE is a RECORD_TYPE, UNION_TYPE,
-     * or ENUMERAL_TYPE node.
-     */
-    tree tags;
-
-    /* For each level, a list of shadowed outer-level local definitions
-       to be restored when this level is popped.
-       Each link is a TREE_LIST whose TREE_PURPOSE is an identifier and
-       whose TREE_VALUE is its old definition (a kind of ..._DECL node).  */
-    tree shadowed;
-
-    /* For each level (except not the global one),
-       a chain of LET_STMT nodes for all the levels
-       that were entered and exited one level down.  */
-    tree blocks;
-
-    /* The binding level which this one is contained in (inherits from).  */
-    struct binding_level *level_chain;
-
-    /* Nonzero for the level that holds the parameters of a function.  */
-    char parm_flag;
-
-    /* Nonzero if this level "doesn't exist" for tags.  */
-    char tag_transparent;
-
-    /* Number of decls in `names' that have incomplete 
-       structure or union types.  */
-    int n_incomplete;
-  };
-
-#define NULL_BINDING_LEVEL (struct binding_level *) NULL
-  
-/* The binding level currently in effect.  */
-
-static struct binding_level *current_binding_level;
-
-/* A chain of binding_level structures awaiting reuse.  */
-
-static struct binding_level *free_binding_level;
-
-/* The outermost binding level, for names of file scope.
-   This is created when the compiler is started and exists
-   through the entire run.  */
-
-static struct binding_level *global_binding_level;
-
-/* Binding level structures are initialized by copying this one.  */
-
-static struct binding_level clear_binding_level
-  = {NULL, NULL, NULL, NULL, NULL, 0, 0, 0};
-
 /* Create a new `struct binding_level'.  */
 
 static
@@ -391,6 +435,27 @@ int
 global_bindings_p ()
 {
   return current_binding_level == global_binding_level;
+}
+
+void
+keep_next_level ()
+{
+  keep_next_level_flag = 1;
+}
+
+/* Identify this binding level as a level of parameters.  */
+
+void
+declare_parm_level ()
+{
+  current_binding_level->parm_flag = 1;
+}
+
+/* Nonzero if currently making parm declarations.  */
+
+in_parm_level_p ()
+{
+  return current_binding_level->parm_flag;
 }
 
 /* Enter a new binding level.
@@ -432,6 +497,8 @@ pushlevel (tag_transparent)
   newlevel->level_chain = current_binding_level;
   current_binding_level = newlevel;
   newlevel->tag_transparent = tag_transparent;
+  newlevel->keep = keep_next_level_flag;
+  keep_next_level_flag = 0;
 }
 
 /* Exit a binding level.
@@ -449,7 +516,7 @@ pushlevel (tag_transparent)
    If REVERSE is nonzero, reverse the order of decls before putting
    them into the LET_STMT.  */
 
-void
+tree
 poplevel (keep, reverse, functionbody)
      int keep;
      int reverse;
@@ -462,6 +529,8 @@ poplevel (keep, reverse, functionbody)
   tree tags = current_binding_level->tags;
   tree subblocks = current_binding_level->blocks;
   tree block = 0;
+
+  keep |= current_binding_level->keep;
 
   /* This warning is turned off because it causes warnings for
      declarations like `extern struct foo *x'.  */
@@ -587,7 +656,10 @@ poplevel (keep, reverse, functionbody)
   else if (subblocks)
     current_binding_level->blocks
       = chainon (current_binding_level->blocks, subblocks);
-    
+
+  if (block)
+    TREE_USED (block) = 1;
+  return block;
 }
 
 /* Push a definition of struct, union or enum tag "name".
@@ -611,7 +683,10 @@ pushtag (name, type)
       if (TYPE_NAME (type) == 0)
 	TYPE_NAME (type) = name;
 
-      b->tags = saveable_tree_cons (name, type, b->tags);
+      if (b == global_binding_level)
+	b->tags = perm_tree_cons (name, type, b->tags);
+      else
+	b->tags = saveable_tree_cons (name, type, b->tags);
     }
 }
 
@@ -644,7 +719,12 @@ duplicate_decls (newdecl, olddecl)
 	;
       else if (TREE_CODE (olddecl) == FUNCTION_DECL
 	       && DECL_FUNCTION_CODE (olddecl) != NOT_BUILT_IN)
-	warning_with_decl (newdecl, "built-in function `%s' redeclared");
+ 	{
+ 	  if (!types_match)
+ 	    error_with_decl (newdecl, "conflicting types for built-in function `%s'");
+ 	  else if (extra_warnings)
+ 	    warning_with_decl (newdecl, "built-in function `%s' redeclared");
+ 	}
       else if (!types_match)
 	{
 	  error_with_decl (newdecl, "conflicting types for `%s'");
@@ -706,11 +786,20 @@ duplicate_decls (newdecl, olddecl)
 	      warning_with_decl (olddecl,
 				 "follows non-prototype definition here");
 	    }
+
+	  /* These bits are logically part of the type.  */
+	  if (pedantic
+	      && (TREE_READONLY (newdecl) != TREE_READONLY (olddecl)
+		  || TREE_THIS_VOLATILE (newdecl) != TREE_THIS_VOLATILE (olddecl)))
+	    warning_with_decl (newdecl, "type qualifiers for `%s' conflict with previous decl");
 	}
     }
 
   if (TREE_CODE (olddecl) == TREE_CODE (newdecl))
     {
+      int new_is_definition = (TREE_CODE (newdecl) == FUNCTION_DECL
+			       && DECL_INITIAL (newdecl) != 0);
+
       /* Copy all the DECL_... slots specified in the new decl
 	 except for any that we copy here from the old type.  */
 
@@ -739,16 +828,27 @@ duplicate_decls (newdecl, olddecl)
 	      DECL_SIZE_UNIT (newdecl) = DECL_SIZE_UNIT (olddecl);
 	    }
 
+	  /* Merge the type qualifiers.  */
+	  if (TREE_READONLY (newdecl))
+	    TREE_READONLY (olddecl) = 1;
+	  if (TREE_THIS_VOLATILE (newdecl))
+	    TREE_THIS_VOLATILE (olddecl) = 1;
+
 	  /* Merge the initialization information.  */
 	  if (DECL_INITIAL (newdecl) == 0)
 	    DECL_INITIAL (newdecl) = DECL_INITIAL (olddecl);
 	  /* Keep the old rtl since we can safely use it.  */
 	  DECL_RTL (newdecl) = DECL_RTL (olddecl);
 	}
-      /* If cannot merge, then use the new type
-	 and discard the old rtl.  */
+      /* If cannot merge, then use the new type and qualifiers,
+	 and don't preserve the old rtl.  */
       else
-	TREE_TYPE (olddecl) = TREE_TYPE (newdecl);
+	{
+	  TREE_TYPE (olddecl) = TREE_TYPE (newdecl);
+	  TREE_READONLY (olddecl) = TREE_READONLY (newdecl);
+	  TREE_THIS_VOLATILE (olddecl) = TREE_THIS_VOLATILE (newdecl);
+	  TREE_VOLATILE (olddecl) = TREE_VOLATILE (newdecl);
+	}
 
       /* Merge the storage class information.  */
       if (TREE_EXTERNAL (newdecl))
@@ -782,28 +882,20 @@ duplicate_decls (newdecl, olddecl)
 	TREE_INLINE (olddecl) = 1;
 
       /* If redeclaring a builtin function, and not a definition,
-	 it stays built in.  */
-      if (TREE_CODE (newdecl) == FUNCTION_DECL
-	  && DECL_INITIAL (newdecl) == 0)
-	DECL_SET_FUNCTION_CODE (newdecl, DECL_FUNCTION_CODE (olddecl));
-
-      /* Don't lose track of having output OLDDECL as GDB symbol.  */
-      DECL_BLOCK_SYMTAB_ADDRESS (newdecl)
-	= DECL_BLOCK_SYMTAB_ADDRESS (olddecl);
-
-      /* If fn was already defined, don't lose its DECL_RESULT.  */
-      if (TREE_CODE (newdecl) == FUNCTION_DECL
-          && DECL_RESULT (newdecl) == 0)
-	DECL_RESULT (newdecl) = DECL_RESULT (olddecl);
-
-      /* If fn was already defined, don't lose its DECL_SAVED_INSNS.  */
-      if (TREE_CODE (newdecl) == FUNCTION_DECL
-          && DECL_SAVED_INSNS (newdecl) == 0)
+	 it stays built in.
+	 Also preserve various other info from the definition.  */
+      if (TREE_CODE (newdecl) == FUNCTION_DECL && !new_is_definition)
 	{
+	  DECL_SET_FUNCTION_CODE (newdecl, DECL_FUNCTION_CODE (olddecl));
+	  DECL_RESULT (newdecl) = DECL_RESULT (olddecl);
 	  DECL_SAVED_INSNS (newdecl) = DECL_SAVED_INSNS (olddecl);
 	  DECL_RESULT_TYPE (newdecl) = DECL_RESULT_TYPE (olddecl);
 	  DECL_ARGUMENTS (newdecl) = DECL_ARGUMENTS (olddecl);
 	}
+
+      /* Don't lose track of having output OLDDECL as GDB symbol.  */
+      DECL_BLOCK_SYMTAB_ADDRESS (newdecl)
+	= DECL_BLOCK_SYMTAB_ADDRESS (olddecl);
 
       bcopy ((char *) newdecl + sizeof (struct tree_common),
 	     (char *) olddecl + sizeof (struct tree_common),
@@ -914,6 +1006,17 @@ pushdecl (x)
 
 	  IDENTIFIER_GLOBAL_VALUE (name) = x;
 
+	  /* Don't forget if the function was used via an implicit decl.  */
+	  if (IDENTIFIER_IMPLICIT_DECL (name)
+	      && TREE_USED (IDENTIFIER_IMPLICIT_DECL (name)))
+	    TREE_USED (x) = 1;
+
+	  /* Don't forget if its address was taken in that way.  */
+	  if (IDENTIFIER_IMPLICIT_DECL (name)
+	      && TREE_ADDRESSABLE (IDENTIFIER_IMPLICIT_DECL (name)))
+	    TREE_ADDRESSABLE (x) = 1;
+
+	  /* Warn about mismatches against previous implicit decl.  */
 	  if (IDENTIFIER_IMPLICIT_DECL (name) != 0
 	      /* If this real decl matches the implicit, don't complain.  */
 	      && ! (TREE_CODE (x) == FUNCTION_DECL
@@ -938,29 +1041,32 @@ pushdecl (x)
 	{
 	  /* Here to install a non-global value.  */
 	  tree oldlocal = IDENTIFIER_LOCAL_VALUE (name);
+	  tree oldglobal = IDENTIFIER_GLOBAL_VALUE (name);
 	  IDENTIFIER_LOCAL_VALUE (name) = x;
 
 	  /* If this is an extern function declaration, see if we
 	     have a global definition for the function.  */
 	  if (oldlocal == 0
-	      && IDENTIFIER_GLOBAL_VALUE (name)
+	      && oldglobal != 0
 	      && TREE_CODE (x) == FUNCTION_DECL
-	      && TREE_CODE (IDENTIFIER_GLOBAL_VALUE (name)) == FUNCTION_DECL
-	      && TREE_INLINE (IDENTIFIER_GLOBAL_VALUE (name)))
+	      && TREE_CODE (oldglobal) == FUNCTION_DECL)
 	    {
 	      /* We have one.  Their types must agree.  */
 	      if (! comptypes (TREE_TYPE (x),
 			       TREE_TYPE (IDENTIFIER_GLOBAL_VALUE (name))))
 		warning_with_decl (x, "local declaration of `%s' doesn't match global one");
 	      /* If the global one is inline, make the local one inline.  */
-	      else if (TREE_INLINE (IDENTIFIER_GLOBAL_VALUE (name)))
-		IDENTIFIER_LOCAL_VALUE (name) = IDENTIFIER_GLOBAL_VALUE (name);
+	      else if (TREE_INLINE (oldglobal)
+		       || DECL_FUNCTION_CODE (oldglobal) != NOT_BUILT_IN
+		       || (TYPE_ARG_TYPES (TREE_TYPE (oldglobal)) != 0
+			   && TYPE_ARG_TYPES (TREE_TYPE (x)) == 0))
+		IDENTIFIER_LOCAL_VALUE (name) = oldglobal;
 	    }
 	  /* If we have a local external declaration,
 	     and no file-scope declaration has yet been seen,
 	     then if we later have a file-scope decl it must not be static.  */
 	  if (oldlocal == 0
-	      && IDENTIFIER_GLOBAL_VALUE (name) == 0
+	      && oldglobal == 0
 	      && TREE_EXTERNAL (x)
 	      && TREE_PUBLIC (x))
 	    {
@@ -1078,7 +1184,11 @@ redeclaration_error_message (newdecl, olddecl)
 	 but they can't be inconsistent with internal linkage,
 	 so there can be no error on that account.
 	 However defining the same name twice is no good.  */
-      if (DECL_INITIAL (olddecl) != 0 && DECL_INITIAL (newdecl) != 0)
+      if (DECL_INITIAL (olddecl) != 0 && DECL_INITIAL (newdecl) != 0
+	  /* However, defining once as extern inline and a second
+	     time in another way is ok.  */
+	  && !(TREE_INLINE (olddecl) && TREE_EXTERNAL (olddecl)
+	       && !(TREE_INLINE (newdecl) && TREE_EXTERNAL (newdecl))))
 	return "redefinition of `%s'";
       return 0;
     }
@@ -1312,6 +1422,9 @@ init_decl_processing ()
 {
   register tree endlink;
 
+  /* Make identifier nodes long enough for the language-specific slots.  */
+  set_identifier_size (sizeof (struct lang_identifier));
+
   current_function_decl = NULL;
   named_labels = NULL;
   current_binding_level = NULL_BINDING_LEVEL;
@@ -1323,11 +1436,7 @@ init_decl_processing ()
 
   /* Define `int' and `char' first so that dbx will output them first.  */
 
-#ifdef INT_TYPE_SIZE
   integer_type_node = make_signed_type (INT_TYPE_SIZE);
-#else
-  integer_type_node = make_signed_type (BITS_PER_WORD);
-#endif
   pushdecl (build_decl (TYPE_DECL, ridpointers[(int) RID_INT],
 			integer_type_node));
 
@@ -1336,37 +1445,29 @@ init_decl_processing ()
 
   char_type_node =
     (flag_signed_char
-     ? make_signed_type (BITS_PER_UNIT)
-     : make_unsigned_type (BITS_PER_UNIT));
+     ? make_signed_type (CHAR_TYPE_SIZE)
+     : make_unsigned_type (CHAR_TYPE_SIZE));
   pushdecl (build_decl (TYPE_DECL, get_identifier ("char"),
 			char_type_node));
 
-  long_integer_type_node = make_signed_type (BITS_PER_WORD);
+  long_integer_type_node = make_signed_type (LONG_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long int"),
 			long_integer_type_node));
 
-#ifdef INT_TYPE_SIZE
   unsigned_type_node = make_unsigned_type (INT_TYPE_SIZE);
-#else
-  unsigned_type_node = make_unsigned_type (BITS_PER_WORD);
-#endif
   pushdecl (build_decl (TYPE_DECL, get_identifier ("unsigned int"),
 			unsigned_type_node));
 
-  long_unsigned_type_node = make_unsigned_type (BITS_PER_WORD);
+  long_unsigned_type_node = make_unsigned_type (LONG_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long unsigned int"),
 			long_unsigned_type_node));
 
   /* `unsigned long' or `unsigned int' is the standard type for sizeof.
      Traditionally, use a signed type.  */
-#ifdef INT_TYPE_SIZE
-  if (INT_TYPE_SIZE != BITS_PER_WORD)
+  if (INT_TYPE_SIZE != LONG_TYPE_SIZE)
     sizetype = flag_traditional ? long_integer_type_node : long_unsigned_type_node;
   else
     sizetype = flag_traditional ? integer_type_node : unsigned_type_node;
-#else
-  sizetype = flag_traditional ? integer_type_node : unsigned_type_node;
-#endif
 
   TREE_TYPE (TYPE_SIZE (integer_type_node)) = sizetype;
   TREE_TYPE (TYPE_SIZE (char_type_node)) = sizetype;
@@ -1377,45 +1478,45 @@ init_decl_processing ()
   error_mark_node = make_node (ERROR_MARK);
   TREE_TYPE (error_mark_node) = error_mark_node;
 
-  short_integer_type_node = make_signed_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
+  short_integer_type_node = make_signed_type (SHORT_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short int"),
 			short_integer_type_node));
 
-  long_long_integer_type_node = make_signed_type (2 * BITS_PER_WORD);
+  long_long_integer_type_node = make_signed_type (LONG_LONG_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long long int"),
 			long_long_integer_type_node));
 
-  short_unsigned_type_node = make_unsigned_type (BITS_PER_UNIT * MIN (UNITS_PER_WORD / 2, 2));
+  short_unsigned_type_node = make_unsigned_type (SHORT_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("short unsigned int"),
 			short_unsigned_type_node));
 
-  long_long_unsigned_type_node = make_unsigned_type (2 * BITS_PER_WORD);
+  long_long_unsigned_type_node = make_unsigned_type (LONG_LONG_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long long unsigned int"),
 			long_long_unsigned_type_node));
 
   /* Define both `signed char' and `unsigned char'.  */
-  signed_char_type_node = make_signed_type (BITS_PER_UNIT);
+  signed_char_type_node = make_signed_type (CHAR_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("signed char"),
 			signed_char_type_node));
 
-  unsigned_char_type_node = make_unsigned_type (BITS_PER_UNIT);
+  unsigned_char_type_node = make_unsigned_type (CHAR_TYPE_SIZE);
   pushdecl (build_decl (TYPE_DECL, get_identifier ("unsigned char"),
 			unsigned_char_type_node));
 
   float_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (float_type_node) = BITS_PER_WORD;
+  TYPE_PRECISION (float_type_node) = FLOAT_TYPE_SIZE;
   pushdecl (build_decl (TYPE_DECL, ridpointers[(int) RID_FLOAT],
 			float_type_node));
   layout_type (float_type_node);
 
   double_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (double_type_node) = 2 * BITS_PER_WORD;
+  TYPE_PRECISION (double_type_node) = DOUBLE_TYPE_SIZE;
   pushdecl (build_decl (TYPE_DECL, ridpointers[(int) RID_DOUBLE],
 			double_type_node));
   layout_type (double_type_node);
 
   long_double_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (long_double_type_node) = 2 * BITS_PER_WORD;
+  TYPE_PRECISION (long_double_type_node) = LONG_DOUBLE_TYPE_SIZE;
   pushdecl (build_decl (TYPE_DECL, get_identifier ("long double"),
 			long_double_type_node));
   layout_type (long_double_type_node);
@@ -1511,7 +1612,10 @@ init_decl_processing ()
   builtin_function ("__builtin_fabs", double_ftype_double, BUILT_IN_FABS);
   builtin_function ("__builtin_labs", long_ftype_long, BUILT_IN_LABS);
   builtin_function ("__builtin_ffs", int_ftype_int, BUILT_IN_FFS);
-  builtin_function ("__builtin_saveregs", default_function_type, BUILT_IN_SAVEREGS);
+  builtin_function ("__builtin_saveregs", default_function_type,
+		    BUILT_IN_SAVEREGS);
+  builtin_function ("__builtin_classify_type", default_function_type,
+		    BUILT_IN_CLASSIFY_TYPE);
 #if 0
   /* Support for these has not been written in either expand_builtin
      or build_function_call.  */
@@ -1528,6 +1632,8 @@ init_decl_processing ()
   builtin_function ("__builtin_getexp", double_ftype_double, BUILT_IN_GETEXP);
   builtin_function ("__builtin_getman", double_ftype_double, BUILT_IN_GETMAN);
 #endif
+
+  start_identifier_warnings ();
 }
 
 /* Make a definition for a builtin function named NAME and whose data type
@@ -1743,13 +1849,17 @@ start_decl (declarator, declspecs, initialized)
    it must be determined now, from the initial value, or it is an error.  */
 
 void
-finish_decl (decl, init, asmspec)
+finish_decl (decl, init, asmspec_tree)
      tree decl, init;
-     tree asmspec;
+     tree asmspec_tree;
 {
   register tree type = TREE_TYPE (decl);
   int was_incomplete = (DECL_SIZE (decl) == 0);
   int temporary = allocation_temporary_p ();
+  char *asmspec = 0;
+
+  if (asmspec_tree)
+    asmspec = TREE_STRING_POINTER (asmspec_tree);
 
   /* If `start_decl' didn't like having an initialization, ignore it now.  */
 
@@ -2569,6 +2679,9 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	    else
 	      /* Assume that otherwise the function can be inlined.  */
 	      TREE_INLINE (decl) = 1;
+
+	    if (specbits & (1 << (int) RID_EXTERN))
+	      current_extern_inline = 1;
 	  }
       }
     else
@@ -2807,7 +2920,7 @@ parmlist_tags_warning ()
 	       IDENTIFIER_POINTER (TREE_PURPOSE (elt)));
       if (! already)
 	{
-	  warning ("such a name is accessible only within its parameter list,");
+	  warning ("its scope is only this definition or declaration,");
 	  warning ("which is probably not what you want.");
 	  already = 1;
 	}
@@ -2924,6 +3037,10 @@ finish_struct (t, fieldlist)
 
   TYPE_SIZE (t) = 0;
 
+  if (in_parm_level_p ())
+    warning ((TREE_CODE (t) == UNION_TYPE ? "union defined inside parms"
+	      : "structure defined inside parms"));
+
   old_momentary = suspend_momentary ();
 
   if (fieldlist == 0 && pedantic)
@@ -2985,6 +3102,11 @@ finish_struct (t, fieldlist)
 	    {
 	      DECL_INITIAL (x) = NULL;
 	      warning_with_decl (x, "negative width in bit-field `%s'");
+	    }
+	  else if (width == 0 && DECL_NAME (x) != 0)
+	    {
+	      error_with_decl (x, "zero width for bit-field `%s'");
+	      DECL_INITIAL (x) = NULL;
 	    }
 	  else if (width > TYPE_PRECISION (TREE_TYPE (x)))
 	    {
@@ -3073,7 +3195,13 @@ finish_struct (t, fieldlist)
   /* If there's a :0 field at the end, round the size to the
      EMPTY_FIELD_BOUNDARY.  */
   TYPE_ALIGN (t) = round_up_size;
-  
+
+  for (x = TYPE_MAIN_VARIANT (t); x; x = TYPE_NEXT_VARIANT (x))
+    {
+      TYPE_FIELDS (x) = TYPE_FIELDS (t);
+      TYPE_ALIGN (x) = TYPE_ALIGN (t);
+    }
+
   layout_type (t);
 
   /* Promote each bit-field's type to int if it is narrower than that.  */
@@ -3171,6 +3299,9 @@ finish_enum (enumtype, values)
   register long minvalue = 0;
   register int i;
 
+  if (in_parm_level_p ())
+    warning ("enum defined inside parms");
+
   TYPE_VALUES (enumtype) = values;
 
   /* Calculate the maximum value of any enumerator in this type.  */
@@ -3189,21 +3320,22 @@ finish_enum (enumtype, values)
 	}
     }
 
-#if 0
-  /* Determine the precision this type needs, lay it out, and define it.  */
+  if (flag_short_enums)
+    {
+      /* Determine the precision this type needs, lay it out, and define it.  */
 
-  for (i = maxvalue; i; i >>= 1)
-    TYPE_PRECISION (enumtype)++;
+      for (i = maxvalue; i; i >>= 1)
+	TYPE_PRECISION (enumtype)++;
 
-  if (!TYPE_PRECISION (enumtype))
-    TYPE_PRECISION (enumtype) = 1;
+      if (!TYPE_PRECISION (enumtype))
+	TYPE_PRECISION (enumtype) = 1;
 
-  /* Cancel the laying out previously done for the enum type,
-     so that fixup_unsigned_type will do it over.  */
-  TYPE_SIZE (enumtype) = 0;
+      /* Cancel the laying out previously done for the enum type,
+	 so that fixup_unsigned_type will do it over.  */
+      TYPE_SIZE (enumtype) = 0;
 
-  fixup_unsigned_type (enumtype);
-#endif
+      fixup_unsigned_type (enumtype);
+    }
 
   TREE_INT_CST_LOW (TYPE_MAX_VALUE (enumtype)) = maxvalue;
 
@@ -3229,6 +3361,10 @@ build_enumerator (name, value)
   register tree decl;
 
   /* Validate and default VALUE.  */
+
+  /* Remove no-op casts from the value.  */
+  while (value != 0 && TREE_CODE (value) == NOP_EXPR)
+    value = TREE_OPERAND (value, 0);
 
   if (value != 0 && TREE_CODE (value) != INTEGER_CST)
     {
@@ -3277,6 +3413,7 @@ start_function (declspecs, declarator)
   current_function_returns_value = 0;  /* Assume, until we see it does. */
   current_function_returns_null = 0;
   warn_about_return_type = 0;
+  current_extern_inline = 0;
 
   decl1 = grokdeclarator (declarator, declspecs, FUNCDEF, 1);
 
@@ -3318,8 +3455,12 @@ start_function (declspecs, declarator)
       && TYPE_ARG_TYPES (TREE_TYPE (current_function_decl)) == 0)
     TREE_TYPE (current_function_decl) = TREE_TYPE (old_decl);
 
-  /* This is a definition, not a reference.  */
-  TREE_EXTERNAL (current_function_decl) = 0;
+  /* This is a definition, not a reference.
+     So normally clear TREE_EXTERNAL.
+     However, `extern inline' acts like a declaration
+     except for defining how to inline.  So set TREE_EXTERNAL in that case.  */
+  TREE_EXTERNAL (current_function_decl) = current_extern_inline;
+
   /* This function exists in static storage.
      (This does not mean `static' in the C sense!)  */
   TREE_STATIC (current_function_decl) = 1;
@@ -3331,7 +3472,7 @@ start_function (declspecs, declarator)
   current_function_decl = pushdecl (current_function_decl);
 
   pushlevel (0);
-  current_binding_level->parm_flag = 1;
+  declare_parm_level ();
 
   make_function_rtl (current_function_decl);
 
@@ -3608,7 +3749,11 @@ store_parm_decls ()
 
   /* Initialize the RTL code for the function.  */
 
-  expand_function_start (fndecl);
+  init_function_start (fndecl);
+
+  /* Set up parameters and prepare for return, for the function.  */
+
+  expand_function_start (fndecl, 0);
 }
 
 /* Finish up a function declaration and compile that function
@@ -3616,10 +3761,11 @@ store_parm_decls ()
    for the function definition.
 
    This is called after parsing the body of the function definition.
-   STMTS is the chain of statements that makes up the function body.  */
+   LINENO is the current line number.  */
 
 void
-finish_function ()
+finish_function (lineno)
+     int lineno;
 {
   register tree fndecl = current_function_decl;
 

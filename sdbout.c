@@ -24,7 +24,6 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #include "tree.h"
 #include "rtl.h"
-#include "c-tree.h"
 #include <stdio.h>
 #include <syms.h>
 /* #include <storclass.h>  used to be this instead of syms.h.  */
@@ -161,12 +160,6 @@ do { fprintf (asm_out_file, "\t.tag\t");	\
   (((link) && TREE_PURPOSE ((link)) \
     && IDENTIFIER_POINTER (TREE_PURPOSE ((link)))) \
    ? IDENTIFIER_POINTER (TREE_PURPOSE ((link))) : (char *) 0)
-
-/* Return the structure-tag name of a structure, etc.  */
-
-#define TYPE_TAG_NAME(type) \
-  ((TYPE_NAME (type) != 0 && TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE) \
-   ? IDENTIFIER_POINTER (TYPE_NAME (type)) : 0)
 
 /* Tell the assembler the source file name.
    On systems that use SDB, this is done whether or not -g,
@@ -270,7 +263,11 @@ plain_type (type)
   int val = plain_type_1 (type);
   if (TREE_CODE (type) == ARRAY_TYPE)
     {
-      PUT_SDB_SIZE (int_size_in_bytes (type));
+      int size = int_size_in_bytes (type);
+      /* Don't kill sdb if type is not laid out or has variable size.  */
+      if (size < 0)
+	size = 0;
+      PUT_SDB_SIZE (size);
     }
   return val;
 }
@@ -279,12 +276,32 @@ static void
 sdbout_record_type_name (type)
      tree type;
 {
-  char *name;
+  char *name = 0;
+
   if (KNOWN_TYPE_TAG (type))
     return;
-  name = TYPE_TAG_NAME (type);
-  if (!name || !*name)
+
+  if (TYPE_NAME (type) != 0) 
+    {
+      tree t = 0;
+      /* Find the IDENTIFIER_NODE for the type name.  */
+      if (TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE)
+	{
+	  t = TYPE_NAME (type);
+	}
+      else if (TREE_CODE (TYPE_NAME (type)) == TYPE_DECL)
+	{
+	  t = DECL_NAME (TYPE_NAME (type));
+	}
+
+      /* Now get the name as a string, or invent one.  */
+      if (t != 0)
+	name = IDENTIFIER_POINTER (t);
+    }
+
+  if (name == 0)
     name = gen_fake_label ();
+
   SET_KNOWN_TYPE_TAG (type, name);
 }
 
@@ -296,6 +313,8 @@ plain_type_1 (type)
     type = void_type_node;
   if (type == error_mark_node)
     type = integer_type_node;
+  type = TYPE_MAIN_VARIANT (type);
+
   switch (TREE_CODE (type))
     {
     case VOID_TYPE:
@@ -333,6 +352,7 @@ plain_type_1 (type)
     case ENUMERAL_TYPE:
       {
 	char *tag;
+	int size;
 	sdbout_record_type_name (type);
 	if (TREE_ASM_WRITTEN (type))
 	  {
@@ -343,17 +363,22 @@ plain_type_1 (type)
 	    tag = KNOWN_TYPE_TAG (type);
 	    PUT_SDB_TAG (tag);
 	  }
-	PUT_SDB_SIZE (int_size_in_bytes (type));
-	return ((TREE_CODE (type) == RECORD_TYPE) ? T_STRUCT :
-		(TREE_CODE (type) == UNION_TYPE) ? T_UNION :
-		T_ENUM);
+	size = int_size_in_bytes (type);
+	if (size < 0)
+	  size = 0;
+	PUT_SDB_SIZE (size);
+	return ((TREE_CODE (type) == RECORD_TYPE) ? T_STRUCT
+		: (TREE_CODE (type) == UNION_TYPE) ? T_UNION
+		: T_ENUM);
       }
     case POINTER_TYPE:
+    case REFERENCE_TYPE:
       {
 	int m = plain_type (TREE_TYPE (type));
 	return PUSH_DERIVED_LEVEL (DT_PTR, m);
       }
     case FUNCTION_TYPE:
+    case METHOD_TYPE:
       {
 	int m = plain_type (TREE_TYPE (type));
 	return PUSH_DERIVED_LEVEL (DT_FCN, m);
@@ -392,6 +417,9 @@ sdbout_block (stmt)
 	  break;
 
 	case LET_STMT:
+	  /* Ignore LET_STMTs for blocks never really used to make RTL.  */
+	  if (! TREE_USED (stmt))
+	    break;
 	  /* When we reach the specified block, output its symbols.  */
 	  if (next_block_number == do_block)
 	    {
@@ -406,7 +434,7 @@ sdbout_block (stmt)
 	  next_block_number++;
 
 	  /* Scan the blocks within this block.  */
-	  sdbout_block (STMT_BODY (stmt));
+	  sdbout_block (STMT_SUBBLOCKS (stmt));
 	}
       stmt = TREE_CHAIN (stmt);
     }
@@ -573,7 +601,7 @@ sdbout_tags (tags)
 
       if (TREE_PURPOSE (link) != 0
 	  && TYPE_SIZE (type) != 0)
-	sdbout_one_type (type, TAG_NAME (link));
+	sdbout_one_type (type);
     }
 }
 
@@ -587,7 +615,7 @@ sdbout_types (types)
   register tree link;
 
   for (link = types; link; link = TREE_CHAIN (link))
-    sdbout_one_type (link, 0);
+    sdbout_one_type (link);
 }
 
 static void
@@ -600,6 +628,22 @@ sdbout_type (type)
   PUT_SDB_TYPE (plain_type (type));
 }
 
+/* Output types of the fields of type TYPE, if they are structs.
+   Don't chase through pointer types, since that could be circular.
+   They must come before TYPE, since forward refs are not allowed.
+
+   This is not actually used, since the COFF assembler rejects the
+   results.  No one knows why it rejects them.  */
+
+static void
+sdbout_field_types (type)
+     tree type;
+{
+  tree tail;
+  for (tail = TYPE_FIELDS (type); tail; tail = TREE_CHAIN (tail))
+    sdbout_one_type (TREE_TYPE (tail));
+}
+
 /* Use this to put out the top level defined record and union types
    for later reference.  If this is a struct with a name, then put that
    name out.  Other unnamed structs will have .xxfake labels generated so
@@ -608,21 +652,29 @@ sdbout_type (type)
    It may NOT be called recursively.  */
 
 static void
-sdbout_one_type (type, name)
-     char *name;
+sdbout_one_type (type)
      tree type;
 {
   text_section ();
+
   switch (TREE_CODE (type))
     {
     case RECORD_TYPE:
     case UNION_TYPE:
     case ENUMERAL_TYPE:
+      type = TYPE_MAIN_VARIANT (type);
       /* Don't output a type twice.  */
       if (TREE_ASM_WRITTEN (type))
 	return;
 
       TREE_ASM_WRITTEN (type) = 1;
+#if 0  /* This change, which ought to make better output,
+	  makes the COFF assembler unhappy.  */
+      /* Before really doing anything, output types we want to refer to.  */
+      if (TREE_CODE (type) != ENUMERAL_TYPE)
+	sdbout_field_types (type);
+#endif
+
       sdbout_record_type_name (type);
 
       /* Output a structure type.  */
@@ -723,7 +775,11 @@ sdbout_parms (parms1)
     {
       int current_sym_value = DECL_OFFSET (parms) / BITS_PER_UNIT;
 
-      PUT_SDB_DEF (IDENTIFIER_POINTER (DECL_NAME (parms)));
+      if (DECL_NAME (parms))
+	PUT_SDB_DEF (IDENTIFIER_POINTER (DECL_NAME (parms)));
+      else
+	PUT_SDB_DEF (gen_fake_label ());
+
       if (GET_CODE (DECL_RTL (parms)) == REG
 	  && REGNO (DECL_RTL (parms)) >= 0
 	  && REGNO (DECL_RTL (parms)) < FIRST_PSEUDO_REGISTER)

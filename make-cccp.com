@@ -1,8 +1,25 @@
 $!
 $!	Build the GNU "C" pre-processor on VMS
 $!
+$
+$!
+$!	C compiler
+$!
+$ CC	:=	gcc
+$!
+$!	Compiler options
+$!
+$ CFLAGS =	"/debug/inc=([],[.config])"
+$!
+$!	Link options
+$!
+$ LDFLAGS :=	/nomap
+$!
+$!	Link libraries
+$!
+$ LIBS :=	gnu_cc:[000000]gcclib/libr,sys$share:vaxcrtl/libr
 $ if "''p1'" .eqs. "LINK" then goto Link
-$ gcc/debug cccp.c
+$ 'CC 'CFLAGS cccp.c
 $ t1:='f$search("CEXP.C")'
 $ if "''t1'" .eqs. "" then goto 10$
 $ t1:='f$file_attributes("CEXP.Y","RDT")'
@@ -15,14 +32,10 @@ $ bison cexp.y
 $ rename cexp_tab.c cexp.c
 $ 20$:
 $!
-$ gcc/debug cexp.c
-$ gcc/debug version.c
+$ 'CC 'CFLAGS cexp.c
+$ 'CC 'CFLAGS version.c
 $ Link:
-$ link/exe=gcc-cpp/nomap sys$input:/opt
-!
-!	Linker options file for linking the GNU "C" pre-processor
-!
-cccp,cexp,version,gnu_cc:[000000]gcclib/lib,sys$share:vaxcrtl/lib
+$ link 'LDFLAGS /exe=gcc-cpp cccp,cexp,version,'LIBS'
 $!
 $!	Done
 $!

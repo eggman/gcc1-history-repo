@@ -35,7 +35,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 
-static int mark_addressable ();
+int mark_addressable ();
 static tree convert_for_assignment ();
 static int compparms ();
 int comp_target_types ();
@@ -340,6 +340,13 @@ comptypes (type1, type2)
 
   if (TREE_CODE (t1) != TREE_CODE (t2)) return 0;
 
+  /* Qualifiers must match.  */
+
+  if (TREE_READONLY (t1) != TREE_READONLY (t2))
+    return 0;
+  if (TREE_THIS_VOLATILE (t1) != TREE_THIS_VOLATILE (t2))
+    return 0;
+
   switch (TREE_CODE (t1))
     {
     case POINTER_TYPE:
@@ -352,10 +359,9 @@ comptypes (type1, type2)
 	      && compparms (TYPE_ARG_TYPES (t1), TYPE_ARG_TYPES (t2)));
 
     case ARRAY_TYPE:
-      /* Target types must match.  */
+      /* Target types must match incl. qualifiers.  */
       if (!(TREE_TYPE (t1) == TREE_TYPE (t2)
-	    || comptypes (TYPE_MAIN_VARIANT (TREE_TYPE (t1)),
-			  TYPE_MAIN_VARIANT (TREE_TYPE (t2)))))
+	    || comptypes (TREE_TYPE (t1), TREE_TYPE (t2))))
 	return 0;
       {
 	tree d1 = TYPE_DOMAIN (t1);
@@ -469,6 +475,8 @@ unsigned_type (type)
     return short_unsigned_type_node;
   if (type == long_integer_type_node)
     return long_unsigned_type_node;
+  if (type == long_long_integer_type_node)
+    return long_long_unsigned_type_node;
   return type;
 }
 
@@ -486,6 +494,8 @@ signed_type (type)
     return short_integer_type_node;
   if (type == long_unsigned_type_node)
     return long_integer_type_node;
+  if (type == long_long_unsigned_type_node)
+    return long_long_integer_type_node;
   return type;
 }
 
@@ -507,6 +517,9 @@ signed_or_unsigned_type (unsignedp, type)
     return unsignedp ? short_unsigned_type_node : short_integer_type_node;
   if (TYPE_PRECISION (type) == TYPE_PRECISION (long_integer_type_node)) 
     return unsignedp ? long_unsigned_type_node : long_integer_type_node;
+  if (TYPE_PRECISION (type) == TYPE_PRECISION (long_long_integer_type_node)) 
+    return (unsignedp ? long_long_unsigned_type_node
+	    : long_long_integer_type_node);
   return type;
 }
 
@@ -530,6 +543,10 @@ type_for_size (bits, unsignedp)
   if (bits <= TYPE_PRECISION (long_integer_type_node))
     return unsignedp ? long_unsigned_type_node : long_integer_type_node;
 
+  if (bits <= TYPE_PRECISION (long_long_integer_type_node))
+    return (unsignedp ? long_long_unsigned_type_node
+	    : long_long_integer_type_node);
+
   return 0;
 }
 
@@ -537,10 +554,12 @@ tree
 get_floating_type (mode)
      enum machine_mode mode;
 {
-  if (mode == SFmode)
+  if (mode == TYPE_MODE (float_type_node))
     return float_type_node;
-  if (mode == DFmode)
+  if (mode == TYPE_MODE (double_type_node))
     return double_type_node;
+  if (mode == TYPE_MODE (long_double_type_node))
+    return long_double_type_node;
   abort ();
 }
 
@@ -563,7 +582,9 @@ c_sizeof (type)
       return build_int (1);
     }
 
-  return size_in_bytes (type);
+  /* Convert in case a char is more than one unit.  */
+  return convert_units (size_in_bytes (type), BITS_PER_UNIT,
+			TYPE_PRECISION (char_type_node));
 }
 
 tree
@@ -576,7 +597,9 @@ c_sizeof_nowarn (type)
       || code == VOID_TYPE)
     return build_int (1);
 
-  return size_in_bytes (type);
+  /* Convert in case a char is more than one unit.  */
+  return convert_units (size_in_bytes (type), BITS_PER_UNIT,
+			TYPE_PRECISION (char_type_node));
 }
 
 /* Implement the __alignof keyword: Return the minimum required
@@ -587,9 +610,6 @@ c_alignof (type)
      tree type;
 {
   enum tree_code code = TREE_CODE (type);
-
-  if (pedantic)
-    warning ("ANSI C does not allow `__alignof'");
 
   if (code == FUNCTION_TYPE)
     return build_int (FUNCTION_BOUNDARY / BITS_PER_UNIT);
@@ -613,9 +633,13 @@ decl_constant_value (decl)
       && ! pedantic
       && ! TREE_THIS_VOLATILE (decl)
       && DECL_INITIAL (decl) != 0
-      && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR
       && TREE_CODE (DECL_INITIAL (decl)) != ERROR_MARK
-      && ! TREE_VOLATILE (DECL_INITIAL (decl))
+      /* This is invalid if initial value is not constant.
+	 If it has either a function call, a memory reference,
+	 or a variable, then re-evaluating it could give different results.  */
+      && TREE_LITERAL (DECL_INITIAL (decl))
+      /* Check for cases where this is sub-optimal, even though valid.  */
+      && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR
       && DECL_MODE (decl) != BLKmode)
     return DECL_INITIAL (decl);
   return decl;
@@ -871,7 +895,7 @@ build_array_ref (array, index)
       TREE_READONLY (rval) |= TREE_READONLY (TREE_TYPE (TREE_TYPE (array)));
       TREE_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
       TREE_THIS_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
-      return require_complete_type (rval);
+      return require_complete_type (fold (rval));
     }
 
   {
@@ -916,6 +940,7 @@ build_function_call (function, params)
   /* Convert anything with function type to a pointer-to-function.  */
   if (TREE_CODE (function) == FUNCTION_DECL)
     {
+      name = DECL_NAME (function);
       /* Differs from default_conversion by not setting TREE_ADDRESSABLE
 	 (because calling an inline function does not mean the function
 	 needs to be separately compiled).  */
@@ -1037,6 +1062,14 @@ actualparameterlist (typelist, values, name)
 	    }
 	  else
 	    {
+#ifdef PROMOTE_PROTOTYPES
+	      /* Rather than truncating and then reextending,
+		 convert directly to int, if that's the type we will want.  */
+	      if (! flag_traditional
+		  && TREE_CODE (type) == INTEGER_TYPE
+		  && (TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)))
+		type = integer_type_node;
+#endif
 	      parmval = convert_for_assignment (type, val, "argument passing");
 #ifdef PROMOTE_PROTOTYPES
 	      if (TREE_CODE (type) == INTEGER_TYPE
@@ -1189,6 +1222,10 @@ build_binary_op_nodefault (code, op0, op1, error_code)
       break;
 
     case TRUNC_DIV_EXPR:
+    case CEIL_DIV_EXPR:
+    case FLOOR_DIV_EXPR:
+    case ROUND_DIV_EXPR:
+    case EXACT_DIV_EXPR:
       if ((code0 == INTEGER_TYPE || code0 == REAL_TYPE)
 	  && (code1 == INTEGER_TYPE || code1 == REAL_TYPE))
 	{
@@ -1612,7 +1649,7 @@ pointer_int_sum (resultcode, ptrop, intop)
       size_exp = integer_one_node;
     }
   else
-    size_exp = size_in_bytes (TREE_TYPE (result_type));
+    size_exp = c_sizeof (TREE_TYPE (result_type));
 
   /* If what we are about to multiply by the size of the elements
      contains a constant term, apply distributive law
@@ -1677,26 +1714,11 @@ pointer_diff (op0, op1)
 
   op0 = build_binary_op (MINUS_EXPR,
 			 convert (restype, op0), convert (restype, op1));
-  op1 = ((TREE_CODE (TREE_TYPE (dt0)) == VOID_TYPE
-	  || TREE_CODE (TREE_TYPE (dt0)) == FUNCTION_TYPE)
-	 ? integer_one_node
-	 : size_in_bytes (TREE_TYPE (dt0)));
-
-  /* By altering RESULTCODE, we direct this function to build
-     the division operation.  If dividing by a power of 2,
-     use floor-division (rounding down) since that is what
-     a shift insn does.  Otherwise, since we can't use a shift anyway,
-     use whichever kind of rounding this machine does most easily.  */
-
-  if (TREE_CODE (op1) == INTEGER_CST
-      && -1 == exact_log2 (TREE_INT_CST_LOW (op1)))
-    resultcode = FLOOR_DIV_EXPR;
-  else
-    resultcode = EASY_DIV_EXPR;
+  op1 = c_sizeof_nowarn (TREE_TYPE (dt0));
 
   /* Create the sum or difference.  */
 
-  result = build (resultcode, restype, op0, op1);
+  result = build (EXACT_DIV_EXPR, restype, op0, op1);
 
   folded = fold (result);
   if (folded == result)
@@ -2066,12 +2088,13 @@ build_unary_op (code, xarg, noconvert)
   switch (code)
     {
     case CONVERT_EXPR:
-      if (!(typecode == INTEGER_TYPE || typecode == REAL_TYPE))
-        errstring = "wrong type argument to unary plus";
       /* This is used for unary plus, because a CONVERT_EXPR
 	 is enough to prevent anybody from looking inside for
-	 associativity, but won't generate any code.
-	 Any argument is ok.  */
+	 associativity, but won't generate any code.  */
+      if (!(typecode == INTEGER_TYPE || typecode == REAL_TYPE))
+        errstring = "wrong type argument to unary plus";
+      else if (!noconvert)
+	arg = default_conversion (arg);
       break;
 
     case NEGATE_EXPR:
@@ -2285,6 +2308,8 @@ build_unary_op (code, xarg, noconvert)
 		return error_mark_node;
 	      }
 
+	    addr = convert (argtype, addr);
+
 	    if (DECL_OFFSET (field) != 0)
 	      {
 		tree offset = build_int_2 ((DECL_OFFSET (field)
@@ -2293,8 +2318,6 @@ build_unary_op (code, xarg, noconvert)
 		TREE_TYPE (offset) = argtype;
 		addr = fold (build (PLUS_EXPR, argtype, addr, offset));
 	      }
-	    else
-	      addr = convert (argtype, addr);
 	  }
 	else
 	  addr = build (code, argtype, arg);
@@ -2543,7 +2566,7 @@ invert_truthvalue (arg)
    address of it; it should not be allocated in a register.
    Value is 1 if successful.  */
 
-static int
+int
 mark_addressable (exp)
      tree exp;
 {
@@ -3339,14 +3362,14 @@ digest_init (type, init, tail)
 
 	  if ((TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (string)))
 	       != char_type_node)
-	      && TYPE_PRECISION (typ1) == BITS_PER_UNIT)
+	      && TYPE_PRECISION (typ1) == TYPE_PRECISION (char_type_node))
 	    {
 	      error ("char-array initialized from wide string");
 	      return error_mark_node;
 	    }
 	  if ((TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (string)))
 	       == char_type_node)
-	      && TYPE_PRECISION (typ1) != BITS_PER_UNIT)
+	      && TYPE_PRECISION (typ1) != TYPE_PRECISION (char_type_node))
 	    {
 	      error ("int-array initialized from non-wide string");
 	      return error_mark_node;
@@ -3383,6 +3406,12 @@ digest_init (type, init, tail)
 	      return error_mark_node;
 	    }
 	  init = element;
+	}
+
+      if (TREE_CODE (init) == CONSTRUCTOR)
+	{
+	  error ("initializer for scalar has extra braces");
+	  return error_mark_node;
 	}
 
       return convert_for_assignment (type, default_conversion (init),
@@ -3508,6 +3537,12 @@ process_init_constructor (type, init, elts)
 	{
 	  register tree next1;
 
+	  if (! DECL_NAME (field))
+	    {
+	      members = tree_cons (field, integer_zero_node, members);
+	      continue;
+	    }
+
 	  if (TREE_VALUE (tail) != 0)
 	    {
 	      tree tail1 = tail;
@@ -3572,6 +3607,12 @@ c_expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
   /* Record the contents of OUTPUTS before it is modifed.  */
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
     o[i] = TREE_VALUE (tail);
+
+#if 0  /* Don't do this--it screws up operands expected to be in memory.  */
+  /* Perform default conversions on all inputs.  */
+  for (i = 0, tail = inputs; tail; tail = TREE_CHAIN (tail), i++)
+    TREE_VALUE (tail) = default_conversion (TREE_VALUE (tail));
+#endif
 
   /* Generate the ASM_OPERANDS insn;
      store into the TREE_VALUEs of OUTPUTS some trees for

@@ -48,7 +48,7 @@ extern char *rtx_format[];
 
 #ifndef HAVE_MACHINE_MODES
 
-#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT)  SYM,
+#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT, WIDER)  SYM,
 
 enum machine_mode {
 #include "machmode.def"
@@ -98,6 +98,11 @@ extern int mode_unit_size[];
 #define GET_MODE_MASK(MODE)  \
    ((GET_MODE_BITSIZE (MODE) >= HOST_BITS_PER_INT)  \
     ? -1 : ((1 << GET_MODE_BITSIZE (MODE)) - 1))
+
+/* Get the next wider natural mode (eg, QI -> HI -> SI -> DI -> TI).  */
+
+extern enum machine_mode mode_wider_mode[];
+#define GET_MODE_WIDER_MODE(MODE)	(mode_wider_mode[(int)(MODE)])
 
 /* Common union for an element of an rtx.  */
 
@@ -157,7 +162,7 @@ typedef struct rtx_def
   rtunion fld[1];
 } *rtx;
 
-#define NULL_RTX (rtx) NULL
+#define NULL_RTX (rtx) 0
 
 /* Define macros to access the `code' field of the rtx.  */
 
@@ -184,7 +189,7 @@ typedef struct rtvec_def{
   rtunion elem[1];
 } *rtvec;
 
-#define NULL_RTVEC (rtvec) NULL
+#define NULL_RTVEC (rtvec) 0
 
 #define GET_NUM_ELEM(RTVEC)		((RTVEC)->num_elem)
 #define PUT_NUM_ELEM(RTVEC, NUM)	((RTVEC)->num_elem = (unsigned) NUM)
@@ -305,7 +310,12 @@ extern char *reg_note_name[];
 /* Codes that appear in the NOTE_LINE_NUMBER field
    for kinds of notes that are not line numbers.  */
 
+/* This note indicates the end of the real body of the function,
+   after moving the parms into their homes, etc.  */
 #define NOTE_INSN_FUNCTION_BEG 0
+
+/* This note is used to get rid of an insn
+   when it isn't safe to patch the insn out of the chain.  */
 #define NOTE_INSN_DELETED -1
 #define NOTE_INSN_BLOCK_BEG -2
 #define NOTE_INSN_BLOCK_END -3
@@ -473,6 +483,7 @@ extern rtx emit_insn_before ();
 extern rtx emit_insn_after ();
 extern rtx emit_label ();
 extern rtx emit_barrier ();
+extern rtx emit_barrier_after ();
 extern rtx emit_note ();
 extern rtx emit_line_note ();
 extern rtx emit_line_note_force ();
@@ -482,7 +493,7 @@ extern rtx next_nondeleted_insn ();
 extern rtx plus_constant ();
 extern rtx find_equiv_reg ();
 extern rtx delete_insn ();
-extern rtx adj_offsetable_operand ();
+extern rtx adj_offsettable_operand ();
 
 /* Maximum number of parallel sets and clobbers in any insn in this fn.
    Always at least 3, since the combiner could put that many togetherm
@@ -513,8 +524,8 @@ extern rtx dconst0_rtx;
 #define CONST0_RTX(MODE) \
  ((MODE == SFmode) ? fconst0_rtx			\
   : ((MODE == DFmode) ? dconst0_rtx			\
-  : ((GET_MODE_CLASS (MODE) == MODE_INT) ? const0_rtx	\
-  : (rtx) abort ())))
+     : ((GET_MODE_CLASS (MODE) == MODE_INT) ? const0_rtx	\
+        : (abort (), NULL_RTX))))
 
 /* All references to certain hard regs, except those created
    by allocating pseudo regs into them (when that's possible),

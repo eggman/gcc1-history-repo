@@ -1,4 +1,2321 @@
+Sun Sep 24 00:21:24 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.36 released.
+
+	* genextract.c (main): Pass `insn' as arg to `fatal_insn_not_found'.
+
+	* tahoe.md (casel patterns): Use %@ for operand of .align.
+	* tm-tahoe.h (PRINT_OPERAND): %@ prints `1'.
+	* tm-harris.h (PRINT_OPERAND): Redefine it; %@ prints `2'.
+
+	* config.gcc (decstation): New entry.
+
+	* tm-harris.h: New file, using tm-tahoe.h.
+
+	* tm-decstatn.h, tm-mips-bsd.h, tm-mips-sysv.h: New files.
+
+Sat Sep 23 00:28:14 1989  Alain Lichnewsky  (lich at glenlivet)
+
+	* added -Zxxx flag in tm-mips.h. (-Z stands for systype)
+
+	  used as -ZSYSV or -ZBSD43 on RISC_OS. I suppose
+	  that at somepoint -ZPOSIX might be required for Ultrix. 
+
+	* changed command issued to loader to set -systype and to get
+          crt1 crtn instead of crt0.
+
+        * changed predefines for cpp to agree with RISC-OS
+
+	* tm-mips.h checks for machine type ( defined(ultrix) == DECSTATION)
+	  so that user does not have to go in and change tm-mips.h anymore
+
+	* cpp defines mips host_mips unix and SYSTYPE_SYSV
+	  or SYSTYPE_BSD43. 
+
+Fri Sep 22 00:31:29 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* pyr.md (andsi3): Flush spurious paren.
+
+	* Makefile (hard-params): Don't use LIBS or LIBDEPS.
+
+	* rtl.c (init_rtl):
+	Use malloc to allocate the string for format of CONST_DOUBLE.
+	Don't fail to store in rtx_format.
+
+Thu Sep 21 00:33:13 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* print-tree.c (dump): Move decl of P in REAL_CST case.
+
+	* fold-const.c (fold): For ABS_EXPR, handle REAL_IS_NOT_DOUBLE.
+
+	* c-convert.c (convert_to_real): Use REAL_VALUE_ATOF to make 0.
+
+	* mips.md (movdi): Handle constant with or without WORDS_BIG_ENDIAN.
+	For alternative 2, output just 2 store insns, not 3.
+
+	* dbxout.c (dbxout_symbol): Optionally go to .data for
+	a static file-scope variable.
+	* tm-vax.h: Define DBX_STATIC_STAB_DATA_SECTION to request this.
+
+	* varasm.c (output_constant, force_const_mem):
+	ASM_OUTPUT_DOUBLE_INT now takes rtx as argument.
+
+	* gvarargs.h [__NeXT__]: Undefine macros defined by stdardg.h.
+	Define _VARARGS_H.
+
+	* stddef.h (size_t): Don't define it if _SIZE_T macro is defined.
+	(NULL): Undef any previous defn.
+
+	* cexp.y (NULL): Don't define if already defined.
+
+	* emit-rtl.c (force_next_line_note): New function.
+	* stmt.c (expand_function_start): Call that just before returning.
+
+Wed Sep 20 01:22:16 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y (asm_clobbers):
+	Allow string concatenation: call combine_strings.
+
+Mon Sep 18 00:04:06 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* expr.c (expand_call): If calling const function, don't defer
+	pops for this call.
+
+	* c-parse.y (yylex): When float constant ends in `f',
+	actually truncate to a single-float.
+
+Sun Sep 17 01:36:43 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gcc.c (SWITCH_TAKES_ARG): -A takes an arg.
+	(link_spec): Inhibit start files when -A.
+
+	* convex.md (call, call_value): Supply dummy arg to RETURN_POPS_ARGS.
+
+	* gnulib2.c (__fixunsdfdi): After removing top half, A can be neg.
+	(__cmpdi2, __ucmpdi2): Was misusing macros HIGH and LOW--
+	use .s.high and .s.low to extract words from long_long.
+
+	* Makefile (gnulib2): Run `./gcc'.
+
+	* Makefile (float.h): Use `make', not `$(MAKE)'.
+	(hard-params.o): Use `$(srcdir)' in deps as in commands.
+
+	* out-tahoe.c (output_move_double): Handle constant operand 1.
+
+Sat Sep 16 01:15:24 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (emit_reload_insns): Put death note for input reload reg
+	even if reload was inherited.
+
+	* out-i860.c (output_block_move): Typo loading size of block.
+
+	* m68k.md (dbra patterns): Do CC_STATUS_INIT.
+
+	* cse.c (fold_rtx): Check GET_MODE_CLASS before floating negate.
+
+Fri Sep 15 00:39:44 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* combine.c (subst): Don't combine (subreg (mem))
+	if subreg's mode is wider than mem's mode.
+
+Thu Sep 14 04:33:51 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Makefile (clean): Delete temp files used in making gnulib.
+
+	* tm-next.h (LINK_SPEC): Pass -Z and -seglinkedit options.
+
+Tue Sep 12 01:06:39 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stor-layout.c (layout_type): Ignore MAX_FIXED_MODE_SIZE for ints.
+
+	* mips.md (cmpsi + bleu peephole): Should output unsigned insn.
+
+	* expmed.c (store_bit_field, extract_bit_field): If loading mem
+	into reg for bit field insn, don't use a larger mode than insn wants.
+
+	* Makefile (stamp-gnulib2): Depend on gcc, cc1, cpp to avoid
+	wrong order of making when parallel.
+
+	* Makefile (float.h): Do use $(MAKE) to run recursive make.
+
+Mon Sep 11 00:49:11 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cccp.c (main): Test for missing arg after -o, etc.
+
+	* tm-next.h: Nearly completely new.
+
+	* gcc.c (SWITCH_TAKES_ARG, WORD_SWITCH_TAKES_ARG): Move after config.h.
+
+	* cccp.c: Cast some args to strcpy and strcat.
+
+	* genoutput.c (error): Declare arg S.
+
+	* tm-pyr.h, pyr.md, out-pyr.c, xm-pyr.h: New files.
+	* config.gcc: New item for pyr.
+
+	* gvarargs.h: If __pyr__, use va-pyr.h.
+
+Sun Sep 10 00:48:43 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (inc_for_reload): Really return the first of the insns.
+
+	* stor-layout.c (build_int): Memoize size nodes for sizes <= 32.
+
+	* loop.c (check_dbra_loop): Don't reverse a biv that is used
+	in between its update and the loop endtest insn.
+
+Sat Sep  9 02:10:49 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stor-layout.c (genop): Don't use `combine' for nonexplicit constants.
+	Handle some identity elements, etc., directly.
+	(layout_basetypes): Function deleted.
+	(layout_record): Ignore any TYPE_DECLs in the fieldlist.
+	Don't do PCC_BUTFIELD_TYPE_MATTERS hack on field with ERROR_MARK type.
+	(layout_union): Delete error check for base types.
+	Ignore any TYPE_DECLs in the fieldlist.
+	(layout_type): Copy layout info directly into all variants of type.
+	Delete unused local `x'.
+
+	* mips.md (movdi): Handle constant source operand.
+	(movsi): Some output code moved to output_load_immediate.
+	* out-mips.c (output_load_immediate): New function.
+
+	* config.gcc (iris): Use tm-iris.h and xm-iris.h.
+
+	* integrate.c (copy_for_inline): Copy all nonconstant MEM addresses.
+
+	* tm-3b1.h (ASM_OUTPUT_SPACE): New override defn, to output explicit
+	bytes of 0 if in text segment.
+
+Fri Sep  8 19:15:08 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* combine.c (try_combine): Don't do i3dest stuff if i3 isn't a SET.
+
+Thu Sep  7 00:16:32 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (function_cannot_inline_p): Fn is "not even close"
+	only if > 3 * max_insns.
+
+	* toplev.c (fatal_insn_not_found): New fn.
+	* genextract.c (main): Make insn_extract call that fn.
+
+	* integrate.c (expand_inline_function): Don't abort about bad offset
+	in a parm whose type is error_mark_node.
+	Make another syntax level to hold parm destructors.
+
+	* tm-mips.h (FUNCTION_PROLOGUE, FUNCTION_EPILOGUE):
+	Increment push_loc after, not before, each reg save or restore.
+	When storing reg 9 or 29, use offset tsize-4.
+	Make tsize larger by 4 initially.
+	(STARTING_FRAME_OFFSET): -8, not -4.
+
+	* gcc.c (choose_temp_base): Make use of TMPDIR and P_tmpdir
+	if they exist.
+
+	* toplev.c, gcc.c, cccp.c, gen*.c (fancy_abort):
+	New function which can be used to replace `abort'.
+
+	* toplev.c (main): Save argv, argc in save_argv, save_argc.
+
+	* jump.c (delete_insn): Always advance NEXT across deleted insns,
+	in case not optimizing.  Fixes setting current_function_returns_null.
+
+	* symout.c: Include stddef.h with <...>.
+
+Wed Sep  6 00:39:35 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gcc.c (find_exec_file): Was using `argbuf[0]' where wanted `prog'.
+
+	* combine.c (combine_instructions): Dont call record_dead_and_set_regs
+	if insn has become a NOTE.
+
+	* reload.c (combine_reloads): Update reload_when_needed.
+
+	* jump.c (delete_insn): If delete label on ADDR_VEC, delete table too.
+	(jump_optimize): If ADDR_DIFF_VEC label has 1 ref, delete it and table.
+
+	* gunlib2.c (__fixunsdfdi, __floatdfdi): Make the long long,
+	and/or its two halves, unsigned.
+
+	* reload1.c (reload): When setting double_reg_address_ok,
+	require it to be offsettable.
+	* out-sparc.c (output_fp_move_double): Now safe to use std
+	for all reg+reg addresses.
+
+	* vax.md: Add another simplified-casesi pattern for operand 0 constant.
+
+	* cse.c (fold_rtx): Don't truncate VAL at end if WIDTH is 0.
+	Don't alter WIDTH for that purpose based on the operands.
+
+	* stmt.c (warn_if_unused_value): && or || is ok if 2nd op has effect.
+
+	* c-parse.y (ALIGNOF unary_expr): Find a larger value if possible.
+
+	* reload.c (combine_reloads): Don't combine an output address reload.
+	(find_reloads): Call combine_reloads after setting reload_when_needed.
+	(find_reloads_address): Update OPERAND if copy the operand.
+
+	* cccp.c (macroexpand): Missing arg no error in 1-arg macro if -trad.
+
+Tue Sep  5 14:12:23 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (find_dummy_reload): Don't use the output reg if it is
+	a fixed reg which can overlap with other regs.
+
+	* cse.c (exp_equiv_p): Two vectors must have same length.
+
+	* tree.def (WITH_CLEANUP_EXPR): Print-name string was wrong.
+
+	* optabs.c (expand_fix): Undo previous change (unsigned conversion).
+	It doesn't work.
+
+	* gcc.c: Pass -i option to cpp.  It takes an arg.
+
+	* cccp.c (cplusplus_include_defaults) [VMS]: Typo in array indices.
+
+	* Makefile (gnulib): Create it in tmpgnulib, then rename at the end.
+
+	* i860.md (movdi from constant pattern): Fix `st' opcode typos.
+
+	* Makefile (hard-params*): Use CCLIBFLAGS, not CFLAGS.
+
+Fri Sep  1 03:43:50 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-i386gas.h (ASM_OUTPUT_ALIGN): .align arg isn't a log, in gas.
+	(ASM_OUTPUT_ALIGN_CODE): Align labels, etc. to 4-byte boundary.
+
+	* integrate.c (save_for_inline): Delete NOTE_INSN_DELETED notes.
+
+	* Makefile (clean): Delete dbr and jump2 dumps.
+
+	* Makefile (gnulib, gnulib2): Compile in main dir, not libtemp subdir.
+	This avoids trouble with -I options, etc.
+
+Thu Aug 31 15:07:19 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (emit_reload_insns):
+	Be specific moving REG_DEAD notes to an output reload.
+	Sometimes move them to output-operand-address reloads.
+
+	* out-sparc.c (output_fp_move_double): Very cautious about std.
+	Use it only for something visibly aligned, or for an array element.
+
+	* cccp.c (main) [VMS]: Remove dirs and extension from PROGNAME.
+	(pfatal_with_name) [VMS]: Return VMS system call error code as status.
+	(cplusplus_include_defaults) [VMS]: Add GNU_GXX_INCLUDE.
+
+	* xm-vms.h (FATAL_EXIT_CODE): Now (44 | 0x10000000).
+
+	* expr.c (do_store_flag): Allow more values of STORE_FLAG_VALUE.
+
+	* gnulib2.c (__fixunsdfdi): Explicitly cast doubles to `long int'
+	to avoid infinite recursion.
+
+Wed Aug 30 13:28:54 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* loop.c (skip_consec_insns): Skip NOTEs.
+
+	* loop.c (general_induction_var): If G or V is a nonreplaceable giv,
+	give up.  If G is allocated here, consider it replaceable.
+
+	* stupid.c: Make uid_suid, reg_where_born and reg_where_dead
+	vectors of ints, not short.
+
+Tue Aug 29 00:21:13 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-iris.h: Fix typo in formfeed char.
+
+	* out-i860.c (singlemove_string): Add missing `.l' to `st', `ld'.
+
+	* loop.c (general_induction_var): Don't set G from 2nd op. of MINUS,
+	since that would negate the result.
+
+Mon Aug 28 00:16:36 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* dbxout.c (dbxout_symbol): When we need a pointer type, don't
+	record it in TYPE_POINTER_TO, lest it not live as long as its target.
+
+	* tm-hp9k320.h (CPP_PREDEFINES): Delete __hp9000s300 and _HPUX_SOURCE.
+
+	* Makefile (gnulib): Deleted stamp-gnulib2 in wrong dir.
+	(hard-params.o): Copy it into current dir before compiling.
+	(STAGESTUFF): Include the stamp-*.[ch] files.
+
+Sun Aug 27 13:59:39 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* out-i860.c (output_size_for_block_move): Typo in CC_KNOW_HI_R31.
+
+	* integrate.c (expand_inline_function): Ignore insns to set value reg
+	if we don't want the value.
+
+	* varasm.c (make_function_rtl, make_decl_rtl): Use DECL_ASSEMBLER_NAME.
+
+	* Makefile (stamp-gnulib2): Don't explicitly delete old members,
+	just replace them.
+
+	* m68k.md, alliant.md (trunchiqi): Use movew if moving from memory
+	or from a const_int.
+
+	* integrate.c (expand_inline_function): Set first_parm_offset
+	later on, after computing the args, in case those args
+	contain inline function calls.
+
+	* alliant.md (movqi): Like recent change in m68k.md.
+
+Sat Aug 26 00:26:03 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* tm-hp9k320.h (CPP_PREDEFINES): Take out m68k and mc68000.
+	* tm-news.h (CPP_PREDEFINES): Add mc68000.
+
+Fri Aug 25 15:37:35 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* optabs.c (expand_fix): Can convert to unsigned int
+	by subtracting 2**(N-1), converting to signed, and adding 2**(N-1).
+
+	* reload.c (find_reloads_address): For out-of-range stack slot,
+	reload the displacement into a reg.
+	(find_reloads_toplev): For subreg of a reg with a reg_equiv_address,
+	turn the whole thing into a memref.
+
+Thu Aug 24 14:07:03 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* c-decl.c (grokdeclarator): If function is declared `extern inline',
+	set current_extern_inline.
+	(start_function): In that case, set TREE_EXTERN in function decl.
+	* toplev.c (rest_of_compilation): In that case, don't really compile.
+	(compile_file): Don't output such functions at the end either.
+
+	* c-typeck.c (build_function_call): Do set NAME if we have one.
+
+	* Prevent any variability in results of qsort.
+	* stupid.c (stupid_reg_compare): Compare by regno as last resort.
+	* global-alloc.c (allocno_compare): Same idea.
+	* local-alloc.c (qty_compare_1): Same idea.
+	* reload1.c (hard_reg_use_compare, reload_reg_class_lower): Same idea.
+
+	* cccp.c (macroexpand): If read one arg, but it's whitespace,
+	consider that 0 args for checking number of args.
+	Improve plurals in error messages.
+
+	* expr.h (inhibit_defer_pop): New name for current_args_size,
+	now declared here.
+	(NO_DEFER_POP, OK_DEFER_POP): Moved here.
+	* expr.c: Names related to current_args_size renamed.
+	(clear_current_args_size): Deleted.
+	* stmt.c (expand_function_start): Init inhibit_defer_pop here.
+
+	* stmt.c (expand_start_stmt_expr): Do NO_DEFER_POP.
+	(expand_end_stmt_expr): Do OK_DEFER_POP, and don't do deferred pops.
+
+	* Makefile (c-parse.tab.c): Pass -o option to Bison.
+
+Wed Aug 23 23:14:06 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* expmed.c (store_bit_field, extract_bit_field):
+	Use GET_MODE_WIDER_MODE to scan possible modes for bestmode.
+
+	* Makefile (stamp-gnulib2): Discard error messages from `ar d'.
+
+Tue Aug 22 00:31:51 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* final.c (output_source_line): In COFF, don't output `.ln 0'.
+
+	* Makefile (stamp-gnulib2): Depend on gnulib.  For parallel make.
+
+	* stmt.c (uninitialized_vars_warning): Don't crash if DECL_RTL is 0.
+
+	* i386.md (truncdfsf2): Pay attention whether stack top is dead.
+
+Mon Aug 21 22:02:40 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* reload1.c (choose_reload_regs): Don't use regno uninitialized,
+	in the code that does find_equiv_reg.
+
+Sun Aug 20 00:06:47 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* m68k.md (movqi): Was outputting bad code for areg->mem and mem->areg.
+
+	* explow.c (memory_address): Handle a hard reg in wrong reg class.
+
+	* stmt.c (expand_function_end): Set REG_FUNCTION_VALUE_P in return
+	reg when returning address of structure value block.
+
+	* integrate.c (save_for_inline): Preserve integrated bit on insns.
+
+Sat Aug 19 14:20:07 1989  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* combine.c (subst): Don't change (subreg:M (mem:N ...)) to 
+	(mem:M ...) if address is mode-dependent.
+
+	* config.gcc: Copy and alter Makefile for any srcdir except `.'.
+	In that case, make a .gdbinit as well.
+
+	* sparc.md (andcbsi3, iorcbsi3, xorcbsi3): These are not commutative.
+
+	* vax.md (cmpv and cmpzv patterns): Use COMPARE, not MINUS.
+
+Fri Aug 18 12:24:52 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* alliant.md (movqi): Change move to mov in assembler code.
+
+	* integrate.c (expand_inline_function):
+	Handle args passed in regs and copied to slots reached via arg ptr.
+
+	* out-sparc.c (output_delayed_branch):
+	Do alter_subreg on operands of delay insn.
+
+	* reload1.c (choose_reload_regs): Look for a reg to share
+	before one that we won't share.
+
+	* expr.h: Define OPTAB_MUST_WIDEN.
+	* optabs.c (expand_binop): Handle that case.
+	* expmed.c (expand_shift): Use that when widening lshift to ashift.
+
+	* optabs.c (emit_cmp_insn): Use CONST0_RTX, not individual vars.
+
+	* gnulib2.c (lsh*di3, ash*di3): Return right away if count is zero.
+	Otherwise tried to shift by 32.
+	Also replace constant 32 by something symbolic.
+
+	* final.c (output_source_line): Output line number in COFF
+	even if wrong file.
+
+Thu Aug 17 15:16:34 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* Makefile (version.o): Make this a target; specify source file.
+	(obstack.o): Likewise.
+
+	* config.gcc (i860): New alternative.
+
+	* i860.md (movstrsi): Record the alignment as operand 3.
+	Renumber following (internal) operands.
+	* out-i860.c (output_block_move): Rewrite as in out-sparc.c.
+	(output_size_for_block_move): Likewise.  And don't
+	subtract alignment from the size.
+
+Wed Aug 16 13:27:12 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* loop.c (combine_movables): Don't combine zero-extend
+	registers that live outside the loop.
+
+	* integrate.c (expand_inline_function): Use copy_to_mode_reg
+	to set up this_struct_value_rtx, to handle sums right.
+
+	* Makefile: Use $(srcdir) in bison output files used as deps.
+	Supply some missing deps.
+	(*.info, doc): *.info files go in srcdir.
+
+Tue Aug 15 00:11:12 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* i860.md, tm-i860.h, out-i860.c: New files.
+
+	* c-decl.c (duplicate_decls): Fix bug determining whether NEWDECL
+	is a definition or just a decl.
+	Combine code to preserve various things from old definition
+	through a declaration.
+
+	* config.gcc: Scan all args at beginning, setting variables.
+	Arg of form -srcdir=... sets srcdir explicitly.
+	srcdir now doesn't contain a slash, and is used with a slash.
+
+	* Makefile (install): Copy header files and gcc.1 from srcdir.
+	But copy float.h from current dir.  (Remove that from USER_H.)
+	(various): Use new variable INCLUDES to get the -I options.
+	Add -I. at the beginning of these.
+	(gnulib, gnulib2): Likewise, use SUBDIR_INCLUDES.
+	Also, get source file from srcdir.
+	Also, depend on $(CONFIG_H).
+	(alloca.o): Get alloca.c from srcdir.
+
+	* reload1.c (emit_reload_insns): Bug in last change:
+	don't fail to set this_reload_insn.
+
+	* Makefile (Bison rules): Specify $(srcdir) for target and source.
+	(Explicit C rules): Specify $(srcdir)/ for source in commands.
+	Use sed to eliminate `./' in normal case.
+	(insn-*.c): Use $(srcdir) to run move-if-change.
+
+	* config.gcc: Check . and .. for the sources.
+	If in .., use that when making links.
+	Also, copy Makefile, alter srcdir in it, and add a VPATH.	
+
+	* stmt.c (expand_end_case): When converting CONST_INT index
+	to an INTEGER_CST, sign-extend if signed type.
+
+Mon Aug 14 13:51:08 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* c-decl.c (duplicate_decls): Warn for qualifier mismatch
+	only if pedantic; don't consider it a type mismatch.
+	Merge the qualifiers of the two decls if the types match.
+
+	* expmed.c (store_bit_field): For insv, memref displacement
+	always counts in bytes, regardless of unit fetched.
+	When checking predicate of op0, accept any mode.
+
+	* optabs.c (expand_float): One call to can_float_p had args backwards.
+
+	* loop.c (check_dbra_loop): Set the JUMP_LABEL of the new jump insn.
+	Increment label's use count rather than storing 2.
+
+	* Makefile: Instead of $<, which fails in certain makes,
+	use $@ and then substitute in the name with sed.
+
+	* out-sparc.c (output_scc_insn): Handle CC_REVERSED for ordered tests.
+	Use orcc insns to store the result and set cc's for it.
+
+	* sparc.md (scc combination patterns):
+	Use operands[0] as basis for recorded cc value.
+
+	* gnulib2.c (floatdidf, fixdfdi, fixunsdfdi): New functions.
+
+	* gnulib.c (floatdidf, fixdfdi, fixunsdfdi): Deleted.
+	(union longlong, union double_di): Deleted.
+	(HIGH, LOW): Deleted.
+	These were deleted because most did not handle full range of DI
+	and they didn't use the right calling convention for DI.
+
+Sun Aug 13 13:06:45 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* c-typeck.c (comptypes): Qualifiers must match.
+	(Was already true for scalars.)
+	Also, array elt qualifiers must match.
+
+	* tm-apollo68.h (STRUCT_VALUE): Make it 0.
+	(This was done before and lost.)
+	* out-i386.c (function_epilogue): Use ret $4 to pop structure address.
+	(This was done before and lost.)
+
+	* out-i386.c (call_top_dead_p): Don't fail to check
+	the rtx code of the insns themselves.
+	(This was done before and lost.)
+
+	* out-sparc.c (output_block_move): If align is 8, make it 4.
+
+	* typeclass.h: New file.
+	* expr.c: Include it.
+	(expand_builtin): Use those codes in __builtin_classify_type.
+
+	* Makefile (all, lang-c): Reinstall gnulib2.
+
+	* Makefile (gnulib2): Don't give up if `ar d' fails.
+
+	* expr.c (emit_library_call): New 2nd arg NO_QUEUE.
+	All callers changed to pass it.
+	* optabs.c (expand_binop, expand_unop): Don't call emit_queue.
+	Instead, pass 1 for NO_QUEUE to emit_library_call.
+
+Sat Aug 12 12:05:22 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* reload1.c (emit_reload_insns): Decision for where to put input
+	reload insn is now common to ordinary case and auto-increment.
+	Likewise, updating these positions afterward.
+
+	* stmt.c (assign_parms): Treat last named arg as nameless.
+	* expr.c (expand_call): Likewise.
+
+	* explow.c (copy_to_mode_reg): Use force_operand for PLUS or MULT.
+	(copy_addr_to_reg): Use copy_to_mode_reg.
+
+	* expmed.c (store_bit_field): Handle case where insv rejects memrefs.
+
+	* tm-convex.h (ASM_OUTPUT_ALIGN): Magic to handle the fact
+	that this is not called when LOG is 0.
+
+Fri Aug 11 16:39:51 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* emit-rtl.c (get_lowpart): For multi-word, in error check,
+	test the unit size of the containing mode.
+
+	* cccp.c (macroexpand, dump_all_macros): Return void.
+	(macroexpand): Cast sprintf arg to char*.
+	(error, warning, error_with_line): Declare first arg char*.
+
+Thu Aug 10 21:42:13 1989  Richard Stallman  (rms at hobbes.ai.mit.edu)
+
+	* expr.c (expand_call):
+	Use force_operand to copy arithmetic to register.
+
+	* dbxout.c (dbxout_symbol): Go back to N_FUN for const variable.
+
+	* integrate.c (expand_inline_function): Use proper machine mode
+	for a structure value in memory at address passed by caller.
+
+Wed Aug  9 15:21:36 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* config.gcc: Delete unnecessary variable assignments in case stmt.
+	(isi68-nfp): New alternative.
+
+	* combine.c (try_combine): Don't substitute for a register
+	which is being explicitly clobbered.
+
+	* This change was requested for C++.
+	* varasm.c (decode_reg_name, make_decl_rtl): Arg ASMSPEC now char *.
+	* toplev.c (rest_of_decl_compilation): Likewise.
+	* c-decl.c (finish_decl): Change call to rest_of_decl_compilation.
+
+	* tree.h (struct tree_decl): Pack machine_mode into 8 bits.
+
+	* explow.c (memory_address, copy_to_reg):
+	Use force_operand to copy arithmetic to register.
+
+	* tm-isi68-nfp.h: New file.
+	* tm-isi68.h: Allow overriding TARGET_DEFAULT, and let that
+	change CPP_SPEC and LINK_SPEC.
+	(ASM_FILE_START): No `.globl fltused' if soft-float.
+
+Tue Aug  8 21:50:52 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (const_hash): For constructor, mask TREE_TYPE to HASHBITS
+	bits and take modulo, so we don't get negative numbers.
+
+	* varasm.c (record_constant_1, compare_constant_1):
+	Record and compare the width of an integer.
+
+	* varasm.c (assemble_function, assemble_variable, get_or_assign_label):
+	(force_const_mem): Don't call ASM_OUTPUT_ALIGN if boundary is 1.
+
+	* c-decl.c (duplicate_decls): Consider const and volatile as part of
+	type when checking for match and when installing new type into OLDDECL.
+
+	* expr.c (do_store_flag): Make sure target fits operand predicate.
+	Also, omit the AND insn when true-value is 1
+	and the mode we get is wider than the one we want.
+
+	* genrecog.c (main): Make insn-recog.c include real.h.
+
+Mon Aug  7 16:58:56 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* genemit.c (main): Define `operands' as `emit_operands',
+	not `recog_operands'.
+
+	* reload1.c (emit_reload_insns): Don't copy back a dead output reg.
+
+Sun Aug  6 13:56:53 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* sdbout.c (plain_type_1, sdbout_one_type): Use the main variant.
+	(sdbout_type_fields): No need to check TREE_ASM_WRITTEN here,
+	since sdbout_one_type does that.
+
+	* expr.c (do_store_flag): Ensure the CLOBBER doesn't clobber an input.
+
+	* fold-const.c (fold_convert): Attempt to avoid overflow
+	when converting real to integer.  Use unsigned conversion for
+	low part; always convert as positive and then change sign;
+	subtract high part before converting low part.
+	Also, check for real values out of range for chosen int type;
+	warn and do not convert.
+
+	* tm-hp9k320.h (CPP_SPEC) [not HPUX_ASM]: Don't define mc68000 here.
+	(CPP_PREDEFINES): Remove mc68k, add m68k and mc68000.
+	[HPUX_ASM]: Define CPP_SPEC here as in the other case,
+	but add __HPUX_ASM__ to each alternative.
+
+	* tm-m68k.h (FUNCTION_EPILOGUE): Call new hook FUNCTION_EXTRA_EPILOGUE.
+	* tm-altos3068.h (FUNCTION_EXTRA_EPILOGUE): Define it.
+
+	* Makefile: Use $< wherever appropriate.
+	Also put definitions of customization vars before the comments
+	saying how to override them.
+
+Sat Aug  5 14:15:39 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* i386.md (sne): Typo in opcode name.
+
+	* tree.h (struct tree_identifier): Delete redundant/unused error_locus.
+
+Fri Aug  4 00:04:10 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (const_hash, compare_constant_1, record_constant_1):
+	Compare types only for record constructors, not for array constructors.
+
+	* dbxout.c (dbxout_parms): When outputing parm from home in local slot,
+	with address from the RTL, don't do big-endian correction on it.
+
+	* c-typeck.c (build_unary_op): Do default conversion for unary +.
+
+	* cccp.c (rescan): Accept comments between macro and its args.
+
+	* c-decl.c (lang_decode_option): -traditional implies writable strings.
+
+	* cccp.c (trigraph_pcp): Make warning msg more accurate.
+
+	* c-typeck.c (c_expand_asm_operands): Delete the default promotion
+	which was inserted mysteriously since 1.35.
+
+	* global-alloc.c (global_conflicts): Allocate regs_set only once.
+	Make it twice as big since clobbers are stored twice.
+
+	* sparc.md (block move patterns): Record and use alignment operand.
+	* out-sparc.c (output_block_move): Get alignment from there.
+	(output_size_for_block_move): Greatly simplified.
+
+	* tm-i386v.h (PCC_BITFIELD_TYPE_MATTERS): Define it.
+
+	* stor-layout.c (layout_record): Anonymous bitfields don't affect
+	overall structure alignment, in PCC_BITFIELD_TYPE_MATTERS case.
+
+	* loop.c (strength_reduce): Prevent hard reg from becoming biv or giv.
+
+	* combine.c (subst): Simplify (eq (neg ...) (const_int 0)).
+
+Thu Aug  3 13:08:05 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (fold_rtx): For (op var const) special cases, also check 
+	for constant as first argument.
+
+	* c-decl.c (pushtag): For global_binding_level, make permanent nodes.
+
+	* expr.c (do_store_flag): Put the CLOBBER before the comparison.
+
+	* expr.c (emit_push_insn): Conditionalize recent changes
+	on no FIRST_PARM_CALLER_OFFSET, so they don't happen on sparc.
+
+	* out-sparc.c (gen_scc_insn):
+	Don't be confused by CLOBBER emitted by do_store_flag.
+	Skip past such insns looking for last_insn.
+	Don't alter last_insn; instead, patch it to a NOTE and emit new insn.
+
+	* varasm.c (const_hash, compare_constant_1, record_constant_1):
+	For a CONSTRUCTOR, hash/compare/record type as well as elts.
+
+	* cse.c (cse_insn): July 18 change was wrong.
+	Now, invalidate at the beginning any regs explicitly clobbered
+	so they will not be substituted for if they appear as inputs.
+	* sparc.md (movstrsi): Copy addresses to temp regs, then use them.
+
+	* loop.c (record_giv): When comparing life spans for setting
+	->forces, use luids consistently, not uids.
+
+	* sparc.md (ashlsi3, ashrsi3, lshrsi3): Truncate constants mod 32.
+
+Wed Aug  2 17:50:30 1989  Richard Stallman  (rms at sugar-bombs)
+
+	* mips.md (patterns to move a subreg): Deleted.
+
+Sun Jul 30 19:23:13 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gcc.c (process_command): Skip `-b' like `-B', in 2nd scan.
+
+	* xm-sunos4.h: Deleted.
+	* tm-sparc.h, tm-sun3.h: Define LINK_SPEC here instead.
+	* tm-sun4os3.h: Undef it here.
+	* tm-sun3os3.h, tm-sun3os3nf.h: New files to undef LINK_SPEC.
+	* config.gcc: Use those new files where needed.
+
+	* config.gcc: Delete sun3-fpa and sun3-os4-fpa.
+	* tm-sun3-fpa.h: Deleted.
+
+	* cccp.c (do_include): Mention even non-ex files for -M.
+
+	* out-mips.c (addr_compensate): Handle HImode.
+	* mips.md (Set HI from subreg of SI rule):
+	Allow operand in memory.
+
+	* mips.md (cmpqi, cmphi): Patterns deleted.
+	(cmpsi, cmpsf, cmpdf): Change predicates to register_operand.
+
+	* cexp.y (rule for ?:): Result is unsigned if either operand is.
+
+	* expr.c (emit_push_insn): If PARTIAL > 0, load the partial regs
+	at the end, in case the rest of the push does a function call.
+
+	* reload1.c (alter_frame_pointer_addresses):
+	After altering a PLUS, re-fetch CODE before scanning subexps.
+
+	* stmt.c (assign_parms): Don't copy the arg pointer value
+	if it is also the frame pointer.  If we do copy it,
+	inhibit REG_EQUIV notes for parms copied into pseudo regs
+
+	* integrate.c (copy_for_inline, copy_rtx_and_substitute):
+	Set up filename and lineno fields of copy of ASM_OPERANDS.
+
+Sat Jul 29 18:58:49 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (expand_inline_function): Handle struct-value-addr
+	passed in memory just like that passed in reg:
+	in either case, translate the pseudo-reg made in
+	expand_function_start.
+	(function_cannot_inline_p): Permit inlining in that case.
+	But reject it if using pcc-style return convention.
+
+	* stor-layout.c (layout_type): Consider STRICT_ALIGNMENT
+	for ARRAY_TYPE just as for RECORD_TYPE.
+
+Wed Jul 26 12:54:59 1989  Richard M. Stallman  (rms at mipos3)
+
+	* cse.c (fold_rtx): If WIDTH is zero for binary operator,
+	look at the modes of the original operands.
+
+	* cse.c (cse_insn): Set prev_insn_explicit_cc0, for (set (cc0) INT).
+	(predecide_loop_entry): Likewise.
+	(fold_rtx): Look at it, for (if_then_else (cc0) ...).
+
+	* expr.c (expand_builtin): Pass back return value from
+	__builtin_saveregs.
+
+	* stmt.c (assign_parms): Allow arg pointer reg not to be fixed.
+	If it is not, copy it to a pseudo reg and use that later on.
+
+Tue Jul 25 15:42:04 1989  Richard M. Stallman  (rms at mipos3)
+
+	* expr.c (expand_builtin): New builtin __builtin_classify_type.
+	* tree.h, c-decl.c: Additional support.
+
+	* flow.c (mark_used_regs): Treat arg pointer like stack pointer.
+
+	* expr.c (emit_library_call):
+	Pass (tree)0 as TYPE arg to FUNCTION_ARG, etc.
+
+Mon Jul 24 11:18:10 1989  Richard M. Stallman  (rms at mipos3)
+
+	* loop.c (regs_match_p): Fix braino.
+
+	* integrate.c (copy_for_inline, copy_rtx_and_substitute):
+	Make ASM_OPERANDS constraint vector be shared like operand vector.
+
+	* xm-iris.h: New file.
+
+	* Makefile (stage4): New target.
+
+	* gnulib2.c (badd, bsub, bmul, bdiv): If want long value from
+	arithmetic, widen the operands first.
+	(__div_internal aka bdiv): Rename to __bdiv.
+
+	* sparc.md (seq combination patterns): Fully initialize cc_status.
+
+	* expr.c (emit_push_insn): Like July 19 change, for BLKmode.
+
+	* stmt.c (expand_function_end): Stack-restore for alloca
+	is now done after the return_label.
+
+	* loop.c (scan_loop): Set MAYBE_NEVER for conditional jump to loopbeg.
+
+	* integrate.c (copy_rtx_and_substitute): Allow mapping of hard regs.
+	(expand_inline_function): Always create parm_map.
+	Handle structure value that way if nec. even if no parms.
+	Otherwise, find the pseudo used in the function to hold the
+	structure address, and map it to a new pseudo.
+
+	* expr.c (expand_call):
+	Use mark_addressable to make FNDECL addressable.
+	* c-typeck.c (mark_addressable): No longer static.
+
+	* cse.c (cse_insn): Modify last change: don't canon_reg
+	for hard regs inside clobbers.
+
+	* expr.c (expand_assignment): ALIGN arg to store_field comes from
+	the structure, not from the value stored.
+
+Fri Jul 21 16:23:45 1989  Richard M. Stallman  (rms at mipos3)
+
+	* stmt.c (warn_if_unused_value): Don't warn for a cast
+	around a MODIFY_EXPR.
+
+	* tm-hp9k320.h (PCC_STATIC_STRUCT_RETURN): Undefine it.
+	(CPP_PREDEFINES): Add some.
+
+	* combine.c (simplify_and_const_int):
+	Simplify (and (ashiftrt (zero_extend FOO) N) M).
+
+	* optabs.c (expand_binop): When widening,
+	for some operations we need not actually extend.
+
+Thu Jul 20 16:16:35 1989  Richard M. Stallman  (rms at mipos3)
+
+	* Makefile (insn-emit.o): Depend on insn-codes.h.
+
+	* stmt.c (check_for_full_enumeration_handling): 
+	Handle all cases for TYPE_NAME of enum type.
+
+Wed Jul 19 17:00:39 1989  Richard M. Stallman  (rms at mipos3)
+
+	* fold-const.c (fold_convert): Don't fail to force_fit_type.
+
+	* expr.c (emit_push_insn): When pushing only part of scalar on stack,
+	adjust stack offset not to count the words not pushed.
+
+	* stmt.c (expand_function_end): Always put return structure address
+	in return register.
+
+	* c-typeck.c (process_init_constructor): Assume 0 for nameless field.
+
+	* recog.c (general_operand, memory_operand):
+	Check validity of mem address using the mode of the MEM.
+
+	* fixincludes: When calling egrep, use redirect, not -s.
+
+Tue Jul 18 11:18:55 1989  Richard M. Stallman  (rms at mipos3)
+
+	* Makefile (bootstrap*): Pass value of libdir down.
+
+	* cse.c (cse_insn): Do canon_reg on any CLOBBERs and USEs.
+
+	* cse.c (cse_insn): Don't use no_labels_between_p to check
+	for jump to following label; find following label and compare.
+
+	* combine.c (try_combine): Don't substitute into subreg(x)=y
+	if modes of x and y are not tieable.
+
+	* out-i386.c (call_top_dead_p): Don't fail to check
+	the rtx code of the insns themselves.
+
+	* i386.md (tstsf, tstdf): Don't discard TOS if not dead.
+
+	* stupid.c: Don't use regs with PRESERVE_DEATH_INFO_REGNO_P
+	for pseudos which live across jumps or labels.
+	(stupid_life_analysis): Update last_jump_suid, last_label_suid.
+	(stupid_mark_refs): Use those to set reg_crosses_blocks.
+	(stupid_find_reg): Check that data, passed from stupid_life_analysis.
+
+	* toplev.c (main): Avoid using caddr_t.
+
+	* mips.md (inverted bgeu peephole): Typo in opcode.
+
+Mon Jul 17 12:29:45 1989  Richard M. Stallman  (rms at mipos3)
+
+	* i386.md (mulb patterns): Turned off due to assembler bug.
+
+	* rtl.c (read_name): Use 0, not NULL, for character.
+
+	* alliant.md (movqi): Typos in mov opcodes.
+
+	* tm-sparc.h, tm-spur.h (CONST_DOUBLE_OK_FOR_LETTER_P):
+	Use CONST_DOUBLE_LOW, etc. 
+
+	* stmt.c (expand_function_end): Check value of EXIT_IGNORE_STACK,
+	not just whether defined.
+
+	* i386.md (seq, etc.): New patterns.
+	* expr.c (do_store_flags): If result is wrong mode, 
+	ensure rest of bits are cleared.
+	Before storing low part of TARGET, emit a CLOBBER for it.
+
+	* i386.md (load address): Use an immediate add if possible.
+
+	* i386.md (ashlsi3): Don't generate leal; shift is faster.
+
+	* Now struct_value_rtx is 0 to treat it as a parm.
+	* expr.c (expand_call): Implement that.
+	* integrate.c (expand_inline_function): Don't freak out.
+	* tm-apollo68.h (STRUCT_VALUE): Make it 0.
+
+	* On 386, called function must pop the structure value address.
+	* tm-i386.h (STRUCT_VALUE): Don't change this.
+	Address is now pushed but not counted as a parm.
+	* out-i386.c (function_epilogue): Use ret $4 to pop that address.
+	* output.h: Declare the current_function_... variables.
+	* final.c: Include output.h.
+
+	* varasm.c (make_decl_rtl): Insert missing `else', validating reg decl.
+
+Fri Jul 14 14:12:17 1989  Richard M. Stallman  (rms at mipos3)
+
+	* out-sparc.c, out-spur.c (output_move_double):
+	Fixed typo, addreg0 => addreg1.
+
+	* c-decl.c (lang_decode_option): Handle -fshort-enums.
+	(finish_enum): In that case, give enum minimum number of bytes.
+	* toplev.c (main): Default flag_short_enums.
+	* toplev.c, flags.h (flag_short_enums, flag_signed_char): 
+	Define those flags here, not in c-decl.c and c-tree.h.
+
+	* i386.md (mulqi3, umulqi3): New patterns.
+
+	* c-convert.c (convert_to_integer): Tighter restrictions on
+	distributing truncation through max, min, and multiplication.
+	If operands were extended from unsigned, make the operation
+	unsigned.
+
+	* cccp.c (main): Fix bug where #include <...>, when -I- was used,
+	failed to search standard dirs and/or searched some dirs
+	intended only for #include "...".
+
+	* tm-mips.h (FUNCTION_PROLOGUE,FUNCTION_EPILOGUE):
+	Increment push_loc after store or load, not before.
+
+Thu Jul 13 11:24:30 1989  Richard M. Stallman  (rms at mipos3)
+
+	* emit-rtl.c (add_insn_after): Don't update last_insn
+	if insn is in a sequence.  Instead, update end of sequence.
+
+	* stmt.c (fixup_var_refs): Update end of stacked sequence.
+
+	* stmt.c (expand_function_start): Set result rtl before assign_parms.
+
+	* optabs.c (emit_unop_insn): Set PREV_INSN after preliminaries.
+
+	* stmt.c (warn_if_unused_value): Do CONVERT_EXPR like NOP_EXPR.
+
+	* stmt.c (expand_function_start): Make sure parm_birth_insn
+	is a NOTE.
+
+	* Makefile (clean): Delete tmp-insn-*.
+
+Wed Jul 12 14:24:12 1989  Richard M. Stallman  (rms at mipos3)
+
+	* i386.md (mulqi3): Restrict operand 2 to `q' reg.
+
+	* reload1.c (choose_reload_regs): Check HARD_REGNO_MODE_OK
+	for regs to be inherited.
+	Also check HARD_REGNO_MODE_OK at end for modes of both
+	reload_in and reload_out as well as reload_mode.
+
+	* Makefile (maketest): Update for config subdir.
+
+Tue Jul 11 16:29:57 1989  Richard M. Stallman  (rms at mipos3)
+
+	* integrate.c (copy_decl_tree): Copy TREE_USED of each LET_STMT.
+
+	* make-cc1.com: Changes by Angel Li.
+	Define variables CC, CFLAGS, LDFLAGS, LIBS.
+	Use LIBR library, not LIB.  Specify a /INC in CFLAGS.
+	Use MCR to run the gen* files.  Add some comments.
+	* make-cccp.com: Similar.
+	* config-gcc.com: New file.
+
+	* stmt.c (assign_parms): Compute parm alignment from passed type.
+
+	* c-typeck.c (actualparameterlist): Instead of truncating
+	and then promoting for PROMOTE_PROTOTYPES, go straight to int.
+
+	* c-parse.y (setspecs): Save old current_declspecs on a stack.
+	(decl, component_decl): Restore from that stack.
+
+Wed Jul  5 15:01:00 1989  Richard Stallman  (tiemann at yahi)
+
+	* tm-aix386.h, xm-aix386.h: New files.
+
+	* loop.c (check_dbra_loop): Handle either test or compare
+	for insn two before loop end; detect and reject anything else.
+
+	* expr.c (expand_call, expand_builtin): If alloca is done,
+	set current_function_calls_alloca.
+	* stmt.c (expand_function_end): If so, generate code to save and
+	restore the stack pointer, if not EXIT_IGNORE_STACK.
+
+	* ns32k.md (movsi): Fixes for moving from fp or sp.
+
+	* tm-mips.h (ASM_OUTPUT_ASCII): Start new .ascii every 256 chars.
+
+Tue Jul  4 11:01:00 1989  Richard Stallman  (tiemann at yahi)
+
+	* reload1.c (choose_reload_targets): Don't depend on
+	reload_spill_index when cancelling invalid inheritance.
+	Also, abort if trying to preserve death info
+	on a spill reg used in operand addressing.
+
+	* fold-const.c (fold): Don't fold "foo"[n] here.
+	* expr.c (expand_expr): Do it here.
+	Handle wide strings correctly.
+
+	* i386.md (movsf,movdf): Disallow mem-mem moves.
+	Enable mem-to-reg moves.
+
+	* c-decl.c (finish_{struct,enum}): Warn if inside parm decls.
+	(in_parm_level_p, declare_parm_level): Record when inside.
+	* c-parse.y (parmlist, parmlist_or_identifiers): Call
+	declare_parm_level.
+
+	* c-decl.c (parmlist_tags_warning): Revise warning message text.
+
+	* tm-hp9k320.h (ASM_SPEC): Pass -V switch to assembler.
+
+	* tm-sun386.h (ASM_START_FILE): Truncate filename to 14 chars.
+
+	* c-typeck.c (decl_constant_value): Use only literal values.
+
+Sat Jul  1 17:29:54 1989  Richard Stallman  (tiemann at yahi)
+
+	* integrate.c (copy_rtx_and_substitute): Don't make nested SUBREGs.
+
+	* stmt.c (expand_function_start): Set new global
+	current_function_returns_pointer.
+
+	* stmt.c (get_frame_size): Return the size, not the offset.
+	* integrate.c (expand_inline_function): When setting FP_DELTA,
+	compensate for this change.
+	* tm-alliant.h,tm-mips.h,tm-sparc.h,tm-tahoe.h
+	(FUNCTION_PROLOGUE,FUNCTION_EPILOGUE): Compensate.
+
+	* out-mips.c (function_arg): Return 0 for BLKmode.
+
+	* tm-mips.h (FUNCTION_INCOMING_ARG): Delete; no register windows.
+	* out-mips.c (function_inarg): Delete; no longer used.
+
+	* mips.md (addsi3): Use register_operand for operands 0,1.
+	(load address): New pattern, following movsi.
+	(fix_trunc*): Use trunc insn, not cvt.
+	(cmpfs + bgt peephole): Operands were backwards in template.
+
+	* gcc.c (main): Record in explicit_link_files which input files go
+	straight to linker.  If linker is not run, complain about them.
+	(execute): Increment execution_count, to show we were called.
+
+	* gcc.c (validate_all_switches): Check ASM_SPEC, CC1_SPEC, etc.,
+	so we find all switches that could be valid.
+
+	* varasm.c (output_constructor): Position fields according to
+	DECL_OFFSET; don't try to compute alignment here.
+
+	* tm-sparc.h (PCC_BITFIELD_TYPE_MATTERS): Define this.
+
+	* reload1.c (emit_reload_insns): Fix stupid error in last change.
+
+	* c-decl.c (duplicate_decls): If redeclaring builtin, give error is
+	type mismatched; otherwise warn only if -W.
+
+	* jump.c (jump_back_p): Verify that PREV is not null.
+
+Mon Jun 26 13:50:28 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (choose_reload_regs): If number of reloads needing
+	spill regs exceeds n_spills, don't inherit any reloads.
+
+	* sdbout.c (sdbout_record_type_name): Dumb error in last change.
+
+	* reload1.c (emit_reload_insns): Extend last change: don't use
+	equiv reg if reg is in use at same stage of insn, either.
+
+Sun Jun 25 00:00:56 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (emit_reload_insns): Don't use an equivalent register
+	to reload from, if that register was used for reloading
+	earlier in this insn.
+
+	* sdbout.c (sdbout_record_type_name): Handle a TYPE_DECL as the
+	type name.  Get rid of TYPE_TAG_NAME as separate macro.
+
+	* optabs.c (emit_cmp_insn): Args to memcmp are addresses, not blocks.
+
+	* reload1.c (choose_reload_regs): Typo, clearing reload_override_in.
+
+	* tm-i386.h: Add register classes SIREG and DIREG.
+	(enum reg_class, REG_CLASS_NAMES): Define class names.
+	(REGNO_REG_CLASS, REG_CLASS_CONTENTS): Define their contents.
+	(REG_CLASS_FROM_LETTER): Define letters `S' and `D'.
+
+Sat Jun 24 00:17:16 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-decl.c (keep_next_level): New function.
+	(struct binding): New slot `keep' says make a LET_STMT for this level.
+	(pushlevel, poplevel): Implement that.
+	* c-parse.y (stmt exprs): Call keep_next_level.
+
+	* sdbout.c (plain_type_1): Handle REFERENCE_TYPE, METHOD_TYPE.
+	Correct for size less than 0.
+	(plain_type): Correct for size less than 0.
+
+	* global-alloc.c (mark_reg_set): For CLOBBERs, call mark_reg_clobber.
+
+	* reload1.c (order_regs_for_reload): Among regs explicitly used,
+	prefer those used less often.
+
+	* reload1.c (choose_reload_regs): If we find alternate place
+	to reload from, verify it after all reloads assigned.
+	New variable reload_override_in used for this.
+
+	* combine.c (record_dead_and_set_regs): Look inside SIGN_EXTEND and
+	STRICT_LOW_PART for place being set.
+	(subst): When using reg_last_set to find what a register contains,
+	verify the entire register was set.
+
+	* toplev.c (rest_of_decl_compilation): Report invalid register name.
+
+Fri Jun 23 13:19:41 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-hp9k3bsd.h: New file.
+	* config.gcc: New target hp9k320-bsd.
+
+	* gcc.c (record_temp_file): Don't add a name twice to one queue.
+
+	* stmt.c (expand_expr_stmt): Call warn_if_unused_value.
+	(warn_if_unused_value): Code extracted from expand_expr_stmt.
+	Recurse to handle COMPOUND_EXPR.  Don't warn about COND_EXPR.
+
+	* tm-encore.h (DBX_REGISTER_NUMBER): Override tm-ns32k.h;
+	return operand unchanged.
+
+	* reload1.c (emit_reload_insns): Don't use recog_memoized
+	on an asm.
+
+	* jump.c (delete_insn): Update last_insn.
+	* emit-rtl.c (set_last_insn): New function.
+
+	* reload1.c (reload): Put a note at end of insn chain.
+
+	* gcc.c: Put cpp output of .S file into a .s file.
+
+Thu Jun 22 22:14:35 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* optabs.c (expand_binop, expand_unop): Emit queue before library call.
+	It is done within emit_library_call, and cse screws up if there is a
+	queued insn in the middle of a cse-able sequence.
+
+Wed Jun 21 11:57:22 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-mips.h (CPP_PREDEFINES): Define -Dunix.
+
+	* reload.c (combine_reloads): Combined reload needed for entire insn.
+
+	* c-parse.y (yylex): Braino checking for out-of-range escape seq.
+
+	* stor-layout.c (layout_union): Handle PCC_BITFIELD_TYPE_MATTERS.
+	(layout_struct): Don't let a bitfield cross the storage unit
+	of its type, if PCC_BITFIELD_TYPE_MATTERS.
+
+Tue Jun 20 00:03:48 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (get_or_assign_label): Let CONSTANT_ALIGNMENT specify
+	alignment of the constant.
+	CONSTANT_ALIGNMENT is a new optional macro.
+
+	* varasm.c (force_const_mem, get_or_assign_label):
+	Make buffer bigger.
+
+	* toplev.c (print_target_switch_defaults): New fn called for -version.
+
+	* toplev.c (compile_file): Detect error closing output file.
+
+	* stor-layout.c (fixup_unsigned_type): Don't shift by 32.
+
+	* stmt.c (emit_case_nodes): Pass UNSIGNEDP along to emit_cmp_insn.
+
+	* stmt.c (expand_end_case): If index is narrow and cannot be
+	directly compared, widen it just once.
+
+	* c-parse.y (yylex): Support multi-character constants.
+	Thorough rewrite of char constant parsing.
+
+	* c-decl.c (pushdecl): Replace local extern function decl with
+	previous global decl if latter is inline, or builtin, or has
+	more arg type info.
+
+	* hard-params.c (xmalloc): Define it, for alloca.c.
+
+	* tm-hp9k320.h (STANDARD_STARTFILE_PREFIX): Override -D in Makefile.
+
+	* expmed.c (store_fixed_bit_field): Avoid shift by 32.
+
+	* stmt.c (expand_function_start): Emit a NOTE_INSN_FUNCTION_BEG.
+	* final.c (final_scan_insn): For SDB output, do the
+	sdbout_begin_function at that note.
+
+	* reload1.c (choose_reload_regs): If a reload reg inherits
+	from a previous reload, verify safety after all reloads are assigned.
+
+	* c-decl.c (build_enumerator): Remove no-op casts.
+
+	* reload.c (find_reloads): If an earlyclobber operand matches
+	an input operand it is constrained to match, that's not a problem.
+	If an earlyclobber operand loses due to earlyclobber, its matching
+	input operand also loses.
+
+	* reload1.c (choose_reload_regs): Don't use result of find_equiv_reg
+	if that reg is used for reloading in an earlier part of the insn.
+
+	* cse.c (fold_rtx): If WIDTH is 0, don't try sign-extending ARG0, ARG1.
+
+	* Makefile (hard-params*): Use $(OLDCC).
+
+	* c-typeck.c (c_alignof): No warning for -pedantic.
+
+	* c-parse.y (readescape): Don't have both error and warning
+	on one hex escape.
+
+	* c-parse.y (yylex): Treat vertical tab as white space.
+	(skip_white_space): Likewise.
+
+	* c-parse.y (datadef): If pedantic, warn for stray semicolon.
+
+	* expr.c (expand_increment): Pass accurate unsignedp arg
+	to expand_binary_op.
+
+Mon Jun 19 13:36:20 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* config.gcc (news, news-gas): Use xm-m68k.h.
+
+	* final.c (output_asm_label, output_addr_const): Make buf bigger.
+
+	* cexp.y (main): Handle EOF on input.
+	(lookup, warning): Provide as a dummy.
+	(is_idchar, is_idstart): Declare as unsigned char.
+
+	* cexp.y (parse_escape): Use TARGET_NEWLINE, etc., as values.
+	Support hex escapes.  Warn if octal or hex escape doesn't fit in char.
+
+	* cexp.y (yylex): Sign-extend char constants if appropriate.
+
+	* genemit.c: Make insn-emit.c include insn-flags.h.
+
+	* gcc.c: Move record_temp_file past page which declares vflag.
+
+	* integrate.c (expand_inline_function): If copying an insn with
+	a REG_EQUIV note, make a similar note.
+
+	* Allow reload regs to be reused for parts of an insn.
+	* reload.c (find_reloads): Classify each reload for which part
+	of the insn it is needed in.
+	(find_reloads_address, etc.): Pass down the overall operand
+	that this is part of, to record it on address reloads.
+	(push_reload): Record that for each reload.
+	* reload1.c (reload): Compute maximum needs of any part of the insn.
+	(choose_reload_regs): Part of old choose_reload_targets.
+	Hairier criteria for inheriting reloads and for which ones are
+	available for the next insn to inherit.
+	(emit_reload_insns): The rest of old choose_reload_targets.
+	Emit reload insns in proper order according to where they are needed.
+	* Record `reload_reg_in_use' separately for each part of the insn.
+	(mark_reload_reg_in_use): New function.
+	(reload_reg_free_p, reload_reg_free_before_p): New functions.
+	(reload_reg_reaches_end_p): New function.
+
+	* expr.c (expand_expr): Emit queue in X+=(Y?Z:A) optimization.
+
+	* rtlanal.c (rtx_equal_p): Check vectors have same length.
+
+Sun Jun 18 12:16:14 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (expand_expr_stmt): Maybe warn if top-level operator
+	makes an unused result.
+
+	* gcc.c (delete_temp_files, delete_failure_queue):
+	If -v, report failures in unlink.
+
+	* Makefile (includes): New target to run fixincludes.
+	(install): Swap arms of if-statement.
+
+Sat Jun 17 12:41:53 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stor-layout.c (layout_union): Arg to error_with_decl was missing.
+
+	* ns32k.md (movsf): Use CONST_DOUBLE_LOW to extract from CONST_DOUBLE.
+
+	* loop.c (consec_sets_giv): Change type of force, force2.
+
+	* combine.c (dump*): Declare arg as FILE*.
+
+	* Makefile (clean): Delete hard-params.
+
+	* flow.c (life_analysis): Use a special obstack for the temporary
+	regsets.
+
+	* m68k.md (clr pattern): On 68000, use moveq to clear data reg.
+
+	* gvarargs.h: File varargs.h renamed.
+	The old name conflicted with <varargs.h>, now that -I. is used.
+	* tree.c, expr.c, emit-rtl.c: Change #include commands.
+	* Makefile (install): Install gvarargs.h under name varargs.h.
+	* gcc.c: Include gvarargs.h, not system's varargs.h.
+
+	* Makefile: Use -I$(srcdir) before -I$(srcdir)/config.
+	* config/tm.h: Deleted; didn't work if config was a symlink.
+
+	* cse.c (cse_insn): Record location of inner_dest
+	so it can be replaced properly if a new MEM rtx is made.
+
+Fri Jun 16 14:17:20 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* make-cc1.com: Compile and link rtlanal.c.
+
+	* c-typeck.c (build_array_ref): Call fold on the array ref.
+	* fold-const.c (fold): Simplify array ref of string constant.
+
+	* stmt.c (expand_asm_operands): Fix error message.
+
+	* Makefile (gnulib2): Remove old members before compiling new.
+	Fix stupid errors.
+	* gnulib2.c (__cmpdi2, __ucmpdi2): Typos in names of interface unions.
+
+	* genconfig.c (main): Don't write MAX_CLOBBERS_PER_INSN; obsolete.
+	Add 3 to MAX_RECOG_OPERANDS.
+
+	* cse.c (fold_cc0): Extra arg specifies machine mode.
+	Callers changed.
+	(cse_insn): Record original mode of each src for this purpose.
+
+Thu Jun 15 12:35:18 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gnulib2.c (_cmpdi2, _ucmpdi2): Moved here from gnulib.c.
+	Use long long for argument type.
+
+	* rtlanal.c (may_trap_p): Moved here from loop.c.
+	Return 1 for division by explicit zero.
+
+	* reload1.c (eliminate_frame_pointer, alter_frame_pointer_addresses):
+	Rerecognize insns which are changed by this.
+
+	* i386.md (call_value): Don't return prematurely.
+
+	* alliant.md (movqi): Handle moving Aregs to mem and vice versa.
+	(bftst -> btst): Restrict to bitpos less than 8
+	so operand may be non-offsettable.
+	(nop): New pattern.
+	(return): Was disabled; now deleted.
+	* tm-alliant.h (PRINT_OPERAND_PUNCT_VALID_P): Define it.
+	* out-alliant.c (output_btst): Same change as in out-m68k.c
+
+	* alliant.md, out-alliant.c: Offsetable -> offsettable.
+
+	* c-parse.y (rule for stmt_exprs): Make the LET_STMT volatile. 
+
+	* c-decl.c (duplicate_decls): Don't save inline function data
+	from previous definition if a new *definition* is seen.
+
+	* integrate.c (access_parm_map): Handle subregs and constants.
+
+	* stmt.c (expand_return): Don't crash if DECL_RTL (DECL_RESULT()) is 0.
+
+	* tm-tahoe.h (LONGJMP_RESTORE_FROM_STACK): Define it.
+
+	* tm-mips.h (CONSTANT_P): Deleted; duplicates rtl.h.
+
+Fri Jun  9 01:39:30 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Makefile (float.h): Avoid using $(MAKE).
+
+	* Don't cram two things into STMT_BODY of a LET_STMT.
+	* tree.h (struct bind_stmt): New field, subblocks.
+	(STMT_SUBBLOCKS): New macro to access it.
+	* print-tree.c (walk): Print new field.
+	* tree.c (build_let_stmt): Store the old BODY arg into subblocks field.
+	* c-parse.y (stmt expr rule): Put rtl expr alone into body field.
+	* dbxout.c (dbxout_block): Recurse on subblocks, not body.
+	* sdbout.c, symout.c: Likewise.
+	* integrate.c (copy_decl_tree): Likewise.
+	* stmt.c (setjmp_protect, uninitialized_vars_warning): Likewise.
+	* expr.c (expand_expr): For LET_STMT, simply use its body.
+
+	* machmode.def: Add sixth arg to each entry.
+	* tree.h, rtl.h, rtl.c: Add arg to DEF_MACHMODE.
+	* rtl.h (GET_WIDER_MODE): New macro; table in rtl.c.
+	* expr.c (expand_expr): Use that for widening multiply.
+
+	* stmt.c (fixup_var_refs_1): When converting MEM to QImode for
+	bit field, adjust the address if possible to make bitpos
+	less than 8.
+	* m68k.md (bftst -> btst): Restrict to bitpos less than 8
+	so operand may be non-offsettable.
+
+	* cccp.c (do_line): Accept and pass on 3rd arg for enter or leave file.
+
+	* out-m68k.c (output_btst): Handle COUNT bigger than size of unit.
+
+	* cccp.c (CHECK_DEPTH): Macro to detect instack overflow.
+	(finclude, macroexpand, expand_to_temp_buffer): Use that.
+
+	* cccp.c (rescan): Don't check for disabled macro if traditional.
+	(macroexpand): Don't disable macro if traditional.
+
+	* sdbout.c (sdbout_one_type): Take out last change; assembler barfs.
+
+	* c-parse.y (maybe_attribute): Eliminate #-syntaxes.
+	Make ATTRIBUTE the name for __attribute.
+
+	* c-parse.gperf: Add __attribute{,__} and __signed{,__}.
+	* c-parse.y: Install results of that change.
+
+	* Fix bug in sizeof ({...}).
+	* c-decl.c (poplevel): Set TREE_USED.  Return the LET_STMT.
+	* c-parse.y (stmt-expr rule): Put the RTL_EXPR in the LET_STMT,
+	clear its TREE_USED, and use it as the result.
+	* expr.c (expand_expr): Allow LET_STMT as an expr.
+	Set its TREE_USED and expand the TREE_VALUE of its body.
+	* dbxout.c (dbxout_block): Ignore LET_STMT if TREE_USED not set.
+	* sdbout.c, symout.c: Likewise.
+
+Thu Jun  8 00:06:36 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y (yylex): Extend ERANGE-inhibitor for 0.0
+	to 0.0e0 as well.
+
+	* flow.c (life_analysis): Prevent allocation of regs live at setjmp
+	on certain machines.  Controlled by LONGJMP_RESTORE_FROM_STACK.
+	Sets reg_live_length to -1.
+	* local-alloc.c (block_alloc): Be prepared for that.
+	* tm-vax.h (LONGJMP_RESTORE_FROM_STACK): Define it.
+
+	* gnulib2.c (all interfaces): Declare args and values as long long,
+	and split them using unions.
+
+	* loop.c (check_dbra_loop): Don't reverse loop if there are two
+	refs to varying addresses.  Consider foo[i] = foo[i-1].
+	(count_nonfixed_refs): Subroutine to count them.
+
+	* cexp.y: Distinguish signed and unsigned.
+	An integer value is now represented by a struct.
+	All rules for arithmetic changed.
+	(yylex): Adapt to change in yylval data type.
+
+	* limits.h (LONG_MIN): Make sure it's a signed long.
+
+	* sdbout.c (sdbout_one_type): Output types of fields first,
+	if they are structs.  Don't go through pointers.
+	(sdbout_field_types): Subroutine for that
+
+Wed Jun  7 13:00:44 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* fixincludes: Switch to /usr/include before doing vuid_event.h.
+	Use $2 as output directory for sed.
+
+	* tm-i386.h (FUNCTION_PROFILER): Put counter address in %edx.
+	* tm-i386v.h (LIB_SPEC): Use -L/usr/lib/libp if profiling.
+
+	* expr.c (expand_increment): Typo testing for BImode component.
+
+	* convex changes from csmith:
+	* tm-convex.h: use EXTRA_SECTIONS to do .bss.
+	out-convex.c: set_section, align_section are now unused.
+	* convex.md: add pattern to pick an A-reg destination for sums
+	whose source involves a dedicated A reg (frame or arg pointer)
+	* convex.md: immediate and, or, xor instructions store a 32-bit
+	result.  Fix instructions that assumed it was 64.
+
+	* mips.md (probe): New pattern to create stack space.
+
+	* Makefile (float.h): Ignore errors from hard-params.
+	Specify ./ to run it.
+
+Tue Jun  6 15:45:27 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* out-tahoe.c: Rename `offsetable' to `offsettable'.
+
+	* tahoe.md (nop): New pattern.
+
+	* i386.md (umul...): Constrain operand 1 as `0', not `a'.
+	`a' sometimes wanted two a-regs for operands 0 and 1.
+
+	* cccp.c: Forward-declare some structs.
+
+	* c-decl.c: Rearrange fcn fwd decls and struct decls.
+
+	* expr.c: Move some fcn fwd decls after structs their args use.
+	* genpeep.c, genextract.c: Likewise.
+
+	* loop.c: Forward-declare some structs.
+
+	* stmt.c: Move decls of structs before those of static functions.
+
+	* loop.c (strength_reduce): Delete extra arg to check_eliminate_biv.
+
+	* integrate.c (expand_inline_function): Supply missing arg
+	to convert_to_mode.
+
+	* gcc.c (handle_braces): Supply missing arg to do_spec_1.
+
+	* explow.c (lookup_static_chain): Accept a context arg.
+
+	* expmed.c (store_split_bit_field): Pass ALIGN arg
+	to extract_fixed_bit_field.
+
+	* expr.c (expand_assignment): Convert TYPE_ALIGN to bytes.
+	(store_constructor, expand_expr): Likewise.
+
+	* m68k.h: NO_ADDSUB_Q conditionals turn off all addq, subq insns.
+	(Fully supported only with MOTOROLA and HPUX_ASM flags.)
+
+	* jump.c (do_cross_jump): Don't die if LABEL is 0.
+
+	* tm-mips.h (PRINT_OPERAND_PUNCT_VALID_P): New macro.
+	* tm-iris.h: New file.  Unsplit lines accidentally split.
+
+Mon Jun  5 15:39:30 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (output_inline_function): Call init_function_start,
+	not expand_function_start.
+	* emit-rtl.c (restore_reg_data): No need to init reg_rtx_no.
+
+	* stmt.c (init_function_start): Set current_function_returns_struct.
+
+	* rtlanal.c (reg_set_between_p): New fn analogous to reg_used_between_p
+	* loop.c (strength_reduce): Reject biv initial value which is altered
+	subsequently before actual loop start.
+
+	* rtlanal.c: New file split out from rtl.c.
+	Has things not used in the gen files.
+
+	* loop.c (strength_reduce): Reject biv initial value in a hard reg
+	clobbered by an intervening function call.
+
+	* tree.c (get_identifier): New flag needed to enable id-clash warnings.
+	(start_identifier_warnings): Set that flag.
+	* c-decl.c (init_decl_processing): Call that, after making built-ins.
+
+Sat Jun  3 14:41:34 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* final.c (final_scan_insn): No basic block profiling at jump tables.
+
+	* stmt.c (expand_decl): Probe the stack to make pages exist.
+	* expr.c (expand_builtin): Likewise, for alloca.
+
+	* move-if-change: Specify /bin/sh.
+
+	* tm-ns32k.h (INDIRECTABLE_2_ADDRESS_P): Don't accept PLUS
+	with constant operands but not inside CONST.
+
+	* integrate.c (output_inline_function, save_for_inline):
+	Save stack_slot_list, and restore it for actual output.
+	* emit-rtl.c (gen_inline_header_rtx): New arg for this.
+
+	* emit-rtl.c (restore_reg_data): Initialize reg_rtx_no.
+	(restore_reg_data_1): Handle reg_rtx_no jumping past
+	reg_pointer_flag_length.
+
+	* reload1.c (alter_reg): Do nothing if regno_reg_rtx has 0.
+
+	* integrate.c (copy_rtx_and_substitute): Typos for stack parm
+	addresses in PLUS case.
+
+	* genoutput.c (gen_insn, gen_peephole): Make output_n fns static.
+	(output_prologue): Use new macro DEFAULT_MACHINE_INFO if defined.
+
+	* tree.h (enum machine_mode): Define MAX_MACHINE_MODE as in rtl.h.
+
+Fri Jun  2 15:40:47 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cccp.c (do_include): A file included via a system header file
+	counts as a system header file for -M.
+
+	* gnulib2.c: Support boolean ops and shifts.
+
+	* loop.c (emit_iv_inc): Use emit_iv_init_code.
+
+	* rtl.h (CONST0_RTX): Don't try to cast abort.
+
+    	* tm-news.h (PRINT_OPERAND_ADDRESS): Fix typo `reg_name'.
+	Delete two garbage lines.
+
+	* loop.c (eliminate_biv): Use emit_iv_init_code to compute comparison
+	value.  If value is constant, recognize the insn, and if that fails,
+	put the value in a register.  
+
+Thu Jun  1 16:56:39 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* print-tree.c (dump): Don't die if rtx components are null.
+
+	* expmed.c (expand_mult_add): New fn to do A * X + B.
+	(make_tree): New subroutine.
+	* loop.c (emit_iv_init_code): Use that.  Much simpler now.
+
+Tue May 30 17:20:40 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* fold-const.c (fold): Use TREE_SET_CODE to store in tree codes.
+
+	* tree.h (struct tree_common): Make `code' an unsigned int.
+	(TREE_CODE, TREE_SET_CODE): Put in casts.
+
+	* optabs.c (emit_cmp_insn): Supply all the args in recursive calls.
+
+	* toplev.c (report_error_function): Fix typo; METHOD_TYPE missing.
+
+	* fixincludes: Add code to make internal non-directory links.
+
+Mon May 29 21:36:28 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gcc.c (find_exec_file): Try both with and without machine_suffix.
+	(find_file): Use machine_suffix here too.
+
+Sat May 27 00:02:26 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (decompose): OFFSET wasn't initialized.
+
+	* cse.c (cse_main): Assign monotonic cuids.
+	(make_regs_eqv, CHEAPER): Use cuids, not uids.
+	(cse_end_of_basic_block): Return a cuid, not a uid.
+
+	* expr.c (expand_builtin): For BUILTIN_SAVEREGS, range of regs
+	moved included one extra previous insn.
+
+	* emit-rtl.c (emit_line_note): Don't check -g here.
+	(emit_note): For line number when no -g, increment cur_insn_uid anyway.
+	* stmt.c (expand_start_case): Always output a NOTE_INSN_DELETED.
+
+	* loop.c (loop_optimize): Don't count line-number NOTEs for luids.
+	Prevents -g from affecting optimization decisions.
+
+Fri May 26 17:31:15 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* local-alloc.c (block_alloc): Don't count notes in insn_number.
+	Prevents -g from affecting order of allocation.
+
+Thu May 25 14:12:19 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* local-alloc.c (block_alloc): Clear full length of regs_live_at.
+
+	* ns32k.md (cmpsi): Make this the first cmp pattern.
+
+	* jump.c (do_cross_jump): Skip NOTEs while checking for existing label.
+
+	* cse.c (cse_insn): When no-oping a jump, decrement use count of label.
+	(cse_basic_block): If label use count is 0, go past it.
+
+	* integrate.c (access_parm_map): New fn, broken out of
+	copy_rtx_and_substitute, handles case of mem ref to stack arg.
+	(copy_rtx_and_substitute): Call it.
+	Also use it for address of a stack arg.
+
+	* gen*.c (fatal): Declare 1st arg as string.
+
+Wed May 24 00:13:36 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* optabs.c (init_optabs): Handle movdi and movdf insns.
+
+	* final.c (end_final): Realign locn ctr after outputting string.
+
+	* tm-sparc.h (LINK_SPEC): Link bb_link.o before standard lib.
+
+	* tm-sun386i.h (LINK_SPEC): Accept and ignore -sun386.
+
+	* gcc.c (find_exec_file): Use machine_suffix.
+	(process_command): Set that for -b option.
+
+	* integrate.c (function_cannot_inline_p): No size limit
+	for functions declared inline.
+
+	* loop.c (skip_consec_insns): New fn, skip several insns or libcalls.
+	(force_movables): New fn, part of scan_loop broken out.
+	(ignore_some_movables): New fn, ignore a movable whose insn
+	is within another movable's libcall.
+	(scan_loop): Call those three.
+	Don't handle m->consec for zero-extend movables, since always 0.
+
+Tue May 23 12:58:24 1989  Joe Weening  (weening at gang-of-four.stanford.edu)
+
+	* config/alliant.md:
+	Removed operand classes 'x', 'y', 'G', 'H'.
+	Added "%." to many opcodes to simplify comparison with m68k.md.
+	Changed TARGET_68881 to TARGET_CE.
+	Changed floating-point insns to better describe the Alliant CE.
+	Most args to floating-point insns are now nonimmediate_operand.
+	Removed special insns for pushing doublewords onto stack.
+	Added non-CE versions of movsf and movdf to avoid using FP
+	registers in this case.
+	(float*i*f2): Don't allow immediate ops.
+	(sne): Fix typo, fsne => fsneq.
+	(call, call_value): Changed to always pop args from stack
+	upon return; this gives better code than before and conforms
+	to Alliant calling standard.
+	Incorporated some recent changes to m68k.md.
+
+	* config/out-alliant.c:
+	(regno_reg_class): Removed FPA reg classes.
+	(output_move_const_double): Function not needed, removed.
+
+	* config/tm-alliant.h:
+	Removed FPA registers and reg classes.
+	Target flags: changed TARGET_68881 to TARGET_CE, removed
+	TARGET_RTD, TARGET_REGPARM, TARGET_FPA.
+	Removed TARGET_CE test in several places since we need to
+	use FP regs even for non-CE programs.
+	(TARGET_VERSION, CPP_SPEC): Define for Alliant.
+	(CONDITIONAL_REGISTER_USAGE): Removed, not needed.
+	(FRAME_POINTER_REQUIRED): Defined.
+	(RETURN_POPS_ARGS): Defined.
+	(FUNCTION_VALUE, LIBCALL_VALUE, FUNCTION_VALUE_REGNO_P):
+	Use fp0 to return floating-point values.
+	(FUNCTION_ARG): Remove TARGET_REGPARM code.
+	(FUNCTION_ARG_PARTIAL_NREGS): Always 0.
+	(FUNCTION_PROFILER): Define for Alliant.
+	(FUNCTION_EPILOGUE): Remove use of rtd instruction.
+	Renamed CC_IN_68881 to CC_IN_FP.
+	(NOTICE_UPDATE_CC): Incorporate changes that were made
+	in tm-m68k.h.
+
+	* config/xm-alliant.h (LINK_SPEC): Pass -X to linker.
+
+Tue May 23 12:58:24 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* sdbout.c: Don't include c-tree.h.
+
+	* tree.c (build_index_type): Use sizetype for min and max values.
+	Convert maxval rather than clobbering it.
+
+	* tm-hp9k320.h: Finish unterminated comment.
+
+	* sdbout.c (sdbout_parms): Use gen_fake_label for anonymous parm.
+
+Sun May 21 12:58:06 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (aggregate_value_p): New fn says whether expression is a type
+	that functions cannot return as a scalar.
+	(assign_parms, expand_function_start): Use that.
+	* expr.c (expand_call): Likewise.
+
+	* gcc.c (delete_failure_queue): New subroutine.
+	(delete_temp_files): No longer delete the failure queue.
+	(main): Delete failure queue after each failing compilation.
+
+Sat May 20 13:16:23 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (force_const_mem): New optional macro SELECT_RTX_SECTION.
+
+	* mips.md: Change %u0 to %:.
+	(movsi): Add constraint alternative accepting address arg.
+
+	* fold-const.c (mul_double): Special case for 2nd arg 2, 4, 8.
+	(combine): Special case shortcuts for plus, minus, mult, div.
+
+	* stmt.c (expand_function_start): Simplify hairy statement for 3B1.
+	* expr.c (expand_call): Likewise.
+
+	* math-68881.h: New file.
+
+	* m68k.md (movqi): Handle moving aregs to mem and vice versa.
+
+	* dbxout.c (dbxout_type): Don't test use_gdb_dbx_extensions
+	in cases that occur in C.
+
+	* stmt.c (expand_function_{start,end}): Make DECL_RESULT's rtl 0
+	when function returns no value.
+
+	* tree.c (build_decl): Initialize DECL_PRINT_NAME, DECL_ASSEMBLER_NAME.
+
+	* c-decl.c (store_parm_decls): Call init_function_start.
+
+Thu May 18 00:41:37 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (expand_null_return_1): New arg USE_GOTO says jump to
+	return_label even if could otherwise use a return insn.
+	Make a return_label if we need one and don't have one already.
+	If have parm cleanups, always jump to cleanup_label.
+	(expand_null_return): Pass 1 for USE_GOTO if cleanups pending.
+	(expand_return): Set LAST_INSN if have local cleanups or parm cleanups.
+	Use that if jumping to tail-recursion label.
+	Optimization for returning a comparison is safe for local cleanups
+	but don't do it if there are parm cleanups.
+	Calling expand_null_return_1, pass 1 for USE_GOTO if local cleanups.
+	(this_contour_has_cleanups_p): New function.
+
+	* stmt.c (init_function_start): New function, beginning of
+	expand_function_start broken out.
+	Use DECL_PRINT_NAME to get function's name.
+	(expand_function_start): Now two args, function and PARMS_HAVE_CLEANUPS
+	Compute RETURN_LABEL sooner; make one if parm cleanups.
+	If parms have cleanups, put scalar return value in pseudo-reg.
+	Don't mark that pseudo with REG_FUNCTION_VALUE_P.
+	(expand_function_end): Simplify decisions about output of return_label
+	and return insn.
+	If DECL_RESULT is pseudo-reg, copy it to real return reg.
+
+	* stmt.c (expand_function_end): Handle ordinary struct values
+	like pcc, but only if unoptimized.
+	(expand_function_start): Make a return_label for ordinary struct value.
+
+	* stor-layout.c (layout_type): Handle METHOD_TYPE like FUNCTION_TYPE.
+	(layout_decl): Allow TYPE_DECL.
+
+	* stor-layout.c (layout_basetypes): Code for basetypes broken
+	out of layout_record.  Sets the type size tentatively.
+	(layout_record): Start with that tentative size.
+	Also, don't do anything with CONST_DECL members.
+
+	* stor-layout.c (layout_union): Simpler error report for static memb.
+
+	* reload1.c (eliminate_frame_pointer): Reduce PUSH_ROUNDING
+	conditional to apply only to push instructions.
+
+	* expr.c (expand_call): Fix stupid errors handling MAX_PARM_BOUNDARY.
+	* stmt.c (assign_parms): Likewise.
+
+	* toplev.c (announce_function, report_error_function):
+	(error_with_decl, warning_with_decl): Use DECL_PRINT_NAME.
+
+	* toplev.c (compile_file): Subtract integration_time from parse_time.
+
+	* toplev.c (compile_file): Don't output read-only static variables
+	at end of compilation if address was not used.
+
+	* toplev.c (rest_of_compilation): Handle flag_syntax_only.
+
+	* toplev.c (main): Handle -g0 and -G0 options.
+	For -g and -G, set use_gdb_dbx_extensions.
+
+	* toplev.c (main): Set `progname'.
+	(pfatal_with_name, fatal_io_error, {error,warning}_with_file_and_line):
+	(sorry): Print value of `progname', not "cc1".
+
+	* tree.def: Delete FRIEND_DECL.  Add PUSH_EXPR and POP_EXPR.
+
+	* tree.c (simple_cst_equal): Handle INDIRECT_REF.
+
+	* tree.c (lvalue_p): Handle METHOD_TYPE.  Handle NEW_EXPR.
+
+	* tree.c (copy_list): New function.
+
+	* tree.h (struct tree_decl): New fields print_name and assembler_name.
+	(DECL_PRINT_NAME, DECL_ASSEMBLER_NAME): New accessors.
+
+	* c-decl.c (LONG_DOUBLE_TYPE_SIZE): New compilation parameter.
+
+Wed May 17 22:07:17 1989  Randall Smith  (randy at apple-gunkies.ai.mit.edu)
+
+	* dbranch.c (emit_delay_sequence): Reset insn code to -1 when
+	turning insn into a sequence so that it won't think that it matches
+	something in the md file.
+
+	* dbranch.c (insn_eligible_p): Call refers_to_regno_p with a
+	non-zero range.
+
+	* dbranch.c (pnote): Modified to make sure instruction clobbered
+	register is a set, rather than, say, a clobber.
+
+Wed May 17 14:01:20 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* sdbout.c (sdbout_parms): Handle parm with no name.
+
+	* loop.c (combine_movables): Test for overlap of zero-extend regs
+	was screwed up.
+
+	* c-typeck.c (c_sizeof{,_nowarn}): Convert from bytes to chars,
+	since c defines sizeof (char) as 1.
+	(pointer_int_sum, pointer_diff): Use c_sizeof{,_nowarn}. 
+
+Tue May 16 16:27:32 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (choose_reload_targets): Don't reuse regs
+	mentioned in reload_reg_rtx.
+
+	* tm-tahoe.h, tahoe.md, out-tahoe.c, xm-tahoe.h: New files.
+
+Mon May 15 16:25:12 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* fixincludes: Exit with explicit status 0 at end.
+	cd to /usr/include before cd to subtree root in case of relative link.
+	Create dir $LIB earlier.
+	When checking for a link, treat .. like an absolute target.
+
+	* symout.c (symout_block_symbols): Give every local decl a typespec.
+	* cexp.y (parse_number):
+	* flow.c (life_analysis, dump_flow_info):
+
+	* loop.c (consec_sets_invariant_p): Logic error accepted consec sets
+	of which only one was invariant.
+
+	* expr.c (expand_expr): Use no subtargets inside loops.
+	* stmt.c (inside_loop): New function.
+
+Sun May 14 00:11:07 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tree.h: Declare long long types.
+
+	* c-parse.y (combine_strings): Make string contents saveable.
+
+	* tree.c (savealloc): New function.
+
+	* m68k.md (movdi): % missing in fmove%.d.
+
+	* c-parse.y (yylex): Detect overflow past 64-bits.
+	Detect specially numbers not fitting in signed long long.
+
+Sat May 13 13:16:05 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (alter_frame_pointer_addresses): Preserve volatility.
+
+	* varasm.c (output_constructor): Die if BITS_PER_UNIT is too big
+	for this function to work.
+
+	* genpeep.c (match_rtx): For match_operator, match the operands, too.
+
+	* varasm.c (output_constant): Use ASM_OUTPUT_DOUBLE_INT for DImode.
+
+	* stor-layout.c (make_signed_type, make_unsigned_type):
+	(fixup_unsigned_type): Use HOST_BITS_PER_INT.
+
+	* stor-layout.c (layout_type): Use TFmode if appro.
+
+	* optabs.c (emit_cmp_insn): Use mode sizes to check cmpstrqi, cmpstrhi.
+
+	* c-typeck.c (get_floating_type): Compare MODE against modes of types.
+	(signed_type, unsigned_type, signed_or_unsigned_type, type_for_size):
+	Handle long long types.
+	(digest_init): Don't assume width of `char' is BITS_PER_UNIT.
+
+	* c-parse.y (yylex): For truncating chars, use width of `char' type.
+	Allow `ll' in int constants and make long long.
+	Also make long long if constant won't fit in an int.
+
+	* c-decl.c (SHORT_TYPE_SIZE): Round up when dividing.
+
+Fri May 12 22:36:21 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* real.h: Allow multiple inclusion.
+
+	* tm-sun386i.h (DBX_REGISTER_NUMBER): Bizarre renumbering.
+
+Thu May 11 00:36:21 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* fixincludes: Fix non-ansi declaration of sprintf in X11/Xmu.h
+
+	* c-parse.y (stmt from expr): Do default conversion if useful
+	for sake of ({...}).
+
+	* sparc.md (andcc recognizer): Operand missing in subreg.
+
+Wed May 10 17:20:38 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* rtl.c (read_name): Error if name is missing.
+	(dump_and_abort): Don't print char args if -1.
+
+	* i386.md (umulqihi3): Operand numbers were missing.
+
+	* reload1.c (choose_reload_targets): Allow spill reg in find_equiv_reg
+	if it's free and correct class. 
+
+	* cse.c (canon_hash): Handle empty strings.
+
+	* cccp.c (macroexpand): Newline newline treated like real white space
+	when stringifying.
+
+	* Rename *offsetable* to *offsettable*.
+
+Tue May  9 22:54:58 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-decl.c (finish_type): Layout any variants of the type.
+
+Tue May  9 12:30:28 1989  Randall Smith  (randy at apple-gunkies.ai.mit.edu)
+
+	* final.c (final_scan_insn, final): Added an argument to
+	final_scan_insn to disallow peephole processing (to turn it off
+	during delayed branch scheduling).
+
+	* final.c (final_scan_insn): Made insn not matching any MD rtl a
+	criteria for delayed branch case.  Moved delayed branch case to just
+	before real insn recognition to reduce the number of insns on which
+	recog_memoized is called.
+
+Mon May  8 15:02:42 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* fixincludes (LIB): Allow overriding.
+
+	* cccp.c: Don't search /usr/include/CC by default.
+
+Mon May  8 13:09:21 1989  Randall Smith  (randy at apple-gunkies.ai.mit.edu)
+
+	* print-tree.c (dump): Fixed typo; IDENTIFIER ==> IDENTIFIER_NODE.
+
+Sun May  7 12:44:53 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* print-tree.c (dump): TYPE_NAME may be IDENTIFIER or TYPE_DECL.
+
+Sat May  6 00:13:47 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tree.def: Define EXACT_DIV_EXPR, for when remainder known as 0.
+	* fold-const.c (combine, fold, div_and_round_double): Handle new code.
+	* expr.c (expand_expr): Likewise.
+	* c-typeck.c (pointer_diff): Use EXACT_DIV_EXPR.
+
+	* integrate.c (expand_inline_function): Use size of passed type
+	for allocating stack slot with that type.
+
+	* c-parse.y (maybe_attribute, attribute*): New syntax for Apollos.
+	These tokens currently not generated.
+
+Fri May  5 18:43:01 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* toplev.c [USG]: Undefine FLOAT for sake of sys/param.h on hpux.
+
+	* optabs.c (expand_binop): If backtracking, don't delete insns made
+	for -fforce-mem.
+
+Thu May  4 01:57:23 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (find_reloads): Don't compare an earlyclobber operand
+	with itself.
+
+	* reload.c (immune_p): Constants and stack slots don't overlap.
+
+	* Put no-ops in front of loops and labels,
+	to prevent confusion in the debugger.
+	* c-parse.y (loops and labels): Call emit_nop.
+	* stmt.c (emit_nop): New function--sometimes emit a no-op.
+	* *.md (nop): New insn.
+
+	* expr.c (expand_call): Typo in arg to FIRST_PARM_CALLER_OFFSET.
+
+Wed May  3 01:34:58 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* loop.c (scan_loop): Scanning around end of loop
+	should not set maybe_never.
+
+	* Rename SELECT_VARIABLE_SECTION to SELECT_SECTION.
+	* varasm.c (get_or_assign_label): Use SELECT_SECTION if defined.
+	* varasm.c: Use EXTRA_SECTION_FUNCTIONS if defined (new macro).
+
+	* mips.md: Change %u to %u0 to avoid error check.
+
+	* tm-mips.h (TARGET_VERSNUM): Inc. to 1 08.
+	(TARGET_VERSION): Change strings.
+	(AL_DEBUG): Don't define it.
+	(HARD_REGNO_MODE_OK): Add some casts to int.
+	(STACK_ARGS_ADJUST): Name was misspelled.
+	(PRINT_OPERAND_ADDRESS): Just abort for MEM, POST_INC, etc.
+	(EXTRA_SECTIONS, SELECT_VARIABLE_SECTION, SELECTORS_EXTRA_SECTIONS,
+	SELECT_VARIABLE_CONST_SECTION): New macros.
+	(ASM_FILE_END): Change function name.
+	* out-mips.c (function_arg_advance): Delete debugging printfs.
+	(function_inarg, function_arg): Likewise.
+	(compare_collect, compare_restore): Add some.
+
+	* reload1.c (reload): Fix handling of caller_save_needed.
+
+	* stmt.c (expand_function_start): Clear caller_save_needed.
+
+	* stmt.c (emit_case_nodes): Some compiler has trouble with calling
+	a function pointer.
+	* gnulib.c: likewise.
+
+Tue May  2 15:32:25 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* loop.c (combine_movables): For zero extend,
+	do each from-mode separately.
+
+Mon May  1 00:18:47 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-apollo68.h: New file.
+
+	* c-parse.y (is_reserved_word, hash): Add keywords `__asm__', etc.
+	* c-parse.gperf: Corresponding changes.
+
+	* c-parse.y (check_newline): Set main_input_filename before
+	considering optional arguments.
+
+	* final.c (final_scan_function): Return next insn to process.
+	Usually that's the following insn; occasionally, previous compare.
+
+	* c-decl.c (DOUBLE_TYPE_SIZE): Wrong value.
+
+	* reload.c (decompose): Failed to return value.
+
+	* Support local specified-register variables.
+	* varasm.c (decode_reg_name): New function, cvt asmspec to regnum.
+	(make_decl_rtl): Call that.
+	* toplev.c (rest_of_decl_compilation): Handle local specified-register
+	declarations.
+
+	* i386.md (tstqi, trunc*qi): Constrain to `q' regs.
+
+	* loop.c (scan_loop, move_movables): ->global for zero-extend register
+	now means register is used outside range from where it is set
+	to the following label.  Non-global zero-extend regs
+	may be entirely cleared.
+
+	* loop.c (combine_movables): Loop that combines matching movables
+	broken out from scan_loop.
+	Now also combine non-global zero-extend registers with each other
+	if their lifespans don't overlap.
+
+	* c-typeck.c (build_unary_op, ADDR_EXPR of a COMPONENT_REF):
+	Always convert to desired result type.
+
+Sun Apr 30 12:58:58 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-decl.c (init_decl_processing): New macros parameterize int types.
+	CHAR_TYPE_SIZE, SHORT_TYPE_SIZE, LONG_TYPE_SIZE, LONG_LONG_TYPE_SIZE,
+	FLOAT_TYPE_SIZE, DOUBLE_TYPE_SIZE.
+
+	* fixincludes: Use sed instead of ex.  No problem with split lines.
+
+	* print-tree.c (dump): Print type's name, if any.
+
+	* c-parse.y: Use __inline, not plain inline.
+
+	* toplev.c: New option -fdelayed-branch.
+	(compile_file): Open and close dbranch dump file.
+	Collect and print dbranch time.
+	(rest_of_compilation): Optionally do dbranch scheduling, 
+	only if HAVE_DELAYED_BRANCH.
+	(main): Handle -dd.
+
+	* rtl.c (copy_rtx): Handle null pointers as code `e'.
+
+	* final.c (dbr_sequence_length): New function.
+	(final_scan_insn): Most of `final' broken out.
+	Add support for SEQUENCE insns.
+	last_ignored_compare and new_block now top-level static.
+
+	* c-parse.y (MAX_WORD_LENGTH): Long enough for __volatile.
+
+Sat Apr 29 13:03:20 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y (asm statements): Output line numbers.
+
+	* loop.c (emit_iv_init_code, emit_iv_inc, eliminate_biv): Copy
+	additive term rtx's to prevent sharing between insns.
+
+	* c-parse.y (check_newline): Increment input_file_stack_tick.
+	* toplev.c (report_error_function): Describe input stack only if
+	changed.
+
+	* c-decl.c (finish_struct): Reject zero width for named field.
+
+	* tm-sun3.h (CC1_SPEC): Prevent error on `-sun3'.
+	* tm-sparc.h (CC1_SPEC): Prevent error on `-sun4'.
+
+	* Makefile (cleanconfig): cleanlinks renamed; also delete gnulib.
+	(gnulib): Delete stamp-gnulib2 since gnulib2 should be redone after.
+
+Fri Apr 28 00:38:32 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* config.gcc (genix): Correct xm file name.
+
+	* tm-genix.h: Undefine ASM_SPEC inherited from tm-encore.h.
+
+	* Makefile: Make float.h using hard-params.
+	(clean): Delete float.h.
+
+	* hard-params.c: New program.
+
+	* varasm.c (assemble_variable): Use SELECT_VARIABLE_SECTION if defined.
+	(in_section): Use EXTRA_SECTIONS if defined.
+
+	* toplev.c (compile_file): Call ASM_FILE_END if defined.
+
+	* gcc.c (SWITCH_TAKES_ARG, WORD_SWITCH_TAKES_ARG): Let config override.
+
+	* loop.c (emit_iv_init_code): Force A to a reg if it isn't.
+
+Thu Apr 27 12:51:14 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-mips.h (ASM_START_FILES): Don't call print_options.
+	Don't call the funny abort-functions.
+	* out-mips.c: Delete funny debugging functions and aborts.
+	(print_options): #if 0.
+	(compare_restore): Test for COMPARE, not MINUS.
+	(mips_section_get, mips_output_external, mips_asm_final): New fns.
+
+	* input.h: New file with *input_filename, lineno and input_file_stack.
+	Included in toplev.c and c-parse.y.
+	* c-decl.c (finish_function): LINENO is now arg.
+	* c-parse.y: Calls changed.
+
+	* c-parse.y (check_newline): Handle `1' or `2' from cpp
+	by pushing or popping input_file_stack.
+	* toplev.c (compile_file): Push main input file on input_file_stack.
+	(report_error_function): If in include file, print the chain
+	of include-locations.
+
+	* cccp.c (output_line_command): New arg says whether entering or
+	leaving a file.  Output `1' or `2' on #-line if so.  Callers changed.
+
+	* gnulib2.c: Little-endian fixes from csmith@convex.com.
+
+	* fixincludes: Wrong quoting in `echo' command.
+
+	* tm-mips.h (REG_P): Duplicate defn deleted.
+	(PRINT_OPERAND): `\' was missing.
+
 Wed Apr 26 02:44:59 1989  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cccp.c (handle_directive): Preprocess even #pragma, but copy 
+	to output file afterward.
+	(do_pragma): Use standard calling convention.
+	(install_builtins, special_symbol): Define __INCLUDE_LEVEL__.
+
+	* cccp.c (do_include): Don't forget to close file.
+
+	* final.c (output_asm_insn): Use PRINT_OPERAND_PUNCT_VALID_P
+	to validate punctuation after percent.
+	* tm-m68k.h, tm-alliant.h, tm-ns32k.h, tm-vax.h, tm-i386.h:
+	Define PRINT_OPERAND_PUNCT_VALID_P.
 
 	* Version 1.35 released.
 

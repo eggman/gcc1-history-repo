@@ -31,10 +31,6 @@ struct obstack *rtl_obstack = &obstack;
 extern int xmalloc ();
 extern void free ();
 
-void walk_rtx ();
-void print_path ();
-void fatal ();
-
 /* Number instruction patterns handled, starting at 0 for first one.  */
 
 int insn_code_number;
@@ -57,6 +53,11 @@ struct link
   int vecelt;
 };
 
+void walk_rtx ();
+void print_path ();
+void fatal ();
+void fancy_abort ();
+
 void
 gen_insn (insn)
      rtx insn;
@@ -106,7 +107,7 @@ gen_peephole (peep)
          UNITS_PER_WORD * XVECLEN (insn, 0));\n");
   printf ("}\n\n");
 }
-
+
 void
 walk_rtx (x, path)
      rtx x;
@@ -235,11 +236,21 @@ xrealloc (ptr, size)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genextract: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
   exit (FATAL_EXIT_CODE);
+}
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
 }
 
 int
@@ -326,9 +337,10 @@ from the machine description file `md'.  */\n\n");
     }
   printf ("\n};\n\n");
 
+  printf ("void fatal_insn_not_found ();\n\n");
   printf ("void\ninsn_extract (insn)\n");
   printf ("     rtx insn;\n");
-  printf ("{\n  if (INSN_CODE (insn) == -1) abort ();\n");
+  printf ("{\n  if (INSN_CODE (insn) == -1) fatal_insn_not_found (insn);\n");
   printf ("  (*insn_extract_fn[INSN_CODE (insn)]) (PATTERN (insn));\n}\n");
 
   fflush (stdout);

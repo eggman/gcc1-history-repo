@@ -21,7 +21,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.23}
+\def\texinfoversion{2.1}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -291,27 +291,67 @@
 
 \let\c=\comment
 
-\long\def\ignore #1\end ignore{}
+% Prevent errors for section commands.
+% Used in @ignore and in failing conditionals.
+\def\ignoresections{%
+\let\chapter=\relax
+\let\unnumbered=\relax
+\let\unnumberedsec=\relax
+\let\unnumberedsection=\relax
+\let\unnumberedsubsec=\relax
+\let\unnumberedsubsection=\relax
+\let\unnumberedsubsubsec=\relax
+\let\unnumberedsubsubsection=\relax
+\let\section=\relax
+\let\subsec=\relax
+\let\subsubsec=\relax
+\let\subsection=\relax
+\let\subsubsection=\relax
+\let\appendix=\relax
+\let\appendixsec=\relax
+\let\appendixsection=\relax
+\let\appendixsubsec=\relax
+\let\appendixsubsection=\relax
+\let\appendixsubsubsec=\relax
+\let\appendixsubsubsection=\relax
+}
 
-\outer\def\ifset{\parsearg\ifsetxxx}
+\def\ignore{\begingroup\ignoresections\ignorexxx}
+\long\def\ignorexxx #1\end ignore{\endgroup}
 
-\def\ifsetxxx #1#2\end ifset{%
-\expandafter\ifx\csname IF#1\endcsname\relax \else #2\fi}
+% Conditionals to test whether a flag is set.
 
-\outer\def\ifclear{\parsearg\ifclearxxx}
+\outer\def\ifset{\begingroup\ignoresections\parsearg\ifsetxxx}
 
-\def\ifclearxxx #1#2\end ifclear{%
-\expandafter\ifx\csname IF#1\endcsname\relax #2\fi}
+\def\ifsetxxx #1{\endgroup
+\expandafter\ifx\csname IF#1\endcsname\relax \let\temp=\ifsetfail
+\else \let\temp=\relax \fi
+\temp}
+\def\Eifset{}
+\def\ifsetfail{\begingroup\ignoresections\ifsetfailxxx}
+\long\def\ifsetfailxxx #1\end ifset{\endgroup}
+
+\outer\def\ifclear{\begingroup\ignoresections\parsearg\ifclearxxx}
+
+\def\ifclearxxx #1{\endgroup
+\expandafter\ifx\csname IF#1\endcsname\relax \let\temp=\relax
+\else \let\temp=\ifclearfail \fi
+\temp}
+\def\Eifclear{}
+\def\ifclearfail{\begingroup\ignoresections\ifclearfailxxx}
+\long\def\ifclearfailxxx #1\end ifclear{\endgroup}
 
 % Some texinfo constructs that are trivial in tex
 
 \def\iftex{}
 \def\Eiftex{}
-\long\def\ifinfo #1\end ifinfo{}
+\def\ifinfo{\begingroup\ignoresections\ifinfoxxx}
+\long\def\ifinfoxxx #1\end ifinfo{\endgroup}
+
 \long\def\menu #1\end menu{}
 \def\asis#1{#1}
 
-\def\node{\parsearg\nodezzz}
+\def\node{\ENVcheck\parsearg\nodezzz}
 \def\nodezzz#1{\nodexxx [#1,]}
 \def\nodexxx[#1,#2]{\gdef\lastnode{#1}}
 \let\lastnode=\relax
@@ -324,9 +364,24 @@
 \expandafter\expandafter\expandafter\unnumbsetref{\lastnode}\fi
 \let\lastnode=\relax}
 
-\let\refill=\relax
+\def\appendixnoderef{\ifx\lastnode\relax\else
+\expandafter\expandafter\expandafter\appendixsetref{\lastnode}\fi
+\let\lastnode=\relax}
 
-\let\setfilename=\comment
+\let\refill=\relax
+  
+% @setfilename is done at the beginning of every texinfo file.
+% So open here the files we need to have open while reading the input.
+% This makes it possible to make a .fmt file for texinfo.
+\def\setfilename{%
+   \readauxfile
+   \opencontents
+   \openindices
+   \fixbackslash  % Turn off hack to swallow `\input texinfo'.
+   \comment % Ignore the actual filename.
+}
+
+\outer\def\bye{\pagealignmacro\tracingstats=1\ptexend}
 
 \def\inforef #1{\inforefzzz #1,,,,**}
 \def\inforefzzz #1,#2,#3,#4**{See Info file \file{\losespace#3{}}, node `\losespace#1{}'}
@@ -359,8 +414,10 @@
 
 % Fonts for indices
 \font\indit=cmti9 \font\indrm=cmr9
+\font\indtt=cmtt9
 \def\indbf{\indrm} \def\indsl{\indit}
-\def\indexfonts{\let\it=\indit \let\sl=\indsl \let\bf=\indbf \let\rm=\indrm}
+\def\indexfonts{\let\it=\indit \let\sl=\indsl \let\bf=\indbf \let\rm=\indrm
+\let\tt=\indtt}
 
 % Fonts for headings
 \font\chaprm=cmbx10 scaled \magstep3
@@ -399,47 +456,115 @@
 % Count depth in font-changes, for error checks
 \newcount\fontdepth \fontdepth=0
 
+% Font for table of contents.
+\font\truesecrm=cmr12
+
 %% Add scribe-like font environments, plus @l for inline lisp (usually sans
 %% serif) and @ii for TeX italic
 
-\def\i#1{{\sl #1}}
-\let\var=\i
-\let\dfn=\i
-\let\emph=\i
-\let\cite=\i
+% \smartitalic{ARG} outputs arg in italics, followed by an italic correction
+% unless the following character is such as not to need one.
+\def\smartitalicx{\ifx\next,\else\ifx\next-\else\ifx\next.\else\/\fi\fi\fi}
+\def\smartitalic#1{{\sl #1}\futurelet\next\smartitalicx}
+
+\let\i=\smartitalic
+\let\var=\smartitalic
+\let\dfn=\smartitalic
+\let\emph=\smartitalic
+\let\cite=\smartitalic
 
 \def\b#1{{\bf #1}}
 \let\strong=\b
 
 \def\t#1{{\tt \rawbackslash \frenchspacing #1}\null}
 \let\ttfont = \t
-\let\kbd=\t
-\let\code=\t
-\def\samp #1{`{\tt \rawbackslash \frenchspacing #1}'\null}
+%\def\samp #1{`{\tt \rawbackslash \frenchspacing #1}'\null}
+\def\samp #1{`\tclose{#1}'\null}
 \def\key #1{{\tt \uppercase{#1}}\null}
 \def\ctrl #1{{\tt \rawbackslash \hat}#1}
 
 \let\file=\samp
 
+% @code is a modification of @t,
+% which makes spaces the same size as normal in the surrounding text.
+\newdimen\tclosesave
+\newdimen\tcloserm
+\def\tclose#1{{\rm \tcloserm=\fontdimen2\font \tt \tclosesave=\fontdimen2\font
+\fontdimen2\font=\tcloserm
+\def\ {{\fontdimen2\font=\tclosesave{} }}%
+ \rawbackslash \frenchspacing #1\fontdimen2\font=\tclosesave}\null}
+\let\code=\tclose
+%\let\exp=\tclose  %Was temporary
+
+% @kbd is like @code, except that if the argument is just one @key command, 
+% then @kbd has no effect.
+
+\def\xkey{\key}
+\def\kbdfoo#1#2#3*{\def\one{#1}\def\three{#3}\def\threex{??}%
+\ifx\one\xkey\ifx\threex\three \key{#2}
+\else\tclose{\look}\fi
+\else\tclose{\look}\fi}
+
+\def\kbd#1{\def\look{#1}\expandafter\kbdfoo\look??*}
+
 \def\l#1{{\li #1}\null}		% 
 
 \def\r#1{{\rm #1}}		% roman font
-\def\sc#1{{\\smallcaps #1}}	% smallcaps font
+\def\sc#1{{\smallcaps #1}}	% smallcaps font
 \def\ii#1{{\it #1}}		% italic font
 
+\message{page headings,}
+
+\newskip\titlepagetopglue \titlepagetopglue = 1.5in
+\newskip\titlepagebottomglue \titlepagebottomglue = 2pc
+
+% First the title page.  Must do @settitle before @titlepage.
+\font\titlerm = cmbx12 scaled \magstep2
 \def\titlefont#1{{\titlerm #1}}
 
-\def\titlepage{\begingroup \parindent=0pt \hbox{}%
-\let\oldpage=\page
-\def\page{\oldpage \hbox{}}}
+\newtoks\realeverypar
+\newif\ifseenauthor
+
+\def\titlepage{\begingroup \parindent=0pt \textfonts
+   \font\subtitlerm = cmr10 scaled \magstephalf
+   \def\subtitlefont{\subtitlerm \normalbaselineskip = 12pt \normalbaselines}%
+   %
+   \font\authorrm = cmbx12 scaled \magstep1
+   \def\authorfont{\authorrm \normalbaselineskip = 16pt \normalbaselines}%
+   %
+   % The first subtitle should have some space before it, but not the
+   % others.  They all should be ragged left.
+% This code caused a bug, since two groups were started, but only
+% one was ended.  Also, I can't see the point of this code.
+%   \begingroup \realeverypar = {\leftskip = 2in plus 3em minus 1em
+%                    \parfillskip = 0pt}%
+%   \everypar = {\vglue \baselineskip \the\realeverypar
+%                \everypar={\the\realeverypar}}%
+   %
+   % Now you can print the title using @title.
+   \def\title{\parsearg\titlezzz}%
+   \def\titlezzz##1{\leftline{\titlefont{##1}
+		    \vskip4pt \hrule height 4pt \vskip4pt}}%
+   \vglue\titlepagetopglue
+   %
+   % Now you can put text using @subtitle.
+   \def\subtitle{\parsearg\subtitlezzz}%
+   \def\subtitlezzz##1{{\subtitlefont \rightline{##1}}}%
+   %
+   % @author should come last, but may come many times.
+   \def\author{\parsearg\authorzzz}%
+   \def\authorzzz##1{\ifseenauthor\else\vskip 0pt plus 1filll\seenauthortrue\fi
+      {\authorfont \leftline{##1}}}%
+   %  
+   % Most title ``pages'' are actually two pages long, with space
+   % at the top of the second.  We don't want the ragged left on the second.
+   \let\oldpage = \page
+%   \def\page{\vskip4pt \hrule height 2pt \vskip\titlepagebottomglue
+%      \oldpage \endgroup\hrule height0pt\relax}%
+   \def\page{\oldpage \hbox{}}
+}
 
 \def\Etitlepage{\endgroup\page\HEADINGSon}
-
-% Make altmode in file print out right
-
-\catcode `\^^[=\active \def^^[{$\diamondsuit$}
-
-\message{page headings,}
 
 %%% Set up page headings and footings.
 
@@ -517,7 +642,7 @@
 % title on inside top of left hand pages, and page numbers on outside top
 % edge of all pages.
 \def\HEADINGSdouble{
-\pagealignmacro
+%\pagealignmacro
 \global\pageno=1
 \global\evenfootline={\hfil}
 \global\oddfootline={\hfil}
@@ -527,7 +652,7 @@
 % For single-sided printing, chapter title goes across top left of page,
 % page number on top right.
 \def\HEADINGSsingle{
-\pagealignmacro
+%\pagealignmacro
 \global\pageno=1
 \global\evenfootline={\hfil}
 \global\oddfootline={\hfil}
@@ -680,6 +805,11 @@ July\or August\or September\or October\or November\or December\fi
 \def\bullet{$\ptexbullet$}
 \def\minus{$-$}
 
+% Set sfcode to normal for the chars that usually have another value.
+% These are `.?!:;,'
+\def\frenchspacing{\sfcode46=1000 \sfcode63=1000 \sfcode33=1000
+  \sfcode58=1000 \sfcode59=1000 \sfcode44=1000 }
+
 \def\enumerate{\itemizey{\the\itemno.}\Eenumerate\flushcr}
 
 % Definition of @item while inside @itemize.
@@ -768,13 +898,36 @@ July\or August\or September\or October\or November\or December\fi
 \def\sl{\realbackslash sl }%
 \def\dots{\realbackslash dots }%
 \def\copyright{\realbackslash copyright }%
+\def\tclose##1{\realbackslash tclose {##1}}%
+\def\code##1{\realbackslash code {##1}}%
+\def\samp##1{\realbackslash samp {##1}}%
+\def\r##1{\realbackslash r {##1}}%
+\def\i##1{\realbackslash i {##1}}%
+\def\b##1{\realbackslash b {##1}}%
+\def\cite##1{\realbackslash cite {##1}}%
+\def\key##1{\realbackslash key {##1}}%
+\def\file##1{\realbackslash file {##1}}%
+\def\var##1{\realbackslash var {##1}}%
+\def\kbd##1{\realbackslash kbd {##1}}%
 }
 
 % \indexnofonts no-ops all font-change commands.
 % This is used when outputting the strings to sort the index by.
 \def\indexdummyfont#1{#1}
 \def\indexnofonts{%
+\let\r=\indexdummyfont
+\let\i=\indexdummyfont
+\let\b=\indexdummyfont
+\let\emph=\indexdummyfont
+\let\strong=\indexdummyfont
+\let\cite=\indexdummyfont
+\let\sc=\indexdummyfont
+%Don't no-op \tt, since it isn't a user-level command
+% and is used in the definitions of the actuve chars like <, >, |...
+%\let\tt=\indexdummyfont
+\let\tclose=\indexdummyfont
 \let\code=\indexdummyfont
+\let\file=\indexdummyfont
 \let\samp=\indexdummyfont
 \let\kbd=\indexdummyfont
 \let\key=\indexdummyfont
@@ -874,6 +1027,15 @@ July\or August\or September\or October\or November\or December\fi
 \catcode`\%=\other\catcode`\&=\other\catcode`\#=\other
 \catcode`\$=\other\catcode`\_=\other
 \catcode`\~=\other
+% The following don't help, since the chars were translated
+% when the raw index was written, and their fonts were discarded
+% due to \indexnofonts.
+%\catcode`\"=\active
+%\catcode`\^=\active
+%\catcode`\_=\active
+%\catcode`\|=\active
+%\catcode`\<=\active
+%\catcode`\>=\active
 \def\indexbackslash{\rawbackslashxx}
 \indexfonts\rm \tolerance=9500 \advance\baselineskip -1pt
 \begindoublecolumns
@@ -894,12 +1056,12 @@ July\or August\or September\or October\or November\or December\fi
 {\let\tentt=\sectt \let\sf=\sectt
 \ifdim\lastskip<\initialskipamount
 \removelastskip \penalty-200 \vskip \initialskipamount\fi
-\line{\secbf#1\hfill}\kern 2pt\penalty3000}}
+\line{\secbf#1\hfill}\kern 2pt\penalty10000}}
 
 \outer\def\entry #1#2{
 {\parfillskip=0in \parskip=0in \parindent=0in
 \hangindent=1in \hangafter=1%
-\noindent\hbox{#1}\leaders\Dotsbox\hskip 0pt plus 1filll #2\par
+\noindent\hbox{#1}\dotfill #2\par
 }}
 
 \def\primary #1{\line{#1\hfil}}
@@ -909,7 +1071,7 @@ July\or August\or September\or October\or November\or December\fi
 \def\secondary #1#2{
 {\parfillskip=0in \parskip=0in
 \hangindent =1in \hangafter=1
-\noindent\hskip\secondaryindent\hbox{#1}\leaders\Dotsbox\hskip 0pt plus 1filll#2\par
+\noindent\hskip\secondaryindent\hbox{#1}\dotfill #2\par
 }}
 
 %% Define two-column mode, which is used in indexes.
@@ -920,6 +1082,7 @@ July\or August\or September\or October\or November\or December\fi
 
 \newdimen\doublecolumnhsize  \doublecolumnhsize = 3.11in
 \newdimen\doublecolumnvsize  \doublecolumnvsize = 19.1in
+\newdimen\availdimen@
 
 \def\begindoublecolumns{\begingroup
   \output={\global\setbox\partialpage=\vbox{\unvbox255\kern -\topskip \kern \baselineskip}}\eject
@@ -935,9 +1098,29 @@ July\or August\or September\or October\or November\or December\fi
   \hsize=\doublecolumnhsize % have to restore this since output routine
 %	      changes it to set cropmarks (P. A. MacKay, 12 Nov. 1986)
   \wd0=\hsize \wd2=\hsize \hbox to\pagewidth{\box0\hfil\box2}}
-\def\balancecolumns{\setbox0=\vbox{\unvbox255} \dimen@=\ht0
+\def\balancecolumns{%
+% Unset the glue.
+  \setbox255=\vbox{\unvbox255}
+  \dimen@=\ht255
   \advance\dimen@ by\topskip \advance\dimen@ by-\baselineskip
-  \divide\dimen@ by2 \splittopskip=\topskip
+  \divide\dimen@ by2
+  \availdimen@=\pageheight \advance\availdimen@ by-\ht\partialpage
+% If the remaining data is too big for one page,
+% output one page normally, then work with what remains.
+  \ifdim \dimen@>\availdimen@
+   {
+     \splittopskip=\topskip \splitmaxdepth=\maxdepth
+     \dimen@=\pageheight \advance\dimen@ by-\ht\partialpage
+     \setbox0=\vsplit255 to\dimen@ \setbox2=\vsplit255 to\dimen@
+     \onepageout\pagesofar
+   }
+% Recompute size of what remains, in case we just output some of it.
+  \dimen@=\ht255
+  \advance\dimen@ by\topskip \advance\dimen@ by-\baselineskip
+  \divide\dimen@ by2
+  \fi
+  \setbox0=\vbox{\unvbox255}
+  \splittopskip=\topskip
   {\vbadness=10000 \loop \global\setbox3=\copy0
     \global\setbox1=\vsplit3 to\dimen@
     \ifdim\ht3>\dimen@ \global\advance\dimen@ by1pt \repeat}
@@ -958,7 +1141,8 @@ July\or August\or September\or October\or November\or December\fi
 \def\appendixletter{\char\the\appendixno}
 
 \newwrite \contentsfile
-\openout \contentsfile = \jobname.toc
+% This is called from \setfilename.
+\def\opencontents{\openout \contentsfile = \jobname.toc}
 
 % Each @chapter defines this as the name of the chapter.
 % page headings and footings can use it.  @section does likewise
@@ -969,165 +1153,170 @@ July\or August\or September\or October\or November\or December\fi
 %
 }
 
+\def\chapternofonts{%
+\let\rawbackslash=\relax%
+\let\frenchspacing=\relax%
+\def\char{\realbackslash char}
+\def\tclose##1{\realbackslash tclose {##1}}
+\def\code##1{\realbackslash code {##1}}
+\def\samp##1{\realbackslash samp {##1}}
+\def\r##1{\realbackslash r {##1}}
+\def\i##1{\realbackslash i {##1}}
+\def\b##1{\realbackslash b {##1}}
+\def\cite##1{\realbackslash cite {##1}}
+\def\key##1{\realbackslash key {##1}}
+\def\file##1{\realbackslash file {##1}}
+\def\var##1{\realbackslash var {##1}}
+\def\kbd##1{\realbackslash kbd {##1}}
+}
+
 \outer\def\chapter{\parsearg\chapterzzz}
 \def\chapterzzz #1{\seccheck{chapter}%
 \secno=0 \subsecno=0 \subsubsecno=0 \global\advance \chapno by 1 \message{Chapter \the\chapno}%
 \chapmacro {#1}{\the\chapno}%
 \gdef\thissection{#1}\gdef\thischapter{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash chapentry {#1}{\the\chapno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
 \donoderef %
-}
+}}
 
 \outer\def\appendix{\parsearg\appendixzzz}
 \def\appendixzzz #1{\seccheck{appendix}%
 \secno=0 \subsecno=0 \subsubsecno=0 \global\advance \appendixno by 1 \message{Appendix \appendixletter}%
 \chapmacro {#1}{Appendix \appendixletter}%
 \gdef\thischapter{#1}\gdef\thissection{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash chapentry {#1}{Appendix \appendixletter}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
-\unnumbnoderef %
-}
+\appendixnoderef %
+}}
 
 \outer\def\unnumbered{\parsearg\unnumberedzzz}
 \def\unnumberedzzz #1{\seccheck{unnumbered}%
 \secno=0 \subsecno=0 \subsubsecno=0 \message{(#1)}
 \unnumbchapmacro {#1}%
 \gdef\thischapter{#1}\gdef\thissection{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash unnumbchapentry {#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp  %
 \unnumbnoderef %
-}
+}}
 
 \outer\def\section{\parsearg\sectionzzz}
 \def\sectionzzz #1{\seccheck{section}%
 \subsecno=0 \subsubsecno=0 \global\advance \secno by 1 %
 \gdef\thissection{#1}\secheading {#1}{\the\chapno}{\the\secno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash secentry %
 {#1}{\the\chapno}{\the\secno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \donoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\appendixsection{\parsearg\appendixsectionzzz}
 \outer\def\appendixsec{\parsearg\appendixsectionzzz}
 \def\appendixsectionzzz #1{\seccheck{appendixsection}%
 \subsecno=0 \subsubsecno=0 \global\advance \secno by 1 %
 \gdef\thissection{#1}\secheading {#1}{\appendixletter}{\the\secno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash secentry %
 {#1}{\appendixletter}{\the\secno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
-\unnumbnoderef %
+\appendixnoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\unnumberedsec{\parsearg\unnumberedseczzz}
 \def\unnumberedseczzz #1{\seccheck{unnumberedsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash unnumbsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\subsection{\parsearg\subsectionzzz}
 \def\subsectionzzz #1{\seccheck{subsection}%
 \gdef\thissection{#1}\subsubsecno=0 \global\advance \subsecno by 1 %
 \subsecheading {#1}{\the\chapno}{\the\secno}{\the\subsecno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash subsecentry %
 {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \donoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\appendixsubsec{\parsearg\appendixsubseczzz}
 \def\appendixsubseczzz #1{\seccheck{appendixsubsec}%
 \gdef\thissection{#1}\subsubsecno=0 \global\advance \subsecno by 1 %
 \subsecheading {#1}{\appendixletter}{\the\secno}{\the\subsecno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash subsecentry %
 {#1}{\appendixletter}{\the\secno}{\the\subsecno}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
-\unnumbnoderef %
+\appendixnoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\unnumberedsubsec{\parsearg\unnumberedsubseczzz}
 \def\unnumberedsubseczzz #1{\seccheck{unnumberedsubsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash unnumbsubsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\subsubsection{\parsearg\subsubsectionzzz}
 \def\subsubsectionzzz #1{\seccheck{subsubsection}%
 \gdef\thissection{#1}\global\advance \subsubsecno by 1 %
 \subsubsecheading {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\the\subsubsecno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash subsubsecentry %
 {#1}{\the\chapno}{\the\secno}{\the\subsecno}{\the\subsubsecno}{\noexpand\folio}}}%\
 \escapechar=`\\%
 \write \contentsfile \temp %
 \donoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\appendixsubsubsec{\parsearg\appendixsubsubseczzz}
 \def\appendixsubsubseczzz #1{\seccheck{appendixsubsubsec}%
 \gdef\thissection{#1}\global\advance \subsubsecno by 1 %
 \subsubsecheading {#1}{\appendixletter}{\the\secno}{\the\subsecno}{\the\subsubsecno}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash subsubsecentry{#1}%
 {\appendixletter}{\the\secno}{\the\subsecno}{\the\subsubsecno}{\noexpand\folio}}}%\
 \escapechar=`\\%
 \write \contentsfile \temp %
-\unnumbnoderef %
+\appendixnoderef %
 \penalty 10000 %
-}
+}}
 
 \outer\def\unnumberedsubsubsec{\parsearg\unnumberedsubsubseczzz}
 \def\unnumberedsubsubseczzz #1{\seccheck{unnumberedsubsubsec}%
 \plainsecheading {#1}\gdef\thissection{#1}%
-\let\rawbackslash=\relax%
-\let\frenchspacing=\relax%
+{\chapternofonts%
 \edef\temp{{\realbackslash unnumbsubsubsecentry{#1}{\noexpand\folio}}}%
 \escapechar=`\\%
 \write \contentsfile \temp %
 \unnumbnoderef %
 \penalty 10000 %
-}
+}}
 
 % These are variants which are not "outer", so they can appear in @ifinfo.
 \def\infounnumbered{\parsearg\unnumberedzzz}
@@ -1259,91 +1448,169 @@ July\or August\or September\or October\or November\or December\fi
 
 \message{toc printing,}
 
-\def\Dotsbox{\hbox to 1em{\hss.\hss}} % Used by index macros
+% Finish up the main text and prepare to read what we've written
+% to \contentsfile.
 
-\def\finishcontents{%
-\ifnum\pageno>0 %
-\pagealignmacro %
-\immediate\closeout \contentsfile%
-\pageno=-1		% Request roman numbered pages
-\fi}
+\def\startcontents#1{%
+   \ifnum \pageno>0
+      \pagealignmacro
+      \immediate\closeout \contentsfile
+      \pageno = -1		% Request roman numbered pages.
+   \fi
+   \unnumbchapmacro{#1}\def\thischapter{#1}%
+   \begingroup   		% Set up to handle contents files properly.
+      \catcode`\\=0  \catcode`\{=1  \catcode`\}=2  \catcode`\@=11
+      \raggedbottom             % Worry more about breakpoints than the bottom.
+      \advance\hsize by -1in    % Don't use the full line length.
+}
 
+  
+% Normal (long) toc.
 \outer\def\contents{%
-\finishcontents %
-\unnumbchapmacro{Table of Contents}
-\def\thischapter{Table of Contents}
-{\catcode`\\=0
-\catcode`\{=1		% Set up to handle contents files properly
-\catcode`\}=2
-\catcode`\@=11
-\input \jobname.toc
+   \startcontents{Table of Contents}%
+      \input \jobname.toc
+   \endgroup
+   \vfill \eject
 }
-\vfill \eject}
 
+% And just the chapters.
 \outer\def\summarycontents{%
-\finishcontents %
-\unnumbchapmacro{Summary Table of Contents}
-\def\thischapter{Summary Table of Contents}
-{\catcode`\\=0
-\catcode`\{=1		% Set up to handle contents files properly
-\catcode`\}=2
-\catcode`\@=11
-\def\smallbreak{}
-\def\secentry ##1##2##3##4{}
-\def\subsecentry ##1##2##3##4##5{}
-\def\subsubsecentry ##1##2##3##4##5##6{}
-\def\unnumbsecentry ##1##2{}
-\def\unnumbsubsecentry ##1##2{}
-\def\unnumbsubsubsecentry ##1##2{}
-\let\medbreak=\smallbreak
-\input \jobname.toc
+   \startcontents{Short Contents}%
+      %
+      \let\chapentry = \shortchapentry
+      \let\unnumbchapentry = \shortunnumberedentry
+      % We want a true roman here for the page numbers.
+      \secfonts \let\rm = \truesecrm \rm
+      \advance\baselineskip by 1pt % Open it up a little.
+      \def\secentry ##1##2##3##4{}
+      \def\unnumbsecentry ##1##2{}
+      \def\subsecentry ##1##2##3##4##5{}
+      \def\unnumbsubsecentry ##1##2{}
+      \def\subsubsecentry ##1##2##3##4##5##6{}
+      \def\unnumbsubsubsecentry ##1##2{}
+      \input \jobname.toc
+   \endgroup
+   \vfill \eject
 }
-\vfill \eject}
+\let\shortcontents = \summarycontents
 
-\outer\def\bye{\pagealignmacro\tracingstats=1\ptexend}
-
-% These macros generate individual entries in the table of contents
+% These macros generate individual entries in the table of contents.
 % The first argument is the chapter or section name.
 % The last argument is the page number.
 % The arguments in between are the chapter number, section number, ...
 
-\def\chapentry #1#2#3{%
-\medbreak
-\line{#2.\space#1\leaders\hbox to 1em{\hss.\hss}\hfill #3}
+% Chapter-level things, for both the long and short contents.
+\def\chapentry#1#2#3{\dochapentry{#2\labelspace#1}{#3}}
+\def\shortchapentry#1#2#3{%
+   \line{{#2\labelspace #1}\dotfill\doshortpageno{#3}}%
 }
 
-\def\unnumbchapentry #1#2{%
-\medbreak
-\line{#1\leaders\Dotsbox\hfill #2}
+\def\unnumbchapentry#1#2{\dochapentry{#1}{#2}}
+\def\shortunnumberedentry#1#2{%
+   \line{#1\dotfill\doshortpageno{#2}}%
 }
 
-\def\secentry #1#2#3#4{%
-\line{\enspace\enspace#2.#3\space#1\leaders\Dotsbox\hfill#4}
+% Sections.
+\def\secentry#1#2#3#4{\dosecentry{#2.#3\labelspace#1}{#4}}
+\def\unnumbsecentry#1#2{\dosecentry{#1}{#2}}
+
+% Subsections.
+\def\subsecentry#1#2#3#4#5{\dosubsecentry{#2.#3.#4\labelspace#1}{#5}}
+\def\unnumbsubsecentry#1#2{\dosubsecentry{#1}{#2}}
+
+% And subsubsections.
+\def\subsubsecentry#1#2#3#4#5#6{\dosubsubsecentry{#2.#3.#4.#5\labelspace#1}{#6}}
+\def\unnumbsubsecentry#1#2{\dosubsubsecentry{#1}{#2}}
+
+
+% This parameter controls the indentation of the various levels.
+\newdimen\tocindent \tocindent = 3pc
+
+% Now for the actual typesetting. In all these, #1 is the text and #2 is the 
+% page number.
+%
+% If the toc has to be broken over pages, we would want to be at chapters 
+% if at all possible; hence the \penalty.
+\def\dochapentry#1#2{%
+   \penalty-300 \vskip\baselineskip
+   \line{\chapentryfonts #1\dotfill \dopageno{#2}}%
+   \nobreak\vskip .25\baselineskip
 }
 
-\def\unnumbsecentry #1#2{%
-\line{\enspace\enspace#1\leaders\Dotsbox\hfill #2}
+\def\dosecentry#1#2{%
+   \line{\secentryfonts \hskip\tocindent #1\dotfill \dopageno{#2}}%
 }
 
-\def\subsecentry #1#2#3#4#5{%
-\line{\enspace\enspace\enspace\enspace
-#2.#3.#4\space#1\leaders\Dotsbox\hfill #5}
+\def\dosubsecentry#1#2{%
+   \line{\subsecentryfonts \hskip2\tocindent #1\dotfill \dopageno{#2}}%
 }
 
-\def\unnumbsubsecentry #1#2{%
-\line{\enspace\enspace\enspace\enspace#1\leaders\Dotsbox\hfill #2}
+\def\dosubsubsecentry#1#2{%
+   \line{\subsubsecentryfonts \hskip3\tocindent #1\dotfill \dopageno{#2}}%
 }
 
-\def\subsubsecentry #1#2#3#4#5#6{%
-\line{\enspace\enspace\enspace\enspace\enspace\enspace
-#2.#3.#4.#5\space#1\leaders\Dotsbox\hfill #6}
-}
+% Space between chapter (or whatever) number and the title.
+\def\labelspace{\hskip1em \relax}
 
-\def\unnumbsubsubsecentry #1#2{%
-\line{\enspace\enspace\enspace\enspace\enspace\enspace#1\leaders\Dotsbox\hfill #2}
-}
+\def\dopageno#1{{\rm #1}}
+\def\doshortpageno#1{{\rm #1}}
+
+\def\chapentryfonts{\secfonts \rm}
+\def\secentryfonts{\textfonts}
+\let\subsecentryfonts = \textfonts
+\let\subsubsecentryfonts = \textfonts
+
 
 \message{environments,}
+
+% Since these characters are used in examples, it should be an even number of 
+% \tt widths. Each \tt character is 1en, so two makes it 1em.
+% Furthermore, these definitions must come after we define our fonts.
+\newbox\dblarrowbox    \newbox\longdblarrowbox
+\newbox\pushcharbox    \newbox\bullbox
+\newbox\equivbox       \newbox\errorbox
+
+\let\ptexequiv = \equiv
+
+{\tentt
+\global\setbox\dblarrowbox = \hbox to 1em{\hfil$\Rightarrow$\hfil}
+\global\setbox\longdblarrowbox = \hbox to 1em{\hfil$\mapsto$\hfil}
+\global\setbox\pushcharbox = \hbox to 1em{\hfil$\dashv$\hfil}
+\global\setbox\equivbox = \hbox to 1em{\hfil$\ptexequiv$\hfil}
+% Adapted from the manmac format (p.420 of TeXbook)
+\global\setbox\bullbox = \hbox to 1em{\kern.15em\vrule height .75ex width .85ex
+                                      depth .1ex\hfil}
+}
+
+\def\point{$\star$}
+
+\def\result{\leavevmode\raise.15ex\copy\dblarrowbox}
+\def\expansion{\leavevmode\raise.1ex\copy\longdblarrowbox}
+\def\print{\leavevmode\lower.1ex\copy\pushcharbox}
+
+\def\equiv{\leavevmode\lower.1ex\copy\equivbox}
+
+% Does anyone really want this?
+% \def\bull{\leavevmode\copy\bullbox}
+
+% Adapted from the TeXbook's \boxit.
+\dimen0 = 3em % Width of the box.
+\dimen2 = .55pt % Thickness of rules
+% The text. (`r' is open on the right, `e' somewhat less so on the left.)
+\setbox0 = \hbox{\kern-.75pt \tensf error\kern-1.5pt}
+
+\global\setbox\errorbox=\hbox to \dimen0{\hfil
+   \vbox{\hsize = \dimen0 \advance\hsize by -5.8pt % Space to left+right.
+      \advance\hsize by -2\dimen2 % Rules.
+      \hrule height\dimen2
+      \hbox{\vrule width\dimen2 \kern3pt          % Space to left of text.
+         \vtop{\kern2.4pt \box0 \kern2.4pt}% Space above/below.
+         \kern3pt\vrule width\dimen2}% Space to right.
+      \hrule height\dimen2}
+    \hfil}
+
+% The @error{} command.
+\def\error{\leavevmode\lower.7ex\copy\errorbox}
 
 % @tex ... @end tex    escapes into raw Tex temporarily.
 % One exception: @ is still an escape character, so that @end tex works.
@@ -1355,6 +1622,7 @@ July\or August\or September\or October\or November\or December\fi
 \catcode `\^=7 \catcode `\_=8 \catcode `\~=13 \let~=\tie
 \catcode `\%=14
 \catcode`\"=12
+\catcode`\==12
 \catcode`\|=12
 \catcode`\<=12
 \catcode`\>=12
@@ -1524,7 +1792,7 @@ July\or August\or September\or October\or November\or December\fi
 % First, allow user to change definition object font (\df) internally
 \def\setdeffont #1 {\csname DEF#1\endcsname}
 
-\newskip\defbodyindent \defbodyindent=36pt
+\newskip\defbodyindent \defbodyindent=.4in
 \newskip\defargsindent \defargsindent=50pt
 \newskip\deftypemargin \deftypemargin=12pt
 \newskip\deflastargmargin \deflastargmargin=18pt
@@ -1592,7 +1860,7 @@ July\or August\or September\or October\or November\or December\fi
 % so that it will exit this group.
 \def#1{\endgraf\endgroup\medbreak}%
 \def#2{\begingroup\obeylines\activeparens\spacesplit#3}%
-\parindent=0in \leftskip=\defbodyindent %
+\parindent=0in \leftskip=\defbodyindent \rightskip=\defbodyindent %
 \begingroup\obeylines\activeparens\spacesplit#3}
 
 \def\defmethparsebody #1#2#3#4 {\begingroup\inENV %
@@ -1601,8 +1869,18 @@ July\or August\or September\or October\or November\or December\fi
 % so that it will exit this group.
 \def#1{\endgraf\endgroup\medbreak}%
 \def#2##1 {\begingroup\obeylines\activeparens\spacesplit{#3{##1}}}%
-\parindent=0in \leftskip=\defbodyindent %
+\parindent=0in \leftskip=\defbodyindent \rightskip=\defbodyindent %
 \begingroup\obeylines\activeparens\spacesplit{#3{#4}}}
+
+\def\defopparsebody #1#2#3#4#5 {\begingroup\inENV %
+\medbreak %
+% Define the end token that this defining construct specifies
+% so that it will exit this group.
+\def#1{\endgraf\endgroup\medbreak}%
+\def#2##1 ##2 {\def#4{##1}%
+\begingroup\obeylines\activeparens\spacesplit{#3{##2}}}%
+\parindent=0in \leftskip=\defbodyindent %
+\begingroup\obeylines\activeparens\spacesplit{#3{#5}}}
 
 % Split up #2 at the first space token.
 % call #1 with two arguments:
@@ -1624,10 +1902,15 @@ July\or August\or September\or October\or November\or December\fi
 % First, define the processing that is wanted for arguments of \defun
 % Use this to expand the args and terminate the paragraph they make up
 
-\def\defunargs #1{\functionparens \sl #1%
+\def\defunargs #1{\functionparens \sl
+% Expand, preventing hyphenation at `-' chars.
+% Note that groups don't affect changes in \hyphenchar.
+\hyphenchar\sl=0
+#1%
+\hyphenchar\sl=45
 \ifnum\parencount=0 \else \errmessage{unbalanced parens in @def arguments}\fi%
 \interlinepenalty=10000
-\endgraf\vskip -\parskip \penalty 10000}
+\endgraf\penalty10000\vskip -\parskip }
 
 % Do complete processing of one @defun or @defunx line already parsed.
 
@@ -1678,7 +1961,7 @@ July\or August\or September\or October\or November\or December\fi
 % @defop {Funny Method} foo-class frobnicate argument
 
 \def\defop #1 {\def\defoptype{#1}%
-\defmethparsebody\Edefop\defopx\defopheader}
+\defopparsebody\Edefop\defopx\defopheader\defoptype}
 
 \def\defopheader #1#2#3{\dosubind {fn}{\code{#2}}{on #1}% Make entry in function index
 \begingroup\defname {#2}{\defoptype{} on #1}%
@@ -1697,7 +1980,7 @@ July\or August\or September\or October\or November\or December\fi
 % @defcv {Class Option} foo-class foo-flag
 
 \def\defcv #1 {\def\defcvtype{#1}%
-\defmethparsebody\Edefcv\defcvx\defcvheader}
+\defopparsebody\Edefcv\defcvx\defcvheader\defcvtype}
 
 \def\defcvarheader #1#2#3{%
 \dosubind {vr}{\code{#2}}{of #1}% Make entry in var index
@@ -1730,7 +2013,7 @@ July\or August\or September\or October\or November\or December\fi
 % This must expand the args and terminate the paragraph they make up
 \def\defvarargs #1{\normalparens #1%
 \interlinepenalty=10000
-\endgraf\vskip -\parskip \penalty 10000}
+\endgraf\penalty 10000\vskip -\parskip}
 
 % @defvr Counter foo-count
 
@@ -1795,18 +2078,23 @@ July\or August\or September\or October\or November\or December\fi
 \dosetq{#1-pg}{Ypagenumber}%
 \dosetq{#1-snt}{Ynothing}}
 
+\def\appendixsetref#1{%
+\dosetq{#1-pg}{Ypagenumber}%
+\dosetq{#1-snt}{Yappendixletterandtype}}
+
 % \xref and \pxref generate cross references to specified points.
 
 \def\pxref #1{see \xrefX [#1,,,,,,,]}
 \def\xref #1{See \xrefX [#1,,,,,,,]}
+\def\ref #1{\xrefX [#1,,,,,,,]}
 \def\xrefX [#1,#2,#3,#4,#5,#6]{%
 \setbox1=\hbox{\i{\losespace#5{}}}%
 \setbox0=\hbox{\losespace#3{}}%
 \ifdim \wd0 =0pt \setbox0=\hbox{\losespace#1{}}\fi%
 \ifdim \wd1 >0pt%
-section \unhbox0{} in \unhbox1%
+section `\unhbox0' in \unhbox1%
 \else%
-\refx{#1-snt} [\unhbox0], page\tie \refx{#1-pg}%
+\refx{#1-snt}{} [\unhbox0], page\tie \refx{#1-pg}{}%
 \fi }
 
 % \dosetq is the interface for calls from other macros
@@ -1835,19 +2123,30 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno %
 section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \fi \fi \fi }
 
+\def\Yappendixletterandtype{%
+\ifnum\secno=0 appendix\xreftie'char\the\appendixno %
+\else \ifnum \subsecno=0 section\xreftie'char\the\appendixno.\the\secno %
+\else \ifnum \subsubsecno=0 %
+section\xreftie'char\the\appendixno.\the\secno.\the\subsecno %
+\else %
+section\xreftie'char\the\appendixno.\the\secno.\the\subsecno.\the\subsubsecno %
+\fi \fi \fi }
+
 \gdef\xreftie{'tie}
 
-% Define @refx to reference a specific cross-reference string.
+% Define \refx{NAME}{SUFFIX} to reference a cross-reference string named NAME.
+% If its value is nonempty, SUFFIX is output afterward.
 
-\def\refx#1{%
+\def\refx#1#2{%
 {%
 \expandafter\ifx\csname X#1\endcsname\relax
 % If not defined, say something at least.
-\expandafter\gdef\csname X#1\endcsname {$<$undefined$>$}%
+\expandafter\gdef\csname X#1\endcsname {$\langle$un\-def\-in\-ed$\rangle$}#2%
 \message {WARNING: Cross-reference "#1" used but not yet defined}%
 \message {}%
 \fi %
-\csname X#1\endcsname %It's defined, so just use it.
+\setbox0=\hbox{\csname X#1\endcsname}%It's defined, so just use it.
+\ifdim\wd0>0pt \unhbox0{}#2\fi
 }}
 
 % Read the last existing aux file, if any.  No error if none exists.
@@ -1856,7 +2155,8 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \def\xrdef #1#2{
 {\catcode`\'=\other\expandafter \gdef \csname X#1\endcsname {#2}}}
 
-{
+\def\readauxfile{%
+\begingroup
 \catcode `\^^@=\other
 \catcode `\=\other
 \catcode `\=\other
@@ -1899,27 +2199,23 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \catcode `\$=\other
 \catcode `\#=\other
 \catcode `\&=\other
-
 % the aux file uses ' as the escape.
 % Turn off \ as an escape so we do not lose on
 % entries which were dumped with control sequences in their names.
 % For example, 'xrdef {$\leq $-fun}{page ...} made by @defun ^^
 % Reference to such entries still does not work the way one would wish,
 % but at least they do not bomb out when the aux file is read in.
-
 \catcode `\{=1 \catcode `\}=2
 \catcode `\%=\other
 \catcode `\'=0
 \catcode `\\=\other
-
-'openin 1 'jobname.aux
-'ifeof 1 'else 'closein 1 'input 'jobname.aux
-'fi
-}
-
+\openin 1 \jobname.aux
+\ifeof 1 \else \closein 1 \input \jobname.aux
+\fi
 % Open the new aux file.  Tex will close it automatically at exit.
-
 \openout \auxfile=\jobname.aux
+\endgroup}
+
 
 % Footnotes.
 
@@ -1949,12 +2245,14 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 
 \message{and turning on texinfo input format.}
 
-\newindex{cp}
-\newcodeindex{fn}
-\newcodeindex{vr}
-\newcodeindex{tp}
-\newcodeindex{ky}
-\newcodeindex{pg}
+\def\openindices{%
+   \newindex{cp}%
+   \newcodeindex{fn}%
+   \newcodeindex{vr}%
+   \newcodeindex{tp}%
+   \newcodeindex{ky}%
+   \newcodeindex{pg}%
+}
 
 % Set some numeric style parameters, for 8.5 x 11 format.
 
@@ -2014,6 +2312,10 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \chardef \gtr=`\>
 \catcode`\>=\active
 \def>{{\tt \gtr}}
+\catcode`\+=\active
+\def+{{\tt \char 43}}
+%\catcode 27=\active
+%\def^^[{$\diamondsuit$}
 
 \catcode`\@=0
 
@@ -2031,13 +2333,25 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 % Say @foo, not \foo, in error messages.
 \escapechar=`\@
 
+@c \catcode 17=0   @c Define control-q
+\catcode`\\=\active
+
+% If a .fmt file is being used, we don't want the `\input texinfo' to show up.
+% That is what \eatinput is for; after that, the `\' should revert to printing 
+% a backslash.
+%
+@gdef@eatinput input texinfo{@fixbackslash}
+@global@let\ = @eatinput
+
+% On the other hand, perhaps the file did not have a `\input texinfo'. Then
+% the first `\{ in the file would cause an error. This macro tries to fix 
+% that, assuming it is called before the first `\' could plausibly occur.
+% 
+@gdef@fixbackslash{@ifx\@eatinput @let\ = @normalbackslash @fi}
+
 %% These look ok in all fonts, so just make them not special.  The @rm below
 %% makes sure that the current font starts out as the newly loaded cmr10
-\catcode`\$=\other \catcode`\%=\other \catcode`\&=\other \catcode`\#=\other
-
-\catcode 17=0   @c Define control-q
-\catcode`\\=\active
-@let\=@normalbackslash
+@catcode`@$=@other @catcode`@%=@other @catcode`@&=@other @catcode`@#=@other
 
 @textfonts
 @rm

@@ -1,14 +1,24 @@
 %{
-/* Command-line: gperf -p -j1 -g -o -t -N is_reserved_word c-parse.gperf  */
+/* Command-line: gperf -p -j1 -i 1 -g -o -t -N is_reserved_word -k1,3,$ c-parse.gperf  */ 
 %}
 struct resword { char *name; short token; enum rid rid; };
 %%
 __alignof, ALIGNOF, NORID
+__alignof__, ALIGNOF, NORID
 __asm, ASM, NORID
+__asm__, ASM, NORID
+__attribute, ATTRIBUTE, NORID
+__attribute__, ATTRIBUTE, NORID
 __const, TYPE_QUAL, RID_CONST
+__const__, TYPE_QUAL, RID_CONST
 __inline, SCSPEC, RID_INLINE
+__inline__, SCSPEC, RID_INLINE
+__signed, TYPESPEC, RID_SIGNED
+__signed__, TYPESPEC, RID_SIGNED
 __typeof, TYPEOF, NORID
+__typeof__, TYPEOF, NORID
 __volatile, TYPE_QUAL, RID_VOLATILE
+__volatile__, TYPE_QUAL, RID_VOLATILE
 asm, ASM, NORID
 auto, SCSPEC, RID_AUTO
 break, BREAK, NORID

@@ -162,7 +162,8 @@ expr_size (exp)
 /* Not yet really written since C does not need it.  */
 
 rtx
-lookup_static_chain ()
+lookup_static_chain (context)
+     rtx context;
 {
   abort ();
 }
@@ -307,6 +308,11 @@ memory_address (mode, x)
   if (GET_CODE (x) == MULT || GET_CODE (x) == MINUS)
     return force_operand (x, 0);
 
+  /* If we have a register that's an invalid address,
+     it must be a hard reg of the wrong class.  Copy it to a pseudo.  */
+  if (GET_CODE (x) == REG)
+    return copy_to_reg (x);
+
   /* Last resort: copy the value to a register, since
      the register is a valid address.  */
   return force_reg (Pmode, x);
@@ -320,7 +326,12 @@ memory_address (mode, x)
       && ! (GET_CODE (x) == PLUS
 	    && (XEXP (x, 0) == frame_pointer_rtx
 		|| XEXP (x, 0) == arg_pointer_rtx)))
-    return force_reg (Pmode, x);
+    {
+      if (general_operand (x, Pmode))
+	return force_reg (Pmode, x);
+      else
+	return force_operand (x, 0);
+    }
   return x;
 }
 
@@ -376,7 +387,15 @@ copy_to_reg (x)
      rtx x;
 {
   register rtx temp = gen_reg_rtx (GET_MODE (x));
-  emit_move_insn (temp, x);
+ 
+  /* If not an operand, must be an address with PLUS and MULT so
+     do the computation.  */ 
+  if (! general_operand (x, VOIDmode))
+    x = force_operand (x, temp);
+  
+  if (x != temp)
+    emit_move_insn (temp, x);
+
   return temp;
 }
 
@@ -387,9 +406,7 @@ rtx
 copy_addr_to_reg (x)
      rtx x;
 {
-  register rtx temp = gen_reg_rtx (Pmode);
-  emit_move_insn (temp, x);
-  return temp;
+  return copy_to_mode_reg (Pmode, x);
 }
 
 /* Like copy_to_reg but always give the new register mode MODE
@@ -401,9 +418,16 @@ copy_to_mode_reg (mode, x)
      rtx x;
 {
   register rtx temp = gen_reg_rtx (mode);
+  
+  /* If not an operand, must be an address with PLUS and MULT so
+     do the computation.  */ 
+  if (! general_operand (x, VOIDmode))
+    x = force_operand (x, temp);
+
   if (GET_MODE (x) != mode && GET_MODE (x) != VOIDmode)
     abort ();
-  emit_move_insn (temp, x);
+  if (x != temp)
+    emit_move_insn (temp, x);
   return temp;
 }
 

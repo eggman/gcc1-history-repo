@@ -20,7 +20,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 This paragraph is here to try to keep Sun CC from dying.
 The number of chars here seems crucial!!!!  */
 
-
+void record_temp_file ();
+
 /* This program is the user interface to the C compiler and possibly to
 other compilers.  It is used because compilation is a complicated procedure
 which involves running several programs and passing temporary files between
@@ -116,26 +117,14 @@ position among the other output files.
 
 */
 
-/* This defines which switch letters take arguments.  */
-
-#define SWITCH_TAKES_ARG(CHAR)      \
-  ((CHAR) == 'D' || (CHAR) == 'U' || (CHAR) == 'o' \
-   || (CHAR) == 'e' || (CHAR) == 'T' || (CHAR) == 'u' \
-   || (CHAR) == 'I' || (CHAR) == 'Y' || (CHAR) == 'm' \
-   || (CHAR) == 'L')
-
-/* This defines which multi-letter switches take arguments.  */
-
-#define WORD_SWITCH_TAKES_ARG(STR) (!strcmp (STR, "Tdata"))
-
 #include <stdio.h>
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/file.h>
-#include <varargs.h>
 
 #include "config.h"
 #include "obstack.h"
+#include "gvarargs.h"
 
 #ifdef USG
 #define R_OK 4
@@ -167,6 +156,7 @@ char *find_file ();
 static char *find_exec_file ();
 void validate_switches ();
 void validate_all_switches ();
+void fancy_abort ();
 
 /* config.h can define ASM_SPEC to provide extra args to the assembler
    or extra switch-translations.  */
@@ -208,6 +198,22 @@ void validate_all_switches ();
   (DEFAULT_SIGNED_CHAR ? "%{funsigned-char:-D__CHAR_UNSIGNED__}"	\
    : "%{!fsigned-char:-D__CHAR_UNSIGNED__}")
 
+/* This defines which switch letters take arguments.  */
+
+#ifndef SWITCH_TAKES_ARG
+#define SWITCH_TAKES_ARG(CHAR)      \
+  ((CHAR) == 'D' || (CHAR) == 'U' || (CHAR) == 'o' \
+   || (CHAR) == 'e' || (CHAR) == 'T' || (CHAR) == 'u' \
+   || (CHAR) == 'I' || (CHAR) == 'Y' || (CHAR) == 'm' \
+   || (CHAR) == 'L' || (CHAR) == 'i' || (CHAR) == 'A')
+#endif
+
+/* This defines which multi-letter switches take arguments.  */
+
+#ifndef WORD_SWITCH_TAKES_ARG
+#define WORD_SWITCH_TAKES_ARG(STR) (!strcmp (STR, "Tdata"))
+#endif
+
 /* This structure says how to run one compiler, and when to do so.  */
 
 struct compiler
@@ -225,7 +231,7 @@ struct compiler
 struct compiler compilers[] =
 {
   {".c",
-   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{trigraphs} -undef \
+   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{i*} %{trigraphs} -undef \
         -D__GNUC__ %{ansi:-trigraphs -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
@@ -240,7 +246,7 @@ struct compiler compilers[] =
 		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
                       %{!pipe:%g.s}\n }}}"},
   {".cc",
-   "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} \
+   "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{i*} \
         -undef -D__GNUC__ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
@@ -269,7 +275,7 @@ struct compiler compilers[] =
         -undef -D__GNUC__ -$ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+        %i %{!M*:%{!E:%{!pipe:%g.s}}}%{E:%{o*}}%{M*:%{o*}} |\n\
     %{!M*:%{!E:%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
                     %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
 		    %{!pipe:%g.s}\n }}}"},
@@ -280,133 +286,8 @@ struct compiler compilers[] =
 /* Here is the spec for running the linker, after compiling all files.  */
 char *link_spec = "%{!c:%{!M*:%{!E:%{!S:ld %{o*} %l\
  %{A} %{d} %{e*} %{N} %{n} %{r} %{s} %{S} %{T*} %{t} %{u*} %{X} %{x} %{z}\
- %{y*} %{!nostdlib:%S} \
+ %{y*} %{!A:%{!nostdlib:%S}} \
  %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L}\n }}}}";
-
-/* Record the names of temporary files we tell compilers to write,
-   and delete them at the end of the run.  */
-
-/* This is the common prefix we use to make temp file names.
-   It is chosen once for each run of this program.
-   It is substituted into a spec by %g.
-   Thus, all temp file names contain this prefix.
-   In practice, all temp file names start with this prefix.
-   The prefix starts with `/tmp'.  */
-
-char *temp_filename;
-
-/* Length of the prefix.  */
-
-int temp_filename_length;
-
-/* Define the list of temporary files to delete.  */
-
-struct temp_file
-{
-  char *name;
-  struct temp_file *next;
-};
-
-/* Queue of files to delete on success or failure of compilation.  */
-struct temp_file *always_delete_queue;
-/* Queue of files to delete on failure of compilation.  */
-struct temp_file *failure_delete_queue;
-
-/* Record FILENAME as a file to be deleted automatically.
-   ALWAYS_DELETE nonzero means delete it if all compilation succeeds;
-   otherwise delete it in any case.
-   FAIL_DELETE nonzero means delete it if a compilation step fails;
-   otherwise delete it in any case.  */
-
-void
-record_temp_file (filename, always_delete, fail_delete)
-     char *filename;
-     int always_delete;
-     int fail_delete;
-{
-  register char *name;
-  name = (char *) xmalloc (strlen (filename) + 1);
-  strcpy (name, filename);
-
-  if (always_delete)
-    {
-      register struct temp_file *temp;
-      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
-      temp->next = always_delete_queue;
-      temp->name = name;
-      always_delete_queue = temp;
-    }
-
-  if (fail_delete)
-    {
-      register struct temp_file *temp;
-      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
-      temp->next = failure_delete_queue;
-      temp->name = name;
-      failure_delete_queue = temp;
-    }
-}
-
-/* Delete all the temporary files whose names we previously recorded.
-   SUCCESS zero means "delete on failure only" files should be deleted.  */
-
-void
-delete_temp_files (success)
-     int success;
-{
-  register struct temp_file *temp;
-
-  for (temp = always_delete_queue; temp; temp = temp->next)
-    {
-#ifdef DEBUG
-      int i;
-      printf ("Delete %s? (y or n) ", temp->name);
-      fflush (stdout);
-      i = getchar ();
-      if (i != '\n')
-	while (getchar () != '\n') ;
-      if (i == 'y' || i == 'Y')
-#endif /* DEBUG */
-	unlink (temp->name);
-    }
-
-  if (! success)
-    for (temp = failure_delete_queue; temp; temp = temp->next)
-      {
-#ifdef DEBUG
-	int i;
-	printf ("Delete %s? (y or n) ", temp->name);
-	fflush (stdout);
-	i = getchar ();
-	if (i != '\n')
-	  while (getchar () != '\n') ;
-	if (i == 'y' || i == 'Y')
-#endif /* DEBUG */
-	  unlink (temp->name);
-      }
-
-  always_delete_queue = 0;
-  failure_delete_queue = 0;
-}
-
-void
-clear_failure_queue ()
-{
-  failure_delete_queue = 0;
-}
-
-/* Compute a string to use as the base of all temporary file names.
-   It is substituted for %g.  */
-
-void
-choose_temp_base ()
-{
-  register char *foo = "/tmp/ccXXXXXX";
-  temp_filename = (char *) xmalloc (strlen (foo) + 1);
-  strcpy (temp_filename, foo);
-  mktemp (temp_filename);
-  temp_filename_length = strlen (temp_filename);
-}
 
 /* Accumulate a command (program name and args), and run it.  */
 
@@ -421,6 +302,10 @@ int argbuf_length;
 /* Number of elements in argbuf currently in use (containing args).  */
 
 int argbuf_index;
+
+/* Number of commands executed so far.  */
+
+int execution_count;
 
 /* Flag indicating whether we should print the command and arguments */
 
@@ -439,6 +324,10 @@ char *user_exec_prefix = 0;
    or 0 if none specified.  */
 
 char *env_exec_prefix = 0;
+
+/* Suffix to attach to directories searched for commands.  */
+
+char *machine_suffix = 0;
 
 /* Default prefixes to attach to command names.  */
 
@@ -489,6 +378,177 @@ store_arg (arg, delete_always, delete_failure)
     record_temp_file (arg, delete_always, delete_failure);
 }
 
+/* Record the names of temporary files we tell compilers to write,
+   and delete them at the end of the run.  */
+
+/* This is the common prefix we use to make temp file names.
+   It is chosen once for each run of this program.
+   It is substituted into a spec by %g.
+   Thus, all temp file names contain this prefix.
+   In practice, all temp file names start with this prefix.
+
+   This prefix comes from the envvar TMPDIR if it is defined;
+   otherwise, from the P_tmpdir macro if that is defined;
+   otherwise, in /usr/tmp or /tmp.  */
+
+char *temp_filename;
+
+/* Length of the prefix.  */
+
+int temp_filename_length;
+
+/* Define the list of temporary files to delete.  */
+
+struct temp_file
+{
+  char *name;
+  struct temp_file *next;
+};
+
+/* Queue of files to delete on success or failure of compilation.  */
+struct temp_file *always_delete_queue;
+/* Queue of files to delete on failure of compilation.  */
+struct temp_file *failure_delete_queue;
+
+/* Record FILENAME as a file to be deleted automatically.
+   ALWAYS_DELETE nonzero means delete it if all compilation succeeds;
+   otherwise delete it in any case.
+   FAIL_DELETE nonzero means delete it if a compilation step fails;
+   otherwise delete it in any case.  */
+
+void
+record_temp_file (filename, always_delete, fail_delete)
+     char *filename;
+     int always_delete;
+     int fail_delete;
+{
+  register char *name;
+  name = (char *) xmalloc (strlen (filename) + 1);
+  strcpy (name, filename);
+
+  if (always_delete)
+    {
+      register struct temp_file *temp;
+      for (temp = always_delete_queue; temp; temp = temp->next)
+	if (! strcmp (name, temp->name))
+	  goto already1;
+      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
+      temp->next = always_delete_queue;
+      temp->name = name;
+      always_delete_queue = temp;
+    already1:;
+    }
+
+  if (fail_delete)
+    {
+      register struct temp_file *temp;
+      for (temp = failure_delete_queue; temp; temp = temp->next)
+	if (! strcmp (name, temp->name))
+	  goto already2;
+      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
+      temp->next = failure_delete_queue;
+      temp->name = name;
+      failure_delete_queue = temp;
+    already2:;
+    }
+}
+
+/* Delete all the temporary files whose names we previously recorded.  */
+
+void
+delete_temp_files ()
+{
+  register struct temp_file *temp;
+
+  for (temp = always_delete_queue; temp; temp = temp->next)
+    {
+#ifdef DEBUG
+      int i;
+      printf ("Delete %s? (y or n) ", temp->name);
+      fflush (stdout);
+      i = getchar ();
+      if (i != '\n')
+	while (getchar () != '\n') ;
+      if (i == 'y' || i == 'Y')
+#endif /* DEBUG */
+	{
+	  if (unlink (temp->name) < 0)
+	    if (vflag)
+	      perror_with_name (temp->name);
+	}
+    }
+
+  always_delete_queue = 0;
+}
+
+/* Delete all the files to be deleted on error.  */
+
+void
+delete_failure_queue ()
+{
+  register struct temp_file *temp;
+
+  for (temp = failure_delete_queue; temp; temp = temp->next)
+    {
+#ifdef DEBUG
+      int i;
+      printf ("Delete %s? (y or n) ", temp->name);
+      fflush (stdout);
+      i = getchar ();
+      if (i != '\n')
+	while (getchar () != '\n') ;
+      if (i == 'y' || i == 'Y')
+#endif /* DEBUG */
+	{
+	  if (unlink (temp->name) < 0)
+	    if (vflag)
+	      perror_with_name (temp->name);
+	}
+    }
+}
+
+void
+clear_failure_queue ()
+{
+  failure_delete_queue = 0;
+}
+
+/* Compute a string to use as the base of all temporary file names.
+   It is substituted for %g.  */
+
+void
+choose_temp_base ()
+{
+  extern char *getenv ();
+  char *base = getenv ("TMPDIR");
+  int len;
+
+  if (base == (char *)0)
+    {
+#ifdef P_tmpdir
+      if (access (P_tmpdir, R_OK | W_OK) == 0)
+	base = P_tmpdir;
+#endif
+      if (base == (char *)0)
+	{
+	  if (access ("/usr/tmp", R_OK | W_OK) == 0)
+	    base = "/usr/tmp/";
+	  else
+	    base = "/tmp/";
+	}
+    }
+
+  len = strlen (base);
+  temp_filename = (char *) xmalloc (len + sizeof("/ccXXXXXX"));
+  strcpy (temp_filename, base);
+  if (len > 0 && temp_filename[len-1] != '/')
+    temp_filename[len++] = '/';
+  strcpy (temp_filename + len, "ccXXXXXX");
+
+  mktemp (temp_filename);
+  temp_filename_length = strlen (temp_filename);
+}
+
 /* Search for an execute file through our search path.
    Return 0 if not found, otherwise return its name, allocated with malloc.  */
 
@@ -508,36 +568,78 @@ find_exec_file (prog)
   if (strlen (standard_exec_prefix_1) > size)
     size = strlen (standard_exec_prefix_1);
   size += strlen (prog) + 1;
+  if (machine_suffix)
+    size += strlen (machine_suffix) + 1;
   temp = (char *) xmalloc (size);
 
   /* Determine the filename to execute.  */
 
   if (user_exec_prefix)
     {
-      strcpy (temp, user_exec_prefix);
-      strcat (temp, prog);
-      win = (access (temp, X_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, user_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, user_exec_prefix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
     }
 
   if (!win && env_exec_prefix)
     {
-      strcpy (temp, env_exec_prefix);
-      strcat (temp, prog);
-      win = (access (temp, X_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, env_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, env_exec_prefix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_exec_prefix);
-      strcat (temp, prog);
-      win = (access (temp, X_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_exec_prefix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_exec_prefix_1);
-      strcat (temp, argbuf[0]);
-      win = (access (temp, X_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_exec_prefix_1);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_exec_prefix_1);
+	  strcat (temp, prog);
+	  win = (access (temp, X_OK) == 0);
+	}
     }
 
   if (win)
@@ -739,6 +841,8 @@ execute ()
 	free (string);
     }
 
+  execution_count++;
+
   /* Wait for all the subprocesses to finish.
      We don't care what order they finish in;
      we know that N_COMMANDS waits will get them all.  */
@@ -830,6 +934,10 @@ process_command (argc, argv)
 
 	  switch (c)
 	    {
+	    case 'b':
+	      machine_suffix = p + 1;
+	      break;
+
 	    case 'B':
 	      user_exec_prefix = p + 1;
 	      break;
@@ -871,7 +979,7 @@ process_command (argc, argv)
 	  register char *p = &argv[i][1];
 	  register int c = *p;
 
-	  if (c == 'B')
+	  if (c == 'B' || c == 'b')
 	    continue;
 	  switches[n_switches].part1 = p;
 	  if ((SWITCH_TAKES_ARG (c) && p[1] == 0)
@@ -1321,7 +1429,7 @@ handle_braces (p)
 	{
 	  /* Here if a %{|...} conditional fails: output a minus sign,
 	     which means "standard output" or "standard input".  */
-	  do_spec_1 ("-");
+	  do_spec_1 ("-", 0);
 	}
     }
 
@@ -1377,64 +1485,146 @@ find_file (name)
     size = strlen (standard_startfile_prefix_1);
   if (strlen (standard_startfile_prefix_2) > size)
     size = strlen (standard_startfile_prefix_2);
+  if (machine_suffix)
+    size += strlen (machine_suffix) + 1;
   size += strlen (name) + 1;
 
   temp = (char *) alloca (size);
 
   if (user_exec_prefix)
     {
-      strcpy (temp, user_exec_prefix);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, user_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, user_exec_prefix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win && env_exec_prefix)
     {
-      strcpy (temp, env_exec_prefix);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, env_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, env_exec_prefix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_exec_prefix);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_exec_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_exec_prefix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_exec_prefix_1);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_exec_prefix_1);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_exec_prefix_1);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_startfile_prefix);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_startfile_prefix);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_startfile_prefix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_startfile_prefix_1);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_startfile_prefix_1);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_startfile_prefix_1);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, standard_startfile_prefix_2);
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, standard_startfile_prefix_2);
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, standard_startfile_prefix_2);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (!win)
     {
-      strcpy (temp, "./");
-      strcat (temp, name);
-      win = (access (temp, R_OK) == 0);
+      if (machine_suffix)
+	{
+	  strcpy (temp, "./");
+	  strcat (temp, machine_suffix);
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
+      if (!win)
+	{
+	  strcpy (temp, "./");
+	  strcat (temp, name);
+	  win = (access (temp, R_OK) == 0);
+	}
     }
 
   if (win)
@@ -1449,7 +1639,8 @@ fatal_error (signum)
      int signum;
 {
   signal (signum, SIG_DFL);
-  delete_temp_files (0);
+  delete_failure_queue ();
+  delete_temp_files ();
   /* Get the same signal again, this time not handled,
      so its normal effect occurs.  */
   kill (getpid (), signum);
@@ -1462,8 +1653,9 @@ main (argc, argv)
 {
   register int i;
   int value;
-  int nolink = 0;
   int error_count = 0;
+  int linker_was_run = 0;
+  char *explicit_link_files;
 
   programname = argv[0];
 
@@ -1503,9 +1695,15 @@ main (argc, argv)
   outfiles = (char **) xmalloc (n_infiles * sizeof (char *));
   bzero (outfiles, n_infiles * sizeof (char *));
 
+  /* Record which files were specified explicitly as link input.  */
+
+  explicit_link_files = (char *) xmalloc (n_infiles);
+  bzero (explicit_link_files, n_infiles);
+
   for (i = 0; i < n_infiles; i++)
     {
       register struct compiler *cp;
+      int this_file_error = 0;
 
       /* Tell do_spec what to substitute for %i.  */
 
@@ -1538,36 +1736,48 @@ main (argc, argv)
 				 - (input_basename - input_filename));
 	      value = do_spec (cp->spec);
 	      if (value < 0)
-		error_count = 1;
+		this_file_error = 1;
 	      break;
 	    }
 	}
 
       /* If this file's name does not contain a recognized suffix,
-	 don't do anything to it, but do feed it to the link spec
-	 since its name is in outfiles.  */
+	 record it as explicit linker input.  */
 
-      if (! cp->spec && nolink)
+      if (! cp->spec)
+	explicit_link_files[i] = 1;
+
+      /* Clear the delete-on-failure queue, deleting the files in it
+	 if this compilation failed.  */
+
+      if (this_file_error)
 	{
-	  /* But if this happens, and we aren't going to run the linker,
-	     warn the user.  */
-	  error ("%s: linker input file unused since linking not done",
-		 input_filename);
+	  delete_failure_queue ();
+	  error_count++;
 	}
-
-      /* Failure of one compilation should not delete the delete-on-failure
-	 files of previous compilations.  */
+      /* If this compilation succeeded, don't delete those files later.  */
       clear_failure_queue ();
     }
 
   /* Run ld to link all the compiler output files.  */
 
-  if (! nolink && error_count == 0)
+  if (error_count == 0)
     {
+      int tmp = execution_count;
       value = do_spec (link_spec);
       if (value < 0)
 	error_count = 1;
+      linker_was_run = (tmp != execution_count);
     }
+
+  /* If options said don't run linker,
+     complain about input files to be given to the linker.  */
+
+  if (! linker_was_run && error_count == 0)
+    for (i = 0; i < n_infiles; i++)
+      if (explicit_link_files[i])
+	error ("%s: linker input file unused since linking not done",
+	       outfiles[i]);
 
   /* Set the `valid' bits for switches that match anything in any spec.  */
 
@@ -1581,7 +1791,9 @@ main (argc, argv)
 
   /* Delete some or all of the temporary files we made.  */
 
-  delete_temp_files (error_count == 0);
+  if (error_count)
+    delete_failure_queue ();
+  delete_temp_files ();
 
   exit (error_count);
 }
@@ -1675,6 +1887,15 @@ perror_exec (name)
     s = "installation problem, cannot exec %s";
   error (s, name);
 }
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
+}
 
 #ifdef HAVE_VPRINTF
 
@@ -1753,6 +1974,64 @@ validate_all_switches ()
     if (c == '%' && *p == '{')
       /* We have a switch spec.  */
       validate_switches (p + 1);
+
+  /* Now notice switches mentioned in the machine-specific specs.  */
+
+#ifdef ASM_SPEC
+  p = ASM_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef CPP_SPEC
+  p = CPP_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef SIGNED_CHAR_SPEC
+  p = SIGNED_CHAR_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef CC1_SPEC
+  p = CC1_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef LINK_SPEC
+  p = LINK_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef LIB_SPEC
+  p = LIB_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
+
+#ifdef STARTFILE_SPEC
+  p = STARTFILE_SPEC;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+#endif
 }
 
 /* Look at the switch-name that comes after START

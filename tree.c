@@ -36,7 +36,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include <stdio.h>
 #include "tree.h"
 #include "obstack.h"
-#include "varargs.h"
+#include "gvarargs.h"
 #include "flags.h"
 
 #define obstack_chunk_alloc xmalloc
@@ -140,6 +140,9 @@ int tree_node_counter = 0;
 
 #define MAX_HASH_TABLE 1009
 static tree hash_table[MAX_HASH_TABLE];	/* id hash buckets */
+
+/* 0 while creating built-in identifiers.  */
+static int do_identifier_warnings;
 
 /* Init data for node creation, at the beginning of compilation.  */
 
@@ -265,6 +268,16 @@ permalloc (size)
      long size;
 {
   return (char *) obstack_alloc (&permanent_obstack, size);
+}
+
+/* Allocate SIZE bytes in the saveable obstack
+   and return a pointer to them.  */
+
+char *
+savealloc (size)
+     int size;
+{
+  return (char *) obstack_alloc (saveable_obstack, size);
 }
 
 /* Start a level of momentary allocation.
@@ -502,6 +515,30 @@ copy_node (node)
 
   return t;
 }
+
+/* Return a copy of a chain of nodes, chained through the TREE_CHAIN field.
+   For example, this can copy a list made of TREE_LIST nodes.  */
+
+tree
+copy_list (list)
+     tree list;
+{
+  tree head;
+  register tree prev, next;
+
+  if (list == 0)
+    return 0;
+
+  head = prev = copy_node (list);
+  next = TREE_CHAIN (list);
+  while (next)
+    {
+      TREE_CHAIN (prev) = copy_node (next);
+      prev = TREE_CHAIN (prev);
+      next = TREE_CHAIN (next);
+    }
+  return head;
+}
 
 #define HASHBITS 30
 
@@ -541,7 +578,7 @@ get_identifier (text)
       return idp;		/* <-- return if found */
   
   /* Not found; optionally warn about a similar identifier */
-  if (warn_id_clash && len > id_clash_len)
+  if (warn_id_clash && do_identifier_warnings && len > id_clash_len)
     for (idp = hash_table[hi]; idp; idp = TREE_CHAIN (idp))
       if (!strncmp (IDENTIFIER_POINTER (idp), text, id_clash_len))
 	{
@@ -559,6 +596,25 @@ get_identifier (text)
   TREE_CHAIN (idp) = hash_table[hi];
   hash_table[hi] = idp;
   return idp;			/* <-- return if created */
+}
+
+/* Enable warnings on similar identifiers (if requested).
+   Done after the built-in identifiers are created.  */
+
+void
+start_identifier_warnings ()
+{
+  do_identifier_warnings = 1;
+}
+
+/* Record the size of an identifier node for the language in use.
+   This is called by the language-specific files.  */
+
+void
+set_identifier_size (size)
+     int size;
+{
+  tree_code_length[(int) IDENTIFIER_NODE] = size;
 }
 
 /* Return a newly constructed INTEGER_CST node whose constant value
@@ -601,20 +657,12 @@ build_real (type, d)
    and whose value is the integer value of the INTEGER_CST node I.  */
 
 #if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-/* This function can't be implemented if we can't do arithmetic
-   on the float representation.  */
 
-tree
-build_real_from_int_cst (type, i)
-     tree type;
+REAL_VALUE_TYPE
+real_value_from_int_cst (i)
      tree i;
 {
-  tree v;
-  double d;
-
-  v = make_node (REAL_CST);
-  TREE_TYPE (v) = type;
-
+  REAL_VALUE_TYPE d;
 #ifdef REAL_ARITHMETIC
   REAL_VALUE_FROM_INT (d, TREE_INT_CST_LOW (i), TREE_INT_CST_HIGH (i));
 #else /* not REAL_ARITHMETIC */
@@ -634,7 +682,24 @@ build_real_from_int_cst (type, i)
       d += (double) (unsigned) TREE_INT_CST_LOW (i);
     }
 #endif /* not REAL_ARITHMETIC */
+  return d;
+}
 
+/* This function can't be implemented if we can't do arithmetic
+   on the float representation.  */
+
+tree
+build_real_from_int_cst (type, i)
+     tree type;
+     tree i;
+{
+  tree v;
+  REAL_VALUE_TYPE d;
+
+  v = make_node (REAL_CST);
+  TREE_TYPE (v) = type;
+
+  d = real_value_from_int_cst (i);
   /* Check for valid float value for this type on this target machine;
      if not, can print error message and store a valid value in D.  */
 #ifdef CHECK_FLOAT_VALUE
@@ -990,9 +1055,13 @@ lvalue_p (ref)
       case PARM_DECL:
       case RESULT_DECL:
       case ERROR_MARK:
-	if (TREE_CODE (TREE_TYPE (ref)) != FUNCTION_TYPE)
+	if (TREE_CODE (TREE_TYPE (ref)) != FUNCTION_TYPE
+	    && TREE_CODE (TREE_TYPE (ref)) != METHOD_TYPE)
 	  return 1;
 	break;
+
+      case NEW_EXPR:
+	return 1;
 
       case CALL_EXPR:
 	if (TREE_CODE (TREE_TYPE (ref)) == REFERENCE_TYPE)
@@ -1208,6 +1277,11 @@ build_decl (code, name, type)
    as the type can suppress useless errors in the use of this variable.  */
 
   DECL_NAME (t) = name;
+  if (name)
+    {
+      DECL_PRINT_NAME (t) = IDENTIFIER_POINTER (name);
+      DECL_ASSEMBLER_NAME (t) = IDENTIFIER_POINTER (name);
+    }
   TREE_TYPE (t) = type;
   DECL_ARGUMENTS (t) = NULL_TREE;
   DECL_INITIAL (t) = NULL_TREE;
@@ -1356,16 +1430,16 @@ build_compound (filename, line, body)
    compiled.  This information is used for outputting debugging info.  */
 
 tree
-build_let (filename, line, vars, body, supercontext, tags)
+build_let (filename, line, vars, subblocks, supercontext, tags)
      char *filename;
      int line;
-     tree vars, body, supercontext, tags;
+     tree vars, subblocks, supercontext, tags;
 {
   register tree t = make_node (LET_STMT);
   STMT_SOURCE_FILE (t) = filename;
   STMT_SOURCE_LINE (t) = line;
   STMT_VARS (t) = vars;
-  STMT_BODY (t) = body;
+  STMT_SUBBLOCKS (t) = subblocks;
   STMT_SUPERCONTEXT (t) = supercontext;
   STMT_BIND_SIZE (t) = 0;
   STMT_TYPE_TAGS (t) = tags;
@@ -1665,6 +1739,7 @@ simple_cst_equal (t1, t2)
     case NEGATE_EXPR:
     case ADDR_EXPR:
     case REFERENCE_EXPR:
+    case INDIRECT_REF:
       return simple_cst_equal (TREE_OPERAND (t1, 0), TREE_OPERAND (t2, 0));
 
     default:
@@ -1727,9 +1802,8 @@ build_index_type (maxval)
   int maxint = TREE_INT_CST_LOW (maxval);
   TYPE_PRECISION (itype) = BITS_PER_WORD;
   TYPE_MIN_VALUE (itype) = build_int_2 (0, 0);
-  TREE_TYPE (TYPE_MIN_VALUE (itype)) = itype;
-  TYPE_MAX_VALUE (itype) = maxval;
-  TREE_TYPE (maxval) = itype;
+  TREE_TYPE (TYPE_MIN_VALUE (itype)) = sizetype;
+  TYPE_MAX_VALUE (itype) = convert (sizetype, maxval);
   TYPE_MODE (itype) = SImode;
   TYPE_SIZE (itype) = TYPE_SIZE (sizetype);
   TYPE_SIZE_UNIT (itype) = TYPE_SIZE_UNIT (sizetype);

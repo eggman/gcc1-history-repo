@@ -35,7 +35,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #include "config.h"
 #include <stdio.h>
-#include "varargs.h"
+#include "gvarargs.h"
 #include "rtl.h"
 #include "regs.h"
 #include "insn-config.h"
@@ -364,13 +364,16 @@ gen_lowpart (mode, x)
   /* This case loses if X is a subreg.  To catch bugs early,
      complain if an invalid MODE is used even in other cases.  */
   if (GET_MODE_SIZE (mode) > UNITS_PER_WORD
-      && GET_MODE_SIZE (mode) != GET_MODE_SIZE (GET_MODE (x)))
+      && GET_MODE_SIZE (mode) != GET_MODE_UNIT_SIZE (GET_MODE (x)))
     abort ();
   if (GET_MODE (x) == mode)
     return x;
   if (GET_CODE (x) == CONST_INT)
     return gen_rtx (CONST_INT, VOIDmode, INTVAL (x) & GET_MODE_MASK (mode));
   if (GET_CODE (x) == CONST_DOUBLE)
+/* In version 1.37, try this: */
+/*  if (GET_MODE_CLASS (GET_MODE (x)) == MODE_FLOAT) abort (); */
+    /* Assume it's an int, so ..._LOW means the low-order word.  */
     return gen_rtx (CONST_INT, VOIDmode,
 		    CONST_DOUBLE_LOW (x) & GET_MODE_MASK (mode));
   if (GET_CODE (x) == MEM)
@@ -516,15 +519,17 @@ gen_label_rtx ()
 rtx
 gen_inline_header_rtx (insn, last_insn,
 		       first_labelno, last_labelno,
-		       max_parm_regnum, max_regnum, args_size)
+		       max_parm_regnum, max_regnum, args_size,
+		       stack_slots)
      rtx insn, last_insn;
      int first_labelno, last_labelno, max_parm_regnum, max_regnum, args_size;
+     rtx stack_slots;
 {
   rtx header = gen_rtx (INLINE_HEADER, VOIDmode,
 			cur_insn_uid++, NULL,
 			insn, last_insn,
 			first_labelno, last_labelno,
-			max_parm_regnum, max_regnum, args_size);
+			max_parm_regnum, max_regnum, args_size, stack_slots);
   return header;
 }
 
@@ -736,6 +741,17 @@ get_last_insn ()
   return last_insn;
 }
 
+/* Specify a new insn as the last in the chain.  */
+
+void
+set_last_insn (insn)
+     rtx insn;
+{
+  if (NEXT_INSN (insn) != 0)
+    abort ();
+  last_insn = insn;
+}
+
 /* Return a number larger than any instruction's uid in this function.  */
 
 int
@@ -834,8 +850,17 @@ add_insn_after (insn, after)
 
   if (NEXT_INSN (insn))
     PREV_INSN (NEXT_INSN (insn)) = insn;
-  else
+  else if (last_insn == after)
     last_insn = insn;
+  else
+    {
+      rtx stack = sequence_stack;
+      /* Scan all pending sequences too.  */
+      for (; stack; stack = XEXP (XEXP (stack, 1), 1))
+	if (after == XEXP (XEXP (stack, 1), 0))
+	  XEXP (XEXP (stack, 1), 0) = insn;
+    }
+
   NEXT_INSN (after) = insn;
 }
 
@@ -1157,8 +1182,10 @@ emit_line_note (file, line)
   emit_filename = file;
   emit_lineno = line;
 
+#if 0
   if (no_line_numbers)
     return 0;
+#endif
 
   return emit_note (file, line);
 }
@@ -1175,9 +1202,6 @@ emit_note (file, line)
 {
   register rtx note;
 
-  if (no_line_numbers && line > 0)
-    return 0;
-
   if (line > 0)
     {
       if (file && last_filename && !strcmp (file, last_filename)
@@ -1185,6 +1209,12 @@ emit_note (file, line)
 	return 0;
       last_filename = file;
       last_linenum = line;
+    }
+
+  if (no_line_numbers && line > 0)
+    {
+      cur_insn_uid++;
+      return 0;
     }
 
   note = rtx_alloc (NOTE);
@@ -1204,6 +1234,15 @@ emit_line_note_force (file, line)
 {
   last_linenum = -1;
   return emit_line_note (file, line);
+}
+
+/* Cause next statement to emit a line note even if the line number
+   has not changed.  This is used at the beginning of a function.  */
+
+void
+force_next_line_note ()
+{
+  last_linenum = -1;
 }
 
 /* Return an indication of which type of insn should have X as a body.
@@ -1433,21 +1472,22 @@ restore_reg_data_1 (orig)
 	    {
 	      reg_rtx_no = REGNO (x);
 
-	      if (reg_rtx_no == regno_pointer_flag_length)
+	      if (reg_rtx_no >= regno_pointer_flag_length)
 		{
+		  int newlen = max (regno_pointer_flag_length * 2,
+				    reg_rtx_no + 30);
 		  rtx *new1;
-		  char *new =
-		    (char *) oballoc (regno_pointer_flag_length * 2);
-		  bzero (new, regno_pointer_flag_length * 2);
+		  char *new = (char *) oballoc (newlen);
+		  bzero (new, newlen);
 		  bcopy (regno_pointer_flag, new, regno_pointer_flag_length);
-		  regno_pointer_flag = new;
 
-		  new1 = (rtx *) oballoc (regno_pointer_flag_length * 2 * sizeof (rtx));
-		  bzero (new1, regno_pointer_flag_length * 2 * sizeof (rtx));
+		  new1 = (rtx *) oballoc (newlen * sizeof (rtx));
+		  bzero (new1, newlen * sizeof (rtx));
 		  bcopy (regno_reg_rtx, new1, regno_pointer_flag_length * sizeof (rtx));
-		  regno_reg_rtx = new1;
 
-		  regno_pointer_flag_length *= 2;
+		  regno_pointer_flag = new;
+		  regno_reg_rtx = new1;
+		  regno_pointer_flag_length = newlen;
 		}
 	      reg_rtx_no ++;
 	    }

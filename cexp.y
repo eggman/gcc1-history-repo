@@ -37,18 +37,21 @@ Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
   /* some external tables of character types */
   extern unsigned char is_idstart[], is_idchar[];
 
+#ifndef CHAR_TYPE_SIZE
+#define CHAR_TYPE_SIZE BITS_PER_UNIT
+#endif
 %}
 
 %union {
-  long lval;
+  struct constant {long value; int unsignedp;} integer;
   int voidval;
   char *sval;
 }
 
-%type <lval> exp exp1 start
-%token <lval> INT CHAR
+%type <integer> exp exp1 start
+%token <integer> INT CHAR
 %token <sval> NAME
-%token <lval> ERROR
+%token <integer> ERROR
 
 %right '?' ':'
 %left ','
@@ -69,7 +72,7 @@ Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 %%
 
 start   :	exp1
-		{ expression_value = $1; }
+		{ expression_value = $1.value; }
 	;
 
 /* Expressions, including the comma operator.  */
@@ -80,70 +83,120 @@ exp1	:	exp
 
 /* Expressions, not including the comma operator.  */
 exp	:	'-' exp    %prec UNARY
-			{ $$ = - $2; }
+			{ $$.value = - $2.value;
+			  $$.unsignedp = $2.unsignedp; }
 	|	'!' exp    %prec UNARY
-			{ $$ = ! $2; }
+			{ $$.value = ! $2.value;
+			  $$.unsignedp = 0; }
 	|	'~' exp    %prec UNARY
-			{ $$ = ~ $2; }
+			{ $$.value = ~ $2.value;
+			  $$.unsignedp = $2.unsignedp; }
 	|	'(' exp1 ')'
 			{ $$ = $2; }
 	;
 
 /* Binary operators in order of decreasing precedence.  */
 exp	:	exp '*' exp
-			{ $$ = $1 * $3; }
+			{ $$.unsignedp = $1.unsignedp || $3.unsignedp;
+			  if ($$.unsignedp)
+			    $$.value = (unsigned) $1.value * $3.value;
+			  else
+			    $$.value = $1.value * $3.value; }
 	|	exp '/' exp
-			{ if ($3 == 0)
+			{ if ($3.value == 0)
 			    {
 			      error ("division by zero in #if");
-			      $3 = 1;
+			      $3.value = 1;
 			    }
-			  $$ = $1 / $3; }
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp;
+			  if ($$.unsignedp)
+			    $$.value = (unsigned) $1.value / $3.value;
+			  else
+			    $$.value = $1.value / $3.value; }
 	|	exp '%' exp
-			{ if ($3 == 0)
+			{ if ($3.value == 0)
 			    {
 			      error ("division by zero in #if");
-			      $3 = 1;
+			      $3.value = 1;
 			    }
-			  $$ = $1 % $3; }
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp;
+			  if ($$.unsignedp)
+			    $$.value = (unsigned) $1.value % $3.value;
+			  else
+			    $$.value = $1.value % $3.value; }
 	|	exp '+' exp
-			{ $$ = $1 + $3; }
+			{ $$.value = $1.value + $3.value;
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp; }
 	|	exp '-' exp
-			{ $$ = $1 - $3; }
+			{ $$.value = $1.value - $3.value;
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp; }
 	|	exp LSH exp
-			{ $$ = $1 << $3; }
+			{ $$.unsignedp = $1.unsignedp;
+			  if ($$.unsignedp)
+			    $$.value = (unsigned) $1.value << $3.value;
+			  else
+			    $$.value = $1.value << $3.value; }
 	|	exp RSH exp
-			{ $$ = $1 >> $3; }
+			{ $$.unsignedp = $1.unsignedp;
+			  if ($$.unsignedp)
+			    $$.value = (unsigned) $1.value >> $3.value;
+			  else
+			    $$.value = $1.value >> $3.value; }
 	|	exp EQUAL exp
-			{ $$ = ($1 == $3); }
+			{ $$.value = ($1.value == $3.value);
+			  $$.unsignedp = 0; }
 	|	exp NOTEQUAL exp
-			{ $$ = ($1 != $3); }
+			{ $$.value = ($1.value != $3.value);
+			  $$.unsignedp = 0; }
 	|	exp LEQ exp
-			{ $$ = ($1 <= $3); }
+			{ $$.unsignedp = 0;
+			  if ($1.unsignedp || $3.unsignedp)
+			    $$.value = (unsigned) $1.value <= $3.value;
+			  else
+			    $$.value = $1.value <= $3.value; }
 	|	exp GEQ exp
-			{ $$ = ($1 >= $3); }
+			{ $$.unsignedp = 0;
+			  if ($1.unsignedp || $3.unsignedp)
+			    $$.value = (unsigned) $1.value >= $3.value;
+			  else
+			    $$.value = $1.value >= $3.value; }
 	|	exp '<' exp
-			{ $$ = ($1 < $3); }
+			{ $$.unsignedp = 0;
+			  if ($1.unsignedp || $3.unsignedp)
+			    $$.value = (unsigned) $1.value < $3.value;
+			  else
+			    $$.value = $1.value < $3.value; }
 	|	exp '>' exp
-			{ $$ = ($1 > $3); }
+			{ $$.unsignedp = 0;
+			  if ($1.unsignedp || $3.unsignedp)
+			    $$.value = (unsigned) $1.value > $3.value;
+			  else
+			    $$.value = $1.value > $3.value; }
 	|	exp '&' exp
-			{ $$ = ($1 & $3); }
+			{ $$.value = $1.value & $3.value;
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp; }
 	|	exp '^' exp
-			{ $$ = ($1 ^ $3); }
+			{ $$.value = $1.value ^ $3.value;
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp; }
 	|	exp '|' exp
-			{ $$ = ($1 | $3); }
+			{ $$.value = $1.value | $3.value;
+			  $$.unsignedp = $1.unsignedp || $3.unsignedp; }
 	|	exp AND exp
-			{ $$ = ($1 && $3); }
+			{ $$.value = ($1.value && $3.value);
+			  $$.unsignedp = 0; }
 	|	exp OR exp
-			{ $$ = ($1 || $3); }
+			{ $$.value = ($1.value || $3.value);
+			  $$.unsignedp = 0; }
 	|	exp '?' exp ':' exp
-			{ $$ = $1 ? $3 : $5; }
+			{ $$.value = $1.value ? $3.value : $5.value;
+			  $$.unsignedp = $3.unsignedp || $5.unsignedp; }
 	|	INT
-			{ $$ = yylval.lval; }
+			{ $$ = yylval.integer; }
 	|	CHAR
-			{ $$ = yylval.lval; }
+			{ $$ = yylval.integer; }
 	|	NAME
-			{ $$ = 0; }
+			{ $$.value = 0;
+			  $$.unsignedp = 0; }
 	;
 %%
 
@@ -166,23 +219,17 @@ parse_number (olen)
   register long n = 0;
   register int c;
   register int base = 10;
-  register len = olen;
-
-  extern double atof ();
+  register int len = olen;
 
   for (c = 0; c < len; c++)
     if (p[c] == '.') {
       /* It's a float since it contains a point.  */
       yyerror ("floating point numbers not allowed in #if expressions");
       return ERROR;
-      
-/* ****************
-	 yylval.dval = atof (p);
-	 lexptr += len;
-	 return FLOAT;
-		 ****************  */
     }
-  
+
+  yylval.integer.unsignedp = 0;
+
   if (len >= 3 && (!strncmp (p, "0x", 2) || !strncmp (p, "0X", 2))) {
     p += 2;
     base = 16;
@@ -190,27 +237,49 @@ parse_number (olen)
   }
   else if (*p == '0')
     base = 8;
-  
-  while (len-- > 0) {
+
+  while (len > 0) {
     c = *p++;
-    n *= base;
-    if (c >= '0' && c <= '9')
+    len--;
+    if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+
+    if (c >= '0' && c <= '9') {
+      n *= base;
       n += c - '0';
-    else {
-      if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-      if (base == 16 && c >= 'a' && c <= 'f')
-	n += c - 'a' + 10;
-      else if (len == 0 && c == 'l')
-	;
-      else {
-	yyerror ("Invalid number in #if expression");
-	return ERROR;
+    } else if (base == 16 && c >= 'a' && c <= 'f') {
+      n *= base;
+      n += c - 'a' + 10;
+    } else {
+      /* `l' means long, and `u' means unsigned.  */
+      while (1) {
+	if (c == 'l' || c == 'L')
+	  ;
+	else if (c == 'u' || c == 'U')
+	  yylval.integer.unsignedp = 1;
+	else
+	  break;
+
+	if (len == 0)
+	  break;
+	c = *p++;
+	len--;
       }
+      /* Don't look for any more digits after the suffixes.  */
+      break;
     }
   }
 
+  if (len != 0) {
+    yyerror ("Invalid number in #if expression");
+    return ERROR;
+  }
+
+  /* If too big to be signed, consider it unsigned.  */
+  if (n < 0)
+    yylval.integer.unsignedp = 1;
+
   lexptr = p;
-  yylval.lval = n;
+  yylval.integer.value = n;
   return INT;
 }
 
@@ -219,7 +288,9 @@ struct token {
   int token;
 };
 
+#ifndef NULL
 #define NULL 0
+#endif
 
 static struct token tokentab2[] = {
   {"&&", AND},
@@ -269,7 +340,17 @@ yylex ()
     c = *lexptr++;
     if (c == '\\')
       c = parse_escape (&lexptr);
-    yylval.lval = c;
+
+    /* Sign-extend the constant if chars are signed on target machine.  */
+    {
+      if (lookup ("__CHAR_UNSIGNED__", sizeof ("__CHAR_UNSIGNED__")-1, -1)
+	  || ((c >> (CHAR_TYPE_SIZE - 1)) & 1) == 0)
+	yylval.integer.value = c & ((1 << CHAR_TYPE_SIZE) - 1);
+      else
+	yylval.integer.value = c | ~((1 << CHAR_TYPE_SIZE) - 1);
+    }
+
+    yylval.integer.unsignedp = 0;
     c = *lexptr++;
     if (c != '\'') {
       yyerror ("Invalid character constant in #if");
@@ -357,21 +438,21 @@ parse_escape (string_ptr)
   switch (c)
     {
     case 'a':
-      return '\a';
+      return TARGET_BELL;
     case 'b':
-      return '\b';
+      return TARGET_BS;
     case 'e':
       return 033;
     case 'f':
-      return '\f';
+      return TARGET_FF;
     case 'n':
-      return '\n';
+      return TARGET_NEWLINE;
     case 'r':
-      return '\r';
+      return TARGET_CR;
     case 't':
-      return '\t';
+      return TARGET_TAB;
     case 'v':
-      return '\v';
+      return TARGET_VT;
     case '\n':
       return -2;
     case 0:
@@ -398,16 +479,45 @@ parse_escape (string_ptr)
 	register int count = 0;
 	while (++count < 3)
 	  {
-	    if ((c = *(*string_ptr)++) >= '0' && c <= '7')
-	      {
-		i *= 8;
-		i += c - '0';
-	      }
+	    c = *(*string_ptr)++;
+	    if (c >= '0' && c <= '7')
+	      i = (i << 3) + c - '0';
 	    else
 	      {
 		(*string_ptr)--;
 		break;
 	      }
+	  }
+	if ((i & ~((1 << CHAR_TYPE_SIZE) - 1)) != 0)
+	  {
+	    i &= (1 << CHAR_TYPE_SIZE) - 1;
+	    warning ("octal character constant does not fit in a byte");
+	  }
+	return i;
+      }
+    case 'x':
+      {
+	register int i = 0;
+	register int count = 0;
+	for (;;)
+	  {
+	    c = *(*string_ptr)++;
+	    if (c >= '0' && c <= '9')
+	      i = (i << 4) + c - '0';
+	    else if (c >= 'a' && c <= 'f')
+	      i = (i << 4) + c - 'a' + 10;
+	    else if (c >= 'A' && c <= 'F')
+	      i = (i << 4) + c - 'A' + 10;
+	    else
+	      {
+		(*string_ptr)--;
+		break;
+	      }
+	  }
+	if ((i & ~((1 << BITS_PER_UNIT) - 1)) != 0)
+	  {
+	    i &= (1 << BITS_PER_UNIT) - 1;
+	    warning ("hex character constant does not fit in a byte");
 	  }
 	return i;
       }
@@ -445,7 +555,7 @@ parse_c_expression (string)
   /* if there is some sort of scanning error, just return 0 and assume
      the parsing routine has printed an error message somewhere.
      there is surely a better thing to do than this.     */
-  if (setjmp(parse_return_error))
+  if (setjmp (parse_return_error))
     return 0;
 
   if (yyparse ())
@@ -454,14 +564,14 @@ parse_c_expression (string)
   if (*lexptr)
     error ("Junk after end of expression.");
 
-  return expression_value;	/* set by yyparse() */
+  return expression_value;	/* set by yyparse () */
 }
 
 #ifdef TEST_EXP_READER
 /* main program, for testing purposes. */
-main()
+main ()
 {
-  int n;
+  int n, c;
   char buf[1024];
   extern int yydebug;
 /*
@@ -470,33 +580,35 @@ main()
   initialize_random_junk ();
 
   for (;;) {
-    printf("enter expression: ");
+    printf ("enter expression: ");
     n = 0;
-    while ((buf[n] = getchar()) != '\n')
+    while ((buf[n] = getchar ()) != '\n' && buf[n] != EOF)
       n++;
+    if (buf[n] == EOF)
+      break;
     buf[n] = '\0';
-    printf("parser returned %d\n", parse_c_expression(buf));
+    printf ("parser returned %d\n", parse_c_expression (buf));
   }
 }
 
 /* table to tell if char can be part of a C identifier. */
-char is_idchar[256];
+unsigned char is_idchar[256];
 /* table to tell if char can be first char of a c identifier. */
-char is_idstart[256];
-/* table to tell if c is horizontal space.  isspace() thinks that
+unsigned char is_idstart[256];
+/* table to tell if c is horizontal space.  isspace () thinks that
    newline is space; this is not a good idea for this program. */
 char is_hor_space[256];
 
 /*
  * initialize random junk in the hash table and maybe other places
  */
-initialize_random_junk()
+initialize_random_junk ()
 {
   register int i;
 
   /*
    * Set up is_idchar and is_idstart tables.  These should be
-   * faster than saying (is_alpha(c) || c == '_'), etc.
+   * faster than saying (is_alpha (c) || c == '_'), etc.
    * Must do set up these things before calling any routines tthat
    * refer to them.
    */
@@ -522,6 +634,20 @@ initialize_random_junk()
 
 error (msg)
 {
-  printf("error: %s\n", msg);
+  printf ("error: %s\n", msg);
+}
+
+warning (msg)
+{
+  printf ("warning: %s\n", msg);
+}
+
+struct hashnode *
+lookup (name, len, hash)
+     char *name;
+     int len;
+     int hash;
+{
+  return (DEFAULT_SIGNED_CHAR) ? 0 : ((struct hashnode *) -1);
 }
 #endif

@@ -23,30 +23,23 @@ written by AT&T, but I have never seen it.  */
 
 %expect 8
 
-/* These are the 23 conflicts you should get in parse.output;
+/* These are the 8 conflicts you should get in parse.output;
    the state numbers may vary if minor changes in the grammar are made.
 
 State 41 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 90 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 97 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 101 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 117 contains 1 shift/reduce conflict.  (See comment at component_decl.)
-State 169 contains 2 shift/reduce conflicts.  (make notype_declarator longer.)
-State 181 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 191 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 197 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 239 contains 2 shift/reduce conflicts.  (make absdcl1 longer if poss.)
-State 269 contains 2 shift/reduce conflicts.  (same for after_type_declarator).
-State 299 contains 2 shift/reduce conflicts.  (similar for absdcl1 again.)
-State 362 contains 1 shift/reduce conflict.  (dangling else.)
-State 370 contains 2 shift/reduce conflicts.  (like 241, other context.)
-State 373 contains 2 shift/reduce conflicts.  (like 241, other context.)
-State 411 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator)?
+State 92 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 99 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 103 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 119 contains 1 shift/reduce conflict.  (See comment at component_decl.)
+State 183 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 193 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 199 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
 */
 
 %{
 #include "config.h"
 #include "tree.h"
+#include "input.h"
 #include "c-parse.h"
 #include "c-tree.h"
 
@@ -102,6 +95,7 @@ void yyerror ();
 /* the reserved words */
 %token SIZEOF ENUM STRUCT UNION IF ELSE WHILE DO FOR SWITCH CASE DEFAULT
 %token BREAK CONTINUE RETURN GOTO ASM TYPEOF ALIGNOF
+%token ATTRIBUTE
 
 /* Add precedence rules to solve dangling else s/r conflict */
 %nonassoc IF
@@ -138,6 +132,9 @@ void yyerror ();
 %type <ttype> initdecls notype_initdecls initdcl notype_initdcl
 %type <ttype> init initlist maybeasm
 %type <ttype> asm_operands nonnull_asm_operands asm_operand asm_clobbers
+%type <ttype> maybe_attribute attribute_list attrib
+
+%type <ttype> compstmt
 
 %type <ttype> declarator
 %type <ttype> notype_declarator after_type_declarator
@@ -164,13 +161,13 @@ static tree make_pointer_declarator ();
 static tree combine_strings ();
 static void reinit_parse_for_function ();
 
-/* List of types and structure classes of the current declaration */
+/* List of types and structure classes of the current declaration.  */
 tree current_declspecs;
 
-char *input_filename;		/* source file current line is coming from */
-char *main_input_filename;	/* top-level source file */
+/* Stack of saved values of current_declspecs.  */
+tree declspec_stack;
 
-int undeclared_variable_notice;	/* 1 if we explained undeclared var errors. */
+int undeclared_variable_notice;	/* 1 if we explained undeclared var errors.  */
 
 static int yylex ();
 %}
@@ -216,6 +213,8 @@ datadef:
 	| error ';'
 	| error '}'
 	| ';'
+		{ if (pedantic)
+		    warning ("ANSI C does not allow extra `;' outside of a function"); }
 	;
 
 fndef:
@@ -226,7 +225,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt_or_error
-		{ finish_function (); }
+		{ finish_function (lineno); }
 	| typed_declspecs setspecs declarator error
 		{ }
 	| declmods setspecs notype_declarator
@@ -236,7 +235,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt_or_error
-		{ finish_function (); }
+		{ finish_function (lineno); }
 	| declmods setspecs notype_declarator error
 		{ }
 	| setspecs notype_declarator
@@ -246,7 +245,7 @@ fndef:
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt_or_error
-		{ finish_function (); }
+		{ finish_function (lineno); }
 	| setspecs notype_declarator error
 		{ }
 	;
@@ -306,7 +305,24 @@ unary_expr:
 		{ if (TREE_CODE ($2) == COMPONENT_REF
 		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
 		    error ("`__alignof' applied to a bit-field");
-		  $$ = c_alignof (TREE_TYPE ($2)); }
+		  if (TREE_CODE ($2) == INDIRECT_REF)
+		    {
+		      tree t = TREE_OPERAND ($2, 0);
+		      tree best = t;
+		      int bestalign = TYPE_ALIGN (TREE_TYPE (TREE_TYPE (t)));
+		      while (TREE_CODE (t) == NOP_EXPR
+			     && TREE_CODE (TREE_TYPE (TREE_OPERAND (t, 0))) == POINTER_TYPE)
+			{
+			  int thisalign;
+			  t = TREE_OPERAND (t, 0);
+			  thisalign = TYPE_ALIGN (TREE_TYPE (TREE_TYPE (t)));
+			  if (thisalign > bestalign)
+			    best = t, bestalign = thisalign;
+			}
+		      $$ = c_alignof (TREE_TYPE (TREE_TYPE (best)));
+		    }
+		  else
+		    $$ = c_alignof (TREE_TYPE ($2)); }
 	| ALIGNOF '(' typename ')'  %prec HYPERUNARY
 		{ $$ = c_alignof (groktypename ($3)); }
 	;
@@ -424,17 +440,26 @@ primary:
 		{ $$ = $2; }
 	| '(' error ')'
 		{ $$ = error_mark_node; }
-	| '(' 
+	| '('
 		{ if (current_function_decl == 0)
 		    {
 		      error ("braced-group within expression allowed only inside a function");
 		      YYERROR;
 		    }
+		  keep_next_level ();
 		  $<ttype>$ = expand_start_stmt_expr (); }
 	  compstmt ')'
-		{ if (pedantic)
+		{ tree rtl_exp;
+		  if (pedantic)
 		    warning ("ANSI C forbids braced-groups within expressions");
-		  $$ = expand_end_stmt_expr ($<ttype>2); }
+		  rtl_exp = expand_end_stmt_expr ($<ttype>2);
+		  $$ = $3;
+		  TREE_USED ($$) = 0;
+		  /* Since the statements have side effects,
+		     consider this volatile.  */
+		  TREE_VOLATILE ($$) = 1;
+		  TREE_TYPE ($$) = TREE_TYPE (rtl_exp);
+		  STMT_BODY ($$) = rtl_exp; }
 	| primary '(' exprlist ')'   %prec '.'
 		{ $$ = build_function_call ($1, $3); }
 	| primary '[' expr ']'   %prec '.'
@@ -469,17 +494,25 @@ decls:
 	;
 
 /* records the type and storage class specs to use for processing
-   the declarators that follow */
+   the declarators that follow.
+   Maintains a stack of outer-level values of current_declspecs,
+   for the sake of parm declarations nested in function declarators.  */
 setspecs: /* empty */
-		{ current_declspecs = $<ttype>0;
-		  $$ = suspend_momentary (); }
+		{ $$ = suspend_momentary ();
+		  declspec_stack = tree_cons (0, current_declspecs,
+					      declspec_stack);
+		  current_declspecs = $<ttype>0; }
 	;
 
 decl:
 	typed_declspecs setspecs initdecls ';'
-		{ resume_momentary ($2); }
+		{ current_declspecs = TREE_VALUE (declspec_stack);
+		  declspec_stack = TREE_CHAIN (declspec_stack);
+		  resume_momentary ($2); }
 	| declmods setspecs notype_initdecls ';'
-		{ resume_momentary ($2); }
+		{ current_declspecs = TREE_VALUE (declspec_stack);
+		  declspec_stack = TREE_CHAIN (declspec_stack);
+		  resume_momentary ($2); }
 	| typed_declspecs ';'
 		{ shadow_tag ($1); }
 	| declmods ';'
@@ -584,26 +617,57 @@ maybeasm:
 	;
 
 initdcl:
-	  declarator maybeasm '='
+	  declarator maybeasm maybe_attribute '='
 		{ $<ttype>$ = start_decl ($1, current_declspecs, 1); }
 	  init
 /* Note how the declaration of the variable is in effect while its init is parsed! */
-		{ finish_decl ($<ttype>4, $5, $2); }
-	| declarator maybeasm
+		{ finish_decl ($<ttype>5, $6, $2); }
+	| declarator maybeasm maybe_attribute
 		{ tree d = start_decl ($1, current_declspecs, 0);
 		  finish_decl (d, NULL_TREE, $2); }
 	;
 
 notype_initdcl:
-	  notype_declarator maybeasm '='
+	  notype_declarator maybeasm maybe_attribute '='
 		{ $<ttype>$ = start_decl ($1, current_declspecs, 1); }
 	  init
 /* Note how the declaration of the variable is in effect while its init is parsed! */
-		{ finish_decl ($<ttype>4, $5, $2); }
-	| notype_declarator maybeasm
+		{ finish_decl ($<ttype>5, $6, $2); }
+	| notype_declarator maybeasm maybe_attribute
 		{ tree d = start_decl ($1, current_declspecs, 0);
 		  finish_decl (d, NULL_TREE, $2); }
 	;
+/* the * rules are dummies to accept the Apollo extended syntax
+   so that the header files compile. */
+maybe_attribute:
+    /* empty */
+    | ATTRIBUTE '(' '(' attribute_list ')' ')'
+        { $$ = $4; }
+    ;
+
+attribute_list
+    : attrib
+    | attribute_list ',' attrib
+    ;
+
+attrib
+    : IDENTIFIER
+	{ warning ("`%s' attribute directive ignored",
+		   IDENTIFIER_POINTER ($1));
+	  $$ = $1; }
+    | IDENTIFIER '(' CONSTANT ')'
+	{ /* if not "aligned(1)", then issue warning */
+	  if (strcmp (IDENTIFIER_POINTER ($1), "aligned") != 0
+	      || TREE_CODE ($3) != INTEGER_CST
+	      || TREE_INT_CST_LOW ($3) != 1)
+	    warning ("`%s' attribute directive ignored",
+		     IDENTIFIER_POINTER ($1));
+	  $$ = $1; }
+    | IDENTIFIER '(' identifiers ')'
+	{ warning ("`%s' attribute directive ignored",
+		   IDENTIFIER_POINTER ($1));
+	  $$ = $1; }
+    ;
 
 init:
 	expr_no_commas
@@ -750,7 +814,7 @@ component_decl_list:   /* empty */
 	| component_decl_list component_decl ';'
 		{ $$ = chainon ($1, $2); }
 	| component_decl_list ';'
-		{ if (pedantic) 
+		{ if (pedantic)
 		    warning ("extra semicolon in struct or union specified"); }
 	;
 
@@ -766,9 +830,13 @@ component_decl_list:   /* empty */
 component_decl:
 	typed_typespecs setspecs components
 		{ $$ = $3;
+		  current_declspecs = TREE_VALUE (declspec_stack);
+		  declspec_stack = TREE_CHAIN (declspec_stack);
 		  resume_momentary ($2); }
 	| nonempty_type_quals setspecs components
 		{ $$ = $3;
+		  current_declspecs = TREE_VALUE (declspec_stack);
+		  declspec_stack = TREE_CHAIN (declspec_stack);
 		  resume_momentary ($2); }
 	| error
 		{ $$ = NULL_TREE; }
@@ -785,9 +853,9 @@ components:
 	;
 
 component_declarator:
-	declarator
+	declarator maybe_attribute
 		{ $$ = grokfield (input_filename, lineno, $1, current_declspecs, NULL_TREE); }
-	| declarator ':' expr_no_commas
+	| declarator ':' expr_no_commas maybe_attribute
 		{ $$ = grokfield (input_filename, lineno, $1, current_declspecs, $3); }
 	| ':' expr_no_commas
 		{ $$ = grokfield (input_filename, lineno, NULL_TREE, current_declspecs, $2); }
@@ -818,7 +886,7 @@ typename:
 	| nonempty_type_quals absdcl
 		{ $$ = build_tree_list ($1, $2); }
 	;
-	
+
 absdcl:   /* an absolute declarator */
 	/* empty */
 		{ $$ = NULL_TREE; }
@@ -890,21 +958,23 @@ pushlevel:  /* empty */
    It causes syntax errors to ignore to the next openbrace.  */
 compstmt_or_error:
 	  compstmt
+		{}
 	| error compstmt
 	;
 
 compstmt: '{' '}'
+		{ $$ = 0; }
 	| '{' pushlevel decls xstmts '}'
 		{ expand_end_bindings (getdecls (), 1, 0);
-		  poplevel (1, 1, 0);
+		  $$ = poplevel (1, 1, 0);
 		  pop_momentary (); }
 	| '{' pushlevel error '}'
 		{ expand_end_bindings (getdecls (), 0, 0);
-		  poplevel (0, 0, 0);
+		  $$ = poplevel (0, 0, 0);
 		  pop_momentary (); }
 	| '{' pushlevel stmts '}'
 		{ expand_end_bindings (getdecls (), 0, 0);
-		  poplevel (0, 0, 0);
+		  $$ = poplevel (0, 0, 0);
 		  pop_momentary (); }
 	;
 
@@ -916,9 +986,15 @@ simple_if:
 	;
 
 stmt:
-	  compstmt
+	  compstmt	{}
 	| expr ';'
 		{ emit_line_note (input_filename, lineno);
+		  /* Do default conversion if safe and possibly important,
+		     in case within ({...}).  */
+		  if ((TREE_CODE (TREE_TYPE ($1)) == ARRAY_TYPE
+		       && lvalue_p ($1))
+		      || TREE_CODE (TREE_TYPE ($1)) == FUNCTION_TYPE)
+		    $1 = default_conversion ($1);
 		  expand_expr_stmt ($1);
 		  clear_momentary (); }
 	| simple_if ELSE
@@ -928,7 +1004,8 @@ stmt:
 	| simple_if %prec IF
 		{ expand_end_cond (); }
 	| WHILE
-		{ emit_line_note (input_filename, lineno);
+		{ emit_nop ();
+		  emit_line_note (input_filename, lineno);
 		  expand_start_loop (1); }
 	  '(' expr ')'
 		{ emit_line_note (input_filename, lineno);
@@ -936,7 +1013,8 @@ stmt:
 	  stmt
 		{ expand_end_loop (); }
 	| DO
-		{ emit_line_note (input_filename, lineno);
+		{ emit_nop ();
+		  emit_line_note (input_filename, lineno);
 		  expand_start_loop_continue_elsewhere (1); }
 	  stmt WHILE
 		{ expand_loop_continue_here (); }
@@ -945,9 +1023,10 @@ stmt:
 		  expand_exit_loop_if_false (truthvalue_conversion ($7));
 		  expand_end_loop ();
 		  clear_momentary (); }
-	| FOR 
+	| FOR
 	  '(' xexpr ';'
-		{ emit_line_note (input_filename, lineno);
+		{ emit_nop ();
+		  emit_line_note (input_filename, lineno);
 		  if ($3) expand_expr_stmt ($3);
 		  expand_start_loop_continue_elsewhere (1); }
 	  xexpr ';'
@@ -1022,7 +1101,7 @@ stmt:
 		{ emit_line_note (input_filename, lineno);
 		  if ( ! expand_exit_something ())
 		    error ("break statement not within loop or switch"); }
-	| CONTINUE ';'	
+	| CONTINUE ';'
 		{ emit_line_note (input_filename, lineno);
 		  if (! expand_continue_loop ())
 		    error ("continue statement not within a loop"); }
@@ -1034,16 +1113,19 @@ stmt:
 		  c_expand_return ($2); }
 	| ASM maybe_type_qual '(' string ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  emit_line_note (input_filename, lineno);
 		  expand_asm ($4); }
 	/* This is the case with just output operands.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  emit_line_note (input_filename, lineno);
 		  c_expand_asm_operands ($4, $6, NULL_TREE, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE],
 					 input_filename, lineno); }
 	/* This is the case with input operands as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  emit_line_note (input_filename, lineno);
 		  c_expand_asm_operands ($4, $6, $8, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE],
 					 input_filename, lineno); }
@@ -1051,6 +1133,7 @@ stmt:
 	| ASM maybe_type_qual '(' string ':' asm_operands ':'
   	  asm_operands ':' asm_clobbers ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  emit_line_note (input_filename, lineno);
 		  c_expand_asm_operands ($4, $6, $8, $10,
 					 $2 == ridpointers[(int)RID_VOLATILE],
 					 input_filename, lineno); }
@@ -1062,6 +1145,7 @@ stmt:
 		  expand_goto (decl); }
 	| identifier ':'
 		{ tree label = define_label (input_filename, lineno, $1);
+		  emit_nop ();
 		  if (label)
 		    expand_label (label); }
 	  stmt
@@ -1106,16 +1190,17 @@ asm_operand:
 	;
 
 asm_clobbers:
-	  STRING
-		{ $$ = tree_cons (NULL_TREE, $1, NULL_TREE); }
-	| asm_clobbers ',' STRING
-		{ $$ = tree_cons (NULL_TREE, $3, $1); }
+	  string
+		{ $$ = tree_cons (NULL_TREE, combine_strings ($1), NULL_TREE); }
+	| asm_clobbers ',' string
+		{ $$ = tree_cons (NULL_TREE, combine_strings ($3), $1); }
 	;
 
 /* This is what appears inside the parens in a function declarator.
    Its value is a list of ..._TYPE nodes.  */
 parmlist:
-		{ pushlevel (0); }
+		{ pushlevel (0);
+		  declare_parm_level (); }
 	  parmlist_1
 		{ $$ = $2;
 		  parmlist_tags_warning ();
@@ -1125,7 +1210,8 @@ parmlist:
 /* This is referred to where either a parmlist or an identifier list is ok.
    Its value is a list of ..._TYPE nodes or a list of identifiers.  */
 parmlist_or_identifiers:
-		{ pushlevel (0); }
+		{ pushlevel (0);
+		  declare_parm_level (); }
 	  parmlist_or_identifiers_1
 		{ $$ = $2;
 		  parmlist_tags_warning ();
@@ -1156,7 +1242,7 @@ parmlist_2:  /* empty */
 		{ $$ = get_parm_info (0); }
 	;
 
-parms:	
+parms:
 	parm
 		{ push_parm_decl ($1); }
 	| parms ',' parm
@@ -1179,7 +1265,7 @@ parm:
 	;
 
 /* A nonempty list of identifiers.  */
-identifiers:	
+identifiers:
 	IDENTIFIER
 		{ $$ = build_tree_list (NULL_TREE, $1); }
 	| identifiers ',' IDENTIFIER
@@ -1194,7 +1280,7 @@ identifiers:
 
    We return an INDIRECT_REF whose "contents" are TARGET
    and whose type is the modifier list.  */
-   
+
 static tree
 make_pointer_declarator (type_quals, target)
      tree type_quals, target;
@@ -1239,7 +1325,7 @@ combine_strings (strings)
       if (wide_flag)
 	length = length * UNITS_PER_WORD + wide_length;
 
-      p = (char *) oballoc (length);
+      p = (char *) savealloc (length);
 
       /* Copy the individual strings into the new combined string.
 	 If the combined string is wide, convert the chars to ints
@@ -1319,69 +1405,73 @@ static int end_of_file;
 struct resword { char *name; short token; enum rid rid; };
 
 #define MIN_WORD_LENGTH     2      /* minimum size for C keyword */
-#define MAX_WORD_LENGTH     9      /* maximum size for C keyword */
-#define MIN_HASH_VALUE      4      /* range of the hash keys values  */
-#define MAX_HASH_VALUE      52     /* for the perfect hash generator */
+#define MAX_WORD_LENGTH     13     /* maximum size for C keyword */
+#define MIN_HASH_VALUE      7      /* range of the hash keys values  */
+#define MAX_HASH_VALUE      91     /* for the perfect hash generator */
 #define NORID RID_UNUSED
 
 /* This function performs the minimum-perfect hash mapping from input
-   string to reswords table index.  It only looks at the first and 
-   last characters in the string, thus assuring the O(1) lookup time 
+   string to reswords table index.  It only looks at the first and
+   last characters in the string, thus assuring the O(1) lookup time
    (this keeps our constant down to an insignificant amount!).  Compiling
    the following 2 functions as inline removes all overhead of the
    function calls. */
 
 #ifdef __GNUC__
-inline 
+__inline
 #endif
-static int 
+static int
 hash (str, len)
      register char *str;
      register int len;
 {
 /* This table is used to build the hash table index that recognizes
-   reserved words in 0(1) steps.  It is larger than strictly necessary, 
-   but I'm trading off the space for the time-saving luxury of avoiding 
-   subtraction of an offset.  All those ``52's'' (actually just a
-   short-hand for MAX_HASH_VALUE #defined above) are used to speed up 
-   the search when the string found on the input stream doesn't have a 
-   first or last character that is part of the set of alphabetic 
-   characters that comprise the first or last characters in C 
+   reserved words in 0(1) steps.  It is larger than strictly necessary,
+   but I'm trading off the space for the time-saving luxury of avoiding
+   subtraction of an offset.  All those ``91's'' (actually just a
+   short-hand for MAX_HASH_VALUE #defined above) are used to speed up
+   the search when the string found on the input stream doesn't have a
+   first or last character that is part of the set of alphabetic
+   characters that comprise the first or last characters in C
    reserved words. */
 
-  static int hash_table[] = 
+  static int hash_table[] =
     {
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
-      52,  52,  52,  52,  52,   7,  52,  12,   0,  18,
-       5,   0,  13,   2,   2,  29,  52,   0,   7,  37,
-      25,   0,  52,  52,  17,  19,   0,  21,   1,   3,
-      52,  52,  52,  52,  52,  52,  52,  52,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91, 91, 91, 91, 91, 91,
+     91, 91, 91, 91, 91,  1, 91,  2,  1, 32,
+      7,  5, 18, 20,  1, 17, 91,  1, 18,  1,
+     28,  1, 23, 91, 12, 20,  1, 41,  7, 15,
+     91, 91, 10, 91, 91, 91, 91, 91,
     };
+  register int hval = len ;
 
-  /* The hash function is very simple: add the length of STR
-     to the hash_table value of its first and last character. 
-     Putting LEN near LEN - 1 generates slightly better 
-     code... */
-
-  return len + hash_table[str[len - 1]] + hash_table[str[0]];
+  switch (hval)
+    {
+      default:
+      case 3:
+        hval += hash_table[str[2]];
+      case 2:
+      case 1:
+        return hval + hash_table[str[0]] + hash_table[str[len - 1]];
+    }
 }
 
 /* This routine attempts to match the string found in the reswords table
-   with the one from the input stream.  If all the relevant details 
+   with the one from the input stream.  If all the relevant details
    match then an actual strcmp comparison is performed and the address of
-   correct struct resword entry is returned.  Otherwise, a NULL 
+   correct struct resword entry is returned.  Otherwise, a NULL
    pointer is returned. */
 
 #ifdef __GNUC__
-inline 
+__inline
 #endif
 struct resword *
 is_reserved_word (str, len)
@@ -1391,70 +1481,87 @@ is_reserved_word (str, len)
   /* This is the hash table of keywords.
      The order of keywords has been chosen for perfect hashing.
      Therefore, this table cannot be updated by hand.
-     Use the program ``gperf,'' available with the latest libg++ 
-     distribution, to generate an updated table.  The command-line
-     arguments to build this table were: gperf -g -o -j1 -t gnuc.input  */
+     Use the program ``gperf,'' available with the latest libg++
+     distribution, to generate an updated table.  A file called
+     c-parse.gperf, distributed with GNU C, contains the keyword file.  */
 
-  static struct resword reswords[] = 
+  static struct resword reswords[] =
     {
-      { "",},{ "",},{ "",},{ "",},
-      { "else", ELSE, NORID },
-      { "break", BREAK, NORID },
-      { "goto", GOTO, NORID },
-      { "do", DO, NORID },
-      { "while", WHILE, NORID },
-      { "volatile", TYPE_QUAL, RID_VOLATILE },
-      { "void", TYPESPEC, RID_VOID },
-      { "double", TYPESPEC, RID_DOUBLE },
-      { "default", DEFAULT, NORID },
-      { "long", TYPESPEC, RID_LONG },
-      { "__const", TYPE_QUAL, RID_CONST },
-      { "__inline", SCSPEC, RID_INLINE },
-      { "auto", SCSPEC, RID_AUTO },
-      { "__volatile", TYPE_QUAL, RID_VOLATILE },
-      { "float", TYPESPEC, RID_FLOAT },
-      { "typeof", TYPEOF, NORID },
-      { "typedef", SCSPEC, RID_TYPEDEF },
-      { "",},
-      { "case", CASE, NORID },
-      { "const", TYPE_QUAL, RID_CONST },
-      { "short", TYPESPEC, RID_SHORT },
-      { "struct", STRUCT, NORID },
-      { "continue", CONTINUE, NORID },
-      { "switch", SWITCH, NORID },
-      { "__typeof", TYPEOF, NORID },
-      { "__alignof", ALIGNOF, NORID },
-      { "signed", TYPESPEC, RID_SIGNED },
-      { "extern", SCSPEC, RID_EXTERN },
-      { "int", TYPESPEC, RID_INT },
-      { "for", FOR, NORID },
-      { "unsigned", TYPESPEC, RID_UNSIGNED },
-      { "inline", SCSPEC, RID_INLINE },
-      { "",},{ "",},
-      { "sizeof", SIZEOF, NORID },
-      { "char", TYPESPEC, RID_CHAR },
-      { "",},
-      { "enum", ENUM, NORID },
-      { "register", SCSPEC, RID_REGISTER },
-      { "static", SCSPEC, RID_STATIC },
-      { "if", IF, NORID },
-      { "",},{ "",},{ "",},
-      { "return", RETURN, NORID },
-      { "__asm", ASM, NORID },
-      { "",},
-      { "union", UNION, NORID },
-      { "asm", ASM, NORID },
+      { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, 
+      {"asm",  ASM, NORID },
+      {"auto",  SCSPEC, RID_AUTO },
+      {"__asm",  ASM, NORID },
+      {"do",  DO, NORID },
+      {"__asm__",  ASM, NORID },
+      {"break",  BREAK, NORID },
+      {"__typeof__",  TYPEOF, NORID },
+      { "", }, 
+      {"__alignof__",  ALIGNOF, NORID },
+      { "", }, 
+      {"__attribute__",  ATTRIBUTE, NORID },
+      { "", }, 
+      {"__attribute",  ATTRIBUTE, NORID },
+      { "", }, 
+      {"__volatile__",  TYPE_QUAL, RID_VOLATILE },
+      {"int",  TYPESPEC, RID_INT },
+      {"__volatile",  TYPE_QUAL, RID_VOLATILE },
+      { "", }, 
+      {"float",  TYPESPEC, RID_FLOAT },
+      {"goto",  GOTO, NORID },
+      {"short",  TYPESPEC, RID_SHORT },
+      {"__typeof",  TYPEOF, NORID },
+      {"__inline__",  SCSPEC, RID_INLINE },
+      {"__alignof",  ALIGNOF, NORID },
+      {"__inline",  SCSPEC, RID_INLINE },
+      {"__signed__",  TYPESPEC, RID_SIGNED },
+      {"default",  DEFAULT, NORID },
+      {"else",  ELSE, NORID },
+      {"void",  TYPESPEC, RID_VOID },
+      {"__signed",  TYPESPEC, RID_SIGNED },
+      {"if",  IF, NORID },
+      {"volatile",  TYPE_QUAL, RID_VOLATILE },
+      {"struct",  STRUCT, NORID },
+      {"extern",  SCSPEC, RID_EXTERN },
+      {"__const",  TYPE_QUAL, RID_CONST },
+      {"while",  WHILE, NORID },
+      {"__const__",  TYPE_QUAL, RID_CONST },
+      {"switch",  SWITCH, NORID },
+      {"for",  FOR, NORID },
+      {"inline",  SCSPEC, RID_INLINE },
+      {"return",  RETURN, NORID },
+      {"typeof",  TYPEOF, NORID },
+      {"typedef",  SCSPEC, RID_TYPEDEF },
+      {"char",  TYPESPEC, RID_CHAR },
+      {"enum",  ENUM, NORID },
+      {"register",  SCSPEC, RID_REGISTER },
+      {"signed",  TYPESPEC, RID_SIGNED },
+      {"sizeof",  SIZEOF, NORID },
+      { "", }, { "", }, { "", }, { "", }, 
+      {"double",  TYPESPEC, RID_DOUBLE },
+      {"static",  SCSPEC, RID_STATIC },
+      {"case",  CASE, NORID },
+      { "", }, { "", }, { "", }, { "", }, 
+      {"const",  TYPE_QUAL, RID_CONST },
+      { "", }, { "", }, { "", }, 
+      {"long",  TYPESPEC, RID_LONG },
+      { "", }, { "", }, 
+      {"continue",  CONTINUE, NORID },
+      { "", }, { "", }, 
+      {"unsigned",  TYPESPEC, RID_UNSIGNED },
+      { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, { "", }, 
+      { "", }, { "", }, { "", }, { "", }, { "", }, 
+      {"union",  UNION, NORID },
     };
 
-  if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH) 
+  if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH)
     {
       register int key = hash (str, len);
 
-      if (key <= MAX_HASH_VALUE) 
+      if (key <= MAX_HASH_VALUE)
         {
           register char *s = reswords[key].name;
 
-          if (*s == *str && !strcmp (str + 1, s + 1)) 
+          if (*s == *str && !strcmp (str + 1, s + 1))
             return &reswords[key];
         }
     }
@@ -1572,6 +1679,7 @@ skip_white_space (c)
 	case '\t':
 	case '\f':
 	case '\r':
+	case '\v':
 	case '\b':
 	  c = getc (finput);
 	  break;
@@ -1731,6 +1839,7 @@ linenum:
   if (token == CONSTANT
       && TREE_CODE (yylval.ttype) == INTEGER_CST)
     {
+      int old_lineno = lineno;
       /* subtract one, because it is the following line that
 	 gets the specified number */
 
@@ -1764,9 +1873,46 @@ linenum:
 
       if (main_input_filename == 0)
 	main_input_filename = input_filename;
+
+      /* Is this the last nonwhite stuff on the line?  */
+      c = getc (finput);
+      while (c == ' ' || c == '\t')
+	c = getc (finput);
+      if (c == '\n')
+	return c;
+      ungetc (c, finput);
+
+      token = yylex ();
+
+      /* `1' after file name means entering new file.
+	 `2' after file name means just left a file.  */
+
+      if (token == CONSTANT
+	  && TREE_CODE (yylval.ttype) == INTEGER_CST)
+	{
+	  if (TREE_INT_CST_LOW (yylval.ttype) == 1)
+	    {
+	      struct file_stack *p
+		= (struct file_stack *) xmalloc (sizeof (struct file_stack));
+	      input_file_stack->line = old_lineno;
+	      p->next = input_file_stack;
+	      p->name = input_filename;
+	      input_file_stack = p;
+	      input_file_stack_tick++;
+	    }
+	  else if (input_file_stack->next)
+	    {
+	      struct file_stack *p = input_file_stack;
+	      input_file_stack = p->next;
+	      free (p);
+	      input_file_stack_tick++;
+	    }
+	  else
+	    error ("#-lines for entering and leaving files don't match");
+	}
     }
   else
-    error ("invalid #line");
+    error ("invalid #-line");
 
   /* skip the rest of this line.  */
  skipline:
@@ -1816,9 +1962,9 @@ readescape ()
 	}
       if (count == 0)
 	error ("\\x used with no following hex digits");
-      if ((count - 1) * 4 >= TYPE_PRECISION (integer_type_node)
-	  || ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4))
-	      <= firstdig))
+      else if ((count - 1) * 4 >= TYPE_PRECISION (integer_type_node)
+	       || ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4))
+		   <= firstdig))
 	warning ("hex escape out of range");
       return code;
 
@@ -1929,6 +2075,7 @@ yylex ()
       case '\t':
       case '\f':
       case '\r':
+      case '\v':
       case '\b':
 	c = getc (finput);
 	break;
@@ -2010,7 +2157,7 @@ yylex ()
       yylval.itype = 0;
 
       /* Try to recognize a keyword.  Uses minimum-perfect hash function */
-  
+
       {
 	register struct resword *ptr;
 
@@ -2064,6 +2211,7 @@ yylex ()
 	   we store only 8 live bits in each short,
 	   giving us 64 bits of reliable precision */
 	short shorts[8];
+	int overflow = 0;
 
 	enum anon1 { NOT_FLOAT, AFTER_POINT, TOO_MANY_POINTS} floatflag
 	  = NOT_FLOAT;
@@ -2164,10 +2312,10 @@ yylex ()
 		if (c >= largest_digit)
 		  largest_digit = c;
 		numdigits++;
-	    
+
 		for (count = 0; count < 8; count++)
 		  {
-		    (shorts[count] *= base);
+		    shorts[count] *= base;
 		    if (count)
 		      {
 			shorts[count] += (shorts[count-1] >> 8);
@@ -2175,7 +2323,11 @@ yylex ()
 		      }
 		    else shorts[0] += c;
 		  }
-    
+
+		if (shorts[7] >= 1<<8
+		    || shorts[7] < - (1 << 8))
+		  overflow = TRUE;
+
 		if (p >= token_buffer + maxtoken - 3)
 		  p = extend_token_buffer (p);
 		*p++ = (c = getc (finput));
@@ -2232,8 +2384,17 @@ yylex ()
 		/* Check for "0.0" and variants;
 		   Sunos 4 spuriously returns ERANGE for them.  */
 		while (*p1 == '0') p1++;
-		if (*p1 == '.') p1++;
-		while (*p1 == '0') p1++;
+		if (*p1 == '.')
+		  {
+		    p1++;
+		    while (*p1 == '0') p1++;
+		  }
+		if (*p1 == 'e' || *p1 == 'E')
+		  {
+		    /* with significand==0, ignore the exponent */
+		    p1++;
+		    while (*p1 != 0) p1++;
+		  }
 		if (*p1 != 0)
 		  warning ("floating point number exceeds range of `double'");
 	      }
@@ -2244,10 +2405,13 @@ yylex ()
 	      {
 		if (c == 'f' || c == 'F')
 		  {
+		    float floater;
 		    if (f_seen)
 		      error ("two `f's in floating constant");
 		    f_seen = 1;
 		    type = float_type_node;
+		    floater = value;
+		    value = floater;
 		  }
 		else if (c == 'l' || c == 'L')
 		  {
@@ -2288,6 +2452,7 @@ yylex ()
 	    tree type;
 	    int spec_unsigned = 0;
 	    int spec_long = 0;
+	    int spec_long_long = 0;
 
 	    while (1)
 	      {
@@ -2300,7 +2465,13 @@ yylex ()
 		else if (c == 'l' || c == 'L')
 		  {
 		    if (spec_long)
-		      error ("two `l's in integer constant");
+		      {
+			if (spec_long_long)
+			  error ("three `l's in integer constant");
+			else if (pedantic)
+			  warning ("ANSI C forbids long long integer constants");
+			spec_long_long = 1;
+		      }
 		    spec_long = 1;
 		  }
 		else
@@ -2326,33 +2497,57 @@ yylex ()
 
 	    ungetc (c, finput);
 
-	    if (shorts[7] | shorts[6] | shorts[5] | shorts[4])
+	    if ((overflow || shorts[7] || shorts[6] || shorts[5] || shorts[4])
+		&& !spec_long_long)
 	      warning ("integer constant out of range");
+
+	    /* If it won't fit in a signed long long, make it unsigned.
+	       We can't distinguish based on the tree node because
+	       any integer constant fits any long long type.  */
+	    if (shorts[7] >= (1<<8))
+	      spec_unsigned = 1;
 
 	    /* This is simplified by the fact that our constant
 	       is always positive.  */
 	    yylval.ttype
-	      = build_int_2 ((shorts[3]<<24) + (shorts[2]<<16) + (shorts[1]<<8) + shorts[0],
-			     0);
-    
+	      = (build_int_2
+		 ((shorts[3]<<24) + (shorts[2]<<16) + (shorts[1]<<8) + shorts[0],
+		  (spec_long_long
+		   ? (shorts[7]<<24) + (shorts[6]<<16) + (shorts[5]<<8) + shorts[4]
+		   : 0)));
+
 	    if (!spec_long && !spec_unsigned
 		&& int_fits_type_p (yylval.ttype, integer_type_node))
 	      type = integer_type_node;
 
 	    else if (!spec_long && base != 10
-		&& int_fits_type_p (yylval.ttype, unsigned_type_node))
+		     && int_fits_type_p (yylval.ttype, unsigned_type_node))
 	      type = unsigned_type_node;
 
-	    else if (!spec_unsigned
-		&& int_fits_type_p (yylval.ttype, long_integer_type_node))
+	    else if (!spec_unsigned && !spec_long_long
+		     && int_fits_type_p (yylval.ttype, long_integer_type_node))
 	      type = long_integer_type_node;
+
+	    else if (! spec_long_long
+		     && int_fits_type_p (yylval.ttype,
+					 long_unsigned_type_node))
+	      type = long_unsigned_type_node;
+
+	    else if (! spec_unsigned
+		     && int_fits_type_p (yylval.ttype,
+					 long_long_integer_type_node))
+	      type = long_long_integer_type_node;
+
+	    else if (int_fits_type_p (yylval.ttype,
+				      long_long_unsigned_type_node))
+	      type = long_long_unsigned_type_node;
 
 	    else
 	      {
-		type = long_unsigned_type_node;
-		if (! int_fits_type_p (yylval.ttype, long_unsigned_type_node))
-		  warning ("integer constant out of range");
+		type = long_long_integer_type_node;
+		warning ("integer constant out of range");
 	      }
+
 	    TREE_TYPE (yylval.ttype) = type;
 	  }
 
@@ -2361,47 +2556,90 @@ yylex ()
 
     case '\'':
     char_constant:
-      c = getc (finput);
       {
-	register int code = 0;
+	register int result = 0;
+	register num_chars = 0;
+	int width = TYPE_PRECISION (char_type_node);
+	int max_chars;
 
-      tryagain:
+	if (wide_flag) width = TYPE_PRECISION (integer_type_node);
 
-	if (c == '\\')
+	max_chars = TYPE_PRECISION (integer_type_node) / width;
+
+	while (1)
 	  {
-	    c = readescape ();
-	    if (c < 0)
-	      goto tryagain;
-	    if (!wide_flag && c >= (1 << BITS_PER_UNIT))
-	      warning ("escape sequence out of range for character");
-	  }
-	else if (c == '\n')
-	  {
-	    if (pedantic)
-	      warning ("ANSI C forbids newline in character constant");
-	    lineno++;
+	  tryagain:
+
+	    c = getc (finput);
+
+	    if (c == '\'' || c == EOF)
+	      break;
+
+	    if (c == '\\')
+	      {
+		c = readescape ();
+		if (c < 0)
+		  goto tryagain;
+		if (width < HOST_BITS_PER_INT
+		    && (unsigned) c >= (1 << width))
+		  warning ("escape sequence out of range for character");
+	      }
+	    else if (c == '\n')
+	      {
+		if (pedantic)
+		  warning ("ANSI C forbids newline in character constant");
+		lineno++;
+	      }
+
+	    num_chars++;
+	    if (num_chars > maxtoken - 4)
+	      extend_token_buffer (token_buffer);
+
+	    token_buffer[num_chars] = c;
+
+	    /* Merge character into result; ignore excess chars.  */
+	    if (num_chars < max_chars + 1)
+	      {
+		if (width < HOST_BITS_PER_INT)
+		  result = (result << width) | (c & ((1 << width) - 1));
+		else
+		  result = c;
+	      }
 	  }
 
-	code = c;
-	token_buffer[1] = c;
-	token_buffer[2] = '\'';
-	token_buffer[3] = 0;
+	token_buffer[num_chars + 1] = '\'';
+	token_buffer[num_chars + 2] = 0;
 
-	c = getc (finput);
 	if (c != '\'')
 	  error ("malformatted character constant");
+	else if (num_chars == 0)
+	  error ("empty character constant");
+	else if (num_chars > max_chars)
+	  {
+	    num_chars = max_chars;
+	    error ("character constant too long");
+	  }
+	else if (num_chars != 1 && ! flag_traditional)
+	  warning ("multi-character character constant");
 
 	/* If char type is signed, sign-extend the constant.  */
 	if (! wide_flag)
 	  {
+	    int num_bits = num_chars * width;
 	    if (TREE_UNSIGNED (char_type_node)
-		|| ((code >> (BITS_PER_UNIT - 1)) & 1) == 0)
-	      yylval.ttype = build_int_2 (code & ((1 << BITS_PER_UNIT) - 1), 0);
+		|| ((result >> (num_bits - 1)) & 1) == 0)
+	      yylval.ttype
+		= build_int_2 (result & ((unsigned) ~0
+					 >> (HOST_BITS_PER_INT - num_bits)),
+			       0);
 	    else
-	      yylval.ttype = build_int_2 (code | ((-1) << BITS_PER_UNIT), -1);
+	      yylval.ttype
+		= build_int_2 (result | ~((unsigned) ~0
+					  >> (HOST_BITS_PER_INT - num_bits)),
+			       -1);
 	  }
 	else
-	  yylval.ttype = build_int_2 (code, 0);
+	  yylval.ttype = build_int_2 (result, 0);
 
 	TREE_TYPE (yylval.ttype) = integer_type_node;
 	value = CONSTANT; break;
@@ -2425,7 +2663,7 @@ yylex ()
 		c = readescape ();
 		if (c < 0)
 		  goto skipnewline;
-		if (!wide_flag && c >= (1 << BITS_PER_UNIT))
+		if (!wide_flag && c >= (1 << TYPE_PRECISION (char_type_node)))
 		  warning ("escape sequence out of range for character");
 	      }
 	    else if (c == '\n')
@@ -2488,7 +2726,7 @@ yylex ()
 
 	value = STRING; break;
       }
-      
+
     case '+':
     case '-':
     case '&':
@@ -2532,7 +2770,7 @@ yylex ()
 	    yylval.code = LT_EXPR; break;
 	  case '>':
 	    yylval.code = GT_EXPR; break;
-	  }	
+	  }
 
 	token_buffer[1] = c1 = getc (finput);
 	token_buffer[2] = 0;
@@ -2549,7 +2787,7 @@ yylex ()
 		value = EQCOMPARE; yylval.code = NE_EXPR; goto done;
 	      case '=':
 		value = EQCOMPARE; yylval.code = EQ_EXPR; goto done;
-	      }	
+	      }
 	    value = ASSIGN; goto done;
 	  }
 	else if (c == c1)

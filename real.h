@@ -17,6 +17,9 @@ You should have received a copy of the GNU General Public License
 along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
+#ifndef REAL_H_INCLUDED
+#define REAL_H_INCLUDED
+
 /* If we are not cross-compiling, use a `double' to represent the
    floating-point value.  Otherwise, use some other type
    (probably a struct containing an array of longs).  */
@@ -69,9 +72,11 @@ union real_extract
 
 /* For a CONST_DOUBLE:
    The usual two ints that hold the value.
-   For a DImode, that is all there are.
+   For a DImode, that is all there are;
+    and CONST_DOUBLE_LOW is the low-order word and ..._HIGH the high-order.
    For a float, the number of ints varies,
-   so use &CONST_DOUBLE_LOW(r) as the address of an array of them.  */
+    and CONST_DOUBLE_LOW is the one that should come first *in memory*.
+    So use &CONST_DOUBLE_LOW(r) as the address of an array of ints.  */
 #define CONST_DOUBLE_LOW(r) XINT (r, 2)
 #define CONST_DOUBLE_HIGH(r) XINT (r, 3)
 
@@ -81,3 +86,9 @@ union real_extract
    or const0_rtx if no MEM has been made for it yet,
    or cc0_rtx if it is not on the chain.  */
 #define CONST_DOUBLE_MEM(r) XEXP (r, 0)
+
+/* Function to return a real value (not a tree node)
+   from a given integer constant.  */
+REAL_VALUE_TYPE real_value_from_int_cst ();
+
+#endif /* Not REAL_H_INCLUDED */

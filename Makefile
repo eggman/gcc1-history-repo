@@ -18,43 +18,11 @@
 #the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
-# Variables you should change for certain systems:
-
-# These are what you would need on HPUX:
-# CFLAGS = -Wc,-Ns2000 -Wc,-Ne700 -Wc,-Np300
-# If you are using the GNU assembler and linker on HPUX,
-# add -I../hp-include to CFLAGS.
-# -g is desirable in CFLAGS, but a compiler bug in HPUX version 5
-# bites whenever tree.def, rtl.def or machmode.def is included
-# (ie., on every source file).
-# CCLIBFLAGS = -Wc,-Ns2000 -Wc,-Ne700
-# For CCLIBFLAGS you might want to specify the switch that
-# forces only 68000 instructions to be used.
-
-# If you are making gcc for the first time, and if you are compiling it with
-# a non-gcc compiler, and if your system doesn't have a working alloca() in any
-# of the standard libraries (as is true for HP/UX or Genix),
-# then get alloca.c from GNU Emacs and un-comment the following line:
-# ALLOCA = alloca.o
-
-# If your system has alloca() in /lib/libPW.a, un-comment the following line:
-# CLIB= -lPW
-
-# If your system's malloc() routine fails for any reason (as it does on
-# certain versions of Genix), try getting the files
-# malloc.c and getpagesize.h from GNU Emacs and un-comment the following line:
-# MALLOC = malloc.o
-
-# If you are running GCC on an Apollo (SR10.x),
-# go into a Berkeley environment and use this:
-# CFLAGS = -g -A nansi -A cpu,3000 -A runtype,bsd4.3 -A systype,any -DSHORT_ENUM_BUG
-# (Says vasta@apollo.com.)
-
-
 # Variables that exist for you to override.
+# See below for how to change them for certain systems.
 
-CFLAGS = -g $(XCFLAGS)
-CC = cc
+CFLAGS = -O -mgnu -fcombine-regs -fstrength-reduce $(XCFLAGS)
+CC = gcc
 BISON = bison
 BISONFLAGS = -v
 AR = ar
@@ -67,6 +35,8 @@ INSTALL = install -c
 OLDCC = cc
 
 # CFLAGS for use with OLDCC, for compiling gnulib.
+# NOTE: -O does not work on some Unix systems!
+# If you use it here, you are asking for trouble.
 CCLIBFLAGS=
 
 # Directory where sources are, from where we are.
@@ -87,6 +57,50 @@ CLIB=
 # system library.
 OBSTACK=obstack.o
 
+# Directory to link to, when using the target `maketest'.
+DIR = ../gcc
+
+# End of variables for you to override.
+
+
+# Variables you should change for certain systems.
+
+# These are what you would need on HPUX:
+# CFLAGS = -Wc,-Ns2000 -Wc,-Ne700 -Wc,-Np300
+# If you are using the GNU assembler and linker on HPUX,
+# add -I../hp-include to CFLAGS.
+# -g is desirable in CFLAGS, but a compiler bug in HPUX version 5
+# bites whenever tree.def, rtl.def or machmode.def is included
+# (ie., on every source file).
+# If you have a floating point accelerator, you might want -lsetjmp as well.
+# CCLIBFLAGS = -Wc,-Ns2000 -Wc,-Ne700
+# For CCLIBFLAGS you might want to specify the switch that
+# forces only 68000 instructions to be used.
+
+# If you are making gcc for the first time, and if you are compiling it with
+# a non-gcc compiler, and if your system doesn't have a working alloca() in any
+# of the standard libraries (as is true for HP/UX or Genix),
+# then get alloca.c from GNU Emacs and un-comment the following line:
+# ALLOCA = alloca.o
+# But don't do that if compiling using GCC.
+
+# If your system has alloca() in /lib/libPW.a, un-comment the following line:
+# CLIB= -lPW
+
+# On a pyramid, you need to uncomment the following line:
+# CLIB= -lalloca
+
+# If your system's malloc() routine fails for any reason (as it does on
+# certain versions of Genix), try getting the files
+# malloc.c and getpagesize.h from GNU Emacs and un-comment the following line:
+# MALLOC = malloc.o
+
+# If you are running GCC on an Apollo (SR10.x),
+# go into a Berkeley environment and use this:
+# CFLAGS = -g -A nansi -A cpu,3000 -A runtype,bsd4.3 -A systype,any -DSHORT_ENUM_BUG
+# (Says vasta@apollo.com.)
+
+
 # Dependency on obstack, alloca, malloc or whatever library facilities
 # are not installed in the system libraries.
 LIBDEPS= $(OBSTACK) $(ALLOCA) $(MALLOC)
@@ -95,13 +109,16 @@ LIBDEPS= $(OBSTACK) $(ALLOCA) $(MALLOC)
 # and the system's installed libraries.
 LIBS = $(OBSTACK) $(ALLOCA) $(MALLOC) $(CLIB)
 
-DIR = ../gcc
-
-# End of variables for you to override.
+# Specify the directories to be searched for header files.
+# Both . and srcdir are used, in that order,
+# so that tm.h and config.h will be found in the compilation
+# subdirectory rather than in the source directory.
+INCLUDES = -I. -I$(srcdir) -I$(srcdir)/config
+SUBDIR_INCLUDES = -I.. -I../$(srcdir) -I../$(srcdir)/config
 
 # Always use -I$(srcdir)/config when compiling.
 .c.o:
-	$(CC) -c $(CFLAGS) $(CPPFLAGS) -I$(srcdir)/config $<
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) $<
 
 # Language-specific object files for C.
 C_OBJS = c-parse.tab.o c-decl.o c-typeck.o c-convert.o
@@ -114,7 +131,7 @@ CPLUS_OBJS = cplus-parse.o cplus-decl.o cplus-typeck.o \
 
 # Language-independent object files.
 OBJS = toplev.o version.o tree.o print-tree.o stor-layout.o fold-const.o \
- rtl.o expr.o stmt.o expmed.o explow.o optabs.o varasm.o \
+ rtl.o rtlanal.o expr.o stmt.o expmed.o explow.o optabs.o varasm.o \
  symout.o dbxout.o sdbout.o emit-rtl.o insn-emit.o \
  integrate.o jump.o cse.o loop.o flow.o stupid.o combine.o \
  regclass.o local-alloc.o global-alloc.o reload.o reload1.o caller-save.o \
@@ -124,40 +141,55 @@ OBJS = toplev.o version.o tree.o print-tree.o stor-layout.o fold-const.o \
 STAGE_GCC=gcc
 STAGESTUFF = *.o insn-flags.h insn-config.h insn-codes.h \
  insn-output.c insn-recog.c insn-emit.c insn-extract.c insn-peep.c \
+ stamp-flags.h stamp-config.h stamp-codes.h \
+ stamp-output.c stamp-recog.c stamp-emit.c stamp-extract.c stamp-peep.c \
  genemit genoutput genrecog genextract genflags gencodes genconfig genpeep \
  cc1 cpp cccp # cc1plus
 
 # Members of gnulib.
 LIBFUNCS = _eprintf _builtin_new _builtin_New _builtin_del \
    _umulsi3 _mulsi3 _udivsi3 _divsi3 _umodsi3 _modsi3 \
-   _lshrsi3 _lshlsi3 _ashrsi3 _ashlsi3 _cmpdi2 _ucmpdi2 \
+   _lshrsi3 _lshlsi3 _ashrsi3 _ashlsi3 \
    _divdf3 _muldf3 _negdf2 _adddf3 _subdf3 _cmpdf2 \
-   _fixunsdfsi _fixunsdfdi _fixdfsi _fixdfdi \
-   _floatsidf _floatdidf _truncdfsf2 _extendsfdf2 \
+   _fixunsdfsi _fixdfsi _floatsidf _truncdfsf2 _extendsfdf2 \
    _addsf3 _negsf2 _subsf3 _cmpsf2 _mulsf3 _divsf3 _varargs
 
 # Library members defined in gnulib2.c.
 LIB2FUNCS = _adddi3 _subdi3 _muldi3 _divdi3 _moddi3 _udivdi3 _umoddi3 _negdi2 \
-    _div_internal
+    _anddi3 _iordi3 _xordi3 _lshrdi3 _lshldi3 _ashldi3 _ashrdi3 _one_cmpldi2  \
+    _bdiv _cmpdi2 _ucmpdi2 _fixunsdfdi _fixdfdi _floatdidf
 
 # Header files that are made available to programs compiled with gcc.
-USER_H = stddef.h stdarg.h assert.h varargs.h va-*.h limits.h
+USER_H = stddef.h stdarg.h assert.h va-*.h limits.h
 
-# If you want to recompile everything, just do rm *.o.
+# The files that "belong" in CONFIG_H are deliberately omitted
+# because having them there would not be useful in actual practice.
+# All they would do is cause complete recompilation every time
+# one of the machine description files is edited.
+# That may or may not be what one wants to do.
+# If it is, rm *.o is an easy way to do it.
 # CONFIG_H = config.h tm.h
 CONFIG_H =
 RTL_H = rtl.h rtl.def machmode.def
 TREE_H = tree.h real.h tree.def machmode.def
 CPLUS_TREE_H = $(TREE_H) cplus-tree.h c-tree.h
 
-all: gnulib gcc cc1 cpp # cc1plus gnulib2
+# Note that dependencies on obstack.h are not written
+# because that file is not part of GCC.
+# Dependencies on gvarargs.h are not written
+# because all that file does, when not compiling with GCC,
+# is include the system varargs.h.
 
-# gnulib2 is commented out in 1.35 since it's too late for real testing.
-# Do `make gnulib2' explicitly if you want `long long' support.
-lang-c: gnulib gcc cc1 cpp # gnulib2
-# lang-cplus: gnulib gcc cc1plus cpp
+all: config.status gnulib gcc cc1 cpp float.h gnulib2 # cc1plus
 
-doc: cpp.info gplus.info gcc.info
+lang-c: config.status gnulib gcc cc1 cpp gnulib2
+# lang-cplus: config.status gnulib gcc cc1plus cpp gnulib2
+
+config.status:
+	@echo You must configure gcc.  Look at the INSTALL file for details.
+	@false
+
+doc: $(srcdir)/cpp.info $(srcdir)/gplus.info $(srcdir)/gcc.info
 
 compilations: ${OBJS}
 
@@ -165,11 +197,6 @@ gcc: gcc.o version.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o gccnew gcc.o version.o $(LIBS)
 # Go via `gccnew' to avoid `file busy' if $(CC) is `gcc'.
 	mv gccnew gcc
-
-gcc.o: gcc.c $(CONFIG_H)
-	$(CC) $(CFLAGS) -I$(srcdir)/config \
-  -DSTANDARD_STARTFILE_PREFIX=\"$(libdir)/\" \
-  -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc-\" -c gcc.c
 
 cc1: $(C_OBJS) $(OBJS) $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o cc1 $(C_OBJS) $(OBJS) $(LIBS)
@@ -180,51 +207,67 @@ cc1plus: $(CPLUS_OBJS) $(OBJS) $(LIBDEPS)
 #Library of arithmetic subroutines
 # Don't compile this with gcc!
 # (That would cause most arithmetic functions to call themselves.)
-gnulib: gnulib.c
-	-mkdir libtemp
-	cd libtemp; \
-	rm -f gnulib; \
+gnulib: gnulib.c $(CONFIG_H)
+	-rm -f stamp-gnulib2
+	rm -f tmpgnulib gnulib; \
 	for name in $(LIBFUNCS); \
 	do \
 	  echo $${name}; \
 	  rm -f $${name}.c; \
-	  cp ../gnulib.c $${name}.c; \
-	  $(OLDCC) $(CCLIBFLAGS) -O -I.. -I../config -c -DL$${name} $${name}.c; \
-	  $(AR) qc gnulib $${name}.o; \
+	  cp $(srcdir)/gnulib.c $${name}.c; \
+	  $(OLDCC) $(CCLIBFLAGS) -O $(INCLUDES) -c -DL$${name} $${name}.c; \
+	  $(AR) qc tmpgnulib $${name}.o; \
+	  rm -f $${name}.[co]; \
 	done
-	mv libtemp/gnulib .
-	rm -rf libtemp
-	if [ -f /usr/bin/ranlib ] ; then  ranlib gnulib ;fi
+	if [ -f /usr/bin/ranlib -o -f /bin/ranlib ] ; then ranlib tmpgnulib ;fi
+# Actually build it in tmpgnulib above, then rename now,
+# so that gnulib itself remains nonexistent if compilation is aborted.
+	mv tmpgnulib gnulib
 # On HPUX, if you are working with the GNU assembler and linker,
 # the previous line must be replaced with the following two lines.
 # No change is needed here if you are using the HPUX assembler and linker.
 #	mv gnulib gnulib-hp
 #	../hp-bin/hpxt gnulib-hp gnulib
 
-gnulib2: stamp-gnulib2 ;
-stamp-gnulib2: gnulib2.c
-	-mkdir libtemp
-	cd libtemp; \
-	cp ../gnulib .; \
+gnulib2: stamp-gnulib2;
+stamp-gnulib2: gnulib2.c gnulib cc1 gcc cpp $(CONFIG_H)
 	for name in $(LIB2FUNCS); \
 	do \
 	  echo $${name}; \
-	  rm -f $${name}.c; \
-	  cp ../gnulib2.c $${name}.c; \
-	  ../gcc -B../ -fstrength-reduce -O -I.. -I../config -c -DL$${name} $${name}.c; \
-	  $(AR) qc gnulib $${name}.o; \
+	  ./gcc -B./ -fstrength-reduce -O $(INCLUDES) $(GNULIB2_CFLAGS) -c -DL$${name} $(srcdir)/gnulib2.c -o $${name}.o; \
+	  $(AR) rc gnulib $${name}.o; \
+	  rm -f $${name}.o; \
 	done
-	mv libtemp/gnulib .
-	rm -rf libtemp
-	if [ -f /usr/bin/ranlib ] ; then  ranlib gnulib ;fi
+	if [ -f /usr/bin/ranlib -o -f /bin/ranlib ] ; then  ranlib gnulib ;fi
+# On HPUX, if you are working with the GNU assembler and linker,
+# the previous line must be commented out.
+# No change is needed here if you are using the HPUX assembler and linker.
 	touch stamp-gnulib2
-# On HPUX, this might require some change; no one has tried it.
+
+float.h:
+# Originally, we used `make' rather than $(MAKE), to avoid propagating
+# a CC=gcc command option.  However, since hard-params is now made
+# with $(OLDCC) explicitly, this is no longer important.
+# However, $(MAKE) fails on some systems where it isn't defined.
+# `make' has the disadvantage of sometimes running the system's make,
+# instead of GNU make.  And the system's make might not support VPATH.
+# However, the compilation of hard-params should not need to use VPATH,
+# due to the explicit use of `$(srcdir)'.
+	make hard-params
+	-./hard-params -f > float.h
+
+# Compile hard-params with standard cc.  It avoids some headaches.
+hard-params: hard-params.o
+	$(OLDCC) $(CCLIBFLAGS) $(LDFLAGS) hard-params.o -o $@
+hard-params.o: $(srcdir)/hard-params.c
+	-cp $(srcdir)/hard-params.c . > /dev/null 2>&1
+	$(OLDCC) $(CCLIBFLAGS) $(CPPFLAGS) -DNO_SC -c hard-params.c
 
 # C language specific files.
 
-c-parse.tab.o : c-parse.tab.c $(CONFIG_H) $(TREE_H) c-parse.h c-tree.h
-c-parse.tab.c : c-parse.y
-	$(BISON) $(BISONFLAGS) c-parse.y
+c-parse.tab.o : $(srcdir)/c-parse.tab.c $(CONFIG_H) $(TREE_H) c-parse.h c-tree.h input.h
+$(srcdir)/c-parse.tab.c : $(srcdir)/c-parse.y
+	$(BISON) $(BISONFLAGS) $(srcdir)/c-parse.y -o $@
 
 c-decl.o : c-decl.c $(CONFIG_H) $(TREE_H) c-tree.h c-parse.h flags.h
 c-typeck.o : c-typeck.c $(CONFIG_H) $(TREE_H) c-tree.h flags.h
@@ -232,15 +275,16 @@ c-convert.o : c-convert.c $(CONFIG_H) $(TREE_H)
 
 # C++ language specific files.
 
-cplus-parse.o : cplus-parse.c $(CONFIG_H) $(CPLUS_TREE_H) flags.h
-	$(CC) -c $(CFLAGS) -I$(srcdir)/config \
-  -DPARSE_OUTPUT=\"$(PWD)/cplus-parse.output\" cplus-parse.c
+cplus-parse.o : $(srcdir)/cplus-parse.c $(CONFIG_H) $(CPLUS_TREE_H) flags.h
+	$(CC) -c $(CFLAGS) $(INCLUDES) \
+  -DPARSE_OUTPUT=\"$(PWD)/cplus-parse.output\" \
+  `echo $(srcdir)/cplus-parse.c | sed 's,^\./,,'`
 
-cplus-parse.h cplus-parse.c : cplus-parse.y
+$(srcdir)/cplus-parse.h $(srcdir)/cplus-parse.c : $(srcdir)/cplus-parse.y
 	@echo expect 49 shift/reduce conflicts and 4 reduce/reduce conflicts
-	$(BISON) $(BISONFLAGS) -d -o cplus-parse.c cplus-parse.y
+	$(BISON) $(BISONFLAGS) -d -o $(srcdir)/cplus-parse.c $(srcdir)/cplus-parse.y
 
-cplus-lex.o : cplus-lex.c $(CONFIG_H) $(CPLUS_TREE_H) cplus-parse.h
+cplus-lex.o : cplus-lex.c $(CONFIG_H) $(CPLUS_TREE_H) $(srcdir)/cplus-parse.h
 cplus-decl.o : cplus-decl.c $(CONFIG_H) $(CPLUS_TREE_H) flags.h
 cplus-typeck.o : cplus-typeck.c $(CONFIG_H) $(CPLUS_TREE_H) flags.h
 cplus-class.o : cplus-class.c $(CONFIG_H) $(CPLUS_TREE_H)
@@ -252,18 +296,29 @@ new-method.o : new-method.c $(CONFIG_H) $(CPLUS_TREE_H)
 
 # Language-independent files.
 
+gcc.o: gcc.c $(CONFIG_H)
+	$(CC) $(CFLAGS) $(INCLUDES) \
+  -DSTANDARD_STARTFILE_PREFIX=\"$(libdir)/\" \
+  -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc-\" -c \
+  `echo $(srcdir)/gcc.c | sed 's,^\./,,'`
+
+version.o: version.c
+obstack.o: obstack.c
+
 tree.o : tree.c $(CONFIG_H) $(TREE_H) flags.h
 print-tree.o : print-tree.c $(CONFIG_H) $(TREE_H)
-stor-layout.o : stor-layout.c $(CONFIG_H) $(TREE_H)
+stor-layout.o : stor-layout.c $(CONFIG_H) $(TREE_H) $(RTL_H)
 fold-const.o : fold-const.c $(CONFIG_H) $(TREE_H)
-toplev.o : toplev.c $(CONFIG_H) $(TREE_H) flags.h
+toplev.o : toplev.c $(CONFIG_H) $(TREE_H) flags.h input.h
 
 rtl.o : rtl.c $(CONFIG_H) $(RTL_H)
+
+rtlanal.o : rtlanal.c $(CONFIG_H) $(RTL_H)
 
 varasm.o : varasm.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h expr.h \
    insn-codes.h hard-reg-set.h
 stmt.o : stmt.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
-   insn-flags.h expr.h insn-config.h regs.h insn-codes.h
+   insn-flags.h expr.h insn-config.h regs.h hard-reg-set.h insn-codes.h
 expr.o : expr.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 expmed.o : expmed.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
@@ -273,7 +328,7 @@ optabs.o : optabs.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 symout.o : symout.c $(CONFIG_H) $(TREE_H) $(RTL_H) symseg.h gdbfiles.h
 dbxout.o : dbxout.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h
-sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H) c-tree.h
+sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H)
 
 emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h real.h
 
@@ -285,34 +340,34 @@ stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
 cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h real.h
 loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h insn-codes.h \
-   regs.h recog.h flags.h expr.h
+   regs.h hard-reg-set.h recog.h flags.h expr.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
    insn-config.h regs.h basic-block.h recog.h
-regclass.o : regclass.c $(CONFIG_H) $(RTL_H) flags.h regs.h \
-   insn-config.h recog.h hard-reg-set.h
-local-alloc.o : local-alloc.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h \
-   insn-config.h recog.h hard-reg-set.h
+regclass.o : regclass.c $(CONFIG_H) $(RTL_H) hard-reg-set.h flags.h \
+   basic-block.h regs.h insn-config.h recog.h 
+local-alloc.o : local-alloc.c $(CONFIG_H) $(RTL_H) flags.h basic-block.h regs.h \
+   hard-reg-set.h insn-config.h recog.h
 global-alloc.o : global-alloc.c $(CONFIG_H) $(RTL_H) flags.h  \
    basic-block.h regs.h hard-reg-set.h insn-config.h
 
-reload.o : reload.c $(CONFIG_H) $(RTL_H)  \
+reload.o : reload.c $(CONFIG_H) $(RTL_H) flags.h \
    reload.h recog.h hard-reg-set.h insn-config.h regs.h
 reload1.o : reload1.c $(CONFIG_H) $(RTL_H) flags.h  \
-   reload.h regs.h hard-reg-set.h insn-config.h basic-block.h
+   reload.h regs.h hard-reg-set.h insn-config.h basic-block.h recog.h
 caller-save.o : caller-save.c $(CONFIG_H) $(RTL_H) flags.h \
    reload.h regs.h hard-reg-set.h insn-config.h basic-block.h recog.h
-final.o : final.c $(CONFIG_H) $(RTL_H) regs.h recog.h conditions.h gdbfiles.h \
-   insn-config.h real.h
+final.o : final.c $(CONFIG_H) $(RTL_H) flags.h regs.h recog.h conditions.h \
+   gdbfiles.h insn-config.h real.h output.h
 recog.o : recog.c $(CONFIG_H) $(RTL_H)  \
-   regs.h recog.h hard-reg-set.h insn-config.h
+   regs.h recog.h hard-reg-set.h insn-config.h real.h
 
 # Normally this target is not used; but it is used if you
 # define ALLOCA=alloca.o.  In that case, you must get a suitable alloca.c
 # from the GNU Emacs distribution.
 # Note some machines won't allow $(CC) without -S on this source file.
 alloca.o:	alloca.c
-	$(CC) $(CFLAGS) -S alloca.c
+	$(CC) $(CFLAGS) -S `echo $(srcdir)/alloca.c | sed 's,^\./,,'`
 	as alloca.s -o alloca.o
 
 # Now the source files that are generated from the machine description.
@@ -329,108 +384,113 @@ alloca.o:	alloca.c
 insn-config.h: stamp-config.h ;
 stamp-config.h : md genconfig
 	./genconfig md > tmp-insn-config.h
-	./move-if-change tmp-insn-config.h insn-config.h
+	$(srcdir)/move-if-change tmp-insn-config.h insn-config.h
 	touch stamp-config.h
 
 insn-flags.h: stamp-flags.h ;
 stamp-flags.h : md genflags
 	./genflags md > tmp-insn-flags.h
-	./move-if-change tmp-insn-flags.h insn-flags.h
+	$(srcdir)/move-if-change tmp-insn-flags.h insn-flags.h
 	touch stamp-flags.h
 
 insn-codes.h: stamp-codes.h ;
 stamp-codes.h : md gencodes
 	./gencodes md > tmp-insn-codes.h
-	./move-if-change tmp-insn-codes.h insn-codes.h
+	$(srcdir)/move-if-change tmp-insn-codes.h insn-codes.h
 	touch stamp-codes.h
 
-insn-emit.o : insn-emit.c $(CONFIG_H) $(RTL_H) expr.h insn-config.h real.h
-	$(CC) $(CFLAGS) -I$(srcdir)/config -c insn-emit.c
+insn-emit.o : insn-emit.c $(CONFIG_H) $(RTL_H) expr.h real.h insn-codes.h \
+  insn-config.h insn-flags.h
+	$(CC) $(CFLAGS) $(INCLUDES) -c insn-emit.c
 
 insn-emit.c: stamp-emit.c ;
 stamp-emit.c : md genemit
 	./genemit md > tmp-insn-emit.c
-	./move-if-change tmp-insn-emit.c insn-emit.c
+	$(srcdir)/move-if-change tmp-insn-emit.c insn-emit.c
 	touch stamp-emit.c
 
-insn-recog.o : insn-recog.c $(CONFIG_H) $(RTL_H) insn-config.h
-	$(CC) $(CFLAGS) -I$(srcdir)/config -c insn-recog.c
+insn-recog.o : insn-recog.c $(CONFIG_H) $(RTL_H) insn-config.h real.h recog.h
+	$(CC) $(CFLAGS) $(INCLUDES) -c insn-recog.c
 
 insn-recog.c: stamp-recog.c ;
 stamp-recog.c : md genrecog
 	./genrecog md > tmp-insn-recog.c
-	./move-if-change tmp-insn-recog.c insn-recog.c
+	$(srcdir)/move-if-change tmp-insn-recog.c insn-recog.c
 	touch stamp-recog.c
 
-insn-extract.o : insn-extract.c $(RTL_H)
-	$(CC) $(CFLAGS) -I$(srcdir)/config -c insn-extract.c
+insn-extract.o : insn-extract.c $(CONFIG_H) $(RTL_H)
+	$(CC) $(CFLAGS) $(INCLUDES) -c insn-extract.c
 
 insn-extract.c: stamp-extract.c ;
 stamp-extract.c : md genextract
 	./genextract md > tmp-insn-extract.c
-	./move-if-change tmp-insn-extract.c insn-extract.c
+	$(srcdir)/move-if-change tmp-insn-extract.c insn-extract.c
 	touch stamp-extract.c
 
 insn-peep.o : insn-peep.c $(CONFIG_H) $(RTL_H) regs.h real.h
-	$(CC) $(CFLAGS) -I$(srcdir)/config -c insn-peep.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c insn-peep.c
 
 insn-peep.c: stamp-peep.c ;
 stamp-peep.c : md genpeep
 	./genpeep md > tmp-insn-peep.c
-	./move-if-change tmp-insn-peep.c insn-peep.c
+	$(srcdir)/move-if-change tmp-insn-peep.c insn-peep.c
 	touch stamp-peep.c
 
 insn-output.o : insn-output.c $(CONFIG_H) $(RTL_H) regs.h real.h conditions.h \
     hard-reg-set.h insn-config.h insn-flags.h output.h aux-output.c
-	$(CC) $(CFLAGS) -I$(srcdir)/config -c insn-output.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c insn-output.c
 
 insn-output.c: stamp-output.c ;
 stamp-output.c : md genoutput
 	./genoutput md > tmp-insn-output.c
-	./move-if-change tmp-insn-output.c insn-output.c
+	$(srcdir)/move-if-change tmp-insn-output.c insn-output.c
 	touch stamp-output.c
 
 # Now the programs that generate those files.
+# $(CONFIG_H) is omitted from the deps of the gen*.o
+# because these programs don't really depend on anything 
+# about the target machine.  They do depend on config.h itself,
+# since that describes the host machine.
 
 genconfig : genconfig.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genconfig genconfig.o rtl.o $(LIBS)
 
-genconfig.o : genconfig.c $(RTL_H)
+genconfig.o : genconfig.c $(RTL_H) config.h
 
 genflags : genflags.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genflags genflags.o rtl.o $(LIBS)
 
-genflags.o : genflags.c $(RTL_H)
+genflags.o : genflags.c $(RTL_H) config.h
 
 gencodes : gencodes.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o gencodes gencodes.o rtl.o $(LIBS)
 
-gencodes.o : gencodes.c $(RTL_H)
+gencodes.o : gencodes.c $(RTL_H) config.h
 
 genemit : genemit.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genemit genemit.o rtl.o $(LIBS)
 
-genemit.o : genemit.c $(RTL_H)
+genemit.o : genemit.c $(RTL_H) config.h
 
 genrecog : genrecog.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genrecog genrecog.o rtl.o $(LIBS)
 
-genrecog.o : genrecog.c $(RTL_H)
+genrecog.o : genrecog.c $(RTL_H) config.h
 
 genextract : genextract.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genextract genextract.o rtl.o $(LIBS)
 
-genextract.o : genextract.c $(RTL_H)
+genextract.o : genextract.c $(RTL_H) config.h
 
 genpeep : genpeep.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genpeep genpeep.o rtl.o $(LIBS)
 
-genpeep.o : genpeep.c $(RTL_H)
+genpeep.o : genpeep.c $(RTL_H) config.h
 
 genoutput : genoutput.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genoutput genoutput.o rtl.o $(LIBS)
 
-genoutput.o : genoutput.c $(RTL_H)
+genoutput.o : genoutput.c $(RTL_H) config.h
 
 # Making the preprocessor
 cpp: cccp
@@ -438,41 +498,45 @@ cpp: cccp
 	ln cccp cpp
 cccp: cccp.o cexp.o version.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o cccp cccp.o cexp.o version.o $(LIBS)
-cexp.o: cexp.c
-cexp.c: cexp.y
-	$(BISON) cexp.y
-	mv cexp.tab.c cexp.c
-cccp.o: cccp.c
-	$(CC) $(CFLAGS) -I$(srcdir)/config \
+cexp.o: $(srcdir)/cexp.c $(CONFIG_H)
+$(srcdir)/cexp.c: $(srcdir)/cexp.y
+	$(BISON) -o $(srcdir)/cexp.c $(srcdir)/cexp.y
+cccp.o: cccp.c $(CONFIG_H)
+	$(CC) $(CFLAGS) $(INCLUDES) \
           -DGCC_INCLUDE_DIR=\"$(libdir)/gcc-include\" \
-          -DGPLUSPLUS_INCLUDE_DIR=\"$(libdir)/g++-include\" -c cccp.c
+          -DGPLUSPLUS_INCLUDE_DIR=\"$(libdir)/g++-include\" \
+	  -c `echo $(srcdir)/cccp.c | sed 's,^\./,,'`
 
-cpp.info: cpp.texinfo
-	makeinfo $<
+$(srcdir)/cpp.info: $(srcdir)/cpp.texinfo
+	makeinfo `echo $(srcdir)/cpp.texinfo | sed 's,^\./,,'`
 
-gplus.info: gplus.texinfo
-	makeinfo $<
+$(srcdir)/gplus.info: $(srcdir)/gplus.texinfo
+	makeinfo `echo $(srcdir)/gplus.texinfo | sed 's,^\./,,'`
 
-gcc.info: gcc.texinfo
-	makeinfo $<
+$(srcdir)/gcc.info: $(srcdir)/gcc.texinfo
+	makeinfo `echo $(srcdir)/gcc.texinfo | sed 's,^\./,,'`
 
 # gnulib is not deleted because deleting it would be inconvenient
 # for most uses of this target.
 clean:
 	-rm -f $(STAGESTUFF) $(STAGE_GCC)
-	-rm -f stamp-*.[ch]
-	-rm -f *.s *.s[0-9] *.co *.greg *.lreg *.combine *.flow *.cse *.jump *.rtl *.tree *.loop
-	-rm -f core
+# Delete the temp files made in the course of building gnulib.
+	-rm -f tmpgnulib
+	for name in $(LIBFUNCS); do rm -f $${name}.c; done
+	-rm -f stamp-*.[ch] tmp-insn-*
+	-rm -f *.s *.s[0-9] *.co *.greg *.lreg *.combine *.flow *.cse *.jump *.rtl *.tree *.loop *.dbr *.jump2
+	-rm -f core float.h hard-params
 
 # Like clean but also delete the links made to configure gcc.
-cleanlinks: clean
-	-rm -f tm.h aux-output.c config.h md config.status
+# Also removes gnulib, since that is desirable if you are changing cpus.
+cleanconfig: clean
+	-rm -f tm.h aux-output.c config.h md config.status gnulib stamp-gnulib2
 
 # Get rid of every file that's generated from some other file (except INSTALL).
-realclean: cleanlinks
+realclean: cleanconfig
 	-rm -f cpp.aux cpp.cps cpp.fns cpp.info cpp.kys cpp.pgs cpp.tps cpp.vrs
 #	-rm -f cplus-parse.tab.c cplus-parse.output
-	-rm -f c-parse.tab.c c-parse.output
+	-rm -f c-parse.tab.c c-parse.output c-parse.tab.output
 	-rm -f gnulib cexp.c TAGS 
 	-rm -f cpp.info* cpp.?? cpp.??s cpp.log cpp.toc cpp.*aux
 	-rm -f gcc.info* gcc.?? gcc.??s gcc.log gcc.toc gcc.*aux
@@ -489,39 +553,42 @@ install: all
 	$(INSTALL) cpp $(libdir)/gcc-cpp
 	$(INSTALL) gcc $(bindir)
 	-mkdir $(libdir)/gcc-include
-	chmod ugo+rx $(libdir)/gcc-include
-	for file in $(USER_H); do $(INSTALL) $${file} $(libdir)/gcc-include; done
-	$(INSTALL) gcc.1 $(mandir)/gcc.$(manext)
+	-chmod ugo+rx $(libdir)/gcc-include
+	for file in $(USER_H); do $(INSTALL) $(srcdir)/$${file} $(libdir)/gcc-include; done
+	$(INSTALL) float.h $(libdir)/gcc-include/float.h
+	$(INSTALL) $(srcdir)/gvarargs.h $(libdir)/gcc-include/varargs.h
+	$(INSTALL) $(srcdir)/gcc.1 $(mandir)/gcc.$(manext)
 
 # do make -f ../gcc/Makefile maketest DIR=../gcc
 # in the intended test directory to make it a suitable test directory.
 maketest:
 	ln -s $(DIR)/*.[chy] .
+	ln -s $(DIR)/config .
 	ln -s $(DIR)/*.def .
-	ln -s $(DIR)/*.md .
 	-rm -f =*
 	ln -s $(DIR)/.gdbinit .
 	-ln -s $(DIR)/bison.simple .
 	ln -s $(DIR)/config.gcc .
 	ln -s $(DIR)/move-if-change .
-	if [ -f Makefile ] ; then false; else ln -s $(DIR)/Makefile . ; fi
+# The then and else were swapped to avoid a problem on Ultrix.
+	if [ ! -f Makefile ] ; then ln -s $(DIR)/Makefile . ; else false; fi
 	-rm tm.h aux-output.c config.h md
 	make clean
 # You must then run config.gcc to set up for compilation.
 
 bootstrap: all force
 	$(MAKE) stage1
-	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)" libdir=$(libdir)
 	$(MAKE) stage2
-	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)" libdir=$(libdir)
 
 bootstrap2: force
-	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) CC="stage1/gcc -Bstage1/" CFLAGS="-O $(CFLAGS)" libdir=$(libdir)
 	$(MAKE) stage2
-	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)" libdir=$(libdir)
 
 bootstrap3: force
-	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)"
+	$(MAKE) CC="stage2/gcc -Bstage2/" CFLAGS="-O $(CFLAGS)" libdir=$(libdir)
 
 # Copy the object files from a particular stage into a subdirectory.
 stage1: force
@@ -542,6 +609,12 @@ stage3: force
 	-rm -f stage3/gnulib
 	-ln gnulib stage3 || (cp gnulib stage3 && ranlib stage3/gnulib)
 
+stage4: force
+	-mkdir stage4
+	-mv $(STAGESTUFF) $(STAGE_GCC) stage4
+	-rm -f stage4/gnulib
+	-ln gnulib stage4 || (cp gnulib stage4 && ranlib stage4/gnulib)
+
 TAGS: force
 	mkdir temp
 	-mv c-parse.tab.c cplus-parse.c cplus-parse.h cexp.c temp
@@ -549,7 +622,10 @@ TAGS: force
 	mv temp/* .
 	rmdir temp
 
+includes: force
+	libdir=$(libdir) fixincludes
+
 #In GNU Make, ignore whether `stage*' exists.
-.PHONY: stage1 stage2 stage3 clean realclean TAGS bootstrap
+.PHONY: stage1 stage2 stage3 stage4 clean realclean TAGS bootstrap
 
 force:

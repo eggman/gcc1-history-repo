@@ -22,19 +22,8 @@
 #define INTIFY(FLOATVAL)  (intify.f = (FLOATVAL), intify.i)
 #endif
 
-union double_di { double d; int i[2]; };
 union flt_or_int { int i; float f; };
 
-union longlong { int i[2]; unsigned int ui[2]; };
-
-
-#ifdef WORDS_BIG_ENDIAN
-#define HIGH 0
-#define LOW 1
-#else
-#define HIGH 1
-#define LOW 0
-#endif
 
 #ifdef L_eprintf
 #include <stdio.h>
@@ -138,40 +127,6 @@ __ashlsi3 (a, b)
   return a << b;
 }
 #endif
-
-#ifdef L_cmpdi2
-SItype
-__cmpdi2 (a, b)
-     union longlong a, b;
-{
-  if (a.i[HIGH] < b.i[HIGH])
-    return 0;
-  else if (a.i[HIGH] > b.i[HIGH])
-    return 2;
-  if (a.ui[LOW] < b.ui[LOW])
-    return 0;
-  else if (a.ui[LOW] > b.ui[LOW])
-    return 2;
-  return 1;
-}
-#endif
-
-#ifdef L_ucmpdi2
-SItype
-__ucmpdi2 (a, b)
-     union longlong a, b;
-{
-  if (a.ui[HIGH] < b.ui[HIGH])
-    return 0;
-  else if (a.ui[HIGH] > b.ui[HIGH])
-    return 2;
-  if (a.ui[LOW] < b.ui[LOW])
-    return 0;
-  else if (a.ui[LOW] > b.ui[LOW])
-    return 2;
-  return 1;
-}
-#endif
 
 #ifdef L_divdf3
 double
@@ -240,18 +195,6 @@ __fixunsdfsi (a)
 }
 #endif
 
-#ifdef L_fixunsdfdi
-double
-__fixunsdfdi (a)
-     double a;
-{
-  union double_di u;
-  u.i[LOW] = (unsigned int) a;
-  u.i[HIGH] = 0;
-  return u.d;
-}
-#endif
-
 #ifdef L_fixdfsi
 SItype
 __fixdfsi (a)
@@ -261,36 +204,12 @@ __fixdfsi (a)
 }
 #endif
 
-#ifdef L_fixdfdi
-double
-__fixdfdi (a)
-     double a;
-{
-  union double_di u;
-  u.i[LOW] = (int) a;
-  u.i[HIGH] = (int) a < 0 ? -1 : 0;
-  return u.d;
-}
-#endif
-
 #ifdef L_floatsidf
 double
 __floatsidf (a)
      SItype a;
 {
   return (double) a;
-}
-#endif
-
-#ifdef L_floatdidf
-double
-__floatdidf (u)
-     union double_di u;
-{
-  register double hi
-    = ((double) u.i[HIGH]) * (double) 0x10000 * (double) 0x10000;
-  register double low = (unsigned int) u.i[LOW];
-  return hi + low;
 }
 #endif
 
@@ -466,7 +385,7 @@ __builtin_vec_new (p, maxindex, size, ctor)
 
   for (i = 0; i < nelts; i++)
     {
-      ctor (p);
+      (*ctor) (p);
       p += size;
     }
 
@@ -529,7 +448,7 @@ __builtin_vec_delete (ptr, maxindex, size, dtor, auto_delete_vec, auto_delete)
   for (i = 0; i < nelts; i++)
     {
       ptr -= size;
-      dtor (ptr, auto_delete);
+      (*dtor) (ptr, auto_delete);
     }
 
   if (auto_delete_vec)
@@ -537,4 +456,3 @@ __builtin_vec_delete (ptr, maxindex, size, dtor, auto_delete_vec, auto_delete)
 }
 
 #endif
-

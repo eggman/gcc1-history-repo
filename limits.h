@@ -36,7 +36,7 @@
 
 /* Minimum and maximum values a `signed long int' can hold.
    (Same as `int').  */
-#define LONG_MIN -2147483648
+#define LONG_MIN (-LONG_MAX-1)
 #define LONG_MAX 2147483647
 
 /* Maximum value an `unsigned long int' can hold.  (Minimum is 0).  */

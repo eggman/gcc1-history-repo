@@ -110,6 +110,7 @@ extern int xmalloc ();
 extern void free ();
 
 void fatal ();
+void fancy_abort ();
 void error ();
 void mybcopy ();
 void mybzero ();
@@ -327,13 +328,14 @@ output_epilogue ()
     }
   printf ("  };\n");
 
-  printf ("\nconst INSN_MACHINE_INFO insn_machine_info[] =\n  {\n");
+  printf ("\n#ifndef DEFAULT_MACHINE_INFO\n#define DEFAULT_MACHINE_INFO 0\n");
+  printf ("#endif\n\nconst INSN_MACHINE_INFO insn_machine_info[] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       if (d->machine_info)
 	printf ("    {%s},\n", d->machine_info);
       else
-	printf("     {0},\n");
+	printf("     { DEFAULT_MACHINE_INFO },\n");
     }
   printf("  };\n");
 
@@ -516,7 +518,7 @@ gen_insn (insn)
   d->template = 0;
   d->outfun = 1;
 
-  printf ("\nchar *\n");
+  printf ("\nstatic char *\n");
   printf ("output_%d (operands, insn)\n", d->code_number);
   printf ("     rtx *operands;\n");
   printf ("     rtx insn;\n");
@@ -591,7 +593,7 @@ gen_peephole (peep)
   d->template = 0;
   d->outfun = 1;
 
-  printf ("\nchar *\n");
+  printf ("\nstatic char *\n");
   printf ("output_%d (operands, insn)\n", d->code_number);
   printf ("     rtx *operands;\n");
   printf ("     rtx insn;\n");
@@ -694,6 +696,7 @@ mybcopy (b1, b2, length)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genoutput: ");
   fprintf (stderr, s, a1, a2);
@@ -701,8 +704,18 @@ fatal (s, a1, a2)
   exit (FATAL_EXIT_CODE);
 }
 
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
+}
+
 void
 error (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genoutput: ");
   fprintf (stderr, s, a1, a2);

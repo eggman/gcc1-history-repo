@@ -53,6 +53,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "gdbfiles.h"
 #include "flags.h"
 #include "real.h"
+#include "output.h"
 
 /* Get N_SLINE and N_SOL from stab.h if we can expect the file to exist.  */
 #ifdef DBX_DEBUGGING_INFO
@@ -75,6 +76,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define min(A,B) ((A) < (B) ? (A) : (B))
 
+rtx peephole ();
 void output_asm_insn ();
 rtx alter_subreg ();
 static int alter_cond ();
@@ -83,6 +85,7 @@ static void output_operand ();
 void output_address ();
 void output_addr_const ();
 static void output_source_line ();
+rtx final_scan_insn ();
 
 /* the sdb debugger needs the line given as an offset from the beginning
    of the current function -wfs*/
@@ -107,6 +110,14 @@ static int insn_noperands;
 /* File in which assembler code is being written.  */
 
 extern FILE *asm_out_file;
+
+/* Compare optimization flag. */
+
+static rtx last_ignored_compare = 0;
+
+/* Flag indicating this insn is the start of a new basic block. */
+
+static int new_block = 1;
 
 /* All the symbol-blocks (levels of scoping) in the compilation
    are assigned sequence numbers in order of appearance of the
@@ -190,6 +201,11 @@ static int block_depth;
 /* Nonzero if have enabled APP processing of our assembler output.  */
 
 static int app_on;
+
+/* If we are outputting an insn sequence, this contains the sequence rtx.
+   Zero otherwise.  */
+
+rtx final_sequence;
 
 /* Initialize data in final at the beginning of a compilation.  */
 
@@ -204,6 +220,7 @@ init_final (filename)
   pending_blocks = (int *) xmalloc (20 * sizeof *pending_blocks);
   gdbfiles = 0;
   next_gdb_filenum = 0;
+  final_sequence = 0;
 }
 
 /* Called at end of source file,
@@ -250,6 +267,11 @@ end_final (filename)
       /* Output the file name.  */
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 1);
       assemble_string (filename, strlen (filename) + 1);
+
+      /* Realign data section.  */
+      ASM_OUTPUT_ALIGN (asm_out_file,
+			exact_log2 (min (UNITS_PER_WORD,
+					 BIGGEST_ALIGNMENT / BITS_PER_UNIT)));
 
       /* Make space for the table of counts.  */
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 2);
@@ -298,6 +320,26 @@ app_disable ()
     }
 }
 
+/* Return the number of slots filled in the current 
+   delayed branch sequence. */
+
+#ifdef HAVE_DELAYED_BRANCH
+int
+dbr_sequence_length ()
+{
+  int i;
+  int slots = 0;
+  /* It's zero if we are not scheduling or not in a sequence. 
+     (We never count the first insn.)                  */
+  if (flag_delayed_branch && final_sequence != 0)
+    {
+      for (i = 1; i < XVECLEN (final_sequence, 0); i++)
+	slots += DBR_INSN_SLOTS (XVECEXP (final_sequence, 0, i));
+    }
+  return slots;
+}
+#endif
+
 /* Output assembler code for the start of a function,
    and initialize some of the variables in this file
    for the new function.  The label for the function and associated
@@ -342,8 +384,6 @@ final_start_function (first, file, write_symbols, optimize)
 
 #ifdef SDB_DEBUGGING_INFO
   next_block_index = 1;
-  if (write_symbols == SDB_DEBUG)
-    sdbout_begin_function (last_linenum);
 #endif
 
 #ifdef FUNCTION_BLOCK_PROFILER
@@ -478,450 +518,515 @@ final (first, file, write_symbols, optimize, prescan)
      int prescan;
 {
   register rtx insn;
-  register int i;
-  rtx last_ignored_compare = 0;
-  int new_block = 1;
+
+  last_ignored_compare = 0;
+  new_block = 1;
 
   init_recog ();
 
   CC_STATUS_INIT;
 
-  for (insn = NEXT_INSN (first); insn; insn = NEXT_INSN (insn))
+  for (insn = NEXT_INSN (first); insn;)
+    insn = final_scan_insn (insn, file, write_symbols, optimize,
+			    prescan, 0);
+}
+
+/* The final scan for one insn, INSN.
+   Args are same as in `final', except that INSN
+   is the insn being scanned.
+   Value returned is the next insn to be scanned.
+
+   NOPEEPHOLES is the flag to disallow peephole processing (currently
+   used for within delayed branch sequence output).  */
+
+rtx
+final_scan_insn  (insn, file, write_symbols, optimize, prescan, nopeepholes)
+     rtx insn;
+     FILE *file;
+     enum debugger write_symbols;
+     int optimize;
+     int prescan;
+     int nopeepholes;
+{
+  register int i;
+  switch (GET_CODE (insn))
     {
-      switch (GET_CODE (insn))
+    case NOTE:
+      if (prescan > 0)
+	break;
+      if (write_symbols == NO_DEBUG)
+	break;
+      if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_BEG)
 	{
-	case NOTE:
-	  if (prescan > 0)
-	    break;
-	  if (write_symbols == NO_DEBUG)
-	    break;
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_BEG)
-	    abort ();		/* Obsolete; shouldn't appear */
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_BEG
-	      || NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
-	    break;
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
-	    break;		/* An insn that was "deleted" */
-	  if (app_on)
-	    {
-	      fprintf (file, ASM_APP_OFF);
-	      app_on = 0;
-	    }
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_BEG)
-	    {
-	      /* Beginning of a symbol-block.  Assign it a sequence number
-		 and push the number onto the stack PENDING_BLOCKS.  */
-
-	      if (block_depth == max_block_depth)
-		{
-		  /* PENDING_BLOCKS is full; make it longer.  */
-		  max_block_depth *= 2;
-		  pending_blocks
-		    = (int *) xrealloc (pending_blocks,
-					max_block_depth * sizeof (int));
-		}
-	      pending_blocks[block_depth++] = next_block_index;
-
-	      /* Output debugging info about the symbol-block beginning.  */
-
 #ifdef SDB_DEBUGGING_INFO
-	      if (write_symbols == SDB_DEBUG)
-		sdbout_begin_block (file, last_linenum, next_block_index);
+	  if (write_symbols == SDB_DEBUG)
+	    sdbout_begin_function (last_linenum);
 #endif
-#ifdef DBX_DEBUGGING_INFO
-	      if (write_symbols == DBX_DEBUG)
-		ASM_OUTPUT_INTERNAL_LABEL (file, "LBB", next_block_index);
-#endif
-	      if (write_symbols == GDB_DEBUG)
-		fprintf (file, "\t.gdbbeg %d\n", next_block_index);
-
-	      next_block_index++;
-	    }
-	  else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_END)
-	    {
-	      /* End of a symbol-block.  Pop its sequence number off
-		 PENDING_BLOCKS and output debugging info based on that.  */
-
-	      --block_depth;
-
-#ifdef DBX_DEBUGGING_INFO
-	      if (write_symbols == DBX_DEBUG && block_depth >= 0)
-		ASM_OUTPUT_INTERNAL_LABEL (file, "LBE",
-					   pending_blocks[block_depth]);
-#endif
-
-#ifdef SDB_DEBUGGING_INFO
-	      if (write_symbols == SDB_DEBUG && block_depth >= 0)
-		sdbout_end_block (file, last_linenum);
-#endif
-
-	      if (write_symbols == GDB_DEBUG)
-		fprintf (file, "\t.gdbend %d\n", pending_blocks[block_depth]);
-	    }
-	  else if (NOTE_LINE_NUMBER (insn) > 0)
-	    /* This note is a line-number.  */
-	    output_source_line (file, insn, write_symbols);
 	  break;
+	}
+      if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_BEG
+	  || NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
+	break;
+      if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
+	break;			/* An insn that was "deleted" */
+      if (app_on)
+	{
+	  fprintf (file, ASM_APP_OFF);
+	  app_on = 0;
+	}
+      if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_BEG)
+	{
+	  /* Beginning of a symbol-block.  Assign it a sequence number
+	     and push the number onto the stack PENDING_BLOCKS.  */
 
-	case BARRIER:
+	  if (block_depth == max_block_depth)
+	    {
+	      /* PENDING_BLOCKS is full; make it longer.  */
+	      max_block_depth *= 2;
+	      pending_blocks
+		= (int *) xrealloc (pending_blocks,
+				    max_block_depth * sizeof (int));
+	    }
+	  pending_blocks[block_depth++] = next_block_index;
+
+	  /* Output debugging info about the symbol-block beginning.  */
+
+#ifdef SDB_DEBUGGING_INFO
+	  if (write_symbols == SDB_DEBUG)
+	    sdbout_begin_block (file, last_linenum, next_block_index);
+#endif
+#ifdef DBX_DEBUGGING_INFO
+	  if (write_symbols == DBX_DEBUG)
+	    ASM_OUTPUT_INTERNAL_LABEL (file, "LBB", next_block_index);
+#endif
+	  if (write_symbols == GDB_DEBUG)
+	    fprintf (file, "\t.gdbbeg %d\n", next_block_index);
+
+	  next_block_index++;
+	}
+      else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_END)
+	{
+	  /* End of a symbol-block.  Pop its sequence number off
+	     PENDING_BLOCKS and output debugging info based on that.  */
+
+	  --block_depth;
+
+#ifdef DBX_DEBUGGING_INFO
+	  if (write_symbols == DBX_DEBUG && block_depth >= 0)
+	    ASM_OUTPUT_INTERNAL_LABEL (file, "LBE",
+				       pending_blocks[block_depth]);
+#endif
+
+#ifdef SDB_DEBUGGING_INFO
+	  if (write_symbols == SDB_DEBUG && block_depth >= 0)
+	    sdbout_end_block (file, last_linenum);
+#endif
+
+	  if (write_symbols == GDB_DEBUG)
+	    fprintf (file, "\t.gdbend %d\n", pending_blocks[block_depth]);
+	}
+      else if (NOTE_LINE_NUMBER (insn) > 0)
+	/* This note is a line-number.  */
+	output_source_line (file, insn, write_symbols);
+      break;
+
+    case BARRIER:
 #ifdef ASM_OUTPUT_ALIGN_CODE
-	  ASM_OUTPUT_ALIGN_CODE (file);
+      ASM_OUTPUT_ALIGN_CODE (file);
 #endif
-	  break;
+      break;
 
-	case CODE_LABEL:
-	  CC_STATUS_INIT;
-	  if (prescan > 0)
-	    break;
-	  new_block = 1;
-	  if (app_on)
-	    {
-	      fprintf (file, ASM_APP_OFF);
-	      app_on = 0;
-	    }
+    case CODE_LABEL:
+      CC_STATUS_INIT;
+      if (prescan > 0)
+	break;
+      new_block = 1;
+      if (app_on)
+	{
+	  fprintf (file, ASM_APP_OFF);
+	  app_on = 0;
+	}
 #ifdef ASM_OUTPUT_CASE_LABEL
-	  if (NEXT_INSN (insn) != 0
-	      && GET_CODE (NEXT_INSN (insn)) == JUMP_INSN)
+      if (NEXT_INSN (insn) != 0
+	  && GET_CODE (NEXT_INSN (insn)) == JUMP_INSN)
+	{
+	  rtx nextbody = PATTERN (NEXT_INSN (insn));
+
+	  /* If this label is followed by a jump-table,
+	     output the two of them together in a special way.  */
+
+	  if (GET_CODE (nextbody) == ADDR_VEC
+	      || GET_CODE (nextbody) == ADDR_DIFF_VEC)
 	    {
-	      rtx nextbody = PATTERN (NEXT_INSN (insn));
-
-	      /* If this label is followed by a jump-table,
-		 output the two of them together in a special way.  */
-
-	      if (GET_CODE (nextbody) == ADDR_VEC
-		  || GET_CODE (nextbody) == ADDR_DIFF_VEC)
-		{
-		  ASM_OUTPUT_CASE_LABEL (file, "L", CODE_LABEL_NUMBER (insn),
-					 NEXT_INSN (insn));
-		  break;
-		}
+	      ASM_OUTPUT_CASE_LABEL (file, "L", CODE_LABEL_NUMBER (insn),
+				     NEXT_INSN (insn));
+	      break;
 	    }
+	}
 #endif
 
-	  ASM_OUTPUT_INTERNAL_LABEL (file, "L", CODE_LABEL_NUMBER (insn));
+      ASM_OUTPUT_INTERNAL_LABEL (file, "L", CODE_LABEL_NUMBER (insn));
+      break;
+
+    default:
+      {
+	register rtx body = PATTERN (insn);
+	int insn_code_number;
+	char *template;
+
+	/* An INSN, JUMP_INSN or CALL_INSN.
+	   First check for special kinds that recog doesn't recognize.  */
+
+	if (GET_CODE (body) == USE /* These are just declarations */
+	    || GET_CODE (body) == CLOBBER)
 	  break;
 
-	default:
+	if (profile_block_flag && new_block)
 	  {
-	    register rtx body = PATTERN (insn);
-	    int insn_code_number;
-	    char *template;
+	    new_block = 0;
+	    /* Enable the table of basic-block use counts
+	       to point at the code it applies to.  */
+	    ASM_OUTPUT_INTERNAL_LABEL (file, "LPB", count_basic_blocks);
+	    /* Before first insn of this basic block, increment the
+	       count of times it was entered.  */
+#ifdef BLOCK_PROFILER
+	    BLOCK_PROFILER (file, count_basic_blocks);
+#endif
+	    count_basic_blocks++;
+	  }
 
-	    /* An INSN, JUMP_INSN or CALL_INSN.
-	       First check for special kinds that recog doesn't recognize.  */
+	if (GET_CODE (body) == ASM_INPUT)
+	  {
+	    /* There's no telling what that did to the condition codes.  */
+	    CC_STATUS_INIT;
+	    if (prescan > 0)
+	      break;
+	    if (! app_on)
+	      {
+		fprintf (file, ASM_APP_ON);
+		app_on = 1;
+	      }
+	    fprintf (asm_out_file, "\t%s\n", XSTR (body, 0));
+	    break;
+	  }
 
-	    if (GET_CODE (body) == USE /* These are just declarations */
-		|| GET_CODE (body) == CLOBBER)
+	/* Detect `asm' construct with operands.  */
+	if (asm_noperands (body) >= 0)
+	  {
+	    int noperands = asm_noperands (body);
+	    rtx *ops;
+	    char *string;
+
+	    /* There's no telling what that did to the condition codes.  */
+	    CC_STATUS_INIT;
+	    if (prescan > 0)
 	      break;
 
-	    if (profile_block_flag && new_block)
+	    /* alloca won't do here, since only return from `final'
+	       would free it.  */
+	    if (noperands > 0)
+	      ops = (rtx *) xmalloc (noperands * sizeof (rtx));
+
+	    if (! app_on)
 	      {
-		new_block = 0;
-		/* Enable the table of basic-block use counts
-		   to point at the code it applies to.  */
-		ASM_OUTPUT_INTERNAL_LABEL (file, "LPB", count_basic_blocks);
-		/* Before first insn of this basic block, increment the
-		   count of times it was entered.  */
-#ifdef BLOCK_PROFILER
-		BLOCK_PROFILER (file, count_basic_blocks);
-#endif
-		count_basic_blocks++;
+		fprintf (file, ASM_APP_ON);
+		app_on = 1;
 	      }
 
-	    if (GET_CODE (body) == ASM_INPUT)
-	      {
-		/* There's no telling what that did to the condition codes.  */
-		CC_STATUS_INIT;
-		if (prescan > 0)
-		  break;
-		if (! app_on)
-		  {
-		    fprintf (file, ASM_APP_ON);
-		    app_on = 1;
-		  }
-		fprintf (asm_out_file, "\t%s\n", XSTR (body, 0));
-		break;
-	      }
+	    /* Get out the operand values.  */
+	    string = decode_asm_operands (body, ops, 0, 0, 0);
+	    /* Inhibit aborts on what would otherwise be compiler bugs.  */
+	    insn_noperands = noperands;
+	    this_is_asm_operands = insn;
+	    /* Output the insn using them.  */
+	    output_asm_insn (string, ops);
+	    this_is_asm_operands = 0;
+	    if (noperands > 0)
+	      free (ops);
+	    break;
+	  }
 
-	    /* Detect `asm' construct with operands.  */
-	    if (asm_noperands (body) >= 0)
-	      {
-		int noperands = asm_noperands (body);
-		rtx *ops;
-		char *string;
+	if (prescan <= 0 && app_on)
+	  {
+	    fprintf (file, ASM_APP_OFF);
+	    app_on = 0;
+	  }
 
-		/* There's no telling what that did to the condition codes.  */
-		CC_STATUS_INIT;
-		if (prescan > 0)
-		  break;
+	/* Detect insns that are really jump-tables
+	   and output them as such.  */
 
-		/* alloca won't do here, since only return from `final'
-		   would free it.  */
-		if (noperands > 0)
-		  ops = (rtx *) xmalloc (noperands * sizeof (rtx));
-
-		if (! app_on)
-		  {
-		    fprintf (file, ASM_APP_ON);
-		    app_on = 1;
-		  }
-
-		/* Get out the operand values.  */
-		string = decode_asm_operands (body, ops, 0, 0, 0);
-		/* Inhibit aborts on what would otherwise be compiler bugs.  */
-		insn_noperands = noperands;
-		this_is_asm_operands = insn;
-		/* Output the insn using them.  */
-		output_asm_insn (string, ops);
-		this_is_asm_operands = 0;
-		if (noperands > 0)
-		  free (ops);
-		break;
-	      }
-
-	    if (prescan <= 0 && app_on)
-	      {
-		fprintf (file, ASM_APP_OFF);
-		app_on = 0;
-	      }
-
-	    /* Detect insns that are really jump-tables
-	       and output them as such.  */
-
-	    if (GET_CODE (body) == ADDR_VEC)
-	      {
-		register int vlen, idx;
-
-		if (prescan > 0)
-		  break;
-
-		vlen = XVECLEN (body, 0);
-		for (idx = 0; idx < vlen; idx++)
-		  ASM_OUTPUT_ADDR_VEC_ELT (file,
-			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 0, idx), 0)));
-#ifdef ASM_OUTPUT_CASE_END
-		ASM_OUTPUT_CASE_END (file,
-				     CODE_LABEL_NUMBER (PREV_INSN (insn)),
-				     insn);
-#endif
-		break;
-	      }
-	    if (GET_CODE (body) == ADDR_DIFF_VEC)
-	      {
-		register int vlen, idx;
-
-		if (prescan > 0)
-		  break;
-
-		vlen = XVECLEN (body, 1);
-		for (idx = 0; idx < vlen; idx++)
-		  ASM_OUTPUT_ADDR_DIFF_ELT (file,
-			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 1, idx), 0)),
-			   CODE_LABEL_NUMBER (XEXP (XEXP (body, 0), 0)));
-#ifdef ASM_OUTPUT_CASE_END
-		ASM_OUTPUT_CASE_END (file,
-				     CODE_LABEL_NUMBER (PREV_INSN (insn)),
-				     insn);
-#endif
-		break;
-	      }
-
-	    /* We have a real machine instruction as rtl.  */
-
-	    body = PATTERN (insn);
-
-	    /* Check for redundant test and compare instructions
-	       (when the condition codes are already set up as desired).
-	       This is done only when optimizing; if not optimizing,
-	       it should be possible for the user to alter a variable
-	       with the debugger in between statements
-	       and the next statement should reexamine the variable
-	       to compute the condition codes.  */
-
-	    if (optimize
-		&& GET_CODE (body) == SET
-		&& GET_CODE (SET_DEST (body)) == CC0)
-	      {
-		if (GET_CODE (SET_SRC (body)) == SUBREG)
-		  SET_SRC (body) = alter_subreg (SET_SRC (body));
-		if ((cc_status.value1 != 0
-		     && rtx_equal_p (SET_SRC (body), cc_status.value1))
-		    || (cc_status.value2 != 0
-			&& rtx_equal_p (SET_SRC (body), cc_status.value2)))
-		  {
-		    /* Don't delete insn if has an addressing side-effect */
-		    if (! find_reg_note (insn, REG_INC, 0)
-			/* or if anything in it is volatile.  */
-			&& ! volatile_refs_p (PATTERN (insn)))
-		      {
-			/* We don't really delete the insn; just ignore it.  */
-			last_ignored_compare = insn;
-			break;
-		      }
-		  }
-	      }
-
-	  reinsert_compare:
-
-	    /* Following a conditional branch, we have a new basic block.  */
-	    if (GET_CODE (insn) == JUMP_INSN && GET_CODE (body) == SET
-		&& GET_CODE (SET_SRC (body)) != LABEL_REF)
-	      new_block = 1;
-
-	    /* If this is a conditional branch, maybe modify it
-	       if the cc's are in a nonstandard state
-	       so that it accomplishes the same thing that it would
-	       do straightforwardly if the cc's were set up normally.  */
-
-	    if (cc_status.flags != 0
-		&& GET_CODE (insn) == JUMP_INSN
-		&& GET_CODE (body) == SET
-		&& SET_DEST (body) == pc_rtx
-		&& GET_CODE (SET_SRC (body)) == IF_THEN_ELSE
-		/* This is done during prescan; it is not done again
-		   in final scan when prescan has been done.  */
-		&& prescan >= 0)
-	      {
-		/* This function may alter the contents of its argument
-		   and clear some of the cc_status.flags bits.
-		   It may also return 1 meaning condition now always true
-		   or -1 meaning condition now always false
-		   or 2 meaning condition nontrivial but altered.  */
-		register int result = alter_cond (XEXP (SET_SRC (body), 0));
-		/* If condition now has fixed value, replace the IF_THEN_ELSE
-		   with its then-operand or its else-operand.  */
-		if (result == 1)
-		  SET_SRC (body) = XEXP (SET_SRC (body), 1);
-		if (result == -1)
-		  SET_SRC (body) = XEXP (SET_SRC (body), 2);
-		/* The jump is now either unconditional or a no-op.
-		   If it has become a no-op, don't try to output it.
-		   (It would not be recognized.)  */
-		if (SET_SRC (body) == pc_rtx)
-		  {
-		    PUT_CODE (insn, NOTE);
-		    NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
-		    NOTE_SOURCE_FILE (insn) = 0;
-		    break;
-		  }
-		/* Rerecognize the instruction if it has changed.  */
-		if (result != 0)
-		  INSN_CODE (insn) = -1;
-	      }
-
-#ifdef STORE_FLAG_VALUE
-	    /* Make same adjustments to instructions that examine the
-	       condition codes without jumping (if this machine has them).  */
-
-	    if (cc_status.flags != 0
-		&& GET_CODE (body) == SET)
-	      switch (GET_CODE (SET_SRC (body)))
-		{
-		case GTU:
-		case GT:
-		case LTU:
-		case LT:
-		case GEU:
-		case GE:
-		case LEU:
-		case LE:
-		case EQ:
-		case NE:
-		  {
-		    register int result;
-		    if (GET_CODE (XEXP (SET_SRC (body), 0)) != CC0)
-		      break;
-		    result = alter_cond (SET_SRC (body));
-		    if (result == 1)
-		      SET_SRC (body) = gen_rtx (CONST_INT, VOIDmode,
-						STORE_FLAG_VALUE);
-		    if (result == -1)
-		      SET_SRC (body) = const0_rtx;
-		    if (result != 0)
-		      INSN_CODE (insn) = -1;
-		  }
-		}
-#endif /* STORE_FLAG_VALUE */
-
-	    /* Do machine-specific peephole optimizations if desired.  */
-
-	    if (optimize && !flag_no_peephole)
-	      {
-		peephole (insn);
-
-		/* PEEPHOLE might have changed this.  */
-		body = PATTERN (insn);
-	      }
-
-	    /* Try to recognize the instruction.
-	       If successful, verify that the operands satisfy the
-	       constraints for the instruction.  Crash if they don't,
-	       since `reload' should have changed them so that they do.  */
-
-	    insn_code_number = recog_memoized (insn);
-	    insn_extract (insn);
-	    for (i = 0; i < insn_n_operands[insn_code_number]; i++)
-	      {
-		if (GET_CODE (recog_operand[i]) == SUBREG)
-		  recog_operand[i] = alter_subreg (recog_operand[i]);
-	      }
-
-#ifdef REGISTER_CONSTRAINTS
-	    if (! constrain_operands (insn_code_number))
-	      abort ();
-#endif
-
-	    /* Some target machines need to prescan each insn before
-	       it is output.  */
-
-#ifdef FINAL_PRESCAN_INSN
-	    FINAL_PRESCAN_INSN (insn, recog_operand,
-				insn_n_operands[insn_code_number]);
-#endif
-
-	    cc_prev_status = cc_status;
-
-	    /* Update `cc_status' for this instruction.
-	       The instruction's output routine may change it further.
-	       If the output routine for a jump insn needs to depend
-	       on the cc status, it should look at cc_prev_status.  */
-
-	    NOTICE_UPDATE_CC (body, insn);
-
-	    /* If the proper template needs to be chosen by some C code,
-	       run that code and get the real template.  */
-
-	    template = insn_template[insn_code_number];
-	    if (template == 0)
-	      {
-		template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
-
-		/* If the C code returns 0, it means that it is a jump insn
-		   which follows a deleted test insn, and that test insn
-		   needs to be reinserted.  */
-		if (template == 0)
-		  {
-		    if (PREV_INSN (insn) != last_ignored_compare)
-		      abort ();
-		    insn = PREV_INSN (insn);
-		    body = PATTERN (insn);
-		    new_block = 0;
-		    goto reinsert_compare;
-		  }
-	      }
+	if (GET_CODE (body) == ADDR_VEC)
+	  {
+	    register int vlen, idx;
 
 	    if (prescan > 0)
 	      break;
 
-	    /* Output assembler code from the template.  */
-
-	    output_asm_insn (template, recog_operand);
-
-	    /* Mark this insn as having been output.  */
-	    INSN_DELETED_P (insn) = 1;
+	    vlen = XVECLEN (body, 0);
+	    for (idx = 0; idx < vlen; idx++)
+	      ASM_OUTPUT_ADDR_VEC_ELT (file,
+				       CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 0, idx), 0)));
+#ifdef ASM_OUTPUT_CASE_END
+	    ASM_OUTPUT_CASE_END (file,
+				 CODE_LABEL_NUMBER (PREV_INSN (insn)),
+				 insn);
+#endif
+	    break;
 	  }
-	}
+	if (GET_CODE (body) == ADDR_DIFF_VEC)
+	  {
+	    register int vlen, idx;
+
+	    if (prescan > 0)
+	      break;
+
+	    vlen = XVECLEN (body, 1);
+	    for (idx = 0; idx < vlen; idx++)
+	      ASM_OUTPUT_ADDR_DIFF_ELT (file,
+					CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 1, idx), 0)),
+					CODE_LABEL_NUMBER (XEXP (XEXP (body, 0), 0)));
+#ifdef ASM_OUTPUT_CASE_END
+	    ASM_OUTPUT_CASE_END (file,
+				 CODE_LABEL_NUMBER (PREV_INSN (insn)),
+				 insn);
+#endif
+	    break;
+	  }
+
+	if (recog_memoized (insn) == -1
+	    && GET_CODE (body) == SEQUENCE) /* A delayed-branch sequence */
+	  {
+	    register int i;
+	    if (prescan > 0)
+	      break;
+	    final_sequence = body;
+	    for (i = 0; i < XVECLEN (body, 0); i++)
+	      final_scan_insn (XVECEXP (body, 0, i), file, write_symbols,
+			       optimize, prescan, 1);
+	    final_sequence = 0;
+#ifdef DBR_OUTPUT_SEQEND
+	    DBR_OUTPUT_SEQEND (file);
+#endif
+	    break;
+	  }
+
+	/* We have a real machine instruction as rtl.  */
+
+	body = PATTERN (insn);
+
+	/* Check for redundant test and compare instructions
+	   (when the condition codes are already set up as desired).
+	   This is done only when optimizing; if not optimizing,
+	   it should be possible for the user to alter a variable
+	   with the debugger in between statements
+	   and the next statement should reexamine the variable
+	   to compute the condition codes.  */
+
+	if (optimize
+	    && GET_CODE (body) == SET
+	    && GET_CODE (SET_DEST (body)) == CC0
+	    && insn != last_ignored_compare)
+	  {
+	    if (GET_CODE (SET_SRC (body)) == SUBREG)
+	      SET_SRC (body) = alter_subreg (SET_SRC (body));
+	    if ((cc_status.value1 != 0
+		 && rtx_equal_p (SET_SRC (body), cc_status.value1))
+		|| (cc_status.value2 != 0
+		    && rtx_equal_p (SET_SRC (body), cc_status.value2)))
+	      {
+		/* Don't delete insn if has an addressing side-effect */
+		if (! find_reg_note (insn, REG_INC, 0)
+		    /* or if anything in it is volatile.  */
+		    && ! volatile_refs_p (PATTERN (insn)))
+		  {
+		    /* We don't really delete the insn; just ignore it.  */
+		    last_ignored_compare = insn;
+		    break;
+		  }
+	      }
+	  }
+
+      reinsert_compare:
+
+	/* Following a conditional branch, we have a new basic block.  */
+	if (GET_CODE (insn) == JUMP_INSN && GET_CODE (body) == SET
+	    && GET_CODE (SET_SRC (body)) != LABEL_REF)
+	  new_block = 1;
+
+	/* If this is a conditional branch, maybe modify it
+	   if the cc's are in a nonstandard state
+	   so that it accomplishes the same thing that it would
+	   do straightforwardly if the cc's were set up normally.  */
+
+	if (cc_status.flags != 0
+	    && GET_CODE (insn) == JUMP_INSN
+	    && GET_CODE (body) == SET
+	    && SET_DEST (body) == pc_rtx
+	    && GET_CODE (SET_SRC (body)) == IF_THEN_ELSE
+	    /* This is done during prescan; it is not done again
+	       in final scan when prescan has been done.  */
+	    && prescan >= 0)
+	  {
+	    /* This function may alter the contents of its argument
+	       and clear some of the cc_status.flags bits.
+	       It may also return 1 meaning condition now always true
+	       or -1 meaning condition now always false
+	       or 2 meaning condition nontrivial but altered.  */
+	    register int result = alter_cond (XEXP (SET_SRC (body), 0));
+	    /* If condition now has fixed value, replace the IF_THEN_ELSE
+	       with its then-operand or its else-operand.  */
+	    if (result == 1)
+	      SET_SRC (body) = XEXP (SET_SRC (body), 1);
+	    if (result == -1)
+	      SET_SRC (body) = XEXP (SET_SRC (body), 2);
+	    /* The jump is now either unconditional or a no-op.
+	       If it has become a no-op, don't try to output it.
+	       (It would not be recognized.)  */
+	    if (SET_SRC (body) == pc_rtx)
+	      {
+		PUT_CODE (insn, NOTE);
+		NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
+		NOTE_SOURCE_FILE (insn) = 0;
+		break;
+	      }
+	    /* Rerecognize the instruction if it has changed.  */
+	    if (result != 0)
+	      INSN_CODE (insn) = -1;
+	  }
+
+#ifdef STORE_FLAG_VALUE
+	/* Make same adjustments to instructions that examine the
+	   condition codes without jumping (if this machine has them).  */
+
+	if (cc_status.flags != 0
+	    && GET_CODE (body) == SET)
+	  switch (GET_CODE (SET_SRC (body)))
+	    {
+	    case GTU:
+	    case GT:
+	    case LTU:
+	    case LT:
+	    case GEU:
+	    case GE:
+	    case LEU:
+	    case LE:
+	    case EQ:
+	    case NE:
+	      {
+		register int result;
+		if (GET_CODE (XEXP (SET_SRC (body), 0)) != CC0)
+		  break;
+		result = alter_cond (SET_SRC (body));
+		if (result == 1)
+		  SET_SRC (body) = gen_rtx (CONST_INT, VOIDmode,
+					    STORE_FLAG_VALUE);
+		if (result == -1)
+		  SET_SRC (body) = const0_rtx;
+		if (result != 0)
+		  INSN_CODE (insn) = -1;
+	      }
+	    }
+#endif				/* STORE_FLAG_VALUE */
+
+	/* Do machine-specific peephole optimizations if desired.  */
+
+	if (optimize && !flag_no_peephole && !nopeepholes)
+	  {
+	    rtx next = peephole (insn);
+	    /* When peepholing, if there were notes within the peephole,
+	       emit them before the peephole.  */
+	    if (next != 0 && next != NEXT_INSN (insn))
+	      {
+		rtx note = NEXT_INSN (insn);
+		rtx prev = PREV_INSN (insn);
+		while (note != next)
+		  {
+		    final_scan_insn (note, file, write_symbols, optimize,
+				     prescan, nopeepholes);
+		    note = NEXT_INSN (note);
+		  }
+		/* In case this is prescan, put the notes
+		   in proper position for later rescan.  */
+		note = NEXT_INSN (insn);
+		PREV_INSN (note) = prev;
+		NEXT_INSN (prev) = note;
+		NEXT_INSN (PREV_INSN (next)) = insn;
+		PREV_INSN (insn) = PREV_INSN (next);
+		NEXT_INSN (insn) = next;
+		PREV_INSN (next) = insn;
+	      }
+
+	    /* PEEPHOLE might have changed this.  */
+	    body = PATTERN (insn);
+	  }
+
+	/* Try to recognize the instruction.
+	   If successful, verify that the operands satisfy the
+	   constraints for the instruction.  Crash if they don't,
+	   since `reload' should have changed them so that they do.  */
+
+	insn_code_number = recog_memoized (insn);
+	insn_extract (insn);
+	for (i = 0; i < insn_n_operands[insn_code_number]; i++)
+	  {
+	    if (GET_CODE (recog_operand[i]) == SUBREG)
+	      recog_operand[i] = alter_subreg (recog_operand[i]);
+	  }
+
+#ifdef REGISTER_CONSTRAINTS
+	if (! constrain_operands (insn_code_number))
+	  abort ();
+#endif
+
+	/* Some target machines need to prescan each insn before
+	   it is output.  */
+
+#ifdef FINAL_PRESCAN_INSN
+	FINAL_PRESCAN_INSN (insn, recog_operand,
+			    insn_n_operands[insn_code_number]);
+#endif
+
+	cc_prev_status = cc_status;
+
+	/* Update `cc_status' for this instruction.
+	   The instruction's output routine may change it further.
+	   If the output routine for a jump insn needs to depend
+	   on the cc status, it should look at cc_prev_status.  */
+
+	NOTICE_UPDATE_CC (body, insn);
+
+	/* If the proper template needs to be chosen by some C code,
+	   run that code and get the real template.  */
+
+	template = insn_template[insn_code_number];
+	if (template == 0)
+	  {
+	    template = (*insn_outfun[insn_code_number]) (recog_operand, insn);
+
+	    /* If the C code returns 0, it means that it is a jump insn
+	       which follows a deleted test insn, and that test insn
+	       needs to be reinserted.  */
+	    if (template == 0)
+	      {
+		if (PREV_INSN (insn) != last_ignored_compare)
+		  abort ();
+		new_block = 0;
+		return PREV_INSN (insn);
+	      }
+	  }
+
+	if (prescan > 0)
+	  break;
+
+	/* Output assembler code from the template.  */
+
+	output_asm_insn (template, recog_operand);
+
+	/* Mark this insn as having been output.  */
+	INSN_DELETED_P (insn) = 1;
+      }
     }
+  return NEXT_INSN (insn);
 }
 
 /* Set up FILENAME as the current file for GDB line-number output.  */
@@ -980,10 +1085,12 @@ output_source_line (file, insn, write_symbols)
     {
 #ifdef SDB_DEBUGGING_INFO
       if (write_symbols == SDB_DEBUG
+#if 0 /* People like having line numbers even in wrong file!  */
 	  /* COFF can't handle multiple source files--lose, lose.  */
 	  && !strcmp (filename, main_input_filename)
-	  /* COFF can't handle line #s before start-line of this function.  */
-	  && last_linenum >= sdb_begin_function_line)
+#endif
+	  /* COFF relative line numbers must be positive.  */
+	  && last_linenum > sdb_begin_function_line)
 	{
 #ifdef ASM_OUTPUT_SOURCE_LINE
 	  ASM_OUTPUT_SOURCE_LINE (file, last_linenum);
@@ -1359,8 +1466,12 @@ output_asm_insn (template, operands)
 	  /* % followed by punctuation: output something for that
 	     punctuation character alone, with no operand.
 	     The PRINT_OPERAND macro decides what is actually done.  */
-	  else
+#ifdef PRINT_OPERAND_PUNCT_VALID_P
+	  else if (PRINT_OPERAND_PUNCT_VALID_P (*p))
 	    output_operand (0, *p++);
+#endif
+	  else
+	    output_operand_lossage ("invalid %%-code");
 	}
     }
 
@@ -1373,7 +1484,7 @@ void
 output_asm_label (x)
      rtx x;
 {
-  char buf[20];
+  char buf[256];
 
   if (GET_CODE (x) == LABEL_REF)
     ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (XEXP (x, 0)));
@@ -1426,7 +1537,7 @@ output_addr_const (file, x)
      FILE *file;
      rtx x;
 {
-  char buf[20];
+  char buf[256];
 
  restart:
   switch (GET_CODE (x))

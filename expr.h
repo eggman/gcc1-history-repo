@@ -53,6 +53,17 @@ extern int cse_not_expected;
 /* List (chain of EXPR_LISTs) of pseudo-regs of SAVE_EXPRs.
    So we can mark them all live at the end of the function, if stupid.  */
 extern rtx save_expr_regs;
+
+extern int current_function_calls_alloca;
+
+/* Nonzero means stack pops must not be deferred, and deferred stack
+   pops must not be output.  It is nonzero inside a function call,
+   inside a conditional expression, inside a statement expression,
+   and in other cases as well.  */
+extern int inhibit_defer_pop;
+
+#define NO_DEFER_POP (inhibit_defer_pop += 1)
+#define OK_DEFER_POP (inhibit_defer_pop -= 1)
 
 #ifdef TREE_CODE /* Don't lose if tree.h not included.  */
 /* Structure to record the size of a sequence of arguments
@@ -191,7 +202,8 @@ extern optab ffs_optab;		/* Find first bit set */
 /* Passed to expand_binop and expand_unop to say which options to try to use
    if the requested operation can't be open-coded on the requisite mode.
    Either OPTAB_LIB or OPTAB_LIB_WIDEN says try using a library call.
-   Either OPTAB_WIDEN or OPTAB_LIB_WIDEN says try using a wider mode.  */
+   Either OPTAB_WIDEN or OPTAB_LIB_WIDEN says try using a wider mode.
+   OPTAB_MUST_WIDEN says try widening and don't try anything else.  */
 
 enum optab_methods
 {
@@ -199,6 +211,7 @@ enum optab_methods
   OPTAB_LIB,
   OPTAB_WIDEN,
   OPTAB_LIB_WIDEN,
+  OPTAB_MUST_WIDEN,
 };
 
 typedef rtx (*rtxfun) ();
@@ -358,6 +371,7 @@ rtx expand_shift ();
 rtx expand_bit_and ();
 rtx expand_mult ();
 rtx expand_divmod ();
+rtx expand_mult_add ();
 rtx get_structure_value_addr ();
 rtx expand_stmt_expr ();
 

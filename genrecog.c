@@ -130,6 +130,7 @@ void write_tree ();
 char *copystr ();
 char *concat ();
 void fatal ();
+void fancy_abort ();
 void mybzero ();
 
 struct decision *first;
@@ -991,6 +992,7 @@ xmalloc (size)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genrecog: ");
   fprintf (stderr, s, a1, a2);
@@ -998,6 +1000,15 @@ fatal (s, a1, a2)
   fprintf (stderr, "after %d instruction definitions\n",
 	   next_insn_code);
   exit (FATAL_EXIT_CODE);
+}
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
 }
 
 int
@@ -1050,6 +1061,7 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"rtl.h\"\n");
   printf ("#include \"insn-config.h\"\n");
   printf ("#include \"recog.h\"\n");
+  printf ("#include \"real.h\"\n");
   printf ("\n\
 /* `recog' contains a decision tree\n\
    that recognizes whether the rtx X0 is a valid instruction.\n\

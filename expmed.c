@@ -66,10 +66,6 @@ negate_rtx (mode, x)
    FIELDMODE is the machine-mode of the FIELD_DECL node for this field.
    ALIGN is the alignment that STR_RTX is known to have, measured in bytes.  */
 
-/* ??? This should really have the ability to copy a word into a register
-   in order to store the bit-field into it, on machines whose insv insns
-   work that way.  */
-
 rtx
 store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align)
      rtx str_rtx;
@@ -173,6 +169,49 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align)
       rtx xop0 = op0;
       rtx last = get_last_insn ();
       rtx pat;
+
+      /* If this machine's insv can only insert into a register,
+	 copy OP0 into a register and save it back later.  */
+      if (GET_CODE (op0) == MEM
+	  && ! (*insn_operand_predicate[(int) CODE_FOR_insv][0]) (op0, VOIDmode))
+	{
+	  rtx tempreg;
+	  enum machine_mode trymode, bestmode = VOIDmode, insn_mode;
+	  int maxsize = GET_MODE_SIZE (insn_operand_mode[(int) CODE_FOR_extzv][0]);
+
+	  /* Find biggest machine mode we can safely use
+	     to fetch from this structure.
+	     But don't use a bigger mode than the insn wants.  */
+	  for (trymode = QImode;
+	       trymode && GET_MODE_SIZE (trymode) <= maxsize;
+	       trymode = GET_MODE_WIDER_MODE (trymode))
+	    if (GET_MODE_SIZE (trymode) <= align)
+	      bestmode = trymode;
+	  if (! bestmode)
+	    abort ();
+	  /* Adjust address to point to the containing unit of that mode.  */
+	  unit = GET_MODE_BITSIZE (bestmode);
+	  /* Compute offset as multiple of this unit, counting in bytes.  */
+	  offset = (bitnum / unit) * GET_MODE_SIZE (bestmode);
+	  bitpos = bitnum % unit;
+	  op0 = change_address (op0, bestmode, 
+				plus_constant (XEXP (op0, 0), offset));
+
+	  /* Fetch that unit, store the bitfield in it, then store the unit.  */
+	  tempreg = copy_to_reg (op0);
+	  /* To actually store in TEMPREG,
+	     look at it in the mode this insn calls for.
+	     (Probably SImode.)  */
+	  insn_mode = insn_operand_mode[(int) CODE_FOR_insv][0];
+#ifdef BITS_BIG_ENDIAN
+	  if (GET_MODE_BITSIZE (insn_mode) > unit)
+	    bitpos += GET_MODE_BITSIZE (insn_mode) - unit;
+#endif
+	  store_bit_field (gen_rtx (SUBREG, insn_mode, tempreg, 0),
+			   bitsize, bitpos, fieldmode, value, align);
+	  emit_move_insn (op0, tempreg);
+	  return value;
+	}
 
       /* Add OFFSET into OP0's address.  */
       if (GET_CODE (xop0) == MEM)
@@ -401,7 +440,9 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value, struct_align)
   if (! all_one)
     subtarget = expand_bit_and (mode, op0,
 				gen_rtx (CONST_INT, VOIDmode, 
-					 (~ (((1 << bitsize) - 1) << bitpos))
+					 (~ (((unsigned) ~0
+					      >> (HOST_BITS_PER_INT - bitsize))
+					     << bitpos))
 					 & ((GET_MODE_BITSIZE (mode)
 					     == HOST_BITS_PER_INT)
 					    ? -1
@@ -437,6 +478,9 @@ store_split_bit_field (op0, bitsize, bitpos, value, align)
   int bitsize_2 = bitsize - bitsize_1;
   rtx part1, part2;
 
+  /* Alignment of VALUE, after conversion.  */
+  int valalign = GET_MODE_SIZE (SImode);
+
   if (GET_MODE (value) != VOIDmode)
     value = convert_to_mode (SImode, value, 1);
   if (CONSTANT_P (value) && GET_CODE (value) != CONST_INT)
@@ -456,9 +500,9 @@ store_split_bit_field (op0, bitsize, bitpos, value, align)
   else
     {
       part1 = extract_fixed_bit_field (SImode, value, 0, bitsize_1,
-				       BITS_PER_WORD - bitsize, 0, 1);
+				       BITS_PER_WORD - bitsize, 0, 1, valalign);
       part2 = extract_fixed_bit_field (SImode, value, 0, bitsize_2,
-				       BITS_PER_WORD - bitsize_2, 0, 1);
+				       BITS_PER_WORD - bitsize_2, 0, 1, valalign);
     }
 #else
   /* PART1 gets the less significant part.  */
@@ -471,9 +515,10 @@ store_split_bit_field (op0, bitsize, bitpos, value, align)
     }
   else
     {
-      part1 = extract_fixed_bit_field (SImode, value, 0, bitsize_1, 0, 0, 1);
+      part1 = extract_fixed_bit_field (SImode, value, 0, bitsize_1, 0,
+				       0, 1, valalign);
       part2 = extract_fixed_bit_field (SImode, value, 0, bitsize_2,
-				       bitsize_1, 0, 1);
+				       bitsize_1, 0, 1, valalign);
     }
 #endif
 
@@ -622,18 +667,37 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extzv][1])
 		     (xop0, GET_MODE (xop0))))
 		{
-		  /* If memory isn't acceptable for this operand,
-		     copy it to a register.  */
-		  unit = BITS_PER_WORD;
-		  xoffset = bitnum / unit;
+		  enum machine_mode bestmode = VOIDmode, trymode;
+		  int maxsize = GET_MODE_SIZE (insn_operand_mode[(int) CODE_FOR_extzv][1]);
+
+		  /* Find biggest machine mode we can safely use
+		     to fetch from this structure.
+		     But don't use a bigger mode than the insn wants.  */
+		  for (trymode = QImode;
+		       trymode && GET_MODE_SIZE (trymode) <= maxsize;
+		       trymode = GET_MODE_WIDER_MODE (trymode))
+		    if (GET_MODE_SIZE (trymode) <= align)
+		      bestmode = trymode;
+		  if (! bestmode)
+		    abort ();
+		  unit = GET_MODE_BITSIZE (bestmode);
+
+		  /* Compute offset as multiple of this unit,
+		     counting in bytes.  */
+		  xoffset = (bitnum / unit) * GET_MODE_SIZE (bestmode);
 		  xbitpos = bitnum % unit;
-		  xop0 = change_address (xop0, SImode,
+		  xop0 = change_address (xop0, bestmode,
 					 plus_constant (XEXP (xop0, 0),
-							xoffset * UNITS_PER_WORD));
-		  xop0 = force_reg (GET_MODE (xop0), xop0);
+							xoffset));
+		  /* Fetch it to a register in that size.  */
+		  xop0 = force_reg (bestmode, xop0);
+
+		  /* Now ref the register in the mode extzv wants.  */
+		  xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extzv][1],
+				  xop0, 0);
 #ifdef BITS_BIG_ENDIAN
-		  if (unit > GET_MODE_BITSIZE (GET_MODE (xop0)))
-		    xbitpos += unit - GET_MODE_BITSIZE (GET_MODE (xop0));
+		  if (GET_MODE_BITSIZE (GET_MODE (xop0)) > unit)
+		    xbitpos += GET_MODE_BITSIZE (GET_MODE (xop0)) - unit;
 #endif
 		}
 	      else
@@ -713,18 +777,37 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extv][1])
 		     (xop0, GET_MODE (xop0))))
 		{
-		  /* If memory isn't acceptable for this operand,
-		     copy it to a register.  */
-		  unit = BITS_PER_WORD;
-		  xoffset = bitnum / unit;
+		  enum machine_mode bestmode = VOIDmode, trymode;
+		  int maxsize = GET_MODE_SIZE (insn_operand_mode[(int) CODE_FOR_extzv][1]);
+
+		  /* Find biggest machine mode we can safely use
+		     to fetch from this structure.
+		     But don't use a bigger mode than the insn wants.  */
+		  for (trymode = QImode;
+		       trymode && GET_MODE_SIZE (trymode) <= maxsize;
+		       trymode = GET_MODE_WIDER_MODE (trymode))
+		    if (GET_MODE_SIZE (trymode) <= align)
+		      bestmode = trymode;
+		  if (! bestmode)
+		    abort ();
+		  unit = GET_MODE_BITSIZE (bestmode);
+
+		  /* Compute offset as multiple of this unit,
+		     counting in bytes.  */
+		  xoffset = (bitnum / unit) * GET_MODE_SIZE (bestmode);
 		  xbitpos = bitnum % unit;
-		  xop0 = change_address (xop0, SImode,
+		  xop0 = change_address (xop0, bestmode,
 					 plus_constant (XEXP (xop0, 0),
-							xoffset * UNITS_PER_WORD));
-		  xop0 = force_reg (GET_MODE (xop0), xop0);
+							xoffset));
+		  /* Fetch it to a register in that size.  */
+		  xop0 = force_reg (bestmode, xop0);
+
+		  /* Now ref the register in the mode extv wants.  */
+		  xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extv][1],
+				  xop0, 0);
 #ifdef BITS_BIG_ENDIAN
-		  if (unit > GET_MODE_BITSIZE (GET_MODE (xop0)))
-		    xbitpos += unit - GET_MODE_BITSIZE (GET_MODE (xop0));
+		  if (GET_MODE_BITSIZE (GET_MODE (xop0)) > unit)
+		    xbitpos += GET_MODE_BITSIZE (GET_MODE (xop0)) - unit;
 #endif
 		}
 	      else
@@ -1111,11 +1194,18 @@ expand_shift (code, mode, shifted, amount, target, unsignedp)
 	 use an arithmetic right-shift instead of a logical one.  */
       if (! rotate && (! unsignedp || (! left && methods == OPTAB_WIDEN)))
 	{
+	  enum optab_methods methods1 = methods;
+
+	  /* If trying to widen a log shift to an arithmetic shift,
+	     don't accept an arithmetic shift of the same size.  */
+	  if (unsignedp)
+	    methods1 = OPTAB_MUST_WIDEN;
+
 	  /* Arithmetic shift */
 
 	  temp = expand_binop (mode,
 			       left ? ashl_optab : ashr_optab,
-			       shifted, op1, target, unsignedp, methods);
+			       shifted, op1, target, unsignedp, methods1);
 	  if (temp != 0)
 	    return temp;
 	}
@@ -1500,4 +1590,49 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
   if (temp == 0)
     abort ();
   return temp;
+}
+
+/* Return a tree node with data type TYPE, describing the value of X.
+   Usually this is an RTL_EXPR, if there is no obvious better choice.  */
+
+static tree
+make_tree (type, x)
+     tree type;
+     rtx x;
+{
+  tree t;
+  switch (GET_CODE (x))
+    {
+    case CONST_INT:
+      t = build_int_2 (INTVAL (x), 0);
+      TREE_TYPE (t) = type;
+      return fold (t);
+
+    default:
+      t = make_node (RTL_EXPR);
+      TREE_TYPE (t) = type;
+      RTL_EXPR_RTL (t) = x;
+      /* There are no insns to be output
+	 when this rtl_expr is used.  */
+      RTL_EXPR_SEQUENCE (t) = 0;
+      return t;
+    }
+}
+
+/* Return an rtx representing the value of X * MULT + ADD.
+   MODE is the machine mode for the computation.
+   UNSIGNEDP is non-zero to do unsigned multiplication.
+   This may emit insns.  */
+
+rtx
+expand_mult_add (x, mult, add, mode, unsignedp)
+     rtx x, mult, add;
+     enum machine_mode mode;
+     int unsignedp;
+{
+  tree type = type_for_size (GET_MODE_BITSIZE (mode), unsignedp);
+  tree prod = fold (build (MULT_EXPR, type, make_tree (type, x),
+			   make_tree (type, mult)));
+  tree sum = fold (build (PLUS_EXPR, type, prod, make_tree (type, add)));
+  return expand_expr (sum, 0, VOIDmode, 0);
 }

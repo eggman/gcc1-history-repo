@@ -17,6 +17,28 @@ You should have received a copy of the GNU General Public License
 along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
+/* Language-dependent contents of an identifier.  */
+
+struct lang_identifier
+{
+  struct tree_identifier ignore;
+  tree global_value, local_value, label_value, implicit_decl;
+  tree error_locus;
+};
+
+/* Macros for access to language-specific slots in an identifier.  */
+
+#define IDENTIFIER_GLOBAL_VALUE(NODE)	\
+  (((struct lang_identifier *)(NODE))->global_value)
+#define IDENTIFIER_LOCAL_VALUE(NODE)	\
+  (((struct lang_identifier *)(NODE))->local_value)
+#define IDENTIFIER_LABEL_VALUE(NODE)	\
+  (((struct lang_identifier *)(NODE))->label_value)
+#define IDENTIFIER_IMPLICIT_DECL(NODE)	\
+  (((struct lang_identifier *)(NODE))->implicit_decl)
+#define IDENTIFIER_ERROR_LOCUS(NODE)	\
+  (((struct lang_identifier *)(NODE))->error_locus)
+
 /* Nonzero means reject anything that ANSI standard C forbids.  */
 extern int pedantic;
 
@@ -48,7 +70,8 @@ extern void finish_function ();
 extern void store_parm_decls ();
 extern tree get_parm_info ();
 
-extern void pushlevel(), poplevel();
+extern void pushlevel ();
+extern tree poplevel ();
 
 extern tree groktypename(), lookup_name();
 
@@ -72,26 +95,18 @@ extern tree char_type_node, unsigned_char_type_node, signed_char_type_node;
 
 extern tree short_integer_type_node, short_unsigned_type_node;
 extern tree long_integer_type_node, long_unsigned_type_node;
+extern tree long_long_integer_type_node, long_long_unsigned_type_node;
 extern tree unsigned_type_node;
 extern tree string_type_node, char_array_type_node, int_array_type_node;
 
 extern int current_function_returns_value;
 extern int current_function_returns_null;
 
-extern int lineno;
-
 extern tree ridpointers[];
-
-/* Points to the FUNCTION_DECL of the function whose body we are reading. */
-extern tree current_function_decl;
 
 /* Nonzero means `$' can be in an identifier.  */
 
 extern int dollars_in_ident;
-
-/* Nonzero means `char' should be signed.  */
-
-extern int flag_signed_char;
 
 /* Nonzero means allow type mismatches in conditional expressions;
    just make their values `void'.   */

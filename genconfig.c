@@ -43,6 +43,7 @@ int clobbers_seen_this_insn;
 int dup_operands_seen_this_insn;
 
 void fatal ();
+void fancy_abort ();
 
 void
 walk_insn_part (part)
@@ -189,11 +190,21 @@ xrealloc (ptr, size)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genconfig: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
   exit (FATAL_EXIT_CODE);
+}
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
 }
 
 int
@@ -241,13 +252,12 @@ from the machine description file `md'.  */\n\n");
 	gen_peephole (desc);
     }
 
-  printf ("\n#define MAX_RECOG_OPERANDS %d\n", max_recog_operands_flag + 1);
+  /* 3 more than needed for this md file, for the sake of asm constructs.  */
+  printf ("\n#define MAX_RECOG_OPERANDS %d\n", max_recog_operands_flag + 4);
 
   if (max_dup_operands_flag == 0)
     max_dup_operands_flag = 1;
   printf ("\n#define MAX_DUP_OPERANDS %d\n", max_dup_operands_flag);
-
-  printf ("#define MAX_CLOBBERS_PER_INSN %d\n", max_clobbers_per_insn_flag);
 
   if (register_constraint_flag)
     printf ("#define REGISTER_CONSTRAINTS\n");

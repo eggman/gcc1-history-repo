@@ -230,6 +230,8 @@ general_operand (op, mode)
       register rtx y = XEXP (op, 0);
       if (! volatile_ok && MEM_VOLATILE_P (op))
 	return 0;
+      /* Use the mem's mode, since it will be reloaded thus.  */
+      mode = GET_MODE (op);
       GO_IF_LEGITIMATE_ADDRESS (mode, y, win);
     }
   return 0;
@@ -399,6 +401,7 @@ memory_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
+  rtx inner;
   int mode_altering_drug = 0;
 
   if (! reload_completed)
@@ -406,15 +409,14 @@ memory_operand (op, mode)
        because (SUBREG (MEM...)) forces reloading into a register.  */
     return GET_CODE (op) == MEM && general_operand (op, mode);
 
-  while (GET_CODE (op) == SUBREG)
-    {
-      op = SUBREG_REG (op);
-      mode_altering_drug = 1;
-    }
+  if (mode != VOIDmode && GET_MODE (op) != mode)
+    return 0;
 
-  return (GET_CODE (op) == MEM && general_operand (op, mode)
-	  && ! (mode_altering_drug
-		&& mode_dependent_address_p (XEXP (op, 0))));
+  inner = op;
+  while (GET_CODE (inner) == SUBREG)
+    inner = SUBREG_REG (inner);
+
+  return (GET_CODE (inner) == MEM && general_operand (op, mode));
 }
 
 /* Return 1 if OP is a valid indirect memory reference with mode MODE;
@@ -712,11 +714,11 @@ find_constant_term_loc (p)
    don't use it before reload.  */
 
 int
-offsetable_memref_p (op)
+offsettable_memref_p (op)
      rtx op;
 {
   return ((GET_CODE (op) == MEM)
-	  && offsetable_address_p (1, GET_MODE (op), XEXP (op, 0)));
+	  && offsettable_address_p (1, GET_MODE (op), XEXP (op, 0)));
 }
 
 /* Return 1 if Y is a memory address which contains no side effects
@@ -730,7 +732,7 @@ offsetable_memref_p (op)
    for the sake of use in reload.c.  */
 
 int
-offsetable_address_p (strictp, mode, y)
+offsettable_address_p (strictp, mode, y)
      int strictp;
      enum machine_mode mode;
      register rtx y;
@@ -812,13 +814,13 @@ mode_independent_operand (op, mode)
 }
 
 /* Given an operand OP that is a valid memory reference
-   which satisfies offsetable_memref_p,
+   which satisfies offsettable_memref_p,
    return a new memory reference whose address has been adjusted by OFFSET.
    OFFSET should be positive and less than the size of the object referenced.
 */
 
 rtx
-adj_offsetable_operand (op, offset)
+adj_offsettable_operand (op, offset)
      rtx op;
      int offset;
 {
@@ -1031,7 +1033,7 @@ constrain_operands (insn_code_num)
 		break;
 
 	      case 'o':
-		if (offsetable_memref_p (op))
+		if (offsettable_memref_p (op))
 		  win = 1;
 		break;
 

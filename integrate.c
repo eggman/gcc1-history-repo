@@ -37,15 +37,18 @@ extern void free ();
 extern struct obstack permanent_obstack, maybepermanent_obstack;
 extern struct obstack *rtl_obstack, *saveable_obstack, *current_obstack;
 
+extern rtx stack_slot_list;
+
 #define MIN(x,y) ((x < y) ? x : y)
 
 extern tree pushdecl ();
+extern tree poplevel ();
 
 /* Default max number of insns a function can have and still be inline.
    This is overridden on RISC machines.  */
 #ifndef INTEGRATE_THRESHOLD
 #define INTEGRATE_THRESHOLD(DECL) \
-  (8 * (8 + list_length (DECL_ARGUMENTS (DECL)) + 16*TREE_INLINE (DECL)))
+  (8 * (8 + list_length (DECL_ARGUMENTS (DECL))))
 #endif
 
 /* This is the target of the inline function being expanded,
@@ -91,11 +94,17 @@ static rtvec orig_asm_operands_vector;
    Likewise in copy_for_inline.  */
 static rtvec copy_asm_operands_vector;
 
+/* Likewise, this is the copied constraints vector.  */
+static rtvec copy_asm_constraints_vector;
+
 /* Return a copy of an rtx (as needed), substituting pseudo-register,
    labels, and frame-pointer offsets as necessary.  */
 static rtx copy_rtx_and_substitute ();
 /* Variant, used for memory addresses that are not memory_address_p.  */
 static rtx copy_address ();
+
+/* Return the rtx corresponding to a given index in the stack arguments.  */
+static rtx access_parm_map ();
 
 static void copy_parm_decls ();
 static void copy_decl_tree ();
@@ -129,14 +138,15 @@ function_cannot_inline_p (fndecl)
     return "varargs function cannot be inline";
 
   /* If its not even close, don't even look.  */
-  if (get_max_uid () > 2 * max_insns)
+  if (!TREE_INLINE (fndecl) && get_max_uid () > 3 * max_insns)
     return "function too large to be inline";
 
-  /* If the structure value address comes in the stack,
-     we can't handle it.  */
-#if defined (STRUCT_VALUE) || defined (STRUCT_VALUE_INCOMING)
-  if (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))) == BLKmode
-      || RETURN_IN_MEMORY (TREE_TYPE (TREE_TYPE (fndecl))))
+  /* We can't inline functions that return structures
+     the old-fashioned PCC way, copying into a static block.  */
+#ifdef PCC_STATIC_STRUCT_RETURN
+  if (flag_pcc_struct_return
+      && (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))) == BLKmode
+	  || RETURN_IN_MEMORY (TREE_TYPE (TREE_TYPE (fndecl)))))
     return "inline functions not supported for this return value type";
 #endif
 
@@ -160,7 +170,7 @@ function_cannot_inline_p (fndecl)
 	return "address of an aggregate parameter is used; cannot be inline";
     }
 
-  if (get_max_uid () > max_insns)
+  if (!TREE_INLINE (fndecl) && get_max_uid () > max_insns)
     {
       for (ninsns = 0, insn = get_first_nonparm_insn (); insn && ninsns < max_insns;
 	   insn = NEXT_INSN (insn))
@@ -282,7 +292,7 @@ save_for_inline (fndecl)
 
   head = gen_inline_header_rtx (NULL, NULL, min_labelno, max_labelno,
 				max_parm_reg, max_reg,
-				current_function_args_size);
+				current_function_args_size, stack_slot_list);
   max_uid = INSN_UID (head);
 
   /* We have now allocated all that needs to be allocated permanently
@@ -348,7 +358,10 @@ save_for_inline (fndecl)
       switch (GET_CODE (insn))
 	{
 	case NOTE:
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
+	  /* It is probably essential to discard these.  */
+	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
+	      /* No need to keep these.  */
+	      || NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
 	    continue;
 
 	  copy = rtx_alloc (NOTE);
@@ -364,6 +377,7 @@ save_for_inline (fndecl)
 	  INSN_CODE (copy) = -1;
 	  LOG_LINKS (copy) = NULL;
 	  REG_NOTES (copy) = copy_for_inline (REG_NOTES (insn));
+	  RTX_INTEGRATED_P (copy) = RTX_INTEGRATED_P (insn);
 	  break;
 
 	case CODE_LABEL:
@@ -442,7 +456,9 @@ copy_for_inline (orig)
 	  XSTR (x, 1) = XSTR (orig, 1);
 	  XINT (x, 2) = XINT (orig, 2);
 	  XVEC (x, 3) = copy_asm_operands_vector;
-	  XVEC (x, 4) = XVEC (orig, 4);
+	  XVEC (x, 4) = copy_asm_constraints_vector;
+	  XSTR (x, 5) = XSTR (orig, 5);
+	  XINT (x, 6) = XINT (orig, 6);
 	  return x;
 	}
       break;
@@ -452,16 +468,26 @@ copy_for_inline (orig)
 	 or is a constant plus one of the special registers.  */
       if (CONSTANT_ADDRESS_P (XEXP (x, 0)))
 	return x;
+#if 0 /* This is turned off because it is possible for
+	 unshare_all_rtl to copy the address, into memory that won't be saved.
+	 Although the MEM can safely be shared, and won't be copied there,
+	 the address itself cannot be shared, and may need to be copied.  */
       if (GET_CODE (XEXP (x, 0)) == PLUS
 	  && GET_CODE (XEXP (XEXP (x, 0), 0)) == REG
 	  && (REGNO (XEXP (XEXP (x, 0), 0)) == FRAME_POINTER_REGNUM
 	      || REGNO (XEXP (XEXP (x, 0), 0)) == ARG_POINTER_REGNUM)
 	  && CONSTANT_ADDRESS_P (XEXP (XEXP (x, 0), 1)))
+#if 0
+	/* This statement was accidentally deleted in the remote past.
+	   Reinsert it for 1.37.  Don't take the risk now.  */
+	return x;
+#endif
 	if (GET_CODE (XEXP (x, 0)) == REG
 	    && (REGNO (XEXP (x, 0)) == FRAME_POINTER_REGNUM
 		|| REGNO (XEXP (x, 0)) == ARG_POINTER_REGNUM)
 	    && CONSTANT_ADDRESS_P (XEXP (x, 1)))
 	return x;
+#endif /* 0 */
       break;
 
     case LABEL_REF:
@@ -535,6 +561,7 @@ copy_for_inline (orig)
     {
       orig_asm_operands_vector = XVEC (orig, 3);
       copy_asm_operands_vector = XVEC (x, 3);
+      copy_asm_constraints_vector = XVEC (x, 4);
     }
 
   return x;
@@ -580,8 +607,6 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   nargs = list_length (DECL_ARGUMENTS (fndecl));
 
-  first_parm_offset = FIRST_PARM_OFFSET (fndecl);
-
   /* We expect PARMS to have the right length; don't crash if not.  */
   if (list_length (parms) != nargs)
     return (rtx)-1;
@@ -603,6 +628,11 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	return (rtx)-1;
     }
 
+  /* Make a binding contour to keep inline cleanups called at
+     outer function-scope level from looking like they are shadowing
+     parameter declarations.  */
+  pushlevel (0);
+
   /* Make a fresh binding contour that we can easily remove.  */
   pushlevel (0);
   expand_start_bindings (0);
@@ -619,16 +649,21 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
        actual = TREE_CHAIN (actual),
        i++)
     {
-      tree arg = TREE_VALUE (actual); /* this has already been converted */
+      /* Actual parameter, already converted to DECL_ARG_TYPE (formal).  */
+      tree arg = TREE_VALUE (actual);
+      /* Mode of the value supplied.  */
       enum machine_mode tmode = TYPE_MODE (DECL_ARG_TYPE (formal));
+      /* Mode of the variable used within the function.  */
       enum machine_mode imode = TYPE_MODE (TREE_TYPE (formal));
       rtx copy;
 
       emit_note (DECL_SOURCE_FILE (formal), DECL_SOURCE_LINE (formal));
 
+      /* Make a place to hold the argument value, still in mode TMODE,
+	 and put it in COPY.  */
       if (TREE_ADDRESSABLE (formal))
 	{
-	  int size = int_size_in_bytes (TREE_TYPE (formal));
+	  int size = int_size_in_bytes (DECL_ARG_TYPE (formal));
 	  copy = assign_stack_local (tmode, size);
 	  if (!memory_address_p (DECL_MODE (formal), XEXP (copy, 0)))
 	    copy = change_address (copy, VOIDmode, copy_rtx (XEXP (copy, 0)));
@@ -658,7 +693,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
       /* If passed mode != nominal mode, COPY is now the passed mode.
 	 Convert it to the nominal mode (i.e. truncate it).  */
       if (tmode != imode)
-	copy = convert_to_mode (imode, copy);
+	copy = convert_to_mode (imode, copy, 0);
       arg_vec[i] = copy;
     }
 
@@ -673,15 +708,11 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   /* Pass the function the address in which to return a structure value.  */
   if (structure_value_addr)
     {
-      if (GET_CODE (struct_value_rtx) == MEM)
-	{
-	  this_struct_value_rtx = force_reg (Pmode, structure_value_addr);
-	}
+      if (GET_CODE (structure_value_addr) == REG
+	  && (struct_value_rtx == 0 || GET_CODE (struct_value_rtx) == MEM))
+	this_struct_value_rtx = structure_value_addr;
       else
-	{
-	  this_struct_value_rtx = struct_value_rtx;
-	  emit_move_insn (this_struct_value_rtx, structure_value_addr);
-	}
+ 	this_struct_value_rtx = copy_to_mode_reg (Pmode, structure_value_addr);
     }
 
   /* Now prepare for copying the insns.
@@ -691,15 +722,19 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   reg_map = (rtx *) alloca (max_regno * sizeof (rtx));
   bzero (reg_map, max_regno * sizeof (rtx));
 
+  parm_map = (rtx *)alloca ((FUNCTION_ARGS_SIZE (header)
+			     / UNITS_PER_WORD) * sizeof (rtx));
+  bzero (parm_map, ((FUNCTION_ARGS_SIZE (header)
+		     / UNITS_PER_WORD)
+		    * sizeof (rtx)));
+
+  /* Note that expand_expr (called above) can clobber first_parm_offset.  */
+  first_parm_offset = FIRST_PARM_OFFSET (fndecl);
+  parm_map -= first_parm_offset / UNITS_PER_WORD;
+
   if (DECL_ARGUMENTS (fndecl))
     {
       tree decl = DECL_ARGUMENTS (fndecl);
-      int offset = FUNCTION_ARGS_SIZE (header);
-
-      parm_map =
-	(rtx *)alloca ((offset / UNITS_PER_WORD) * sizeof (rtx));
-      bzero (parm_map, (offset / UNITS_PER_WORD) * sizeof (rtx));
-      parm_map -= first_parm_offset / UNITS_PER_WORD;
 
       for (formal = decl, i = 0; formal; formal = TREE_CHAIN (formal), i++)
 	{
@@ -727,10 +762,23 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 		      else if (XEXP (frtx, 1) == frame_pointer_rtx
 			       && GET_CODE (XEXP (frtx, 0)) == CONST_INT)
 			offset = XEXP (frtx, 0);
+#if FRAME_POINTER_REGNUM != ARG_POINTER_REGNUM
+		      /* If there is a separate arg pointer
+			 and REG_PARM_STACK_SPACE is defined,
+			 parms passed in regs can be copied
+			 to slots reached via the arg pointer.  */
+		      if (XEXP (frtx, 0) == arg_pointer_rtx
+			  && GET_CODE (XEXP (frtx, 1)) == CONST_INT)
+			offset = XEXP (frtx, 1);
+		      else if (XEXP (frtx, 1) == arg_pointer_rtx
+			       && GET_CODE (XEXP (frtx, 0)) == CONST_INT)
+			offset = XEXP (frtx, 0);
+#endif
 		    }
 		  if (offset)
 		    parm_map[INTVAL (offset) / UNITS_PER_WORD] = arg_vec[i];
-		  else abort ();
+		  else if (TREE_TYPE (formal) != error_mark_node)
+		    abort ();
 		}
 	      else if (GET_CODE (frtx) != REG)
 		abort ();
@@ -740,24 +788,40 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  if (GET_CODE (DECL_RTL (formal)) == REG)
 	    reg_map[REGNO (DECL_RTL (formal))] = arg_vec[i];
 	}
+    }
 
-      /* Make certain that we can accept struct_value_{incoming_rtx,rtx},
-	 and map it.  If it is a hard register, it is mapped automagically.  */
-      if (this_struct_value_rtx == 0
-	  || GET_CODE (struct_value_incoming_rtx) == REG)
-	;
-      else if (GET_CODE (struct_value_incoming_rtx) == MEM
-	       && XEXP (XEXP (struct_value_incoming_rtx, 0), 0) == frame_pointer_rtx
-	       && GET_CODE (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) == CONST_INT)
-	parm_map[INTVAL (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) / UNITS_PER_WORD]
-	  = this_struct_value_rtx;
-      else
-	abort ();
-    }
-  else
+#if 0  /* This was turned off when it was written,
+	  because expand_call was changed not to need it.  */
+  /* Handle the case where our caller offers a register target
+     but the called function wants to return the value in memory.  */
+  if (this_struct_value_rtx == 0
+      && aggregate_value_p (DECL_RESULT (fndecl)))
     {
-      parm_map = NULL;
+      enum machine_mode mode1 = GET_MODE (DECL_RTL (DECL_RESULT (fndecl)));
+      this_struct_value_rtx
+	= assign_stack_local (mode1, GET_MODE_SIZE (mode1));
+      target = 0;
     }
+#endif
+
+  /* Make certain that we can accept struct_value_{incoming_rtx,rtx},
+     and map it.  */
+  if (this_struct_value_rtx == 0)
+    ;
+  else if (GET_CODE (struct_value_incoming_rtx) == REG)
+    reg_map[REGNO (XEXP (DECL_RTL (DECL_RESULT (fndecl)), 0))]
+      = this_struct_value_rtx;
+  else if (GET_CODE (struct_value_incoming_rtx) == MEM
+	   && XEXP (XEXP (struct_value_incoming_rtx, 0), 0) == frame_pointer_rtx
+	   && GET_CODE (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) == CONST_INT)
+    reg_map[REGNO (XEXP (DECL_RTL (DECL_RESULT (fndecl)), 0))]
+      = this_struct_value_rtx;
+#if 0
+    parm_map[INTVAL (XEXP (XEXP (struct_value_incoming_rtx, 0), 1)) / UNITS_PER_WORD]
+      = this_struct_value_rtx;
+#endif
+  else
+    abort ();
 
   label_map = (rtx *)alloca ((max_labelno - min_labelno) * sizeof (rtx));
   label_map -= min_labelno;
@@ -773,7 +837,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   /* Set up a target to translate the inline function's value-register.  */
 
-  if (structure_value_addr != 0 || TYPE_MODE (type) == VOIDmode)
+  if (this_struct_value_rtx != 0 || TYPE_MODE (type) == VOIDmode)
     inline_target = 0;
   else
     {
@@ -800,17 +864,18 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	inline_target = gen_rtx (SUBREG, arriving_mode, target, 0);
     }
 
-  /* We are about to make space in this function's stack frame
-     for a copy of the stack frame of the inline function.
-     First, create an RTX that points to that stack frame
-     with the same offset usually used for the frame pointer.
-     This will be substituted for all frame-pointer references.  */
+  /* Make space in current function's stack frame
+     for the stack frame of the inline function.
+     Adjust all frame-pointer references by the difference
+     between the offset to this space
+     and the offset to the equivalent space in the inline
+     function's frame.
+     This difference equals the size of preexisting locals.  */
 
   fp_delta = get_frame_size ();
 #ifdef FRAME_GROWS_DOWNWARD
   fp_delta = - fp_delta;
 #endif
-  fp_delta -= STARTING_FRAME_OFFSET;
 
   inline_fp_rtx
     = copy_to_mode_reg (Pmode,
@@ -883,6 +948,12 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	      && GET_CODE (XEXP (pattern, 0)) == REG
 	      && REG_FUNCTION_VALUE_P (XEXP (pattern, 0)))
 	    break;
+	  /* Ignore setting a function value that we don't want to use.  */
+	  if (inline_target == 0
+	      && GET_CODE (pattern) == SET
+	      && GET_CODE (SET_DEST (pattern)) == REG
+	      && REG_FUNCTION_VALUE_P (SET_DEST (pattern)))
+	    break;
 
 	  /* Try to do some quick constant folding here.
 	     This will save save execution time of the compiler,
@@ -897,8 +968,17 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	    }
 	  else
 	    {
+	      rtx note = find_reg_note (insn, REG_EQUIV, 0);
+
 	      copy = emit_insn (copy_rtx_and_substitute (pattern));
 	      RTX_INTEGRATED_P (copy) = 1;
+
+	      /* If we are copying an insn that loads a constant,
+		 record the constantness.  */
+	      if (note)
+		REG_NOTES (copy)
+		  = gen_rtx (EXPR_LIST, REG_EQUIV, XEXP (note, 0),
+			     REG_NOTES (copy));
 	    }
 	  break;
 
@@ -968,7 +1048,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  break;
 
 	case NOTE:
-	  if (NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)
+	  if (NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END
+	      && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_BEG)
 	    copy = emit_note (NOTE_SOURCE_FILE (insn), NOTE_LINE_NUMBER (insn));
 	  else
 	    copy = 0;
@@ -993,6 +1074,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   expand_end_bindings (getdecls (), 1, 1);
   poplevel (1, 1, 0);
+  poplevel (0, 0, 0);
 
   reg_map = NULL;
   label_map = NULL;
@@ -1004,7 +1086,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
     {
       if (target)
 	return target;
-      return gen_rtx (MEM, BLKmode,
+      return gen_rtx (MEM, TYPE_MODE (type),
 		      memory_address (BLKmode, structure_value_addr));
     }
 
@@ -1042,7 +1124,7 @@ copy_decl_tree (let, level)
      tree let;
      int level;
 {
-  tree t;
+  tree t, node;
 
   pushlevel (0);
   
@@ -1074,10 +1156,12 @@ copy_decl_tree (let, level)
       pushdecl (d);
     }
 
-  for (t = STMT_BODY (let); t; t = TREE_CHAIN (t))
+  for (t = STMT_SUBBLOCKS (let); t; t = TREE_CHAIN (t))
     copy_decl_tree (t, level + 1);
 
-  poplevel (level > 0, 0, 0);
+  node = poplevel (level > 0, 0, 0);
+  if (node)
+    TREE_USED (node) = TREE_USED (let);
 }
 
 /* Create a new copy of an rtx.
@@ -1113,6 +1197,10 @@ copy_rtx_and_substitute (orig)
       regno = REGNO (orig);
       if (regno < FIRST_PSEUDO_REGISTER)
 	{
+	  /* Some hard registers are also mapped,
+	     but others are not translated.  */
+	  if (reg_map[regno] != 0)
+	    return reg_map[regno];
 	  if (REG_FUNCTION_VALUE_P (orig))
 	    {
 	      /* This is a reference to the function return value.  If
@@ -1133,6 +1221,15 @@ copy_rtx_and_substitute (orig)
       if (reg_map[regno] == NULL)
 	reg_map[regno] = gen_reg_rtx (mode);
       return reg_map[regno];
+
+    case SUBREG:
+      copy = copy_rtx_and_substitute (SUBREG_REG (orig));
+      /* SUBREG is ordinary, but don't make nested SUBREGs.  */
+      if (GET_CODE (copy) == SUBREG)
+	return gen_rtx (SUBREG, GET_MODE (orig), SUBREG_REG (copy),
+			SUBREG_WORD (orig) + SUBREG_WORD (copy));
+      return gen_rtx (SUBREG, GET_MODE (orig), copy,
+		      SUBREG_WORD (orig));
 
     case CODE_LABEL:
       return label_map[CODE_LABEL_NUMBER (orig)];
@@ -1161,7 +1258,9 @@ copy_rtx_and_substitute (orig)
 	  XSTR (copy, 1) = XSTR (orig, 1);
 	  XINT (copy, 2) = XINT (orig, 2);
 	  XVEC (copy, 3) = copy_asm_operands_vector;
-	  XVEC (copy, 4) = XVEC (orig, 4);
+	  XVEC (copy, 4) = copy_asm_constraints_vector;
+	  XSTR (copy, 5) = XSTR (orig, 5);
+	  XINT (copy, 6) = XINT (orig, 6);
 	  return copy;
 	}
       break;
@@ -1195,19 +1294,25 @@ copy_rtx_and_substitute (orig)
 	      && (XEXP (orig, 0) == arg_pointer_rtx
 		  || XEXP (orig, 1) == arg_pointer_rtx)))
 	{
+	  rtx reg;
 	  if (XEXP (orig, 0) == frame_pointer_rtx
 	      || XEXP (orig, 0) == arg_pointer_rtx)
-	    copy = XEXP (orig, 1);
+	    reg = XEXP (orig, 0), copy = XEXP (orig, 1);
 	  else
-	    copy = XEXP (orig, 0);
+	    reg = XEXP (orig, 1), copy = XEXP (orig, 0);
 
 	  if (GET_CODE (copy) == CONST_INT)
 	    {
 	      int c = INTVAL (copy);
 
-	      if (c > 0)
+	      if (reg == arg_pointer_rtx && c >= first_parm_offset)
 		{
-		  copy = parm_map[c / UNITS_PER_WORD];
+		  copy = access_parm_map (c, VOIDmode);
+		  if (GET_CODE (copy) != MEM)
+		    /* Should not happen, because a parm we need to address
+		       should not be living in a register.
+		       (expand_inline_function copied it to a stack slot.)  */
+		    abort ();
 		  return XEXP (copy, 0);
 		}
 	      return gen_rtx (PLUS, mode,
@@ -1302,69 +1407,8 @@ copy_rtx_and_substitute (orig)
 		  int c = INTVAL (copy);
 
 		  if (reg == arg_pointer_rtx && c >= first_parm_offset)
-		    {
-		      int index = c / UNITS_PER_WORD;
-		      int offset = c % UNITS_PER_WORD;
+		    return access_parm_map (c, mode);
 
-		      /* If we are referring to the middle of a multiword parm,
-			 find the beginning of that parm.
-			 OFFSET gets the offset of the reference from
-			 the beginning of the parm.  */
-
-		      while (parm_map[index] == 0)
-			{
-			  index--;
-			  if (index < first_parm_offset / UNITS_PER_WORD)
-			    /* If this abort happens, it means we need
-			       to handle "decrementing" INDEX back far
-			       enough to start looking among the reg parms
-			       instead of the stack parms.  What a mess!  */
-			    abort ();
-			  offset += UNITS_PER_WORD;
-			}
-
-		      copy = parm_map[index];
-
-#ifdef BYTES_BIG_ENDIAN
-		      /* Subtract from OFFSET the offset of where
-			 the actual parm value would start.  */
-		      if (GET_MODE_SIZE (GET_MODE (copy)) < UNITS_PER_WORD)
-			offset
-			  -= (UNITS_PER_WORD
-			      - GET_MODE_SIZE (GET_MODE (copy)));
-#endif
-
-		      /* If the MEM is only some of the bytes in the parm,
-			 effectively perform a SUBREG of the actual parm.  */
-		      if ((GET_MODE (copy) != mode
-			   && GET_MODE (copy) != VOIDmode))
-			{
-			  if (GET_CODE (copy) == MEM)
-			    return change_address (copy, mode,
-						   plus_constant (XEXP (copy, 0),
-								  offset));
-			  if (GET_CODE (copy) == REG)
-			    {
-			      /* Crash if the portion of the arg wanted
-				 is not the least significant.
-				 Functions with refs to other parts of a
-				 parameter should not be inline--
-				 see function_cannot_inline_p. */
-#ifdef BYTES_BIG_ENDIAN
-			      if (offset + GET_MODE_SIZE (mode)
-				  != GET_MODE_SIZE (GET_MODE (copy)))
-				abort ();
-#else
-			      if (offset != 0)
-				abort ();
-#endif
-			      return gen_rtx (SUBREG, mode, copy, 0);
-			    }
-
-			  abort ();
-			}
-		      return copy;
-		    }
 		  temp = gen_rtx (PLUS, Pmode,
 				  frame_pointer_rtx,
 				  gen_rtx (CONST_INT, SImode,
@@ -1476,6 +1520,99 @@ copy_rtx_and_substitute (orig)
     {
       orig_asm_operands_vector = XVEC (orig, 3);
       copy_asm_operands_vector = XVEC (copy, 3);
+      copy_asm_constraints_vector = XVEC (copy, 4);
+    }
+
+  return copy;
+}
+
+/* Get the value corresponding to an address relative to the arg pointer
+   at index RELADDRESS.  MODE is the machine mode of the reference.
+   MODE is used only when the value is a REG.
+   Pass VOIDmode for MODE when the mode is not known;
+   in such cases, you should make sure the value is a MEM.  */
+
+static rtx
+access_parm_map (reladdress, mode)
+     int reladdress;
+     enum machine_mode mode;
+{
+  /* Index in parm_map.  */
+  int index = reladdress / UNITS_PER_WORD;
+  /* Offset of the data being referenced
+     from the beginning of the value for that parm.  */
+  int offset = reladdress % UNITS_PER_WORD;
+  rtx copy;
+
+  /* If we are referring to the middle of a multiword parm,
+     find the beginning of that parm.
+     OFFSET gets the offset of the reference from
+     the beginning of the parm.  */
+
+  while (parm_map[index] == 0)
+    {
+      index--;
+      if (index < first_parm_offset / UNITS_PER_WORD)
+	/* If this abort happens, it means we need
+	   to handle "decrementing" INDEX back far
+	   enough to start looking among the reg parms
+	   instead of the stack parms.  What a mess!  */
+	abort ();
+      offset += UNITS_PER_WORD;
+    }
+
+  copy = parm_map[index];
+
+#ifdef BYTES_BIG_ENDIAN
+  /* Subtract from OFFSET the offset of where
+     the actual parm value would start.  */
+  if (GET_MODE_SIZE (GET_MODE (copy)) < UNITS_PER_WORD)
+    offset
+      -= (UNITS_PER_WORD
+	  - GET_MODE_SIZE (GET_MODE (copy)));
+#endif
+
+  /* For memory ref, adjust it by the desired offset.  */
+  if (GET_CODE (copy) == MEM)
+    {
+      if (offset != 0)
+	return change_address (copy, mode,
+			       plus_constant (XEXP (copy, 0),
+					      offset));
+      return copy;
+    }
+
+  if (GET_CODE (copy) != REG && GET_CODE (copy) != SUBREG
+      && ! CONSTANT_P (copy))
+    abort ();
+  if (mode == VOIDmode)
+    abort ();
+
+  /* A REG cannot be offset by bytes, so use a subreg
+     (which is possible only in certain cases).  */
+  if (GET_MODE (copy) != mode
+      && GET_MODE (copy) != VOIDmode)
+    {
+      int word;
+      /* Crash if the portion of the arg wanted
+	 is not the least significant.
+	 Functions with refs to other parts of a
+	 parameter should not be inline--
+	 see function_cannot_inline_p. */
+#ifdef BYTES_BIG_ENDIAN
+      if (offset + GET_MODE_SIZE (mode)
+	  != GET_MODE_SIZE (GET_MODE (copy)))
+	abort ();
+#else
+      if (offset != 0)
+	abort ();
+#endif
+      word = 0;
+      if (GET_CODE (copy) == SUBREG)
+	word = SUBREG_WORD (copy), copy = SUBREG_REG (copy);
+      if (CONSTANT_P (copy))
+	copy = force_reg (GET_MODE (copy), copy);
+      return gen_rtx (SUBREG, mode, copy, word);
     }
 
   return copy;
@@ -1813,19 +1950,21 @@ output_inline_function (fndecl)
 {
   rtx head = DECL_SAVED_INSNS (fndecl);
   rtx last;
+  extern rtx stack_slot_list;
 
   temporary_allocation ();
 
   current_function_decl = fndecl;
 
-  /* This call is only used to initialize global variables.
-     The rtl code it emits will be discarded below.  */
-  expand_function_start (fndecl);
+  /* This call is only used to initialize global variables.  */
+  init_function_start (fndecl);
 
   /* Set stack frame size.  */
   assign_stack_local (BLKmode, DECL_FRAME_SIZE (fndecl));
 
   restore_reg_data (FIRST_PARM_INSN (head));
+
+  stack_slot_list = XEXP (head, 9);
 
   expand_function_end (DECL_SOURCE_FILE (fndecl), DECL_SOURCE_LINE (fndecl));
 

@@ -207,6 +207,44 @@ mul_double (l1, h1, l2, h2, lv, hv)
   register int carry = 0;
   register int i, j, k;
 
+  /* These two cases are used extensively, arising from pointer
+     combinations.  */
+  if (h2 == 0)
+    {
+      if (l2 == 2)
+	{
+	  unsigned temp = l1 + l1;
+	  *hv = h1 * 2 + (temp < l1);
+	  *lv = temp;
+	  return;
+	}
+      if (l2 == 4)
+	{
+	  unsigned temp = l1 + l1;
+	  h1 = h1 * 4 + (temp < l1) << 1;
+	  l1 = temp;
+	  temp += temp;
+	  h1 += (temp < l1);
+	  *lv = temp;
+	  *hv = h1;
+	  return;
+	}
+      if (l2 == 8)
+	{
+	  unsigned temp = l1 + l1;
+	  h1 = h1 * 8 + (temp < l1) << 2;
+	  l1 = temp;
+	  temp += temp;
+	  h1 += (temp < l1) << 1;
+	  l1 = temp;
+	  temp += temp;
+	  h1 += (temp < l1);
+	  *lv = temp;
+	  *hv = h1;
+	  return;
+	}
+    }
+
   encode (arg1, l1, h1);
   encode (arg2, l2, h2);
 
@@ -378,7 +416,8 @@ rrotate_double (l1, h1, count, prec, lv, hv)
 /* Divide 64 bit integer LNUM, HNUM by 64 bit integer LDEN, HDEN
    for a quotient (stored in *LQUO, *HQUO) and remainder (in *LREM, *HREM).
    CODE is a tree code for a kind of division, one of
-   TRUNC_DIV_EXPR, FLOOR_DIV_EXPR, CEIL_DIV_EXPR and ROUND_DIV_EXPR.
+   TRUNC_DIV_EXPR, FLOOR_DIV_EXPR, CEIL_DIV_EXPR, ROUND_DIV_EXPR
+   or EXACT_DIV_EXPR
    It controls how the quotient is rounded to a integer.
    UNS nonzero says do unsigned division.  */
 
@@ -575,6 +614,7 @@ div_and_round_double (code, uns,
     {
     case TRUNC_DIV_EXPR:
     case TRUNC_MOD_EXPR:	/* round toward zero */
+    case EXACT_DIV_EXPR:	/* for this one, it shouldn't matter */
       return;
 
     case FLOOR_DIV_EXPR:
@@ -603,11 +643,11 @@ div_and_round_double (code, uns,
 	int labs_den = lden, habs_den = hden, ltwice, htwice;
 
 	/* get absolute values */
-	if (*hrem < 0) neg_double(*lrem, *hrem, &labs_rem, &habs_rem);
-	if (hden < 0) neg_double(lden, hden, &labs_den, &habs_den);
+	if (*hrem < 0) neg_double (*lrem, *hrem, &labs_rem, &habs_rem);
+	if (hden < 0) neg_double (lden, hden, &labs_den, &habs_den);
 
 	/* if (2 * abs (lrem) >= abs (lden)) */
-	mul_double(2, 0, labs_rem, habs_rem, &ltwice, &htwice);
+	mul_double (2, 0, labs_rem, habs_rem, &ltwice, &htwice);
 	if (((unsigned) habs_den < (unsigned) htwice)
 	    || (((unsigned) habs_den == (unsigned) htwice)
 		&& ((unsigned) labs_den < (unsigned) ltwice)))
@@ -781,23 +821,123 @@ combine (code, arg1, arg2)
 	  break;
 
 	case PLUS_EXPR:
+	  if (int1h == 0)
+	    {
+	      int2l += int1l;
+	      if ((unsigned) int2l < int1l)
+		int2h += 1;
+	      t = build_int_2 (int2l, int2h);
+	      break;
+	    }
+	  if (int2h == 0)
+	    {
+	      int1l += int2l;
+	      if ((unsigned) int1l < int2l)
+		int1h += 1;
+	      t = build_int_2 (int1l, int1h);
+	      break;
+	    }
 	  add_double (int1l, int1h, int2l, int2h, &low, &hi);
 	  t = build_int_2 (low, hi);
 	  break;
 
 	case MINUS_EXPR:
+	  if (int1h == 0 && int1l == 0)
+	    {
+	      t = build_int_2 (- int2l, - int2h);
+	      break;
+	    }
+	  if (int2h == 0 && int2l == 0)
+	    {
+	      t = build_int_2 (int1l, int1h);
+	      break;
+	    }
 	  neg_double (int2l, int2h, &int2l, &int2h);
 	  add_double (int1l, int1h, int2l, int2h, &low, &hi);
 	  t = build_int_2 (low, hi);
 	  break;
 
 	case MULT_EXPR:
+  /* Optimize simple cases.  */
+	  if (int1h == 0)
+	    {
+	      unsigned temp;
+
+	      switch (int1l)
+		{
+		case 0:
+		  t = build_int_2 (0, 0);
+		  goto got_it;
+		case 1:
+		  t = build_int_2 (int2l, int2h);
+		  goto got_it;
+		case 2:
+		  temp = int2l + int2l;
+		  int2h = int2h * 2 + (temp < int2l);
+		  t = build_int_2 (temp, int2h);
+		  goto got_it;
+		case 3:
+		  temp = int2l + int2l + int2l;
+		  int2h = int2h * 3 + (temp < int2l);
+		  t = build_int_2 (temp, int2h);
+		  goto got_it;
+		case 4:
+		  temp = int2l + int2l;
+		  int2h = int2h * 4 + (temp < int2l) << 1;
+		  int2l = temp;
+		  temp += temp;
+		  int2h += (temp < int2l);
+		  t = build_int_2 (temp, int2h);
+		  goto got_it;
+		case 8:
+		  temp = int2l + int2l;
+		  int2h = int2h * 8 + (temp < int2l) << 2;
+		  int2l = temp;
+		  temp += temp;
+		  int2h += (temp < int2l) << 1;
+		  int2l = temp;
+		  temp += temp;
+		  int2h += (temp < int2l);
+		  t = build_int_2 (temp, int2h);
+		  goto got_it;
+		default:
+		  break;
+		}
+	    }
+
+	  if (int2h == 0)
+	    {
+	      if (int2l == 0)
+		{
+		  t = build_int_2 (0, 0);
+		  break;
+		}
+	      if (int2l == 1)
+		{
+		  t = build_int_2 (int1l, int1h);
+		  break;
+		}
+	    }
+
 	  mul_double (int1l, int1h, int2l, int2h, &low, &hi);
 	  t = build_int_2 (low, hi);
 	  break;
 
 	case TRUNC_DIV_EXPR: case ROUND_DIV_EXPR: 
 	case FLOOR_DIV_EXPR: case CEIL_DIV_EXPR:
+	case EXACT_DIV_EXPR:
+	  if (int2h == 0 && int2l == 1)
+	    {
+	      t = build_int_2 (int1l, int1h);
+	      break;
+	    }
+	  if (int1l == int2l && int1h == int2h)
+	    {
+	      if ((int1l | int1h) == 0)
+		abort ();
+	      t = build_int_2 (1, 0);
+	      break;
+	    }
 	  div_and_round_double (code, uns, int1l, int1h, int2l, int2h,
 				&low, &hi, &garbagel, &garbageh);
 	  t = build_int_2 (low, hi);
@@ -833,6 +973,7 @@ combine (code, arg1, arg2)
 	default:
 	  abort ();
 	}
+    got_it:
       TREE_TYPE (t) = TREE_TYPE (arg1);
       force_fit_type (t);
       return t;
@@ -971,14 +1112,40 @@ fold_convert (t)
 #if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
       else if (TREE_CODE (arg1) == REAL_CST)
 	{
+	  if (REAL_VALUES_LESS (real_value_from_int_cst (TYPE_MAX_VALUE (type)),
+				TREE_REAL_CST (arg1))
+	      || REAL_VALUES_LESS (TREE_REAL_CST (arg1),
+				   real_value_from_int_cst (TYPE_MIN_VALUE (type))))
+	    {
+	      warning ("real constant out of range for integer conversion");
+	      return t;
+	    }
 #ifndef REAL_ARITHMETIC
-	  t = build_int_2 ((int) TREE_REAL_CST (arg1),
-			   (int) (TREE_REAL_CST (arg1) / 0x10000 / 0x10000));
+	  {
+	    REAL_VALUE_TYPE d;
+	    int low, high;
+	    int half_word = 1 << (HOST_BITS_PER_INT / 2);
+
+	    d = TREE_REAL_CST (arg1);
+	    if (d < 0)
+	      d = -d;
+
+	    high = (int) (d / half_word / half_word);
+	    d -= (REAL_VALUE_TYPE) high * half_word * half_word;
+	    low = (unsigned) d;
+	    if (TREE_REAL_CST (arg1) < 0)
+	      neg_double (low, high, &low, &high);
+	    t = build_int_2 (low, high);
+	  }
 #else
-	  int low, high;
-	  REAL_VALUE_TO_INT (low, high, TREE_REAL_CST (arg1));
-	  t = build_int_2 (low, high);
+	  {
+	    int low, high;
+	    REAL_VALUE_TO_INT (low, high, TREE_REAL_CST (arg1));
+	    t = build_int_2 (low, high);
+	  }
 #endif
+	  TREE_TYPE (t) = type;
+	  force_fit_type (t);
 	}
 #endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
       TREE_TYPE (t) = type;
@@ -1131,6 +1298,25 @@ fold (expr)
 	}
       return fold_convert (t);
 
+#if 0  /* This loses on &"foo"[0].  */
+    case ARRAY_REF:
+	{
+	  int i;
+
+	  /* Fold an expression like: "foo"[2] */
+	  if (TREE_CODE (arg0) == STRING_CST
+	      && TREE_CODE (arg1) == INTEGER_CST
+	      && !TREE_INT_CST_HIGH (arg1)
+	      && (i = TREE_INT_CST_LOW (arg1)) < TREE_STRING_LENGTH (arg0))
+	    {
+	      t = build_int_2 (TREE_STRING_POINTER (arg0)[i], 0);
+	      TREE_TYPE (t) = TREE_TYPE (TREE_TYPE (arg0));
+	      force_fit_type (t);
+	    }
+	}
+      return t;
+#endif /* 0 */
+
     case RANGE_EXPR:
       TREE_LITERAL (t) = wins;
       return t;
@@ -1171,7 +1357,14 @@ fold (expr)
 	    }
 	  else if (TREE_CODE (arg0) == REAL_CST)
 	    {
-	      if (TREE_REAL_CST (arg0) < 0)
+	      if (
+#if defined (REAL_IS_NOT_DOUBLE)
+		  REAL_VALUES_LESS (TREE_REAL_CST (arg0),
+				    REAL_VALUE_ATOF ("0.0"))
+#else
+		  REAL_VALUES_LESS (TREE_REAL_CST (arg0), 0)
+#endif
+		  )
 		t = build_real (type,
 				REAL_VALUE_NEGATE (TREE_REAL_CST (arg0)));
 	    }
@@ -1361,6 +1554,7 @@ fold (expr)
     case ROUND_DIV_EXPR:
     case FLOOR_DIV_EXPR:
     case CEIL_DIV_EXPR:
+    case EXACT_DIV_EXPR:
     case RDIV_EXPR:
       if (integer_onep (arg1))
 	return convert (type, arg0);
@@ -1474,7 +1668,7 @@ fold (expr)
 	      code = GE_EXPR;
 	      break;
 	    }
-	  TREE_CODE (t) = code;
+	  TREE_SET_CODE (t, code);
 	}
 
       /* Convert foo++ == CONST into ++foo == CONST + INCR.
@@ -1501,7 +1695,7 @@ fold (expr)
 		|| ! tree_int_cst_lt (newconst, constop)
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
-		TREE_CODE (varop) = PREINCREMENT_EXPR;
+		TREE_SET_CODE (varop, PREINCREMENT_EXPR);
 		*constoploc = newconst;
 		return t;
 	      }
@@ -1515,7 +1709,7 @@ fold (expr)
 		|| tree_int_cst_lt (newconst, constop)
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
-		TREE_CODE (varop) = PREDECREMENT_EXPR;
+		TREE_SET_CODE (varop, PREDECREMENT_EXPR);
 		*constoploc = newconst;
 		return t;
 	      }
@@ -1530,13 +1724,15 @@ fold (expr)
 	  switch (TREE_CODE (t))
 	    {
 	    case GE_EXPR:
-	      TREE_CODE (t) = code = GT_EXPR;
+	      code = GT_EXPR;
+	      TREE_SET_CODE (t, code);
 	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
 	      TREE_OPERAND (t, 1) = arg1;
 	      break;
 
 	    case LT_EXPR:
-	      TREE_CODE (t) = code = LE_EXPR;
+	      code = LE_EXPR;
+	      TREE_SET_CODE (t, code);
 	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
 	      TREE_OPERAND (t, 1) = arg1;
 	    }
@@ -1551,10 +1747,10 @@ fold (expr)
 	  switch (TREE_CODE (t))
 	    {
 	    case GT_EXPR:
-	      TREE_CODE (t) = NE_EXPR;
+	      TREE_SET_CODE (t, NE_EXPR);
 	      break;
 	    case LE_EXPR:
-	      TREE_CODE (t) = EQ_EXPR;
+	      TREE_SET_CODE (t, EQ_EXPR);
 	      break;
 	    case GE_EXPR:
 	      return build (COMPOUND_EXPR, integer_type_node,

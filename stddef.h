@@ -7,10 +7,14 @@ typedef long ptrdiff_t;
 
 /* Unsigned type of `sizeof' something.  */
 
+#ifndef _SIZE_T	/* in case <sys/types.h> has defined it. */
+#define _SIZE_T
 typedef unsigned long size_t;
+#endif /* _SIZE_T */
 
 /* A null pointer constant.  */
 
+#undef NULL		/* in case <stdio.h> has defined it. */
 #define NULL ((void *)0)
 
 /* Offset of member MEMBER in a struct of type TYPE.  */

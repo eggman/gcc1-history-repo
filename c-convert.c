@@ -101,7 +101,7 @@ convert_to_real (type, expr)
   {
     register tree tem = make_node (REAL_CST);
     TREE_TYPE (tem) = type;
-    TREE_REAL_CST (tem) = 0;
+    TREE_REAL_CST (tem) = REAL_VALUE_ATOF ("0.0");
     return tem;
   }
 }
@@ -177,12 +177,30 @@ convert_to_integer (type, expr)
 	      || TREE_INT_CST_LOW (TREE_OPERAND (expr, 1)) < 0)
 	    break;
 	  /* In this case, shifting is like multiplication.  */
+	  goto trunc1;
+
+	case MAX_EXPR:
+	case MIN_EXPR:
+	case MULT_EXPR:
+	  {
+	    tree arg0 = get_unwidened (TREE_OPERAND (expr, 0), type);
+	    tree arg1 = get_unwidened (TREE_OPERAND (expr, 1), type);
+
+	    /* Don't distribute unless the output precision is at least as big
+	       as the actual inputs.  Otherwise, the comparison of the
+	       truncated values will be wrong.  */
+	    if (outprec >= TYPE_PRECISION (TREE_TYPE (arg0))
+		&& outprec >= TYPE_PRECISION (TREE_TYPE (arg1))
+		/* If signedness of arg0 and arg1 don't match,
+		   we can't necessarily find a type to compare them in.  */
+		&& (TREE_UNSIGNED (TREE_TYPE (arg0))
+		    == TREE_UNSIGNED (TREE_TYPE (arg1))))
+	      goto trunc1;
+	    break;
+	  }
 
 	case PLUS_EXPR:
 	case MINUS_EXPR:
-	case MULT_EXPR:
-	case MAX_EXPR:
-	case MIN_EXPR:
 	case BIT_AND_EXPR:
 	case BIT_IOR_EXPR:
 	case BIT_XOR_EXPR:
@@ -213,8 +231,13 @@ convert_to_integer (type, expr)
 		if (TYPE_PRECISION (typex) != inprec)
 		  {
 		    /* Don't do unsigned arithmetic where signed was wanted,
-		       or vice versa.  */
-		    typex = (TREE_UNSIGNED (TREE_TYPE (expr))
+		       or vice versa.
+		       Exception: if the original operands were unsigned
+		       then can safely do the work as unsigned.
+		       And we may need to do it as unsigned
+		       if we truncate to the original size.  */
+		    typex = ((TREE_UNSIGNED (TREE_TYPE (expr))
+			      || TREE_UNSIGNED (TREE_TYPE (arg0)))
 			     ? unsigned_type (typex) : signed_type (typex));
 		    return convert (type,
 				    build_binary_op_nodefault (ex_form,

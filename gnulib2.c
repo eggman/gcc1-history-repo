@@ -4,6 +4,10 @@
 #include "config.h"
 #include <stddef.h>
 
+#ifndef SItype
+#define SItype long int
+#endif
+
 /* long long ints are pairs of long ints in the order determined by
    WORDS_BIG_ENDIAN.  */
 
@@ -13,6 +17,19 @@
   struct longlong {long low, high;};
 #endif
 
+/* We need this union to unpack/pack longlongs, since we don't have
+   any arithmetic yet.  Incoming long long parameters are stored
+   into the `ll' field, and the unpacked result is read from the struct
+   longlong.  */
+
+typedef union
+{
+  struct longlong s;
+  long long ll;
+  SItype i[2];
+  unsigned SItype ui[2];
+} long_long;
+
 /* Internally, long long ints are strings of unsigned shorts in the
    order determined by BYTES_BIG_ENDIAN.  */
 
@@ -20,6 +37,10 @@
 #define low16 (B - 1)
 
 #ifdef BYTES_BIG_ENDIAN
+
+/* Note that HIGH and LOW do not describe the order
+   of words in a long long.  They describe the order of words
+   in vectors ordered according to the byte order.  */
 
 #define HIGH 0
 #define LOW 1
@@ -47,33 +68,34 @@
 
 /* These algorithms are all straight out of Knuth, vol. 2, sec. 4.3.1. */
 
-#define bdiv __div_internal
-
 static int badd ();
 static int bsub ();
 static void bmul ();
-static void bdiv ();
 static int bneg ();
 static int bshift ();
 
 #ifdef L_adddi3
-struct longlong 
+long long 
 __adddi3 (u, v)
-     struct longlong u, v;
+     long long u, v;
 {
   long a[2], b[2], c[2];
-  struct longlong w;
+  long_long w;
+  long_long uu, vv;
 
-  a[HIGH] = u.high;
-  a[LOW] = u.low;
-  b[HIGH] = v.high;
-  b[LOW] = v.low;
+  uu.ll = u;
+  vv.ll = v;
+
+  a[HIGH] = uu.s.high;
+  a[LOW] = uu.s.low;
+  b[HIGH] = vv.s.high;
+  b[LOW] = vv.s.low;
 
   badd (a, b, c, sizeof c);
 
-  w.high = c[HIGH];
-  w.low = c[LOW];
-  return w;
+  w.s.high = c[HIGH];
+  w.s.low = c[LOW];
+  return w.ll;
 }
 
 static int 
@@ -89,7 +111,8 @@ badd (a, b, c, n)
   acc = 0;
   for (i = little_end (n); is_not_msd (i, n); i = next_msd (i))
     {
-      acc += a[i] + b[i];
+      /* Widen before adding to avoid loss of high bits.  */
+      acc += (unsigned long) a[i] + b[i];
       c[i] = acc & low16;
       acc = acc >> 16;
     }
@@ -97,24 +120,231 @@ badd (a, b, c, n)
 }
 #endif
 
+#ifdef L_anddi3
+long long 
+__anddi3 (u, v)
+     long long u, v;
+{
+  long_long w;
+  long_long uu, vv;
+
+  uu.ll = u;
+  vv.ll = v;
+
+  w.s.high = uu.s.high & vv.s.high;
+  w.s.low = uu.s.low & vv.s.low;
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_iordi3
+long long 
+__iordi3 (u, v)
+     long long u, v;
+{
+  long_long w;
+  long_long uu, vv;
+
+  uu.ll = u;
+  vv.ll = v;
+
+  w.s.high = uu.s.high | vv.s.high;
+  w.s.low = uu.s.low | vv.s.low;
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_xordi3
+long long 
+__xordi3 (u, v)
+     long long u, v;
+{
+  long_long w;
+  long_long uu, vv;
+
+  uu.ll = u;
+  vv.ll = v;
+
+  w.s.high = uu.s.high ^ vv.s.high;
+  w.s.low = uu.s.low ^ vv.s.low;
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_one_cmpldi2
+long long
+__one_cmpldi2 (u)
+     long long u;
+{
+  long_long w;
+  long_long uu;
+
+  uu.ll = u;
+
+  w.s.high = ~uu.s.high;
+  w.s.low = ~uu.s.low;
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_lshldi3
+long long
+__lshldi3 (u, b)
+     long long u;
+     long int b;
+{
+  long_long w;
+  unsigned long carries;
+  int bm;
+  long_long uu;
+
+  if (b == 0)
+    return u;
+
+  uu.ll = u;
+
+  bm = (sizeof (int) * BITS_PER_UNIT) - b;
+  if (bm <= 0)
+    {
+      w.s.low = 0;
+      w.s.high = (unsigned long)uu.s.low << -bm;
+    }
+  else
+    {
+      carries = (unsigned long)uu.s.low >> bm;
+      w.s.low = (unsigned long)uu.s.low << b;
+      w.s.high = ((unsigned long)uu.s.high << b) | carries;
+    }
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_lshrdi3
+long long
+__lshrdi3 (u, b)
+     long long u;
+     long int b;
+{
+  long_long w;
+  unsigned long carries;
+  int bm;
+  long_long uu;
+
+  if (b == 0)
+    return u;
+
+  uu.ll = u;
+
+  bm = (sizeof (int) * BITS_PER_UNIT) - b;
+  if (bm <= 0)
+    {
+      w.s.high = 0;
+      w.s.low = (unsigned long)uu.s.high >> -bm;
+    }
+  else
+    {
+      carries = (unsigned long)uu.s.high << bm;
+      w.s.high = (unsigned long)uu.s.high >> b;
+      w.s.low = ((unsigned long)uu.s.low >> b) | carries;
+    }
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_ashldi3
+long long
+__ashldi3 (u, b)
+     long long u;
+     long int b;
+{
+  long_long w;
+  unsigned long carries;
+  int bm;
+  long_long uu;
+
+  if (b == 0)
+    return u;
+
+  uu.ll = u;
+
+  bm = (sizeof (int) * BITS_PER_UNIT) - b;
+  if (bm <= 0)
+    {
+      w.s.low = 0;
+      w.s.high = (unsigned long)uu.s.low << -bm;
+    }
+  else
+    {
+      carries = (unsigned long)uu.s.low >> bm;
+      w.s.low = (unsigned long)uu.s.low << b;
+      w.s.high = ((unsigned long)uu.s.high << b) | carries;
+    }
+
+  return w.ll;
+}
+#endif
+
+#ifdef L_ashrdi3
+long long
+__ashrdi3 (u, b)
+     long long u;
+     long int b;
+{
+  long_long w;
+  unsigned long carries;
+  int bm;
+  long_long uu;
+
+  if (b == 0)
+    return u;
+
+  uu.ll = u;
+
+  bm = (sizeof (int) * BITS_PER_UNIT) - b;
+  if (bm <= 0)
+    {
+      w.s.high = uu.s.high >> 31; /* just to make w.s.high 1..1 or 0..0 */
+      w.s.low = uu.s.high >> -bm;
+    }
+  else
+    {
+      carries = (unsigned long)uu.s.high << bm;
+      w.s.high = uu.s.high >> b;
+      w.s.low = ((unsigned long)uu.s.low >> b) | carries;
+    }
+
+  return w.ll;
+}
+#endif
+
 #ifdef L_subdi3
-struct longlong 
+long long 
 __subdi3 (u, v)
-     struct longlong u, v;
+     long long u, v;
 {
   long a[2], b[2], c[2];
-  struct longlong w;
+  long_long w;
+  long_long uu, vv;
 
-  a[HIGH] = u.high;
-  a[LOW] = u.low;
-  b[HIGH] = v.high;
-  b[LOW] = v.low;
+  uu.ll = u;
+  vv.ll = v;
+
+  a[HIGH] = uu.s.high;
+  a[LOW] = uu.s.low;
+  b[HIGH] = vv.s.high;
+  b[LOW] = vv.s.low;
 
   bsub (a, b, c, sizeof c);
 
-  w.high = c[HIGH];
-  w.low = c[LOW];
-  return w;
+  w.s.high = c[HIGH];
+  w.s.low = c[LOW];
+  return w.ll;
 }
 
 static int 
@@ -130,7 +360,8 @@ bsub (a, b, c, n)
   acc = 0;
   for (i = little_end (n); is_not_msd (i, n); i = next_msd (i))
     {
-      acc += a[i] - b[i];
+      /* Widen before subtracting to avoid loss of high bits.  */
+      acc += (long) a[i] - b[i];
       c[i] = acc & low16;
       acc = acc >> 16;
     }
@@ -139,23 +370,27 @@ bsub (a, b, c, n)
 #endif
 
 #ifdef L_muldi3
-struct longlong 
+long long 
 __muldi3 (u, v)
-     struct longlong u, v;
+     long long u, v;
 {
   long a[2], b[2], c[2][2];
-  struct longlong w;
+  long_long w;
+  long_long uu, vv;
 
-  a[HIGH] = u.high;
-  a[LOW] = u.low;
-  b[HIGH] = v.high;
-  b[LOW] = v.low;
+  uu.ll = u;
+  vv.ll = v;
+
+  a[HIGH] = uu.s.high;
+  a[LOW] = uu.s.low;
+  b[HIGH] = vv.s.high;
+  b[LOW] = vv.s.low;
 
   bmul (a, b, c, sizeof a, sizeof b);
 
-  w.high = c[LOW][HIGH];
-  w.low = c[LOW][LOW];
-  return w;
+  w.s.high = c[LOW][HIGH];
+  w.s.low = c[LOW][LOW];
+  return w.ll;
 }
 
 static void 
@@ -173,14 +408,16 @@ bmul (a, b, c, m, n)
 
   for (j = little_end (n); is_not_msd (j, n); j = next_msd (j))
     {
+      unsigned short *c1 = c + j + little_end (2);
       acc = 0;
       for (i = little_end (m); is_not_msd (i, m); i = next_msd (i))
 	{
-	  acc += a[i] * b[j] + (c + next_lsd (j))[i];
-	  (c + next_lsd (j))[i] = acc & low16;
+	  /* Widen before arithmetic to avoid loss of high bits.  */
+	  acc += (unsigned long) a[i] * b[j] + c1[i];
+	  c1[i] = acc & low16;
 	  acc = acc >> 16;
 	}
-      c[j] = acc;
+      c1[i] = acc;
     }
 }
 #endif
@@ -222,67 +459,78 @@ __moddi3 (u, v)
 #endif
 
 #ifdef L_udivdi3
-struct longlong 
+long long 
 __udivdi3 (u, v)
-     struct longlong u, v;
+     long long u, v;
 {
   unsigned long a[2][2], b[2], q[2], r[2];
-  struct longlong w;
+  long_long w;
+  long_long uu, vv;
+
+  uu.ll = u;
+  vv.ll = v;
 
   a[HIGH][HIGH] = 0;
   a[HIGH][LOW] = 0;
-  a[LOW][HIGH] = u.high;
-  a[LOW][LOW] = u.low;
-  b[HIGH] = v.high;
-  b[LOW] = v.low;
+  a[LOW][HIGH] = uu.s.high;
+  a[LOW][LOW] = uu.s.low;
+  b[HIGH] = vv.s.high;
+  b[LOW] = vv.s.low;
 
-  bdiv (a, b, q, r, sizeof a, sizeof b);
+  __bdiv (a, b, q, r, sizeof a, sizeof b);
 
-  w.high = q[HIGH];
-  w.low = q[LOW];
-  return w;
+  w.s.high = q[HIGH];
+  w.s.low = q[LOW];
+  return w.ll;
 }
 #endif
 
 #ifdef L_umoddi3
-struct longlong 
+long long 
 __umoddi3 (u, v)
-     struct longlong u, v;
+     long long u, v;
 {
   unsigned long a[2][2], b[2], q[2], r[2];
-  struct longlong w;
+  long_long w;
+  long_long uu, vv;
+
+  uu.ll = u;
+  vv.ll = v;
 
   a[HIGH][HIGH] = 0;
   a[HIGH][LOW] = 0;
-  a[LOW][HIGH] = u.high;
-  a[LOW][LOW] = u.low;
-  b[HIGH] = v.high;
-  b[LOW] = v.low;
+  a[LOW][HIGH] = uu.s.high;
+  a[LOW][LOW] = uu.s.low;
+  b[HIGH] = vv.s.high;
+  b[LOW] = vv.s.low;
 
-  bdiv (a, b, q, r, sizeof a, sizeof b);
+  __bdiv (a, b, q, r, sizeof a, sizeof b);
 
-  w.high = r[HIGH];
-  w.low = r[LOW];
-  return w;
+  w.s.high = r[HIGH];
+  w.s.low = r[LOW];
+  return w.ll;
 }
 #endif
 
 #ifdef L_negdi2
-struct longlong 
+long long 
 __negdi2 (u)
-     struct longlong u;
+     long long u;
 {
   unsigned long a[2], b[2];
-  struct longlong w;
+  long_long w;
+  long_long uu;
 
-  a[HIGH] = u.high;
-  a[LOW] = u.low;
+  uu.ll = u;
+
+  a[HIGH] = uu.s.high;
+  a[LOW] = uu.s.low;
 
   bneg (a, b, sizeof b);
 
-  w.high = b[HIGH];
-  w.low = b[LOW];
-  return w;
+  w.s.high = b[HIGH];
+  w.s.low = b[LOW];
+  return w.ll;
 }
 
 static int
@@ -316,9 +564,12 @@ bneg (a, b, n)
    The quotient must fit in m - n bytes, i.e., the most significant
    n digits of a must be less than b, and m must be greater than n.  */
 
-#ifdef L_div_internal
+/* The name of this used to be __div_internal,
+   but that is too long for SYSV.  */
+
+#ifdef L_bdiv
 void 
-bdiv (a, b, q, r, m, n)
+__bdiv (a, b, q, r, m, n)
      unsigned short *a, *b, *q, *r;
      size_t m, n;
 {
@@ -326,9 +577,8 @@ bdiv (a, b, q, r, m, n)
   unsigned long acc;
   unsigned short *u = (unsigned short *) alloca (m);
   unsigned short *v = (unsigned short *) alloca (n);
-  unsigned short *u1 = next_lsd (u);
-  unsigned short *u2 = next_lsd (u1);
-  unsigned short *vn;
+  unsigned short *u0, *u1, *u2;
+  unsigned short *v0;
   int d, qn;
   int i, j;
 
@@ -336,8 +586,8 @@ bdiv (a, b, q, r, m, n)
   n /= sizeof *b;
   qn = m - n;
 
-  /* Shift divisor and dividend left until the high bit of the divisor
-     is 1.  */
+  /* Remove leading zero digits from divisor, and the same number of
+     digits (which must be zero) from dividend.  */
 
   while (b[big_end (n)] == 0)
     {
@@ -354,6 +604,25 @@ bdiv (a, b, q, r, m, n)
 	abort ();
     }
       
+  /* If divisor is a single digit, do short division.  */
+
+  if (n == 1)
+    {
+      acc = a[big_end (m)];
+      a += little_end (2);
+      for (j = big_end (qn); is_not_lsd (j, qn); j = next_lsd (j))
+	{
+	  acc = (acc << 16) | a[j];
+	  q[j] = acc / *b;
+	  acc = acc % *b;
+	}
+      *r = acc;
+      return;
+    }
+
+  /* No such luck, must do long division. Shift divisor and dividend
+     left until the high bit of the divisor is 1.  */
+
   for (d = 0; d < 16; d++)
     if (b[big_end (n)] & (1 << (16 - 1 - d)))
       break;
@@ -361,13 +630,14 @@ bdiv (a, b, q, r, m, n)
   bshift (a, d, u, 0, m);
   bshift (b, d, v, 0, n);
 
-  /* Get a pointer to the high divisor digit (so some of the upcoming code
-     fits on a line).  Provide the divisor with a trailing zero digit if
-     it is only one digit long.  */
+  /* Get pointers to the high dividend and divisor digits.  */
 
-  vn = v + big_end (n);
-  if (n == 1)
-    *next_lsd (vn) = 0;
+  u0 = u + big_end (m) - big_end (qn);
+  u1 = next_lsd (u0);
+  u2 = next_lsd (u1);
+  u += little_end (2);
+
+  v0 = v + big_end (n);
 
   /* Main loop: find a quotient digit, multiply it by the divisor,
      and subtract that from the dividend, shifted over the right amount. */
@@ -377,25 +647,25 @@ bdiv (a, b, q, r, m, n)
       /* Quotient digit initial guess: high 2 dividend digits over high
 	 divisor digit.  */
 
-      if (u[j] == *vn)
+      if (u0[j] == *v0)
 	{
 	  qhat = B - 1;
-	  rhat = *vn + u1[j];
+	  rhat = (unsigned long) *v0 + u1[j];
 	}
       else
 	{
-	  unsigned long numerator = u[j] << 16 |  u1[j];
-	  qhat = numerator / *vn;
-	  rhat = numerator % *vn;
+	  unsigned long numerator = ((unsigned long) u0[j] << 16) | u1[j];
+	  qhat = numerator / *v0;
+	  rhat = numerator % *v0;
 	}
 
       /* Now get the quotient right for high 3 dividend digits over
 	 high 2 divisor digits.  */
 
-      while (rhat < B && qhat * *next_lsd (vn) > (rhat << 16 | u2[j]))
+      while (rhat < B && qhat * *next_lsd (v0) > ((rhat << 16) | u2[j]))
 	{
 	  qhat -= 1;
-	  rhat += *vn;
+	  rhat += *v0;
 	}
 	    
       /* Multiply quotient by divisor, subtract from dividend.  */
@@ -403,11 +673,12 @@ bdiv (a, b, q, r, m, n)
       acc = 0;
       for (i = little_end (n); is_not_msd (i, n); i = next_msd (i))
 	{
-	  acc += (u1 + j)[i] - v[i] * qhat;
-	  (u1 + j)[i] = acc & low16;
+	  acc += (unsigned long) (u + j)[i] - v[i] * qhat;
+	  (u + j)[i] = acc & low16;
 	  if (acc < B)
 	    acc = 0;
-	  else acc = acc >> 16 | -B;
+	  else
+	    acc = (acc >> 16) | -B;
 	}
 
       q[j] = qhat;
@@ -415,14 +686,14 @@ bdiv (a, b, q, r, m, n)
       /* Quotient may have been too high by 1.  If dividend went negative,
 	 decrement the quotient by 1 and add the divisor back.  */
 
-      if ((signed long) (acc + u[j]) < 0)
+      if ((signed long) (acc + u0[j]) < 0)
 	{
 	  q[j] -= 1;
 	  acc = 0;
 	  for (i = little_end (n); is_not_msd (i, n); i = next_msd (i))
 	    {
-	      acc += (u1 + j)[i] + v[i];
-	      (u1 + j)[i] = acc & low16;
+	      acc += (unsigned long) (u + j)[i] + v[i];
+	      (u + j)[i] = acc & low16;
 	      acc = acc >> 16;
 	    }
 	}
@@ -431,11 +702,11 @@ bdiv (a, b, q, r, m, n)
   /* Now the remainder is what's left of the dividend, shifted right
      by the amount of the normalizing left shift at the top.  */
 
-  if (d == 0)
-    bshift (&u[j], d, r, 0, n);
-  else
-    r[big_end (n)] = bshift (&u[j], 16 - d, &r[next_lsd (big_end (n))],
-			     u[little_end (m)] >> d, n - 1);
+  r[big_end (n)] = bshift (u + 1 + little_end (j - 1),
+			   16 - d,
+			   r + little_end (2),
+			   u[little_end (m - 1)] >> d,
+			   n - 1);
 }
 
 /* Left shift U by K giving W; fill the introduced low-order bits with
@@ -459,11 +730,118 @@ bshift (u, k, w, carry_in, n)
   acc = carry_in;
   for (i = little_end (n); is_not_msd (i, n); i = next_msd (i))
     {
-      acc |= u[i] << k;
+      acc |= (unsigned long) u[i] << k;
       w[i] = acc & low16;
       acc = acc >> 16;
     }
   return acc;
 }
 #endif
+
+#ifdef L_cmpdi2
+SItype
+__cmpdi2 (a, b)
+     long long a, b;
+{
+  long_long au, bu;
 
+  au.ll = a, bu.ll = b;
+
+  if (au.s.high < bu.s.high)
+    return 0;
+  else if (au.s.high > bu.s.high)
+    return 2;
+  if ((unsigned) au.s.low < (unsigned) bu.s.low)
+    return 0;
+  else if ((unsigned) au.s.low > (unsigned) bu.s.low)
+    return 2;
+  return 1;
+}
+#endif
+
+#ifdef L_ucmpdi2
+SItype
+__ucmpdi2 (a, b)
+     long long a, b;
+{
+  long_long au, bu;
+
+  au.ll = a, bu.ll = b;
+
+  if ((unsigned) au.s.high < (unsigned) bu.s.high)
+    return 0;
+  else if ((unsigned) au.s.high > (unsigned) bu.s.high)
+    return 2;
+  if ((unsigned) au.s.low < (unsigned) bu.s.low)
+    return 0;
+  else if ((unsigned) au.s.low > (unsigned) bu.s.low)
+    return 2;
+  return 1;
+}
+#endif
+
+#ifdef L_fixunsdfdi
+#define HIGH_WORD_COEFF (((long long) 1) << BITS_PER_WORD)
+
+long long
+__fixunsdfdi (a)
+     double a;
+{
+  double b;
+  unsigned long long v;
+
+  if (a < 0)
+    return 0;
+
+  /* Compute high word of result, as a flonum.  */
+  b = (a / HIGH_WORD_COEFF);
+  /* Convert that to fixed (but not to long long!),
+     and shift it into the high word.  */
+  v = (unsigned long int) b;
+  v <<= BITS_PER_WORD;
+  /* Remove high part from the double, leaving the low part as flonum.  */
+  a -= (double)v;
+  /* Convert that to fixed (but not to long long!) and add it in.
+     Sometimes A comes out negative.  This is significant, since
+     A has more bits than a long int does.  */
+  if (a < 0)
+    v -= (unsigned long int) (- a);
+  else
+    v += (unsigned long int) a;
+  return v;
+}
+#endif
+
+#ifdef L_fixdfdi
+long long
+__fixdfdi (a)
+     double a;
+{
+  if (a < 0)
+    return - __fixunsdfdi (-a);
+  return __fixunsdfdi (a);
+}
+#endif
+
+#ifdef L_floatdidf
+#define HIGH_HALFWORD_COEFF (((long long) 1) << (BITS_PER_WORD / 2))
+#define HIGH_WORD_COEFF (((long long) 1) << BITS_PER_WORD)
+
+double
+__floatdidf (u)
+     long long u;
+{
+  double d;
+  int negate = 0;
+
+  if (d < 0)
+    u = -u, negate = 1;
+
+  d = (unsigned int) (u >> BITS_PER_WORD);
+  d *= HIGH_HALFWORD_COEFF;
+  d *= HIGH_HALFWORD_COEFF;
+  d += (unsigned int) (u & (HIGH_WORD_COEFF - 1));
+
+  return (negate ? -d : d);
+}
+#endif

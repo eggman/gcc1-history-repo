@@ -47,7 +47,8 @@ DEFTREECODE (ERROR_MARK, "error_mark", "x", 0)
 DEFTREECODE (IDENTIFIER_NODE, "identifier_node", "x", 7)
 
 /* Used to hold information to identify an operator (or combination
-   of two operators) considered as a `noun' rather than a `verb'.  */
+   of two operators) considered as a `noun' rather than a `verb'.
+   The first operand is encoded in the TREE_TYPE field.  */
 DEFTREECODE (OP_IDENTIFIER, "op_identifier", "x", 2)
 
 /* Has the TREE_VALUE and TREE_PURPOSE fields.  */
@@ -151,8 +152,7 @@ DEFTREECODE (FILE_TYPE, "file_type", "t", 0)
 			    Its range of values specifies the array length.
    TYPE_SEP		  Expression for units from one elt to the next.
    TYPE_SEP_UNIT	  Number of bits in a unit for previous.
-   TYPE_POINTER_TO	  It is safe to assume, for an array type,
- that TYPE_POINTER_TO (TREE_TYPE (array_type)) is always nonzero
+ The field TYPE_POINTER_TO (TREE_TYPE (array_type)) is always nonzero
  and holds the type to coerce a value of that array type to in C.  */
 /* Array types in C or Pascal */
 DEFTREECODE (ARRAY_TYPE, "array_type", "t", 0)
@@ -228,8 +228,15 @@ DEFTREECODE (WITH_STMT, "with_stmt", "s", 5)
    STMT_BIND_SIZE is an expression for the size of local storage here.
    STMT_TYPE_TAGS is a list (chain of TREE_LIST nodes)
     pairing struct, union and enum tag names with the types they mean,
-    for tags defined in this context.  */
-DEFTREECODE (LET_STMT, "let_stmt", "s", 5)
+    for tags defined in this context.
+
+   A LET_STMT can be used as an expression.  Its STMT_BODY is expanded
+   in its stead.  Its TREE_USED is set if it is expanded.
+
+   A LET_STMT whose TREE_USED is not set is ignored when symbols
+   are output.  If the LET_STMT is passed to expand_expr but it
+   should not be ignored, set its TREE_USED by hand.  */
+DEFTREECODE (LET_STMT, "let_stmt", "s", 6)
 
 /* if-then-else statements in C and other languages.
    STMT_COND is the condition (an expression).
@@ -331,8 +338,6 @@ DEFTREECODE (STRING_CST, "string_cst", "c", 3)
     body has been output) the address in the symtab file of the
     `struct block' for the function's top-level binding context.
     This must be stored in the symtab structure for the function name.
-   Also, TREE_UNSIGNED (function_decl) is nonzero if the ({...})
-    construct is used in the function.
 
    DECL_SOURCE_FILE holds a filename string and DECL_SOURCE_LINE
    holds a line number.  */
@@ -345,7 +350,6 @@ DEFTREECODE (VAR_DECL, "var_decl", "d", 0)
 DEFTREECODE (PARM_DECL, "parm_decl", "d", 0)
 DEFTREECODE (RESULT_DECL, "result_decl", "d", 0)
 DEFTREECODE (FIELD_DECL, "field_decl", "d", 0)
-DEFTREECODE (FRIEND_DECL, "friend_decl", "d", 0)
 
 /* References to storage.  */
 
@@ -395,13 +399,16 @@ DEFTREECODE (MODIFY_EXPR, "modify_expr", "e", 2)
    Operand 1 is the initializer.  */
 DEFTREECODE (INIT_EXPR, "init_expr", "e", 2)
 
-/* Allocation expression.  ??? Can you please fill in a description
-   of the arguments?  */
+/* Use these for overloading `new' and `delete'.
+   ??? Please describe the meaning of the operands.  */
 DEFTREECODE (NEW_EXPR, "new_expr", "e", 2)
-
-/* Storage freeing expression.  ??? Can you please fill in a description
-   of the arguments?  */
 DEFTREECODE (DELETE_EXPR, "delete_expr", "e", 2)
+
+/* Use these for providing abstract push and pop operations for wrappers.
+   Operand 0 is the abstract stack.  Operand 1 is the value to push or pop.
+   ??? What kind of value is an "abstract stack"?  */
+DEFTREECODE (PUSH_EXPR, "push_expr", "e", 2)
+DEFTREECODE (POP_EXPR, "pop_expr", "e", 2)
 
 /* Conditional expression ( ... ? ... : ...  in C).
    Operand 0 is the condition.
@@ -429,7 +436,7 @@ DEFTREECODE (METHOD_CALL_EXPR, "method_call_expr", "e", 4)
      manages to act on the proper value.
    The cleanup is executed when the value is no longer needed,
    which is not at precisely the same time that this value is computed.  */
-DEFTREECODE (WITH_CLEANUP_EXPR, "with_call_expr", "e", 3)
+DEFTREECODE (WITH_CLEANUP_EXPR, "with_cleanup_expr", "e", 3)
 
 /* Simple arithmetic.  Operands must have the same machine mode
    and the value shares that mode.  */
@@ -464,6 +471,10 @@ DEFTREECODE (ROUND_MOD_EXPR, "round_mod_expr", "e", 2)
    operands are supported.  The result must have the same type
    as the operands.  */
 DEFTREECODE (RDIV_EXPR, "rdiv_expr", "e", 2)
+
+/* Division which is not supposed to need rounding.
+   Used for pointer subtraction in C.  */
+DEFTREECODE (EXACT_DIV_EXPR, "exact_div_expr", "e", 2)
 
 /* Conversion of real to fixed point: four ways to round,
    like the four ways to divide.

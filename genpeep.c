@@ -31,13 +31,6 @@ struct obstack *rtl_obstack = &obstack;
 extern int xmalloc ();
 extern void free ();
 
-void match_rtx ();
-void gen_exp ();
-void fatal ();
-
-
-int max_opno;
-
 /* While tree-walking an instruction pattern, we keep a chain
    of these `struct link's to record how to get down to the
    current position.  In each one, POS is the operand number,
@@ -50,6 +43,13 @@ struct link
   int pos;
   int vecelt;
 };
+
+void match_rtx ();
+void gen_exp ();
+void fatal ();
+void fancy_abort ();
+
+int max_opno;
 
 /* Number of operands used in current peephole definition.  */
 
@@ -137,7 +137,9 @@ gen_peephole (peep)
   if (ninsns > 1)
     printf ("  delete_for_peephole (NEXT_INSN (ins1), insn);\n");
 
-  printf ("  return 1;\n");
+  /* See reload1.c for insertion of NOTE which guarantees that this
+     cannot be zero.  */
+  printf ("  return NEXT_INSN (insn);\n");
 
   printf (" L%d:\n\n", insn_code_number);
 }
@@ -201,6 +203,13 @@ match_rtx (x, path, fail_label)
       if (XSTR (x, 1) && XSTR (x, 1)[0])
 	printf ("  if (! %s (x, %smode)) goto L%d;\n",
 		XSTR (x, 1), GET_MODE_NAME (GET_MODE (x)), fail_label);
+      link.next = path;
+      link.vecelt = -1;
+      for (i = 0; i < XVECLEN (x, 2); i++)
+	{
+	  link.pos = i;
+	  match_rtx (XVECEXP (x, 2, i), &link, fail_label);
+	}
       return;
 
     case ADDRESS:
@@ -332,11 +341,21 @@ xrealloc (ptr, size)
 
 void
 fatal (s, a1, a2)
+     char *s;
 {
   fprintf (stderr, "genpeep: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
   exit (FATAL_EXIT_CODE);
+}
+
+/* More 'friendly' abort that prints the line and file.
+   config.h can #define abort fancy_abort if you like that sort of thing.  */
+
+void
+fancy_abort ()
+{
+  fatal ("Internal gcc abort.");
 }
 
 int
@@ -376,7 +395,7 @@ from the machine description file `md'.  */\n\n");
   printf ("extern rtx peep_operand[];\n\n");
   printf ("#define operands peep_operand\n\n");
 
-  printf ("int\npeephole (ins1)\n     rtx ins1;\n{\n");
+  printf ("rtx\npeephole (ins1)\n     rtx ins1;\n{\n");
   printf ("  rtx insn, x, pat;\n");
   printf ("  int i;\n\n");
 
