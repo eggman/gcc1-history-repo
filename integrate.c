@@ -729,11 +729,10 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   reg_map = (rtx *) alloca (max_regno * sizeof (rtx));
   bzero (reg_map, max_regno * sizeof (rtx));
 
-  parm_map = (rtx *)alloca ((FUNCTION_ARGS_SIZE (header)
-			     / UNITS_PER_WORD) * sizeof (rtx));
-  bzero (parm_map, ((FUNCTION_ARGS_SIZE (header)
-		     / UNITS_PER_WORD)
-		    * sizeof (rtx)));
+  parm_map = (rtx *)alloca ((FUNCTION_ARGS_SIZE (header) + UNITS_PER_WORD - 1)
+			    / UNITS_PER_WORD * sizeof (rtx));
+  bzero (parm_map, ((FUNCTION_ARGS_SIZE (header) + UNITS_PER_WORD - 1)
+		    / UNITS_PER_WORD * sizeof (rtx)));
 
   /* Note that expand_expr (called above) can clobber first_parm_offset.  */
   first_parm_offset = FIRST_PARM_OFFSET (fndecl);

@@ -59,15 +59,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__\
-%{!traditional:-D_INCLUDE__STDC__}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__\
-%{!traditional:-D_INCLUDE__STDC__}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__"
 
 #endif /* default is -msoft-float */
 
@@ -77,15 +75,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}\
-%{!traditional:-D_INCLUDE__STDC__}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}\
-%{!traditional:-D_INCLUDE__STDC__}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}"
 
 #endif /* default is -msoft-float */
 

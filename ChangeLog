@@ -1,3 +1,21 @@
+Wed Feb 21 00:25:39 1990  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.37.1 released.
+
+	* tm-mips.h (ASM_OUTPUT_ADDR_VEC_ELT and ASM_OUTPUT_ADDR_DIFF_ELT):
+	Start label names with $.
+
+Sun Feb 18 13:58:04 1990  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-mips.h (ASM_GENERATE_INTERNAL_LABEL, ASM_OUTPUT_INTERNAL_LABEL):
+	Start name with $.
+
+	* integrate.c (expand_inline_function): Round up size of parm_map.
+
+Sat Feb 17 20:56:05 1990  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-hp9k320.h (CPP_SPEC): Remove _INCLUDE__STDC__.
+
 Sun Feb 11 20:11:25 1990  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 
 	* Version 1.37 released.

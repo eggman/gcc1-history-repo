@@ -622,10 +622,10 @@ example, @samp{min (min (a, b), c)} expands into
 
 If you use the macro name followed by something other than an
 open-parenthesis (after ignoring any spaces, tabs and comments that
-follow), it is not a call to the macro, and the preprocessor does not
-change what you have written.  Therefore, it is possible for the same name
-to be a variable or function in your program as well as a macro, and you
-can choose in each instance whether to refer to the macro (if an actual
+follow), it is not a call to the macro, and the preprocessor leaves the
+name unaltered.  Therefore, it is possible for the same name to be a
+variable or function in your program as well as a macro, and you can
+choose in each instance whether to refer to the macro (if an actual
 argument list follows) or the variable or function (if an argument list
 does not follow).
 
@@ -1672,9 +1672,9 @@ not need to use preprocessor conditionals.
 
 @findex #if
 A conditional in the C preprocessor begins with a @dfn{conditional
-command}: @samp{#if}, @samp{#ifdef} or @samp{#ifndef}.@xref{Conditionals},
-for info on @samp{#ifdef} and @samp{#ifndef}; only @samp{#if} is explained
-here.
+command}: @samp{#if}, @samp{#ifdef} or @samp{#ifndef}.
+@xref{Conditionals-Macros}, for info on @samp{#ifdef} and
+@samp{#ifndef}; only @samp{#if} is explained here.
 
 @menu
 * If: #if Command.     Basic conditionals using @samp{#if} and @samp{#endif}.

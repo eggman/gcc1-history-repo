@@ -290,9 +290,8 @@ Here is the procedure for installing GNU CC on a Unix system.
           system V, or `tm-vms.h' on VMS.
 
           For the Motorola 88000, use `tm-m88k.h'.  The support for
-          the 88000 has a few unfinished spots because there was no
-          way to run the output.  Bugs are suspected in handling of
-          branch-tables and in the function prologue and epilogue.
+          the 88000 does not currently work; it requires extensive
+          changes which we hope to reconcile in version 2.
 
           For the 80386, don't use `tm-i386.h' directly.  Use
           `tm-i386v.h' if the target machine is running system V,
@@ -353,17 +352,12 @@ Here is the procedure for installing GNU CC on a Unix system.
      out of expression space; then you need to break up the statement
      where the problem happens.
 
-  6. Optionally, install the library functions for 64-bit integer
-     arithmetic.  You do this with the command `make gnulib2'.  In
-     the future this will happen automatically; for now, it is
-     optional, until we are sure it works on all machines.
-
-  7. If you are using COFF-encapsulation, you must convert `gnulib'
+  6. If you are using COFF-encapsulation, you must convert `gnulib'
      to a GNU-format library at this point.  See the file
      `README-ENCAP' in the directory containing the GNU binary file
      utilities, for directions.
 
-  8. Move the first-stage object files and executables into a
+  7. Move the first-stage object files and executables into a
      subdirectory with this command:
 
           make stage1
@@ -372,7 +366,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      installation is complete, you may wish to delete these files
      with `rm -r stage1'.
 
-  9. Recompile the compiler with itself, with this command:
+  8. Recompile the compiler with itself, with this command:
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
 
@@ -382,7 +376,7 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
 
- 10. If you wish to test the compiler by compiling it with itself one
+  9. If you wish to test the compiler by compiling it with itself one
      more time, do this (in C shell):
 
           make stage2
@@ -412,7 +406,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           cmp foo1 foo2
           done
 
- 11. Install the compiler driver, the compiler's passes and run-time
+ 10. Install the compiler driver, the compiler's passes and run-time
      support.  You can use the following command:
 
           make install

@@ -42,9 +42,9 @@ Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 17 January 1990
+@center last updated 21 February 1990
 @sp 1
-@center for version 1.37
+@center for version 1.37.1
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988, 1989 Free Software Foundation, Inc.
@@ -1021,9 +1021,8 @@ Add directory @var{dir} to the list of directories to be searched
 for @samp{-l}.
 
 @item -nostdlib
-Don't use the standard system libraries and startup files when
-linking.  Only the files you specify (plus @file{gnulib}) will be
-passed to the linker.
+Don't use the standard system libraries and startup files when linking.
+Only the files you specify will be passed to the linker.
 
 @item -m@var{machinespec}
 Machine-dependent option specifying something about the type of target
@@ -1714,9 +1713,8 @@ For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
 system V, or @file{tm-vms.h} on VMS.@refill
 
 For the Motorola 88000, use @file{tm-m88k.h}.  The support for the
-88000 has a few unfinished spots because there was no way to run the
-output.  Bugs are suspected in handling of branch-tables and in the
-function prologue and epilogue.
+88000 does not currently work; it requires extensive changes which
+we hope to reconcile in version 2.
 
 For the 80386, don't use @file{tm-i386.h} directly.  Use
 @file{tm-i386v.h} if the target machine is running system V,
@@ -1779,12 +1777,6 @@ Some commercial compilers fail to compile GNU CC because they have bugs
 or limitations.  For example, the Microsoft compiler is said to run out
 of macro space.  Some Ultrix compilers run out of expression space; then
 you need to break up the statement where the problem happens.
-
-@item
-Optionally, install the library functions for 64-bit integer
-arithmetic.  You do this with the command @samp{make gnulib2}.  In the
-future this will happen automatically; for now, it is optional, until
-we are sure it works on all machines.
 
 @item
 If you are using COFF-encapsulation, you must convert @file{gnulib} to
@@ -2244,11 +2236,9 @@ think it's worth being incompatible for.
 @chapter Incompatibilities of GNU CC
 
 There are several noteworthy incompatibilities between GNU C and most
-existing (non-ANSI) versions of C.
-
-Ultimately our intention is that the @samp{-traditional} option will
-eliminate most of these incompatibilities by telling GNU C to behave
-like the other C compilers.
+existing (non-ANSI) versions of C.  The @samp{-traditional} option
+eliminates most of these incompatibilities, @emph{but not all}, by
+telling GNU C to behave like older C compilers.
 
 @itemize @bullet
 @item
