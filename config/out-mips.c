@@ -28,6 +28,9 @@ extern void  abort_with_insn ();
 
 char *reg_numchar[] = REGISTER_NUMCHAR;
 
+/* When eliminating the frame pointer, this is the size of the frame
+   aside from explicit stack slots.  */
+int frame_stack_difference;
 
 /* Return truth value of whether OP can be used as an operands
    where a 16 bit integer is needed  */
@@ -187,11 +190,11 @@ static struct
 				/* For use in Frame/ Stack pointer management*/
 char * current_function_name;
 int current_function_total_framesize;
-
+typedef CUMULATIVE_ARGS cumulative_args;
 
 enum arg_state
 function_arg_advance (cum, mode, type)
-     CUMULATIVE_ARGS *cum;
+     cumulative_args *cum;
      enum machine_mode mode;
      int type;
 {
@@ -205,7 +208,7 @@ function_arg_advance (cum, mode, type)
 
 rtx
 function_arg (cum, mode, type, named)
-     CUMULATIVE_ARGS *cum;
+     cumulative_args *cum;
      enum machine_mode mode;
      int type;
      int named;
@@ -219,10 +222,17 @@ function_arg (cum, mode, type, named)
 
   if (mode == BLKmode)
     return 0;
+  else if (regnum >= 0)
+    return gen_rtx (REG, mode, regnum);
+  else if (regnum == -2)
+    {
+      if (mode == SFmode)
+	return gen_rtx (SUBREG, SFmode, gen_rtx (REG, DFmode, 6), 0);
+      else
+	return gen_rtx (REG, DFmode, 6);
+    }
   else
-    return (regnum >= 0 ? gen_rtx (REG, mode, regnum)
-	    : regnum == -2 ? gen_rtx (REG, DFmode, 6)
-	    : 0);
+    return 0;
 }
 
 

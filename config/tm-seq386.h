@@ -39,6 +39,22 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define DBX_DEBUGGING_INFO
 
+/* gcc order is ax, dx, cx, bx, si, di, bp, sp, st, st.
+ * dbx order is ax, dx, cx, st(0), st(1), bx, si, di, st(2), st(3),
+ * 		st(4), st(5), st(6), st(7), sp, bp  */
+#undef DBX_REGISTER_NUMBER
+#define DBX_REGISTER_NUMBER(n)		\
+((n) < 3 ? (n) : (n) < 6 ? (n) + 2	\
+ : (n) == 6 ? 15 : (n) == 7 ? 14 : 3)
+
+/* Prevent anything from being allocated in the register pair cx/bx,
+   since that would confuse GDB.  */
+
+#undef HARD_REGNO_MODE_OK
+#define HARD_REGNO_MODE_OK(REGNO, MODE) \
+  (hard_regno_mode_ok (REGNO, MODE)	\
+   && ! (REGNO == 2 && GET_MODE_SIZE (MODE) > 4))
+
 /* Floating-point return values come in the FP register.  */
 
 #define VALUE_REGNO(MODE) \

@@ -102,6 +102,11 @@ then
 		configuration_file=xm-i386.h
 		target_machine=tm-seq386.h
 		;;
+	i386-mach)
+		cpu_type=i386
+		configuration_file=xm-i386.h
+		target_machine=tm-i386gas.h
+		;;
 	i386-sysv | i386v)		# for Intel 80386's running system V
 		machine=i386v
 		cpu_type=i386
@@ -203,6 +208,11 @@ then
 		cpu_type=m68k
 		configuration_file=xm-${machine}.h
 		;;
+	3b1g | 3b1-gas)
+		machine=3b1g
+		cpu_type=m68k
+		configuration_file=xm-3b1.h
+		;;
 	sequent-ns32k | sequent)
 		machine=sequent
 		cpu_type=ns32k
@@ -252,6 +262,7 @@ then
 		cpu_type=m68k
 		;;
 	pyr | pyramid)
+		machine=pyr
 		;;
 #	370)
 #		machine=370

@@ -247,7 +247,7 @@ struct compiler compilers[] =
                       %{!pipe:%g.s}\n }}}"},
   {".cc",
    "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{i*} \
-        -undef -D__GNUC__ %p %P\
+        -undef -D__GNUC__ -D__GNUG__ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
@@ -287,7 +287,7 @@ struct compiler compilers[] =
 char *link_spec = "%{!c:%{!M*:%{!E:%{!S:ld %{o*} %l\
  %{A} %{d} %{e*} %{N} %{n} %{r} %{s} %{S} %{T*} %{t} %{u*} %{X} %{x} %{z}\
  %{y*} %{!A:%{!nostdlib:%S}} \
- %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L}\n }}}}";
+ %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L gnulib%s}\n }}}}";
 
 /* Accumulate a command (program name and args), and run it.  */
 

@@ -160,6 +160,10 @@ do { fprintf (asm_out_file, "\t.tag\t");	\
   (((link) && TREE_PURPOSE ((link)) \
     && IDENTIFIER_POINTER (TREE_PURPOSE ((link)))) \
    ? IDENTIFIER_POINTER (TREE_PURPOSE ((link))) : (char *) 0)
+
+/* Ensure we don't output a negative line number.  */
+#define MAKE_LINE_SAFE(line)  \
+  if (line <= sdb_begin_function_line) line = sdb_begin_function_line + 1
 
 /* Tell the assembler the source file name.
    On systems that use SDB, this is done whether or not -g,
@@ -880,6 +884,7 @@ sdbout_begin_block (file, line, n)
      int n;
 {
   tree decl = current_function_decl;
+  MAKE_LINE_SAFE (line);
   PUT_SDB_BLOCK_START (line - sdb_begin_function_line);
   if (n == 1)
     {
@@ -900,6 +905,7 @@ sdbout_end_block (file, line)
      FILE *file;
      int line;
 {
+  MAKE_LINE_SAFE (line);
   PUT_SDB_BLOCK_END (line - sdb_begin_function_line);
 }
 
@@ -935,6 +941,7 @@ void
 sdbout_end_function (line)
      int line;
 {
+  MAKE_LINE_SAFE (line);
   PUT_SDB_FUNCTION_END (line - sdb_begin_function_line);
 
   /* Indicate we are between functions, for line-number output.  */

@@ -51,7 +51,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    The luids are like uids but increase monononically always.
    We use them to see whether a jump comes from outside a given loop.  */
 
-static short *uid_luid;
+static int *uid_luid;
 
 /* Get the luid of an insn.  */
 
@@ -262,8 +262,8 @@ loop_optimize (f, dumpfile)
       i = INSN_UID (insn);
 
   max_uid = i + 1;
-  uid_luid = (short *) alloca ((i + 1) * sizeof (short));
-  bzero (uid_luid, (i + 1) * sizeof (short));
+  uid_luid = (int *) alloca ((i + 1) * sizeof (int));
+  bzero (uid_luid, (i + 1) * sizeof (int));
 
   /* Compute the mapping from uids to luids.
      LUIDs are numbers assigned to insns, like uids,
@@ -1341,19 +1341,31 @@ loop_skip_over (start, end, loop_entry_jump)
      rtx end;
      rtx loop_entry_jump;
 {
+  rtx entry_insn;
+  rtx endtest;
   rtx endtestjump;
   register rtx p = JUMP_LABEL (loop_entry_jump);
 
   while (GET_CODE (p) != INSN && GET_CODE (p) != JUMP_INSN
 	 && GET_CODE (p) != CALL_INSN)
     p = NEXT_INSN (p);
+  entry_insn = p;
+
+  /* Skip any ordinary arithmetic insns to find the compare.  */
+  for (; p != 0; p = NEXT_INSN (p))
+    if (GET_CODE (p) != NOTE)
+      if (GET_CODE (p) != INSN || sets_cc0_p (PATTERN (p)))
+	break;
+  if (p == 0 || GET_CODE (p) != INSN)
+    return 0;
+  endtest = p;
   endtestjump = next_real_insn (p);
 
-  /* Check that we (1) enter at a compare insn and (2)
+  /* Check that (1) we have reached a compare insn and (2)
      the insn (presumably a jump) following that compare
      is the last in the loop and jumps back to the loop beginning.  */
 
-  if (sets_cc0_p (PATTERN (p)) > 0
+  if (sets_cc0_p (PATTERN (endtest)) > 0
       && endtestjump == prev_real_insn (end)
       && prev_real_insn (JUMP_LABEL (endtestjump)) == loop_entry_jump)
     {
@@ -1361,8 +1373,17 @@ loop_skip_over (start, end, loop_entry_jump)
       /* This is the jump that we insert.  */
       rtx new_jump;
 
+      /* Duplicate the ordinary arith insns before the compare.  */
+      for (p = entry_insn; p != endtest; p = NEXT_INSN (p))
+	if (GET_CODE (p) == INSN)
+	  {
+	    rtx new = emit_insn_before (copy_rtx (PATTERN (p)), start);
+	    if (REG_NOTES (p))
+	      REG_NOTES (new) = copy_rtx (REG_NOTES (p));
+	  }
+	
       /* Ok, duplicate that test before start of loop.  */
-      emit_insn_before (copy_rtx (PATTERN (p)), start);
+      emit_insn_before (copy_rtx (PATTERN (endtest)), start);
       /* Make a new entry-jump (before the original one)
 	 whose condition is opposite to the loop-around endtest
 	 and which jumps around the loop (to just after the ending NOTE).  */
@@ -2553,61 +2574,70 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 	call_seen = 1;
 
       if (GET_CODE (p) == INSN
-	  && GET_CODE (PATTERN (p)) == SET
-	  && GET_CODE (SET_DEST (PATTERN (p))) == REG)
+	  && GET_CODE (PATTERN (p)) == SET)
 	{
-	  int dest_regno = REGNO (SET_DEST (PATTERN (p)));
+	  rtx dest = SET_DEST (PATTERN (p));
 
-	  if (induct_var[dest_regno] == BASIC_INDUCT
-	      && class_struct[dest_regno]->init_insn == 0)
+	  while (GET_CODE (dest) == SUBREG
+		 || GET_CODE (dest) == ZERO_EXTRACT
+		 || GET_CODE (dest) == SIGN_EXTRACT
+		 || GET_CODE (dest) == STRICT_LOW_PART)
+	    dest = XEXP (dest, 0);
+
+	  if (GET_CODE (dest) == REG)
 	    {
-	      /* This is the first modification found for this reg.  */
-
-	      rtx src = SET_SRC (PATTERN (p));
-
-	      /* Record the intializing INSN */
-
-	      class_struct[dest_regno]->init_insn = p;
-
-	      if (loop_dump_stream)
-		fprintf (loop_dump_stream, "Biv %d initialized at insn %d: ",
-			 dest_regno, INSN_UID (p));
-
-	      /* Save value if it is a constant or register.  */
-	      if (CONSTANT_P (src)
-		  || (GET_CODE (src) == REG
-		      /* Don't try to use a value in a hard reg
-			 across a call which clobbers it.  */
-		      && ! (REGNO (src) < FIRST_PSEUDO_REGISTER
-			    && call_used_regs[REGNO (src)]
-			    && call_seen)
-		      && ! reg_set_between_p (src, p, loop_start)))
+	      int dest_regno = REGNO (dest);
+	      if (induct_var[dest_regno] == BASIC_INDUCT
+		  && class_struct[dest_regno]->init_insn == 0)
 		{
-		  class_struct[dest_regno]->initial_value = src;
-		  
+		  /* This is the first modification found for this reg.  */
+
+		  rtx src = SET_SRC (PATTERN (p));
+
+		  /* Record the intializing INSN */
+
+		  class_struct[dest_regno]->init_insn = p;
+
 		  if (loop_dump_stream)
-		    fprintf (loop_dump_stream, "initial value ");
-		  if (loop_dump_stream)
+		    fprintf (loop_dump_stream, "Biv %d initialized at insn %d: ",
+			     dest_regno, INSN_UID (p));
+
+		  /* Save value if it is a constant or register.  */
+		  if (CONSTANT_P (src)
+		      || (GET_CODE (src) == REG
+			  /* Don't try to use a value in a hard reg
+			     across a call which clobbers it.  */
+			  && ! (REGNO (src) < FIRST_PSEUDO_REGISTER
+				&& call_used_regs[REGNO (src)]
+				&& call_seen)
+			  && ! reg_set_between_p (src, p, loop_start)))
 		    {
-		      if (GET_CODE (src) == CONST_INT)
-			fprintf (loop_dump_stream, "%d\n", INTVAL (src));
-		      else
+		      class_struct[dest_regno]->initial_value = src;
+
+		      if (loop_dump_stream)
+			fprintf (loop_dump_stream, "initial value ");
+		      if (loop_dump_stream)
 			{
-			  print_rtl (loop_dump_stream, src);
-			  fprintf (loop_dump_stream, "\n");
+			  if (GET_CODE (src) == CONST_INT)
+			    fprintf (loop_dump_stream, "%d\n", INTVAL (src));
+			  else
+			    {
+			      print_rtl (loop_dump_stream, src);
+			      fprintf (loop_dump_stream, "\n");
+			    }
 			}
 		    }
-		}
-	      else
-		{
-		  /* Biv initial value is not simple move,
-		     so let it keep intial value of "itself".  */
+		  else
+		    {
+		      /* Biv initial value is not simple move,
+			 so let it keep intial value of "itself".  */
 
-		  if (loop_dump_stream)
-		    fprintf (loop_dump_stream, "complex initial value\n");
-		}
+		      if (loop_dump_stream)
+			fprintf (loop_dump_stream, "complex initial value\n");
+		    }
 
-	      biv_found--;
+		  biv_found--;
+		}
 	    }
 	}
       else if (GET_CODE (p) == CODE_LABEL)
@@ -2757,6 +2787,7 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 
       if ((uid_luid[regno_last_uid[bl->regno]] < INSN_LUID (loop_end)
 	   && bl->init_insn
+	   && INSN_UID (bl->init_insn) < max_uid
 	   && uid_luid[regno_first_uid[bl->regno]] >= INSN_LUID (bl->init_insn)
 	   && ! reg_mentioned_p (SET_DEST (PATTERN (bl->biv->insn)),
 				 SET_SRC (PATTERN (bl->init_insn)))
@@ -2959,6 +2990,14 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 
 	      emit_iv_init_code (bl->initial_value, v->mult_val,
 				 v->add_val, new_reg, loop_start);
+	      /* If the initial value uses a register,
+		 then we may have just extended its range of appearance.
+		 Update this conservatively for the sake of outer loops.  */
+	      if (GET_CODE (bl->initial_value) == REG
+		  && (uid_luid[regno_last_uid[REGNO (bl->initial_value)]]
+		      < INSN_LUID (loop_start)))
+		uid_luid[regno_last_uid[REGNO (bl->initial_value)]]
+		  = INSN_LUID (loop_start);
 
 	      /* For each giv register that can be reduced now:
 		 delete old insn that modifies the giv,
@@ -3064,7 +3103,25 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 		  && SET_DEST (PATTERN (p)) == cc0_rtx)
 		/* Found a compare instruction using this biv;
 		   rewrite it to use a related giv.  */
-		eliminate_biv (p, bl, loop_start);
+		{
+		  struct induction *v1;
+		  /* If this is an insn which uses the biv ONLY in the
+		     calculation of a giv which is in the family of this
+		     biv, it's ok becuase it will go away when the giv is
+		     reduced.  */
+		  for (v1 = bl->giv; v1; v1 = v1->family)
+		    if (v1->insn == p)
+		      {
+			if (v1->giv_type == DEST_REG
+			    || (v1->giv_type == DEST_ADDR
+				/* Test was backwards - rms, 5 Dec 89 */
+				&& only_reg_use_p (reg, *(v1->location),
+						   PATTERN (p))))
+			  break;
+		      }
+		  if (!v1)
+		    eliminate_biv (p, bl, loop_start);
+		}
 	    }
 
 	  /* Biv is no longer really needed inside the loop,
@@ -3624,10 +3681,20 @@ general_induction_var (x, src_regno, add_val, mult_val, forces, forces2)
       /* This can generate givs also, but it is not handled.  */
       return 0;
 
-    case PLUS:
-    case MINUS:
     case MULT:
     case UMULT:
+      /* Reject widening multiply in version 1.
+	 That is safer than trying to handle it.  */
+      {
+	enum machine_mode m0 = GET_MODE (XEXP (x, 0));
+	enum machine_mode m1 = GET_MODE (XEXP (x, 1));
+	if (m0 != VOIDmode && m0 != GET_MODE (x))
+	  return 0;
+	if (m1 != VOIDmode && m1 != GET_MODE (x))
+	  return 0;
+      }
+    case PLUS:
+    case MINUS:
       /* Result is linear in both operands.  */
       /* Determine which operand is the biv, and put the other in ARG.  */
       if (GET_CODE (XEXP (x, 0)) == REG
@@ -3670,6 +3737,27 @@ general_induction_var (x, src_regno, add_val, mult_val, forces, forces2)
 	  else
 	    g->benefit = tem;
 	  arg = XEXP (x, 0);
+	}
+      else if (tem = general_induction_var (XEXP (x, 0), src_regno,
+					    add_val, mult_val,
+					    forces, forces2))
+	{
+	  /* Set subexp true so that this can be handled a little
+	     differently from the normal case of g set.  */
+	  /* Note that SRC_REGNO is already set.  */
+	  subexp = TRUE;
+	  g = (struct induction *) alloca (sizeof (struct induction));
+	  g->mult_val = *mult_val;
+	  g->add_val = *add_val;
+	  /* Fake out the test below.  */
+	  g->replaceable = 1;
+	  /* Count this multiply as a shift, since that's what it
+	     really will do.  */
+	  if (tem == MULT_BENEFIT)
+	    g->benefit = SHIFT_BENEFIT;
+	  else
+	    g->benefit = tem;
+	  arg = XEXP (x, 1);
 	}
 #endif
       /* Also allow general induction variables.
@@ -3838,15 +3926,9 @@ general_induction_var (x, src_regno, add_val, mult_val, forces, forces2)
 	{
 	  *mult_val = g->mult_val;
 	  if (GET_CODE (g->add_val) == CONST_INT)
-	    {
-	      if (g->add_val == const0_rtx)
-		*add_val = arg;
-	      else if (GET_CODE (arg) == CONST_INT)
-		*add_val = gen_rtx (CONST_INT, VOIDmode,
-				      INTVAL (g->add_val) + INTVAL (arg));
-	      else
-		return 0;
-	    }
+	    *add_val = plus_constant (arg, INTVAL (g->add_val));
+	  else if (GET_CODE (arg) == CONST_INT)
+	    *add_val = plus_constant (g->add_val, INTVAL (arg));
 	  else
 	    /* Could succeed if arg == 0, but that will never occur.  */
 	    return 0;
@@ -4724,8 +4806,9 @@ check_eliminate_biv (bl, loop_start, end)
 	      {
 		if (v->giv_type == DEST_REG
 		    || (v->giv_type == DEST_ADDR
-			&& ! only_reg_use_p (reg, *(v->location),
-					     PATTERN (p))))
+			/* Test was backwards - rms, 5 Dec 89 */
+			&& only_reg_use_p (reg, *(v->location),
+					   PATTERN (p))))
 		  break;
 	      }
 	  if (v)
@@ -4796,12 +4879,14 @@ can_eliminate_biv_p (insn, bl)
 	    && v->mode == mode)
 	  return 1;
 
-      /* Look for a giv with (MULT_VAL != 0) and (ADD_VAL != 0);
-	 replace test insn with a compare insn (cmp REDUCED_GIV ADD_VAL).
+      /* Look for a giv with (MULT_VAL != 0) and (ADD_VAL != 0)
+	 where ADD_VAL is a constant or a register;
+	 can replace test insn with a compare insn (cmp REDUCED_GIV ADD_VAL).
 	 Require a constant integer for MULT_VAL, so we know it's nonzero.  */
 
       for (v = bl->giv; v; v = v->family)
 	if (GET_CODE (v->mult_val) == CONST_INT && v->mult_val != const0_rtx
+	    && (GET_CODE (v->add_val) == REG || GET_CODE (v->add_val) == CONST_INT)
 	    && ! v->ignore
 	    && v->mode == mode)
 	  return 1;
@@ -4821,11 +4906,14 @@ can_eliminate_biv_p (insn, bl)
 	  arg = XEXP (src, 1);
 	  arg_operand = 1;
 	}
-      else
+      else if ((GET_CODE (XEXP (src, 1)) == REG)
+	       && (REGNO (XEXP (src, 1)) == bl->regno))
 	{
 	  arg = XEXP (src, 0);
 	  arg_operand = 0;
 	}
+      else
+	return 0;
 
       if (GET_CODE (arg) == CONST_INT)
 	{
@@ -4932,12 +5020,14 @@ eliminate_biv (insn, bl, loop_start)
 	  return;
 	}
 
-      /* Look for a giv with (MULT_VAL != 0) and (ADD_VAL != 0);
+      /* Look for a giv with (MULT_VAL != 0) and (ADD_VAL != 0)
+	 where ADD_VAL is a constant or a register;
 	 replace test insn with a compare insn (cmp REDUCED_GIV ADD_VAL).
 	 Require a constant integer for MULT_VAL, so we know it's nonzero.  */
 
       for (v = bl->giv; v; v = v->family)
 	if (GET_CODE (v->mult_val) == CONST_INT && v->mult_val != const0_rtx
+	    && (GET_CODE (v->add_val) == REG || GET_CODE (v->add_val) == CONST_INT)
 	    && v->new_reg != 0
 	    && v->mode == mode)
 	  break;
@@ -4969,11 +5059,14 @@ eliminate_biv (insn, bl, loop_start)
 	  arg = XEXP (src, 1);
 	  arg_operand = 1;
 	}
-      else
+      else if (GET_CODE (XEXP (src, 1)) == REG
+	       && REGNO (XEXP (src, 1)) == bl->regno)
 	{
 	  arg = XEXP (src, 0);
 	  arg_operand = 0;
 	}
+      else
+	abort ();
 
       if (GET_CODE (arg) == CONST_INT)
 	{
@@ -5073,7 +5166,7 @@ eliminate_biv (insn, bl, loop_start)
 	      for (tv = class_struct[REGNO (arg)]->giv; tv; tv = tv->family)
 		if ((tv->new_reg != 0)
 		    && rtx_equal_p (tv->mult_val, v->mult_val)
-		    && rtx_equal_p (tv->mult_val, v->mult_val)
+		    && rtx_equal_p (tv->add_val, v->add_val)
 		    && tv->mode == mode)
 		  break;
 	      if (tv)

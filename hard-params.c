@@ -5,6 +5,7 @@
 
    Name changed to `hard-params' by Richard Stallman, April 89.
    xmalloc function defined, Richard Stallman, June 89.
+   Avoin macro in #include, Richard Stallman, Jan 90.
 
    Copyright (c) 1988, 1989 Steven Pemberton, CWI, Amsterdam.
    All rights reserved.
@@ -1711,6 +1712,6 @@ Procedure EPROP(fprec, dprec, lprec) int fprec, dprec, lprec; {}
    replace __FILE__ with the file name - and get a new C compiler... */
 
 #ifdef PASS
-#include __FILE__
+#include "hard-params.c"
 #endif
 

@@ -260,6 +260,9 @@ struct binding_level
     /* Nonzero means make a LET_STMT for this level regardless of all else.  */
     char keep;
 
+    /* Nonzero means make a LET_STMT if this level has any subblocks.  */
+    char keep_if_subblocks;
+
     /* Number of decls in `names' that have incomplete 
        structure or union types.  */
     int n_incomplete;
@@ -289,6 +292,11 @@ static struct binding_level clear_binding_level
 /* Nonzero means unconditionally make a LET_STMT for the next level pushed.  */
 
 static int keep_next_level_flag;
+
+/* Nonzero means make a LET_STMT for the next level pushed
+   if it has subblocks.  */
+
+static int keep_next_if_subblocks;
 
 /* Forward declarations.  */
 
@@ -443,6 +451,17 @@ keep_next_level ()
   keep_next_level_flag = 1;
 }
 
+/* Nonzero if the current level needs to have a LET_STMT made.  */
+
+int
+kept_level_p ()
+{
+  return ((current_binding_level->keep_if_subblocks
+	   && current_binding_level->blocks != 0)
+	  || current_binding_level->keep
+	  || current_binding_level->names != 0);
+}
+
 /* Identify this binding level as a level of parameters.  */
 
 void
@@ -499,6 +518,8 @@ pushlevel (tag_transparent)
   newlevel->tag_transparent = tag_transparent;
   newlevel->keep = keep_next_level_flag;
   keep_next_level_flag = 0;
+  newlevel->keep_if_subblocks = keep_next_if_subblocks;
+  keep_next_if_subblocks = 0;
 }
 
 /* Exit a binding level.
@@ -575,7 +596,8 @@ poplevel (keep, reverse, functionbody)
      or if this level is a function body,
      create a LET_STMT to record them for the life of this function.  */
 
-  if (keep || functionbody)
+  if (keep || functionbody
+      || (current_binding_level->keep_if_subblocks && subblocks != 0))
     block = build_let (0, 0, keep ? decls : 0,
 		       subblocks, 0, keep ? tags : 0);
 
@@ -590,7 +612,13 @@ poplevel (keep, reverse, functionbody)
   for (link = decls; link; link = TREE_CHAIN (link))
     {
       if (DECL_NAME (link) != 0)
-	IDENTIFIER_LOCAL_VALUE (DECL_NAME (link)) = 0;
+	{
+	  /* If the ident. was used via a local extern decl,
+	     don't forget that fact.  */
+	  if (TREE_USED (link) && TREE_EXTERNAL (link))
+	    TREE_USED (DECL_NAME (link)) = 1;
+	  IDENTIFIER_LOCAL_VALUE (DECL_NAME (link)) = 0;
+	}
       DECL_CONTEXT (link) = block;
     }
 
@@ -826,6 +854,8 @@ duplicate_decls (newdecl, olddecl)
 	      /* Since the type is OLDDECL's, make OLDDECL's size go with.  */
 	      DECL_SIZE (newdecl) = DECL_SIZE (olddecl);
 	      DECL_SIZE_UNIT (newdecl) = DECL_SIZE_UNIT (olddecl);
+	      if (DECL_ALIGN (olddecl) > DECL_ALIGN (newdecl))
+		DECL_ALIGN (newdecl) = DECL_ALIGN (olddecl);
 	    }
 
 	  /* Merge the type qualifiers.  */
@@ -946,18 +976,17 @@ pushdecl (x)
 
       if (t != 0 && duplicate_decls (x, t))
 	{
-	  /* If this decl is `static' and an `extern' was seen previously,
-	     that is erroneous.  But don't complain if -traditional,
+	  /* If this decl is `static' and an implicit decl was seen previously,
+	     warn.  But don't complain if -traditional,
 	     since traditional compilers don't complain.  */
 	  if (!flag_traditional && TREE_PUBLIC (name)
-	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x))
+	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x)
+	      /* We used to warn also for explicit extern followed by static,
+		 but sometimes you need to do it that way.  */
+	      && IDENTIFIER_IMPLICIT_DECL (name) != 0)
 	    {
-	      if (IDENTIFIER_IMPLICIT_DECL (name))
-		warning ("`%s' was declared implicitly `extern' and later `static'",
-			 IDENTIFIER_POINTER (name));
-	      else
-		warning ("`%s' was declared `extern' and later `static'",
-			 IDENTIFIER_POINTER (name));
+	      warning ("`%s' was declared implicitly `extern' and later `static'",
+		       IDENTIFIER_POINTER (name));
 	      warning_with_file_and_line (file, line,
 					  "previous declaration of `%s'",
 					  IDENTIFIER_POINTER (name));
@@ -1009,7 +1038,7 @@ pushdecl (x)
 	  /* Don't forget if the function was used via an implicit decl.  */
 	  if (IDENTIFIER_IMPLICIT_DECL (name)
 	      && TREE_USED (IDENTIFIER_IMPLICIT_DECL (name)))
-	    TREE_USED (x) = 1;
+	    TREE_USED (x) = 1, TREE_USED (name) = 1;
 
 	  /* Don't forget if its address was taken in that way.  */
 	  if (IDENTIFIER_IMPLICIT_DECL (name)
@@ -1126,8 +1155,11 @@ implicitly_declare (functionid)
   register tree decl;
 
   /* Save the decl permanently so we can warn if definition follows.  */
+#if 0  /* A temporary implicit decl causes a crash in pushdecl.
+	  In 1.38, fix pushdecl.  */
   if (flag_traditional || !warn_implicit
       || current_binding_level == global_binding_level)
+#endif
     end_temporary_allocation ();
 
   /* We used to reuse an old implicit decl here,
@@ -1155,8 +1187,10 @@ implicitly_declare (functionid)
 
   IDENTIFIER_IMPLICIT_DECL (functionid) = decl;
 
+#if 0
   if (flag_traditional || ! warn_implicit
       || current_binding_level == global_binding_level)
+#endif
     resume_temporary_allocation ();
 
   return decl;
@@ -2019,6 +2053,11 @@ complete_array_type (type, initial_value, do_default)
 {
   register tree maxindex = NULL_TREE;
   int value = 0;
+  int temporary = (TREE_PERMANENT (type) && allocation_temporary_p ());
+
+  /* Don't put temporary nodes in permanent type.  */
+  if (temporary)
+    end_temporary_allocation ();
 
   if (initial_value)
     {
@@ -2060,6 +2099,9 @@ complete_array_type (type, initial_value, do_default)
   /* Lay out the type now that we can get the real answer.  */
 
   layout_type (type);
+
+  if (temporary)
+    resume_temporary_allocation ();
 
   return value;
 }
@@ -2474,6 +2516,11 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	      type = integer_type_node;
 	    }
 
+	  /* Traditionally, declaring return type float means double.  */
+
+	  if (flag_traditional && type == float_type_node)
+	    type = double_type_node;
+
 	  /* Construct the function type and go to the next
 	     inner layer of declarator.  */
 
@@ -2564,11 +2611,10 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
      a distinct type, so that each identifier's size can be
      controlled separately by its own initializer.  */
 
-  if (type == typedef_type && TREE_CODE (type) == ARRAY_TYPE
-      && TYPE_DOMAIN (type) == 0)
-    {
-      type = build_array_type (TREE_TYPE (type), TYPE_DOMAIN (type));
-    }
+  if (type != 0 && typedef_type != 0
+      && TYPE_MAIN_VARIANT (type) == TYPE_MAIN_VARIANT (typedef_type)
+      && TREE_CODE (type) == ARRAY_TYPE && TYPE_DOMAIN (type) == 0)
+    type = build_array_type (TREE_TYPE (type), 0);
 
   /* If this is a type name (such as, in a cast or sizeof),
      compute the type and return it now.  */
@@ -2641,7 +2687,7 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 		   IDENTIFIER_POINTER (declarator));
 	    type = build_pointer_type (type);
 	  }
-	else if (TYPE_SIZE (type) == 0)
+	else if (TREE_CODE (type) != ERROR_MARK && TYPE_SIZE (type) == 0)
 	  {
 	    error ("field `%s' has incomplete type",
 		   IDENTIFIER_POINTER (declarator));
@@ -3377,6 +3423,14 @@ build_enumerator (name, value)
   if (value == 0)
     value = enum_next_value;
 
+  /* Might as well enforce the ANSI restriction, since
+     values outside this range don't work in version 1.  */
+  if (! int_fits_type_p (value, integer_type_node))
+    {
+      error ("enumerator value outside range of `int'");
+      value = integer_zero_node;
+    }
+
   /* Set basis for default for next value.  */
   enum_next_value = build_binary_op_nodefault (PLUS_EXPR, value,
 					       integer_one_node, PLUS_EXPR);
@@ -3746,6 +3800,12 @@ store_parm_decls ()
      DECL_ARGUMENTS is not modified.  */
 
   storedecls (chainon (nonparms, DECL_ARGUMENTS (fndecl)));
+
+  /* Make sure the binding level for the top of the function body
+     gets a LET_STMT if there are any in the function.
+     Otherwise, the dbx output is wrong.  */
+
+  keep_next_if_subblocks = 1;
 
   /* Initialize the RTL code for the function.  */
 

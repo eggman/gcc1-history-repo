@@ -231,7 +231,7 @@ insert_call_saves (insn)
 }
 
 /* Emit a string of stores to save the hard regs listed in
-   OFFSET[] at address ADDR; insert the loads after INSN.
+   OFFSET[] at address ADDR.  Emit them before INSN.
    OFFSET[reg] is -1 if reg should not be saved, or a
    suitably-aligned offset from ADDR.  
    The offsets actually used do not have to be those listed
@@ -243,19 +243,161 @@ emit_mult_save (insn, addr, offset)
      int offset[];
 {
   int regno;
+  /* A register to use as a temporary for address calculations.  */
+  rtx tempreg;
+  /* A register that could be used as that temp if we save and restore it.  */
+  rtx can_push_reg;
+  /* Nonzero means we need to save a register to use it as TEMPREG.  */
+  int needpush;
+  /* The amount the stack is decremented to save that register (if we do).  */
+  int decrement;
+  /* Record which regs we save, in case we branch to retry.  */
+  char already_saved[FIRST_PSEUDO_REGISTER];
 
+  bzero (already_saved, sizeof already_saved);
+
+  /* Hair is needed because sometimes the addresses to save in are
+     not valid (offsets too big).
+     So we need a reg, TEMPREG, to compute addresses in.
+
+     We look first for an empty reg to use.
+     Sometimes no reg is empty.  Then we push a reg, use it, and pop it.
+
+     Sometimes the only reg to push and pop this way is one we want to save.
+     We can't save it while using it as a temporary.
+     So we save all the other registers, pop it, and go back to `retry'.
+     At that point, only this reg remains to be saved;
+     all the others already saved are empty.
+     So one of them can be the temporary for this one.  */
+
+  /* Sometimes we can't save all the regs conveniently at once, just some.
+     If that happens, we branch back here to save the rest.  */
+ retry:
+  needpush = 0;
+  tempreg = 0;
+  can_push_reg = 0;
+
+  /* Set NEEDPUSH if any save-addresses are not valid memory addresses.
+     If any register is available, record it in TEMPREG.
+     If any register doesn't need saving here, record it in CAN_PUSH_REG.  */
   for (regno = 0; regno < FIRST_PSEUDO_REGISTER; ++regno)
-    if (offset[regno] >= 0)
+    {
+      if (offset[regno] >= 0 && ! already_saved[regno])
+	{
+	  rtx reg = save_reg_rtx[regno];
+	  rtx addr1 = plus_constant (addr, offset[regno]);
+	  if (memory_address_p (GET_MODE (reg), addr1))
+	    needpush = 1;
+	}
+
+      /* A call-clobbered reg that is dead, or already saved,
+	 can be used as a temporary for sure, at no extra cost.  */
+      if (tempreg == 0 && call_used_regs[regno] && ! fixed_regs[regno]
+	  && !(offset[regno] >= 0 && ! already_saved[regno])
+	  && HARD_REGNO_MODE_OK (regno, Pmode))
+	{
+	  tempreg = gen_rtx (REG, Pmode, regno);
+	  /* Don't use it if not valid for addressing.  */
+	  if (! strict_memory_address_p (QImode, tempreg))
+	    tempreg = 0;
+	}
+
+      /* A call-saved reg can be a temporary if we push and pop it.  */
+      if (can_push_reg == 0 && ! call_used_regs[regno]
+	  && HARD_REGNO_MODE_OK (regno, Pmode))
+	{
+	  can_push_reg = gen_rtx (REG, Pmode, regno);
+	  /* Don't use it if not valid for addressing.  */
+	  if (! strict_memory_address_p (QImode, can_push_reg))
+	    can_push_reg = 0;
+	}
+    }
+
+  /* Clear NEEDPUSH if we already found an empty reg.  */
+  if (tempreg != 0)
+    needpush = 0;
+
+  /* If we need a temp reg and none is free, make one free.  */
+  if (needpush)
+    {
+      /* Choose a reg, preferably not among those it is our job to save.  */
+      if (can_push_reg != 0)
+	tempreg = can_push_reg;
+      else
+	{
+	  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; ++regno)
+	    if (offset[regno] >= 0 && !already_saved[regno]
+		&& HARD_REGNO_MODE_OK (regno, Pmode))
+	      {
+		tempreg = gen_rtx (REG, Pmode, regno);
+		/* Don't use it if not valid for addressing.  */
+		if (! strict_memory_address_p (QImode, tempreg))
+		  tempreg = 0;
+		else
+		  break;
+	      }
+	}
+
+      /* Push it on the stack.  */
+#ifdef STACK_GROWS_DOWNWARD
+      decrement = UNITS_PER_WORD;
+#else
+      decrement = - UNITS_PER_WORD;
+#endif
+
+      emit_insn_before (gen_add2_insn (stack_pointer_rtx,
+				       gen_rtx (CONST_INT, VOIDmode, -decrement)),
+			insn);
+      emit_insn_before (gen_move_insn (gen_rtx (MEM, Pmode, stack_pointer_rtx),
+				       tempreg),
+			insn);
+    }
+
+  /* Save the regs we are supposed to save, aside from TEMPREG.
+     Use TEMPREG for address calculations when needed.  */
+  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; ++regno)
+    if (offset[regno] >= 0 && ! already_saved[regno]
+	&& tempreg != 0 && REGNO (tempreg) != regno)
       {
 	rtx reg = save_reg_rtx[regno];
-	rtx temp =
-	  gen_rtx (MEM, GET_MODE (reg), plus_constant (addr, offset[regno]));
+	rtx addr1 = plus_constant (addr, offset[regno]);
+	rtx temp;
+	if (! memory_address_p (GET_MODE (reg), addr1))
+	  {
+	    if (GET_CODE (addr1) != PLUS)
+	      abort ();
+	    if (GET_CODE (XEXP (addr1, 1)) != CONST_INT
+		|| GET_CODE (XEXP (addr1, 0)) != REG)
+	      abort ();
+	    emit_insn_before (gen_move_insn (tempreg, XEXP (addr1, 0)), insn);
+	    emit_insn_before (gen_add2_insn (tempreg, XEXP (addr1, 1)), insn);
+	    addr1 = tempreg;
+	  }
+	temp = gen_rtx (MEM, GET_MODE (reg), addr1);
 	emit_insn_before (gen_move_insn (temp, reg), insn);
+	already_saved[regno] = 1;
       }
+
+  /* If we pushed TEMPREG to make it free, pop it.  */
+  if (needpush)
+    {
+      emit_insn_before (gen_move_insn (tempreg,
+				       gen_rtx (MEM, Pmode, stack_pointer_rtx)),
+			insn);
+      emit_insn_before (gen_add2_insn (stack_pointer_rtx,
+				       gen_rtx (CONST_INT, VOIDmode, decrement)),
+			insn);
+    }
+
+  /* If TEMPREG itself needs saving, go back and save it.
+     There are plenty of free regs now, those already saved.  */
+  if (tempreg != 0
+      && offset[REGNO (tempreg)] >= 0 && ! already_saved[REGNO (tempreg)])
+    goto retry;
 }
 
 /* Emit a string of loads to restore the hard regs listed in
-   OFFSET[] from address ADDR; insert the loads before INSN.
+   OFFSET[] from address ADDR; insert the loads after INSN.
    OFFSET[reg] is -1 if reg should not be loaded, or a
    suitably-aligned offset from ADDR.  
    The offsets actually used do not need to be those provided in
@@ -264,18 +406,186 @@ emit_mult_save (insn, addr, offset)
 static void
 emit_mult_restore (insn, addr, offset)
      rtx insn, addr;
-     int offset[];     
+     int offset[];
 {
   int regno;
 
-  for (regno = FIRST_PSEUDO_REGISTER; --regno >= 0; )
-    if (offset[regno] >= 0)
+  /* Number of regs now needing to be restored.  */
+  int restore_count;
+  /* A register to use as a temporary for address calculations.  */
+  rtx tempreg;
+  /* A register available for that purpose but less desirable.  */
+  rtx maybe_tempreg;
+  /* A register that could be used as that temp if we push and pop it.  */
+  rtx can_push_reg;
+  /* Nonzero means we need to push and pop a register to use it as TEMPREG.  */
+  int needpush;
+  /* The amount the stack is decremented to save that register (if we do).  */
+  int decrement;
+  /* Record which regs we restore, in case we branch to retry.  */
+  char already_restored[FIRST_PSEUDO_REGISTER];
+
+  bzero (already_restored, sizeof already_restored);
+
+  /* Note: INSN can't be the last insn, since if it were,
+     no regs would live across it.  */
+  insn = NEXT_INSN (insn);
+  if (insn == 0)
+    abort ();
+  /* Now we can insert before INSN.
+     That is convenient because we can insert them in the order
+     that they should ultimately appear.  */
+
+  /* Hair is needed because sometimes the addresses to restore from are
+     not valid (offsets too big).
+     So we need a reg, TEMPREG, to compute addresses in.
+
+     We look first for an empty reg to use.
+     Sometimes no reg is empty.  Then we push a reg, use it, and pop it.
+
+     If all the suitable regs need to be restored,
+     that strategy won't work.  So we restore all but one, using that one
+     as a temporary.  Then we jump to `retry' to restore that one,
+     pushing and popping another (already restored) as a temporary.  */
+
+ retry:
+  needpush = 0;
+  tempreg = 0;
+  can_push_reg = 0;
+  restore_count = 0;
+
+  /* Set NEEDPUSH if any restore-addresses are not valid memory addresses.
+     If any register is available, record it in TEMPREG.
+     Otherwise, one register yet to be restored goes in MAYBE_TEMPREG,
+     and can be used as TEMPREG for any other regs to be restored.
+     If any register doesn't need restoring, record it in CAN_PUSH_REG.  */
+  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; ++regno)
+    {
+      if (offset[regno] >= 0 && ! already_restored[regno])
+	{
+	  rtx reg = save_reg_rtx[regno];
+	  rtx addr1 = plus_constant (addr, offset[regno]);
+
+	  restore_count++;
+
+	  if (memory_address_p (GET_MODE (reg), addr1))
+	    needpush = 1;
+
+	  /* Find a call-clobbered reg that needs restoring.
+	     We can use it as a temporary if we defer restoring it.  */
+	  if (maybe_tempreg == 0)
+	    {
+	      maybe_tempreg = gen_rtx (REG, Pmode, regno);
+	      /* Don't use it if not valid for addressing.  */
+	      if (! strict_memory_address_p (QImode, maybe_tempreg))
+		maybe_tempreg = 0;
+	    }
+	}
+
+      /* If any call-clobbered reg is dead, put it in TEMPREG.
+	 It can be used as a temporary at no extra cost.  */
+      if (tempreg == 0 && call_used_regs[regno] && ! fixed_regs[regno]
+	  && ! offset[regno] >= 0
+	  && HARD_REGNO_MODE_OK (regno, Pmode))
+	{
+	  tempreg = gen_rtx (REG, Pmode, regno);
+	  /* Don't use it if not valid for addressing.  */
+	  if (! strict_memory_address_p (QImode, tempreg))
+	    tempreg = 0;
+	}
+
+      /* Any non-call-clobbered reg, put in CAN_PUSH_REG.
+	 It can be used as a temporary if we push and pop it.  */
+      if (can_push_reg == 0 && ! call_used_regs[regno]
+	  && HARD_REGNO_MODE_OK (regno, Pmode))
+	{
+	  can_push_reg = gen_rtx (REG, Pmode, regno);
+	  /* Don't use it if not valid for addressing.  */
+	  if (! strict_memory_address_p (QImode, can_push_reg))
+	    can_push_reg = 0;
+	}
+      /* Any reg we already restored can be a temporary
+	 if we push and pop it.  */
+      if (can_push_reg == 0 && already_restored[regno]
+	  && HARD_REGNO_MODE_OK (regno, Pmode))
+	{
+	  can_push_reg = gen_rtx (REG, Pmode, regno);
+	  /* Don't use it if not valid for addressing.  */
+	  if (! strict_memory_address_p (QImode, can_push_reg))
+	    can_push_reg = 0;
+	}
+    }
+
+  /* If 2 or more regs need to be restored, use one as a temp reg
+     for the rest (if we need a tempreg).  */
+  if (tempreg == 0 && maybe_tempreg != 0 && restore_count > 1)
+    tempreg = maybe_tempreg;
+
+  /* Clear NEEDPUSH if we already found an empty reg.  */
+  if (tempreg != 0)
+    needpush = 0;
+
+  /* If we need a temp reg and none is free, make one free.  */
+  if (needpush)
+    {
+      tempreg = can_push_reg;
+
+      /* Push it on the stack.  */
+#ifdef STACK_GROWS_DOWNWARD
+      decrement = UNITS_PER_WORD;
+#else
+      decrement = - UNITS_PER_WORD;
+#endif
+
+      emit_insn_before (gen_add2_insn (stack_pointer_rtx,
+				       gen_rtx (CONST_INT, VOIDmode, -decrement)),
+			insn);
+      emit_insn_before (gen_move_insn (gen_rtx (MEM, Pmode, stack_pointer_rtx),
+				       tempreg),
+			insn);
+    }
+
+  /* Restore the regs we are supposed to restore, aside from TEMPREG.
+     Use TEMPREG for address calculations when needed.  */
+  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; ++regno)
+    if (offset[regno] >= 0 && ! already_restored[regno]
+	&& tempreg != 0 && REGNO (tempreg) != regno)
       {
 	rtx reg = save_reg_rtx[regno];
-	rtx temp =
-	  gen_rtx (MEM, GET_MODE (reg), plus_constant (addr, offset[regno]));
-	emit_insn_after (gen_move_insn (reg, temp), insn);
+	rtx addr1 = plus_constant (addr, offset[regno]);
+	rtx temp;
+	if (! memory_address_p (GET_MODE (reg), addr1))
+	  {
+	    if (GET_CODE (addr1) != PLUS)
+	      abort ();
+	    if (GET_CODE (XEXP (addr1, 1)) != CONST_INT
+		|| GET_CODE (XEXP (addr1, 0)) != REG)
+	      abort ();
+	    emit_insn_before (gen_move_insn (tempreg, XEXP (addr1, 0)), insn);
+	    emit_insn_before (gen_add2_insn (tempreg, XEXP (addr1, 1)), insn);
+	    addr1 = tempreg;
+	  }
+	temp = gen_rtx (MEM, GET_MODE (reg), addr1);
+	emit_insn_before (gen_move_insn (reg, temp), insn);
+	already_restored[regno] = 1;
       }
+
+  /* If we pushed TEMPREG to make it free, pop it.  */
+  if (needpush)
+    {
+      emit_insn_before (gen_move_insn (tempreg,
+				       gen_rtx (MEM, Pmode, stack_pointer_rtx)),
+			insn);
+      emit_insn_before (gen_add2_insn (stack_pointer_rtx,
+				       gen_rtx (CONST_INT, VOIDmode, decrement)),
+			insn);
+    }
+
+  /* If TEMPREG itself needs restoring, go back and restore it.
+     We can find a reg already restored to push and use as a temporary.  */
+  if (tempreg != 0
+      && offset[REGNO (tempreg)] >= 0 && ! already_restored[REGNO (tempreg)])
+    goto retry;
 }
 
 /* Return the address of a new block of size SIZE on the stack.

@@ -56,7 +56,7 @@ extern int target_flags;
    they win us.  */
 #define TARGET_INDEX (target_flags & 2)
 
-/* Implement stdard in the same fashion used on all other machines.  */
+/* Implement stdarg in the same fashion used on all other machines.  */
 #define TARGET_GNU_STDARG   (target_flags & 4)
 
 /* Compile using RETD to pop off the args.
@@ -65,7 +65,7 @@ extern int target_flags;
    This contravenes the Pyramid calling convention, so we don't
    do it yet.  */
 
-#define TARGET_RTD (0)
+#define TARGET_RETD (target_flags & 8)
 
 /* Macros used in the machine description to test the flags.  */
 
@@ -86,6 +86,8 @@ extern int target_flags;
     {"noindex", -2},		\
     {"gnu-stdarg", 4},		\
     {"nognu-stdarg", -4},	\
+    {"retd", 8},		\
+    {"no-retd", -8},		\
     { "", TARGET_DEFAULT}}
 
 /* Default target_flags if no switches specified.
@@ -152,8 +154,12 @@ extern int target_flags;
    on the size of a cache line, which is 16 bytes.
    Newer pyrs have single insns that do strcmp() and strcpy(), so this
    may not actually win anything.   */
+/* Try to increase aligment.  */
+
+/* Use kludge to maintain alignment for pyramid. See
+   DATA_SECTION_ASM_OP below.  */
 #define CONSTANT_ALIGNMENT(CODE, TYPEALIGN) \
-  ((CODE) == STRING_CST ? TYPEALIGN * 4 : TYPEALIGN)
+  ((CODE) == STRING_CST ? (TYPEALIGN) * 4 : (TYPEALIGN))
 
 /* Define this if move instructions will actually fail to work
    when given unaligned data.  */
@@ -175,9 +181,6 @@ extern int target_flags;
    The non-dedicated global registers used to be reserved for Pyramid
    operating systems, and still have cryptic and undocumented uses for
    certain library calls.  We avoid them.
-
-   (FIXME: say something about control stack, calls, frames, _window_
-    onto call stack)
 
    The parameter, local, and temporary registers provide _register_
    _windowing_. Each procedure call has its own set of these 48
@@ -221,11 +224,9 @@ extern int target_flags;
 /* 1 for registers that have pervasive standard uses
    and are not available for the register allocator.
 
-   --> On the pyramid, these are LOGPSW, CFP, SP, PC.
+   On the pyramid, these are LOGPSW, CFP, SP, PC, but we leave the other
+   global regs alone as well.  */
 
-   --> ***** Damn!!!!  Because we use Pyramid's varargs, we *have* to
-   --> leave the parameter registers strictly alone.
-   --> A better way is to know about va_..., like the MipsCo compiler. */
 #define FIXED_REGISTERS \
   {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,	\
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,	\
@@ -397,9 +398,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    (C) == 'K' ? (VALUE) == 0xff || (VALUE) == 0xffff : 0)
 
 /* Similar, but for floating constants, and defining letters G and H.
-   Here VALUE is the CONST_DOUBLE rtx itself.
-   --> FIXME: I don't know what the Pyramid accepts as floating-point
-   --> immediate constants.  Help! */
+   Here VALUE is the CONST_DOUBLE rtx itself.  */
 
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C) 1
 
@@ -437,7 +436,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    We may nevertheless provide this as an option.   */
 
 #define RETURN_POPS_ARGS(FUNTYPE)   \
-  (TARGET_RTD && TREE_CODE (FUNTYPE) != IDENTIFIER_NODE		\
+  (TARGET_RETD && TREE_CODE (FUNTYPE) != IDENTIFIER_NODE		\
    && (TYPE_ARG_TYPES (FUNTYPE) == 0				\
        || TREE_VALUE (tree_last (TYPE_ARG_TYPES (FUNTYPE))) == void_type_node))
 
@@ -570,17 +569,9 @@ extern int inner_param_safe_helper();
    For a library call, FNTYPE is 0.   */
 
 #define INIT_CUMULATIVE_ARGS(CUM,FNTYPE) \
-do { 						\
-    tree type = (tree) 0;			\
-    (CUM) = 0;					\
-    if (FNTYPE) {				\
-	type = TREE_TYPE(FNTYPE);		\
-	(CUM) = (TYPE_MODE (type) == BLKmode); 	\
-     }						\
-} while (0)
+  ((CUM) = (FNTYPE && !flag_pcc_struct_return && aggregate_value_p (FNTYPE)))
 
-
-/* Detemine where to put an argument to a function.
+/* Determine where to put an argument to a function.
    Value is zero to push the argument on the stack,
    or a hard register in which to store the argument.
 
@@ -646,28 +637,30 @@ extern void* pyr_function_arg ();
 #if FRAME_POINTER_REQUIRED
 
 /* We always have frame pointers */
+
+/* Don't set up a frame pointer if it's not referenced.  */
+
 #define FUNCTION_PROLOGUE(FILE, SIZE) \
 {									\
- fprintf ((FILE), "\tadsf $%d\n", 					\
-	  ((SIZE) + current_function_pretend_args_size + 31) & ~31);	\
- if (current_function_pretend_args_size > 0)				\
-   fprintf ((FILE), "\tsubw $%d, cfp\n",				\
+  int _size = (SIZE) + current_function_pretend_args_size;		\
+  if (_size + current_function_args_size != 0				\
+      || current_function_calls_alloca)					\
+    {									\
+      fprintf (FILE, "\tadsf $%d\n", _size);				\
+      if (current_function_pretend_args_size > 0)			\
+      fprintf (FILE, "\tsubw $%d,cfp\n",				\
 	  current_function_pretend_args_size);				\
+    }									\
 }
 
 #else /* !FRAME_POINTER_REQUIRED */
 
-#define FUNCTION_PROLOGUE(FILE, SIZE) \
-{ int _size = (SIZE) + current_function_pretend_args_size;		\
-	  if (_size > 0) {						\
-	      if (! frame_pointer_needed) abort();			\
-	      _size = (_size + 31) & ~31;				\
-	      fprintf (FILE, "\tadsf $%d\n", _size);			\
-	      if (current_function_pretend_args_size > 0)		\
-		fprintf ((FILE), "\tsubw $%d, cfp\n",			\
-		      current_function_pretend_args_size);		\
-	  }								\
-}
+/* Don't set up a frame pointer if `frame_pointer_needed' tells us
+   there is no need.  Also, don't set up a frame pointer if it's not
+   referenced.  */
+
+/* The definition used to be broken.  Write a new one.  */
+
 #endif /* !FRAME_POINTER_REQUIRED */
 
 /* Output assembler code to FILE to increment profiler label # LABELNO
@@ -692,25 +685,17 @@ extern void* pyr_function_arg ();
 #endif /* don't do basic_block profiling yet */
 
 /* When returning from a function, the stack pointer does not matter
-   (as long as there is a frame pointer).
-   We currently always have a frame pointer... */
-#define EXIT_IGNORE_STACK 1
+   (as long as there is a frame pointer).  */
 
-/* This macro generates the assembly code for function exit,
-   on machines that need it.  If FUNCTION_EPILOGUE is not defined
-   then individual return instructions are generated for each
-   return statement.  Args are same as for FUNCTION_PROLOGUE.  */
-
-#if FRAME_POINTER_REQUIRED
-#define FUNCTION_EPILOGUE(FILE, SIZE)  \
-    fprintf(FILE, "\tretd $0x0\n");
-#else
-	/* This may cause bugs accessing arguments?? */
-#define FUNCTION_EPILOGUE(FILE, SIZE)  \
-  if ((SIZE)!=0)					\
-    fprintf(FILE, "\tretd $0x0\n");			\
-  else fprintf(FILE, "\tret\n" );
-#endif
+/* This should return non-zero when we really set up a frame pointer.
+   Otherwise, GCC is directed to preserve sp by returning zero.  */
+extern int current_function_pretend_args_size;
+extern int current_function_args_size;
+extern int current_function_calls_alloca;
+#define EXIT_IGNORE_STACK \
+  (get_frame_size () + current_function_pretend_args_size		\
+   + current_function_args_size != 0					\
+   || current_function_calls_alloca)					\
 
 /* If the memory address ADDR is relative to the frame pointer,
    correct it to be relative to the stack pointer instead.
@@ -924,10 +909,10 @@ extern void* pyr_function_arg ();
 #define DEFAULT_SIGNED_CHAR 1
 
 /* This flag, if defined, says the same insns that convert to a signed fixnum
-   also convert validly to an unsigned one.
-   I don't know whether this is so for pyrs, but it seems to work.
-   I don't remember if I had any evidence for defining this or not.  */
-#define FIXUNS_TRUNC_LIKE_FIX_TRUNC
+   also convert validly to an unsigned one.  */
+/* This is untrue for pyramid.  The cvtdw instruction generates a trap
+   for input operands that are out-of-range for a signed int.  */
+/* #define FIXUNS_TRUNC_LIKE_FIX_TRUNC */
 
 /* Define this macro if the preprocessor should silently ignore
   '#sccs' directives. */
@@ -966,7 +951,7 @@ extern void* pyr_function_arg ();
 /* When a prototype says `char' or `short', really pass an `int'.  */
 #define PROMOTE_PROTOTYPES
 
-/* I don't know har to store the flags on a pyr. */
+/* There are no flag store insns on a pyr. */
 /* #define STORE_FLAG_VALUE */
 
 /* Specify the machine mode that pointers have.
@@ -1011,35 +996,14 @@ extern void* pyr_function_arg ();
    Maybe we should handle this entirely in the md, since it complicated
    to describe the way pyr sets cc.  */
 
+#define TRULY_UNSIGNED_COMPARE_P(X) \
+  (X == GEU || X == GTU || X == LEU || X == LTU)
+#define CC_VALID_FOR_UNSIGNED 2
+
+#define CC_STATUS_MDEP_INIT cc_status.mdep = 0
+
 #define NOTICE_UPDATE_CC(EXP, INSN) \
-{ CC_STATUS_INIT; }
-#if 0
-{ \
-  if (GET_CODE (EXP) == SET) \
-    { \
-      if (SET_DEST (EXP) == cc0_rtx) \
-	{ CC_STATUS_INIT; } \
-      else if (GET_CODE (SET_SRC (EXP)) == CALL) \
-	{ CC_STATUS_INIT; } \
-      else if (GET_CODE (SET_DEST (EXP)) == REG) \
-	{ \
-	  cc_status.flags = 0; \
-	  cc_status.value1 = SET_DEST (EXP); \
-	  cc_status.value2 = SET_SRC (EXP); \
-	} \
-      else if (GET_CODE (SET_DEST (EXP)) == MEM) \
-	{ \
-	  cc_status.flags = 0; \
-	  cc_status.value1 = SET_DEST (EXP); \
-	  cc_status.value2 = SET_SRC (EXP); \
-	} \
-      else \
-	{ CC_STATUS_INIT; } \
-    } \
-  else \
-    { CC_STATUS_INIT; } \
-}
-#endif /* 0 */
+  notice_update_cc(EXP, INSN)
 
 /*** Output of Assembler Code ***/
 
@@ -1171,13 +1135,13 @@ extern void* pyr_function_arg ();
    It need not be very fast code.  */
 
 #define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
-  fprintf (FILE, "\tpushw %s,sp\n", reg_names[REGNO])
+  fprintf (FILE, "\tsubw $4,sp\n\tmovw %s,(sp)\n", reg_names[REGNO])
 
 /* This is how to output an insn to pop a register from the stack.
    It need not be very fast code.  */
 
 #define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
-  fprintf (FILE, "\tpopw %s\n", reg_names[REGNO])
+  fprintf (FILE, "\tmovw (sp),%s\n\taddw $4,sp\n", reg_names[REGNO])
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1187,13 +1151,8 @@ extern void* pyr_function_arg ();
 ( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 10),	\
   sprintf ((OUTPUT), "%s.%d", (NAME), (LABELNO)))
 
-/* This is how to output an element of a case-vector that is absolute.
+/* This is how to output an element of a case-vector that is absolute.  */
 
-   --> FIXME: We aren't sure whether the switch code we output uses
-   --> absolute or pc-relative jumps.
- */
-
-/* check case vectors ?????? */
 #define ASM_OUTPUT_ADDR_VEC_ELT(FILE, VALUE)  \
   fprintf (FILE, "\t.word L%d\n", VALUE)
 
@@ -1207,11 +1166,11 @@ extern void* pyr_function_arg ();
    that says to advance the location counter
    to a multiple of 2**LOG bytes.
 
-   On Pyramids, the text segment must always be word aligned.
+   On Pyramids, .align takes only args between 2 and 5.
   */
 
 #define ASM_OUTPUT_ALIGN(FILE,LOG)  \
-  fprintf (FILE, "\t.align %d\n", ((LOG) < 2) ? 2 : (LOG) )
+  fprintf (FILE, "\t.align %d\n", (LOG) < 2 ? 2 : (LOG))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
   fprintf (FILE, "\t.space %d\n", (SIZE))
@@ -1253,8 +1212,8 @@ extern void* pyr_function_arg ();
    On the Pyr, we support the conventional CODE characters:
 
    'f' for float insn (print a CONST_DOUBLE as a float rather than in hex)
+   which are never used. */
 
-  which are never used. */
 /* FIXME : should be more robust with CONST_DOUBLE. */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
@@ -1309,10 +1268,26 @@ extern void* pyr_function_arg ();
       case LEU:	fputs ("gt", FILE);	break;				\
       }									\
 									\
+  else if (CODE == 'R')							\
+    switch (GET_CODE (X))						\
+      {									\
+      case EQ:	fputs ("eq", FILE);	break;				\
+      case NE:	fputs ("ne", FILE);	break;				\
+      case GT:								\
+      case GTU:	fputs ("lt", FILE);	break;				\
+      case LT:								\
+      case LTU:	fputs ("gt", FILE);	break;				\
+      case GE:								\
+      case GEU:	fputs ("le", FILE);	break;				\
+      case LE:								\
+      case LEU:	fputs ("ge", FILE);	break;				\
+      }									\
+									\
   else { putc ('$', FILE); output_addr_const (FILE, X); }		\
 }
 
-/* Print a memory operand whose address is X, on file FILE.  */
+/* Print a memory operand whose address is ADDR, on file FILE.  */
+/* This is horrendously complicated.  */
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  \
 {									\
   register rtx reg1, reg2, breg, ireg;					\

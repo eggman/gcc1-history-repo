@@ -176,9 +176,11 @@ extern int target_flags;
     }									\
 }
 
+/* Use text section for a constant
+   unless we need more alignment than that offers.  */
 #define SELECT_RTX_SECTION(MODE, X)		\
 {						\
-  if (GET_MODE_BITSIZE (MODE) > MAX_TEXT_ALIGN)	\
+  if (GET_MODE_BITSIZE (MODE) <= MAX_TEXT_ALIGN)\
     text_section ();				\
   else						\
     data_section ();				\

@@ -25,6 +25,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "flags.h"
 #include "real.h"
 
+#include <setjmp.h>
+
 /* The basic idea of common subexpression elimination is to go
    through the code, keeping a record of expressions that would
    have the same value at the current scan point, and replacing
@@ -1266,10 +1268,8 @@ use_related_value (x, elt)
 	return 0;
     }
 
+  /* Note: OFFSET may be 0 if P->xexp and X are related by commutativity.  */
   offset = (get_integer_term (x) - get_integer_term (p->exp));
-  if (offset == 0)
-    abort ();
-
   addr = plus_constant (p->first_same_value->exp, offset);
   if (memory_address_p (QImode, addr))
     return addr;
@@ -1976,11 +1976,21 @@ fold_rtx (x, copyflag)
 	{
 	  union real_extract u;
 	  register REAL_VALUE_TYPE arg0;
+	  jmp_buf handler;
+
+	  if (setjmp (handler))
+	    {
+	      warning ("floating point trap in constant folding");
+	      return x;
+	    }
+	  set_float_handler (handler);
 	  bcopy (&CONST_DOUBLE_LOW (const_arg0), &u, sizeof u);
 	  arg0 = u.d;
 
 	  u.d = REAL_VALUE_NEGATE (arg0);
-	  return immed_real_const_1 (u.d, GET_MODE (x));
+	  x = immed_real_const_1 (u.d, GET_MODE (x));
+	  set_float_handler (0);
+	  return x;
 	}
 #endif
       else
@@ -2359,11 +2369,19 @@ fold_rtx (x, copyflag)
 	  break;
 
 	case LSHIFT:
-	  val = ((unsigned) arg0) << arg1;
+	  /* If target machine uses negative shift counts
+	     but host machine does not, simulate them.  */
+	  if (arg1 < 0)
+	    val = ((unsigned) arg0) >> -arg1;
+	  else
+	    val = ((unsigned) arg0) << arg1;
 	  break;
 
 	case ASHIFT:
-	  val = arg0s << arg1;
+	  if (arg1 < 0)
+	    val = arg0s >> -arg1;
+	  else
+	    val = arg0s << arg1;
 	  break;
 
 	case ROTATERT:
@@ -2389,11 +2407,19 @@ fold_rtx (x, copyflag)
 	  break;
 
 	case LSHIFTRT:
-	  val = ((unsigned) arg0) >> arg1;
+	  /* If target machine uses negative shift counts
+	     but host machine does not, simulate them.  */
+	  if (arg1 < 0)
+	    val = ((unsigned) arg0) << -arg1;
+	  else
+	    val = ((unsigned) arg0) >> arg1;
 	  break;
 
 	case ASHIFTRT:
-	  val = arg0s >> arg1;
+	  if (arg1 < 0)
+	    val = arg0s << -arg1;
+	  else
+	    val = arg0s >> arg1;
 	  break;
 
 	default:
@@ -2541,10 +2567,21 @@ fold_cc0 (mode, x)
 	  && GET_MODE_CLASS (GET_MODE (y0)) == MODE_FLOAT)
 	{
 	  union real_extract u0, u1;
+	  int value;
+	  jmp_buf handler;
+
+	  if (setjmp (handler))
+	    {
+	      warning ("floating point trap in constant folding");
+	      return 0;
+	    }
+	  set_float_handler (handler);
 	  bcopy (&CONST_DOUBLE_LOW (y0), &u0, sizeof u0);
 	  bcopy (&CONST_DOUBLE_LOW (y1), &u1, sizeof u1);
-	  return 0100 + (REAL_VALUES_LESS (u0.d, u1.d) ? 7 << 3
-			 : REAL_VALUES_LESS (u1.d, u0.d) ? 1 << 3 : 0);
+	  value =  0100 + (REAL_VALUES_LESS (u0.d, u1.d) ? 7 << 3
+			   : REAL_VALUES_LESS (u1.d, u0.d) ? 1 << 3 : 0);
+	  set_float_handler (0);
+	  return value;
 	}
 
       /* Aside from that, demand explicit integers.  */
@@ -2635,6 +2672,10 @@ predecide_loop_entry (insn)
   register rtx loop_top_label = NEXT_INSN (jump);
   enum anon1 { UNK, DELETE_LOOP, DELETE_JUMP } disposition = UNK;
   int count = 0;
+
+  /* Give up if we don't find a jump that enters the loop.  */
+  if (! simplejump_p (jump))
+    return;
 
   /* Find the label at the top of the loop.  */
   while (GET_CODE (loop_top_label) == BARRIER
@@ -3632,14 +3673,14 @@ cse_end_of_basic_block (insn)
 	 The occasional optimizations lost by this will all come back
 	 if loop and cse are made to work alternatingly.  */
       if (GET_CODE (p) == NOTE
-	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
+	  && NOTE_LINE_NUMBER (p) == NOTE_INSN_LOOP_END)
 	break;
 
       /* Don't cse over a call to setjmp; on some machines (eg vax)
 	 the regs restored by the longjmp come from
 	 a later time than the setjmp.  */
       if (GET_CODE (p) == NOTE
-	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
+	  && NOTE_LINE_NUMBER (p) == NOTE_INSN_SETJMP)
 	break;
 
       /* A PARALLEL can have lots of SETs in it,

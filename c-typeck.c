@@ -184,6 +184,12 @@ commontype (t1, t2)
 
   if (t1 == t2) return t1;
 
+  /* If one type is nonsense, use the other.  */
+  if (t1 == error_mark_node)
+    return t2;
+  if (t2 == error_mark_node)
+    return t1;
+
   /* Treat an enum type as the unsigned integer type of the same width.  */
 
   if (TREE_CODE (t1) == ENUMERAL_TYPE)
@@ -2779,7 +2785,7 @@ build_conditional_expr (ifexp, op1, op2)
     }
 #endif /* 0 */
 
-  if (TREE_LITERAL (ifexp))
+  if (TREE_CODE (ifexp) == INTEGER_CST)
     return (integer_zerop (ifexp) ? op2 : op1);
 
   return build (COND_EXPR, result_type, ifexp, op1, op2);
@@ -2807,8 +2813,12 @@ build_compound_expr (list)
 
   rest = build_compound_expr (TREE_CHAIN (list));
 
+  /* This is patched out so that sizeof (0, array) is distinguishable from
+     sizeof array.  */
+#if 0
   if (! TREE_VOLATILE (TREE_VALUE (list)))
     return rest;
+#endif
 
   return build (COMPOUND_EXPR, TREE_TYPE (rest), TREE_VALUE (list), rest);
 }
@@ -2933,7 +2943,11 @@ build_modify_expr (lhs, modifycode, rhs)
 				  modifycode, rhs));
 	  /* Make sure the code to compute the rhs comes out
 	     before the split.  */
-	  return build (COMPOUND_EXPR, TREE_TYPE (lhs), rhs, cond);
+	  return build (COMPOUND_EXPR, TREE_TYPE (lhs),
+			/* Cast to void to suppress warning
+			   from warn_if_unused_value.  */
+			convert (void_type_node, rhs),
+			cond);
 	}
       }
 

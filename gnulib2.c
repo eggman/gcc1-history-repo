@@ -193,14 +193,15 @@ __one_cmpldi2 (u)
 
 #ifdef L_lshldi3
 long long
-__lshldi3 (u, b)
+__lshldi3 (u, b1)
      long long u;
-     long int b;
+     long long b1;
 {
   long_long w;
   unsigned long carries;
   int bm;
   long_long uu;
+  int b = b1;
 
   if (b == 0)
     return u;
@@ -226,14 +227,15 @@ __lshldi3 (u, b)
 
 #ifdef L_lshrdi3
 long long
-__lshrdi3 (u, b)
+__lshrdi3 (u, b1)
      long long u;
-     long int b;
+     long long b1;
 {
   long_long w;
   unsigned long carries;
   int bm;
   long_long uu;
+  int b = b1;
 
   if (b == 0)
     return u;
@@ -259,14 +261,15 @@ __lshrdi3 (u, b)
 
 #ifdef L_ashldi3
 long long
-__ashldi3 (u, b)
+__ashldi3 (u, b1)
      long long u;
-     long int b;
+     long long b1;
 {
   long_long w;
   unsigned long carries;
   int bm;
   long_long uu;
+  int b = b1;
 
   if (b == 0)
     return u;
@@ -292,14 +295,15 @@ __ashldi3 (u, b)
 
 #ifdef L_ashrdi3
 long long
-__ashrdi3 (u, b)
+__ashrdi3 (u, b1)
      long long u;
-     long int b;
+     long long b1;
 {
   long_long w;
   unsigned long carries;
   int bm;
   long_long uu;
+  int b = b1;
 
   if (b == 0)
     return u;
@@ -817,6 +821,8 @@ long long
 __fixdfdi (a)
      double a;
 {
+  long long __fixunsdfdi (double a);
+
   if (a < 0)
     return - __fixunsdfdi (-a);
   return __fixunsdfdi (a);
@@ -844,4 +850,36 @@ __floatdidf (u)
 
   return (negate ? -d : d);
 }
+#endif
+
+#ifdef L_varargs
+#ifdef sparc
+	asm (".global ___builtin_saveregs");
+	asm ("___builtin_saveregs:");
+	asm ("st %i0,[%fp+68]");
+	asm ("st %i1,[%fp+72]");
+	asm ("st %i2,[%fp+76]");
+	asm ("st %i3,[%fp+80]");
+	asm ("st %i4,[%fp+84]");
+	asm ("retl");
+	asm ("st %i5,[%fp+88]");
+#else /* not sparc */
+#if defined(MIPSEL) | defined(R3000) | defined(R2000) | defined(mips)
+
+  asm ("	.ent __builtin_saveregs");
+  asm ("	.globl __builtin_saveregs");
+  asm ("__builtin_saveregs:");
+  asm ("	sw	$4,0($30)");
+  asm ("	sw	$5,4($30)");
+  asm ("	sw	$6,8($30)");
+  asm ("	sw	$7,12($30)");
+  asm ("	j	$31");
+  asm ("	.end __builtin_saveregs");
+#else /* not mips */
+__builtin_saveregs ()
+{
+  abort ();
+}
+#endif /* not mips */
+#endif /* not sparc */
 #endif

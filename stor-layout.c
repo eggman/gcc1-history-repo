@@ -212,10 +212,23 @@ build_int (v)
 
   if (v < 33 && size_table[v] != 0)
     return size_table[v];
-  t = build_int_2 (v, 0);
-  TREE_TYPE (t) = sizetype;
   if (v < 33)
-    size_table[v] = t;
+    {
+      int temp = allocation_temporary_p ();
+      /* Make this a permanent node.  */
+      if (temp)
+	end_temporary_allocation ();
+      t = build_int_2 (v, 0);
+      TREE_TYPE (t) = sizetype;
+      size_table[v] = t;
+      if (temp)
+	resume_temporary_allocation ();
+    }
+  else
+    {
+      t = build_int_2 (v, 0);
+      TREE_TYPE (t) = sizetype;
+    }
   return t;
 }
 
@@ -874,9 +887,19 @@ layout_type (type)
 	  /* A record which has any BLKmode members must itself be BLKmode;
 	     it can't go in a register.  */
 	  for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
-	    if (TYPE_MODE (TREE_TYPE (field)) == BLKmode)
-	      goto record_lose;
+	    {
+	      if (TYPE_MODE (TREE_TYPE (field)) == BLKmode)
+		goto record_lose;
 
+	      /* Must be BLKmode if any field crosses a word boundary,
+		 since extract_bit_field can't handle that in registers.  */
+	      if (DECL_OFFSET (field) / BITS_PER_WORD
+		  != ((TREE_INT_CST_LOW (DECL_SIZE (field)) * DECL_SIZE_UNIT (field)
+		       + DECL_OFFSET (field) - 1)
+		      / BITS_PER_WORD))
+		goto record_lose;
+	    }
+      
 	  TYPE_MODE (type)
 	    = agg_mode (TREE_INT_CST_LOW (TYPE_SIZE (type))
 			* TYPE_SIZE_UNIT (type));

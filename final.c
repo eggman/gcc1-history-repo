@@ -846,8 +846,6 @@ final_scan_insn  (insn, file, write_symbols, optimize, prescan, nopeepholes)
 	      }
 	  }
 
-      reinsert_compare:
-
 	/* Following a conditional branch, we have a new basic block.  */
 	if (GET_CODE (insn) == JUMP_INSN && GET_CODE (body) == SET
 	    && GET_CODE (SET_SRC (body)) != LABEL_REF)

@@ -883,6 +883,24 @@ extern enum reg_class regno_reg_class[];
     return 3;							\
   case CONST_DOUBLE:						\
     return 5;
+
+/* Check a `double' value for validity for a particular machine mode.
+   This is defined to avoid crashes outputting certain constants.  */
+
+#define CHECK_FLOAT_VALUE(mode, d)					\
+  if ((mode) == SFmode)							\
+    { 									\
+      if ((d) > 3.4028234663852890e+38)					\
+	{ warning ("magnitude of value too large for `float'");		\
+	  (d) = 3.4028234663852890e+38; }				\
+      else if ((d) < -3.4028234663852890e+38)				\
+	{ warning ("magnitude of value too large for `float'");		\
+	  (d) = -3.4028234663852890e+38; }				\
+      else if (((d) > 0) && ((d) < 1.1754943508222873e-38))		\
+	(d) = 0.0;							\
+      else if (((d) < 0) && ((d) > -1.1754943508222873e-38))		\
+	(d) = 0.0;							\
+    }
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -1226,7 +1244,10 @@ do { union { float f; long l;} tem;			\
     {									\
       output_address (XEXP (X, 0));					\
       if (CODE == 'd' && ! TARGET_68020					\
-	  && CONSTANT_ADDRESS_P (XEXP (X, 0)))				\
+	  && CONSTANT_ADDRESS_P (XEXP (X, 0))				\
+	  && !(GET_CODE (XEXP (X, 0)) == CONST_INT			\
+	       && INTVAL (XEXP (X, 0)) < 0x8000				\
+	       && INTVAL (XEXP (X, 0)) >= -0x8000))			\
 	fprintf (FILE, ":l");						\
     }									\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\

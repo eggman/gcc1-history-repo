@@ -71,6 +71,19 @@ extern int target_flags;
 /* Allow $ in identifiers */
 
 #define DOLLARS_IN_IDENTIFIERS 1
+
+/* Definitions for g++.  */
+
+/* Do not put out GNU stabs for constructors and destructors.
+   ld does not like them.  */
+
+#define FASCIST_ASSEMBLER
+
+/* Convex has negative addresses, so use positive numbers
+   to mean `vtable index'.  */
+
+#define VTABLE_USES_MASK
+#define VINDEX_MAX ((unsigned) 0x80000000)
 
 /* Target machine storage layout */
 

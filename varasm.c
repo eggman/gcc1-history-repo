@@ -26,6 +26,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    and are responsible for combining constants with the same value.  */
 
 #include <stdio.h>
+#include <setjmp.h>
 /* #include <stab.h> */
 #include "config.h"
 #include "rtl.h"
@@ -117,6 +118,14 @@ data_section ()
     }
 }
 
+/* Determine if we're in the text section. */
+
+int
+in_text_section ()
+{
+  return in_section == in_text;
+}
+
 /* Create the rtl to represent a function, for a function definition.
    DECL is a FUNCTION_DECL node which describes which function.
    The rtl is stored into DECL.  */
@@ -1026,6 +1035,13 @@ compare_constant_1 (exp, p)
       decode_addr_const (exp, &value);
       strp = (char *) &value;
       len = sizeof value;
+      /* Compare SYMBOL_REF address and offset.  */
+      while (--len >= 0)
+	if (*p++ != *strp++)
+	  return 0;
+      /* Compare symbol name.  */
+      strp = XSTR (value.base, 0);
+      len = strlen (strp) + 1;
     }
   else if (code == PLUS_EXPR || code == MINUS_EXPR)
     {
@@ -1134,8 +1150,12 @@ record_constant_1 (exp)
     {
       struct addr_const value;
       decode_addr_const (exp, &value);
-      strp = (char *) &value;
-      len = sizeof value;
+      /* Record the SYMBOL_REF address and the offset.  */
+      obstack_grow (&permanent_obstack, (char *) &value, sizeof value);
+      /* Record the symbol name.  */
+      obstack_grow (&permanent_obstack, XSTR (value.base, 0),
+		    strlen (XSTR (value.base, 0)) + 1);
+      return;
     }
   else if (code == PLUS_EXPR || code == MINUS_EXPR)
     {
@@ -1756,18 +1776,37 @@ output_constant (exp, size)
     case REAL_TYPE:
       if (TREE_CODE (exp) != REAL_CST)
 	error ("initializer for floating value is not a floating constant");
-
-      if (size < 4)
-	break;
-      else if (size < 8)
-	{
-	  ASM_OUTPUT_FLOAT (asm_out_file, TREE_REAL_CST (exp));
-	  size -= 4;
-	}
       else
 	{
-	  ASM_OUTPUT_DOUBLE (asm_out_file, TREE_REAL_CST (exp));
-	  size -= 8;
+	  REAL_VALUE_TYPE d;
+	  jmp_buf output_constant_handler;
+
+	  d = TREE_REAL_CST (exp);
+	  if (setjmp (output_constant_handler))
+	    {
+	      error ("floating point trap outputting a constant");
+#ifdef REAL_IS_NOT_DOUBLE
+	      bzero (&d, sizeof d);
+	      d = REAL_VALUE_ATOF ("0");
+#else
+	      d = 0;
+#endif
+	    }
+	  set_float_handler (output_constant_handler);
+
+	  if (size < 4)
+	    break;
+	  else if (size < 8)
+	    {
+	      ASM_OUTPUT_FLOAT (asm_out_file, d);
+	      size -= 4;
+	    }
+	  else
+	    {
+	      ASM_OUTPUT_DOUBLE (asm_out_file, d);
+	      size -= 8;
+	    }
+	  set_float_handler (0);
 	}
       break;
 

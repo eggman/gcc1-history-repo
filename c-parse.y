@@ -298,6 +298,14 @@ unary_expr:
 		{ if (TREE_CODE ($2) == COMPONENT_REF
 		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
 		    error ("`sizeof' applied to a bit-field");
+		  /* ANSI says arrays and functions are converted inside comma.
+		     But we can't really convert them in build_compound_expr
+		     because that would break commas in lvalues.
+		     So do the conversion here if operand was a comma.  */
+		  if (TREE_CODE ($2) == COMPOUND_EXPR
+		      && (TREE_CODE (TREE_TYPE ($2)) == ARRAY_TYPE
+			  || TREE_CODE (TREE_TYPE ($2)) == FUNCTION_TYPE))
+		    $2 = default_conversion ($2);
 		  $$ = c_sizeof (TREE_TYPE ($2)); }
 	| SIZEOF '(' typename ')'  %prec HYPERUNARY
 		{ $$ = c_sizeof (groktypename ($3)); }
@@ -322,7 +330,18 @@ unary_expr:
 		      $$ = c_alignof (TREE_TYPE (TREE_TYPE (best)));
 		    }
 		  else
-		    $$ = c_alignof (TREE_TYPE ($2)); }
+		    {
+		      /* ANSI says arrays and fns are converted inside comma.
+			 But we can't convert them in build_compound_expr
+			 because that would break commas in lvalues.
+			 So do the conversion here if operand was a comma.  */
+		      if (TREE_CODE ($2) == COMPOUND_EXPR
+			  && (TREE_CODE (TREE_TYPE ($2)) == ARRAY_TYPE
+			      || TREE_CODE (TREE_TYPE ($2)) == FUNCTION_TYPE))
+			$2 = default_conversion ($2);
+		      $$ = c_alignof (TREE_TYPE ($2));
+		    }
+		}
 	| ALIGNOF '(' typename ')'  %prec HYPERUNARY
 		{ $$ = c_alignof (groktypename ($3)); }
 	;
@@ -641,6 +660,7 @@ notype_initdcl:
    so that the header files compile. */
 maybe_attribute:
     /* empty */
+	{ $$ = NULL_TREE; }
     | ATTRIBUTE '(' '(' attribute_list ')' ')'
         { $$ = $4; }
     ;
@@ -969,12 +989,12 @@ compstmt: '{' '}'
 		  $$ = poplevel (1, 1, 0);
 		  pop_momentary (); }
 	| '{' pushlevel error '}'
-		{ expand_end_bindings (getdecls (), 0, 0);
-		  $$ = poplevel (0, 0, 0);
+		{ expand_end_bindings (getdecls (), kept_level_p (), 0);
+		  $$ = poplevel (kept_level_p (), 0, 0);
 		  pop_momentary (); }
 	| '{' pushlevel stmts '}'
-		{ expand_end_bindings (getdecls (), 0, 0);
-		  $$ = poplevel (0, 0, 0);
+		{ expand_end_bindings (getdecls (), kept_level_p (), 0);
+		  $$ = poplevel (kept_level_p (), 0, 0);
 		  pop_momentary (); }
 	;
 
@@ -2395,7 +2415,9 @@ yylex ()
 		    p1++;
 		    while (*p1 != 0) p1++;
 		  }
-		if (*p1 != 0)
+		/* ERANGE is also reported for underflow,
+		   so test the value to distinguish overflow from that.  */
+		if (*p1 != 0 && (value > 1.0 || value < 1.0))
 		  warning ("floating point number exceeds range of `double'");
 	      }
 #endif
@@ -2710,8 +2732,9 @@ yylex ()
 	    if (TYPE_PRECISION (integer_type_node)
 		!= sizeof (int) * BITS_PER_UNIT)
 	      abort ();
-	    yylval.ttype = build_string ((widep - wide_buffer) * sizeof (int),
-					 wide_buffer);
+	    yylval.ttype
+	      = build_string ((widep - wide_buffer + 1) * sizeof (int),
+			      wide_buffer);
 	    TREE_TYPE (yylval.ttype) = int_array_type_node;
 	  }
 	else

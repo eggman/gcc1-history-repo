@@ -21,15 +21,18 @@ notice identical to this one except for the removal of this paragraph
 @end ignore
 Permission is granted to copy and distribute modified versions of this
 manual under the conditions for verbatim copying, provided also that the
-section entitled ``GNU General Public License'' is included exactly as
-in the original, and provided that the entire resulting derived work is
-distributed under the terms of a permission notice identical to this one.
+sections entitled ``GNU General Public License'' and ``Protect Your
+Freedom---Fight `Look And Feel'@w{}'' are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this manual
 into another language, under the above conditions for modified versions,
-except that the section entitled ``GNU General Public License'' and
-this permission notice may be included in translations approved by the
-Free Software Foundation instead of in the original English.
+except that the sections entitled ``GNU General Public License'' and
+``Protect Your Freedom---Fight `Look And Feel'@w{}'' and this permission
+notice may be included in translations approved by the Free Software
+Foundation instead of in the original English.
 @end ifinfo
 
 @setchapternewpage odd
@@ -39,9 +42,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 12 September 1989
+@center last updated 17 January 1990
 @sp 1
-@center for version 1.36
+@center for version 1.37
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988, 1989 Free Software Foundation, Inc.
@@ -52,15 +55,18 @@ are preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of this
 manual under the conditions for verbatim copying, provided also that the
-section entitled ``GNU General Public License'' is included exactly as
-in the original, and provided that the entire resulting derived work is
-distributed under the terms of a permission notice identical to this one.
+sections entitled ``GNU General Public License'' and ``Protect Your
+Freedom---Fight `Look And Feel'@w{}'' are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this manual
 into another language, under the above conditions for modified versions,
-<except that the section entitled ``GNU General Public License'' and
-this permission notice may be included in translations approved by the
-Free Software Foundation instead of in the original English.
+except that the sections entitled ``GNU General Public License'' and
+``Protect Your Freedom---Fight `Look And Feel'@w{}'' and this permission
+notice may be included in translations approved by the Free Software
+Foundation instead of in the original English.
 @end titlepage
 @page
 
@@ -76,6 +82,7 @@ well as its new features and incompatibilities, and how to report bugs.
 * Copying::         GNU General Public License says
                      how you can copy and share GNU CC.
 * Contributors::    People who have contributed to GNU CC.
+* Boycott::	    Protect your freedom---fight ``look and feel''.
 * Options::         Command options supported by @samp{gcc}.
 * Installation::    How to configure, compile and install GNU CC.
 * Trouble::         If you have trouble installing GNU CC.
@@ -389,7 +396,7 @@ Ty Coon, President of Vice
 
 That's all there is to it!
 
-@node Contributors, Options, Copying, Top
+@node Contributors, Boycott, Copying, Top
 @unnumbered Contributors to GNU CC
 
 In addition to Richard Stallman, several people have written parts
@@ -468,10 +475,114 @@ Devon Bowen, Dale Wiles and Kevin Zachmann ported GNU CC to the Tahoe.
 
 @item
 Jonathan Stone wrote the machine description for the Pyramid computer.
-Note that this machine description does not fully work.
 @end itemize
 
-@node Options, Installation, Contributors, Top
+@node Boycott, Options, Contributors, Top
+@chapter Protect Your Freedom---Fight ``Look And Feel''
+
+Ashton-Tate, Apple, Lotus and Xerox are trying to create a new form of
+legal monopoly: a copyright on a class of user interfaces.  These
+monopolies would cause serious problems for users and developers of
+computer software and systems.
+
+Until three years ago, the law seemed clear: no one could restrict
+others from using a user interface; programmers were free to implement
+any interface they chose.  Imitating interfaces, sometimes with changes,
+was standard practice in the computer field.  The interfaces we know
+evolved gradually in this way; for example, the Macintosh user interface
+drew ideas from the Xerox interface, which in turn drew on work done at
+Stanford and SRI.  1-2-3 imitated VisiCalc, and dBase imitated a database
+program from JPL.
+
+Most computer companies, and nearly all computer users, were happy with
+this state of affairs.  The companies that are suing say it does not
+offer ``enough incentive'' to develop their products, but they must have
+considered it ``enough'' when they made their decision to do so.  It
+seems they are not satisfied with the opportunity to continue to compete
+in the marketplace---not even with a head start.
+
+If Xerox, Lotus, Apple and Ashton-Tate are permitted to make law through
+the courts, the precedent will hobble the software industry:
+
+@itemize @bullet
+@item
+Gratuitous incompatibilites will burden users.  Imagine if each
+car manufacturer had to arrange the pedals in a different order.
+
+@item
+Software will become and remain more expensive.  Users will be
+``locked in'' to proprietary interfaces, for which there is no real
+competition.
+
+@item
+Large companies have an unfair advantage wherever lawsuits become
+commonplace.  Since they can easily afford to sue, they can intimidate
+small companies with threats even when they don't really have a case.
+
+@item
+User interface improvements will come slower, since incremental
+evolution through creative imitation will no longer be permitted.
+
+@item
+Even Apple, etc., will find it harder to make improvements if
+they can no longer adapt the good ideas that others introduce, for
+fear of weakening their own legal positions.  Some users suggest that
+this stagnation may already have started.
+@end itemize
+
+Here are some things you can do to protect your freedom to write
+programs:
+
+@itemize @bullet
+@item
+Don't buy from Xerox, Lotus, Apple or Ashton-Tate.  Buy from their
+competitors or from the defendants they are suing.
+
+@item
+Don't develop software to work with the systems made by these companies.
+
+@item
+Port your existing software to competing systems, so that you encourage
+users to switch.
+
+@item
+Write letters to company presidents to let them know their conduct
+is unacceptable.
+
+@item
+Tell your friends and colleagues about this issue and how it threatens
+to ruin the computer industry.
+
+@item
+Join the League for Programming Freedom.  Phone (617) 492-0023 or write to:
+
+@example
+League for Programming Freedom
+1 Kendall Square #143
+P.O. Box 9171
+Cambridge, MA 02139       league@@prep.ai.mit.edu
+@end example
+
+@item
+Above all, don't work for the look-and-feel plaintiffs, and don't
+accept contracts from them.
+
+@item
+Write to or phone your elected representatives to show them how
+important this issue is.
+
+@example
+Senator So and So       Representative So and So
+United States Senate    House of Representatives
+Washington, DC 20510    Washington, DC 20515
+@end example
+
+You can phone senators and representatives at (202) 225-3121.
+@end itemize
+
+Express your opinion!  You can make a difference.
+
+@node Options, Installation, Boycott, Top
 @chapter GNU CC Command Options
 
 The GNU C compiler uses a command syntax much like the Unix C compiler.
@@ -1003,9 +1114,11 @@ These @samp{-m} switches are supported on the Sparc:
 Generate output containing floating point instructions.  This is the
 default if you use the unmodified sources.
 
+@ignore
 @item -msoft-float
 Generate output containing library calls for floating point.
 
+@end ignore
 @item -mno-epilogue
 Generate separate return instructions for @code{return} statements.
 This has both advantages and disadvantages; I don't recall what they
@@ -1372,19 +1485,20 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
 * VMS Install::   See below for installation on VMS.
+* HPUX Install::  See below for installation on HPUX.
 @end menu
 @iftex
-See below for VMS systems, and modified procedures needed on Sun systems
-and 3b1 machines.  The following section says how to compile in a
-separate directory on Unix; here we assume you compile in the same
-directory that contains the source files.
+See below for VMS systems, and modified procedures needed on Sun
+systems, 3b1 machines and HPUX.  The following section says how to
+compile in a separate directory on Unix; here we assume you compile in
+the same directory that contains the source files.
 @end iftex
 
 @enumerate
 @item
 Edit @file{Makefile}.  If you are using HPUX, or any form of system V,
 you must make a few changes described in comments at the beginning of
-the file.  Genix requires changes also.
+the file.  Genix requires changes also, and so does the Pyramid.
 
 @item
 On a Sequent system, go to the Berkeley universe.
@@ -1442,7 +1556,7 @@ correctly.  You can patch the compiler bug as follows:
 
 @example
 cp /bin/pcc ./pcc
-adb -w ./pcc - << 'EOF'
+adb -w ./pcc - << EOF
 15f6?w 6610
 EOF
 @end example
@@ -1513,6 +1627,8 @@ AT&T 3b1, a.k.a. 7300 PC.  Note that special procedures are needed
 to compile GNU CC with this machine's standard C compiler, due to
 bugs in that compiler.  @xref{3b1 Install}.  You can bootstrap it
 more easily with previous versions of GNU CC if you have them.
+@item 3b1-gas
+AT&T 3b1 using the GNU assembler.
 @item sequent-ns32k
 Sequent containing ns32000 processors.
 @item encore
@@ -1648,7 +1764,7 @@ unnecessary if the Bison output files @file{c-parse.tab.c} and
 @file{cexp.c} are more recent than @file{c-parse.y} and @file{cexp.y}
 and you do not plan to change the @samp{.y} files.)
 
-Bison versions older that Sept 8, 1988 will produce incorrect output
+Bison versions older than Sept 8, 1988 will produce incorrect output
 for @file{c-parse.tab.c}.
 
 @item
@@ -1658,6 +1774,11 @@ Ignore any warnings you may see about ``statement not reached'' in the
 @file{insn-emit.c}; they are normal.  Any other compilation errors may
 represent bugs in the port to your machine or operating system, and
 should be investigated and reported (@pxref{Bugs}).
+
+Some commercial compilers fail to compile GNU CC because they have bugs
+or limitations.  For example, the Microsoft compiler is said to run out
+of macro space.  Some Ultrix compilers run out of expression space; then
+you need to break up the statement where the problem happens.
 
 @item
 Optionally, install the library functions for 64-bit integer
@@ -1879,7 +2000,7 @@ and do @samp{make cpp} again.
 Copy this final version of GNU cpp into @file{/lib/cpp}.
 
 @item
-Replace every occurance of @code{obstack_free} in @file{tree.c}
+Replace every occurrence of @code{obstack_free} in @file{tree.c}
 with @code{_obstack_free}.  
 
 @item
@@ -1893,7 +2014,16 @@ Now you can compile GNU CC with itself and install it in the normal
 fashion.
 @end enumerate
 
-@node VMS Install,, 3B1 Install, Installation
+If you have installed an earlier version of GCC, you can compile the
+newer version with that.  However, you will run into trouble compiling
+@file{gnulib}, since that is normally compiled with CC.  To solve the
+problem, uncomment this line in @file{Makefile}:
+
+@example
+CCLIBFLAGS = -B/usr/local/lib/gcc- -tp -Wp,-traditional
+@end example
+
+@node VMS Install, HPUX Install, 3B1 Install, Installation
 @section Installing GNU CC on VMS
 
 The VMS version of GNU CC is distributed in a backup saveset containing
@@ -1996,6 +2126,31 @@ describe the program's symbols.  It is not straightforward to implement
 this, and we have no time to spend on it, but we might consent to
 install a very modular implementation if you write it.  You will
 probably have to modify GAS as well as GNU CC.
+
+@node HPUX Install,, VMS Install, Installation
+@section Installing GNU CC on HPUX
+
+To install GNU CC on HPUX, you must start by editing the file
+@file{Makefile}.  Search for the string @samp{HPUX} to find comments
+saying what to change.  You need to change some variable definitions and
+(if you are using GAS) some lines in the rule for the target
+@samp{gnulib}.
+
+To compile with the HPUX C compiler, you must specify get the file
+@file{alloca.c} from GNU Emacs.  Then, when you run @code{make}, use
+this argument:
+
+@example
+make ALLOCA=alloca.o
+@end example
+
+When recompiling GNU CC with itself, do not define @code{ALLOCA}.
+Instead, an @samp{-I} option needs to be added to @code{CFLAGS} as
+follows:
+
+@example
+make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -I../binutils/hp-include"
+@end example
 
 @node Trouble, Incompatibilities, Installation, Top
 @chapter Known Causes of Trouble with GNU CC.
@@ -2268,24 +2423,24 @@ features in conditional compilation, check for a predefined macro
 @menu
 * Statement Exprs::     Putting statements and declarations inside expressions.
 * Naming Types::        Giving a name to the type of some expression.
-* Typeof::		@code{typeof}: referring to the type of an expression.
-* Lvalues::		Using @samp{?:}, @samp{,} and casts in lvalues.
-* Conditionals::	Omitting the middle operand of a @samp{?:} expression.
-* Zero-Length::		Zero-length arrays.
-* Variable-Length::	Arrays whose length is computed at run time.
-* Subscripting::	Any array can be subscripted, even if not an lvalue.
-* Pointer Arith::	Arithmetic on @code{void}-pointers and function pointers.
-* Initializers::	Non-constant initializers.
-* Constructors::	Constructor expressions give structures, unions
-			 or arrays as values.
+* Typeof::              @code{typeof}: referring to the type of an expression.
+* Lvalues::             Using @samp{?:}, @samp{,} and casts in lvalues.
+* Conditionals::        Omitting the middle operand of a @samp{?:} expression.
+* Zero-Length::         Zero-length arrays.
+* Variable-Length::     Arrays whose length is computed at run time.
+* Subscripting::        Any array can be subscripted, even if not an lvalue.
+* Pointer Arith::       Arithmetic on @code{void}-pointers and function pointers.
+* Initializers::        Non-constant initializers.
+* Constructors::        Constructor expressions give structures, unions
+                         or arrays as values.
 * Function Attributes:: Declaring that functions have no side effects,
-			 or that they can never return.
+                         or that they can never return.
 * Dollar Signs::        Dollar sign is allowed in identifiers.
 * Alignment::           Inquiring about the alignment of a type or variable.
 * Inline::              Defining inline functions (as fast as macros).
-* Extended Asm::	Assembler instructions with C expressions as operands.
-			 (With them you can define ``built-in'' functions.)
-* Asm Labels::		Specifying the assembler name to use for a C symbol.
+* Extended Asm::        Assembler instructions with C expressions as operands.
+                         (With them you can define ``built-in'' functions.)
+* Asm Labels::          Specifying the assembler name to use for a C symbol.
 * Explicit Reg Vars::   Defining variables residing in specified registers.
 * Alternate Keywords::  @code{__const__}, @code{__asm__}, etc., for header files.
 @end menu
@@ -2771,6 +2926,10 @@ I can see, @code{#pragma} is never useful.
 In GNU C, you may use dollar signs in identifier names.  This is because
 many traditional C implementations allow such identifiers.
 
+Dollar signs are allowed if you specify @samp{-traditional}; they are
+not allowed if you specify @samp{-ansi}.  Whether they are allowed by
+default depends on the target machine; usually, they are not.
+
 @node Alignment, Inline, Dollar Signs, Extensions
 @section Inquiring about the Alignment of a Type or Variable
 
@@ -3194,7 +3353,7 @@ variable the value it had at the time of the @code{setjmp}.  On some
 machines, however, @code{longjmp} will not change the value of global
 register variables.  To be portable, the function that called @code{setjmp}
 should make other arrangements to save the values of the global register
-variables, and to restore them if a @code{longjmp}.  This way, the the same
+variables, and to restore them in a @code{longjmp}.  This way, the the same
 thing will happen regardless of what @code{longjmp} does.
 
 All global register variable declarations must precede all function
@@ -3205,7 +3364,7 @@ being used for other purposes in the preceding functions.
 Global register variables may not have initial values, because an
 executable file has no means to supply initial contents for a register.
 
-@node Local Reg Vars,, Local Reg Vars, Explicit Reg Vars
+@node Local Reg Vars,, Global Reg Vars, Explicit Reg Vars
 @subsection Specifying Registers for Local Variables
 
 You can define a local register variable with a specified register
@@ -4022,9 +4181,9 @@ form uses nested parentheses to indicate the pointers in the internal form.
 * RTL Declarations::  Declaring volatility, constancy, etc.
 * Side Effects::      Expressions for storing in registers, etc.
 * Incdec::            Embedded side-effects for autoincrement addressing.
-* Assembler::	      Representing @code{asm} with operands.
+* Assembler::         Representing @code{asm} with operands.
 * Insns::             Expression types for entire insns.
-* Calls::	      RTL representation of function call insns.
+* Calls::             RTL representation of function call insns.
 * Sharing::           Some expressions are unique; others *must* be copied.
 @end menu
 
@@ -5117,10 +5276,10 @@ instruction this way:
 
 @example
 (parallel [(set (cc0) (reg:SI 34))
-	   (set (pc) (if_then_else
-			(eq (cc0) (const_int 0))
-			(label_ref @dots{})
-			(pc)))])
+           (set (pc) (if_then_else
+                        (eq (cc0) (const_int 0))
+                        (label_ref @dots{})
+                        (pc)))])
 @end example
 
 @noindent
@@ -5538,7 +5697,7 @@ the value is returned in a hard register.  If this register's number is
 
 @example
 (set (reg:@var{m} @var{r})
-     (call @var{nbytes} (mem:@var{fm} @var{addr})))
+     (call (mem:@var{fm} @var{addr}) @var{nbytes}))
 @end example
 
 @noindent
@@ -6175,12 +6334,12 @@ value.  So why use @samp{s} instead of @samp{i}?  Sometimes it allows
 better code to be generated.
 
 For example, on the 68000 in a fullword instruction it is possible to
-use an immediate operand; but if the immediate value is between -32
-and 31, better code results from loading the value into a register and
+use an immediate operand; but if the immediate value is between -128
+and 127, better code results from loading the value into a register and
 using the register.  This is because the load into the register can be
 done with a @samp{moveq} instruction.  We arrange for this to happen
 by defining the letter @samp{K} to mean ``any integer outside the
-range -32 to 31'', and then specifying @samp{Ks} in the operand
+range -128 to 127'', and then specifying @samp{Ks} in the operand
 constraints.
 
 @item @samp{g}
@@ -6344,17 +6503,17 @@ Here is how it is done for fullword logical-or on the 68000:
 
 @example
 (define_insn "iorsi3"
-  [(set (match_operand:SI 0 "general_operand" "=%m,d")
-        (ior:SI (match_operand:SI 1 "general_operand" "0,0")
+  [(set (match_operand:SI 0 "general_operand" "=m,d")
+        (ior:SI (match_operand:SI 1 "general_operand" "%0,0")
                 (match_operand:SI 2 "general_operand" "dKs,dmKs")))]
   @dots{})
 @end example
 
 The first alternative has @samp{m} (memory) for operand 0, @samp{0} for
-operand 1 (meaning it must match operand 0), and @samp{dKs} for operand 2.
-The second alternative has @samp{d} (data register) for operand 0, @samp{0}
-for operand 1, and @samp{dmKs} for operand 2.  The @samp{=} and @samp{%} in
-the constraint for operand 0 are not part of any alternative; their meaning
+operand 1 (meaning it must match operand 0), and @samp{dKs} for operand
+2.  The second alternative has @samp{d} (data register) for operand 0,
+@samp{0} for operand 1, and @samp{dmKs} for operand 2.  The @samp{=} and
+@samp{%} in the constraints apply to all the alternatives; their meaning
 is explained in the next section.
 
 If all the operands fit any one alternative, the instruction is valid.
@@ -6559,9 +6718,23 @@ machine description, but typically on a RISC machine these can only be
 pseudo registers that did not get hard registers, while on other
 machines explicit memory references will get optional reloads.
 
-In addition, the constraints must allow any hard register to be moved
-to any other hard register (provided that @code{HARD_REGNO_MODE_OK}
-permits mode @var{m} in each of the registers).
+The constraints on a @samp{move@var{m}} must allow any hard register to
+be moved to any other hard register (provided that
+@code{HARD_REGNO_MODE_OK} permits mode @var{m} in both registers).
+
+It is obligatory to support floating point @samp{move@var{m}}
+instructions into and out of any registers that can hold fixed point
+values, because unions and structures (which have modes @code{SImode} or
+@code{DImode}) can be in those registers and they may have floating
+point members.
+
+There may also be a need to support fixed point @samp{move@var{m}}
+instructions in and out of floating point registers.  Unfortunately, I
+have forgotten why this was so, and I don't know whether it is still
+true.  If @code{HARD_REGNO_MODE_OK} rejects fixed point values in
+floating point registers, then the constraints of the fixed point
+@samp{move@var{m}} instructions must be designed to avoid ever trying to
+reload into a floating point register.
 
 @item @samp{movstrict@var{m}}
 Like @samp{mov@var{m}} except that if operand 0 is a @code{subreg}
@@ -6601,15 +6774,6 @@ in operand 0 and a remainder stored in operand 3.
 
 @item @samp{udivmod@var{m}4}
 Similar, but does unsigned division.
-
-@item @samp{divmod@var{m}@var{n}4}
-Like @samp{divmod@var{m}4} except that only the dividend has mode
-@var{m}; the divisor, quotient and remainder have mode @var{n}.
-For example, the Vax has a @samp{divmoddisi4} instruction
-(but it is omitted from the machine description, because it
-is so slow that it is faster to compute remainders by the
-circumlocution that the compiler will use if this instruction is
-not available).
 
 @item @samp{ashl@var{m}3}
 Arithmetic-shift operand 1 left by a number of bits specified by
@@ -6685,8 +6849,14 @@ in lexicographic order.  The effect of the instruction is to set
 the condition codes.
 
 @item @samp{float@var{m}@var{n}2}
-Convert operand 1 (valid for fixed point mode @var{m}) to floating
-point mode @var{n} and store in operand 0 (which has mode @var{n}).
+Convert signed integer operand 1 (valid for fixed point mode @var{m}) to
+floating point mode @var{n} and store in operand 0 (which has mode
+@var{n}).
+
+@item @samp{floatuns@var{m}@var{n}2}
+Convert unsigned integer operand 1 (valid for fixed point mode @var{m})
+to floating point mode @var{n} and store in operand 0 (which has mode
+@var{n}).
 
 @item @samp{fix@var{m}@var{n}2}
 Convert operand 1 (valid for floating point mode @var{m}) to fixed
@@ -7430,7 +7600,7 @@ link to it.  The header file @file{config.h} includes @file{tm.h} and most
 compiler source files include @file{config.h}.
 
 @menu
-* Run-time Target::     Defining -m options like -m68000 and -m68020.
+* Run-time Target::     Defining @samp{-m} options like @samp{-m68000} and @samp{-m68020}.
 * Storage Layout::      Defining sizes and alignments of data types.
 * Registers::           Naming and describing the hardware registers.
 * Register Classes::    Defining the classes of hardware registers.
@@ -7822,34 +7992,27 @@ can hold integers can safely @emph{hold} a floating point machine
 mode, whether or not floating arithmetic can be done on it in those
 registers.
 
-The true significance of special floating registers is rather that
-non-floating-point machine modes @emph{may not} go in those registers.
-This is true if the floating registers normalize any value stored in
-them, because storing a non-floating value there would garble it.  If
-the floating registers do not automatically normalize, if you can
-store any bit pattern in one and retrieve it unchanged without a trap,
-then any machine mode may go in a floating register and this macro
-should say so.
+On some machines, though, the converse is true: fixed-point machine
+modes may not go in floating registers.  This is true if the floating
+registers normalize any value stored in them, because storing a
+non-floating value there would garble it.  In this case,
+@code{HARD_REGNO_MODE_OK} should reject fixed-point machine modes in
+floating registers.  But if the floating registers do not automatically
+normalize, if you can store any bit pattern in one and retrieve it
+unchanged without a trap, then any machine mode may go in a floating
+register and this macro should say so.
 
-Sometimes there are floating registers that are especially slow to
-access, so that it is better to store a value in a stack frame than in
-such a register if floating point arithmetic is not being done.  As long
-as the floating registers are not in class @code{GENERAL_REGS}, they
-will not be used unless some insn's constraint asks for one.
+The primary significance of special floating registers is rather that
+they are the registers acceptable in floating point arithmetic
+instructions.  However, this is of no concern to
+@code{HARD_REGNO_MODE_OK}.  You handle it by writing the proper
+constraints for those instructions.
 
-It is obligatory to support floating point `move' instructions into
-and out of any registers that can hold fixed point values, because
-unions and structures (which have modes @code{SImode} or
-@code{DImode}) can be in those registers and they may have floating
-point members.
-
-There may also be a need to support fixed point `move' instructions in
-and out of floating point registers.  Unfortunately, I have forgotten
-why this was so, and I don't know whether it is still true.  If
-@code{HARD_REGNO_MODE_OK} rejects fixed point values in floating point
-registers, then the constraints of the fixed point `move' instructions
-must be designed to avoid ever trying to reload into a floating point
-register.
+On some machines, the floating registers are especially slow to access,
+so that it is better to store a value in a stack frame than in such a
+register if floating point arithmetic is not being done.  As long as the
+floating registers are not in class @code{GENERAL_REGS}, they will not
+be used unless some insn's constraint asks for one.
 
 @item MODES_TIEABLE_P (@var{mode1}, @var{mode2})
 A C expression that is nonzero if it is desirable to choose register
@@ -7877,14 +8040,16 @@ hardware determines which register this is.  On other machines, you
 can choose any register you wish for this purpose.
 
 @item FRAME_POINTER_REQUIRED
-A C expression which is nonzero if a function must have and use a
-frame pointer.  This expression is evaluated in the reload pass, in
-the function @code{reload}, and it can in principle examine the
-current function and decide according to the facts, but on most
-machines the constant 0 or the constant 1 suffices.  Use 0 when the
-machine allows code to be generated with no frame pointer, and doing
-so saves some time or space.  Use 1 when there is no possible
-advantage to avoiding a frame pointer.
+A C expression which is nonzero if a function must have and use a frame
+pointer.  This expression is evaluated twice: at the beginning of
+generating RTL, and in the reload pass.  If its value is nonzero at
+either time, then the function will have a frame pointer.
+
+The expression can in principle examine the current function and decide
+according to the facts, but on most machines the constant 0 or the
+constant 1 suffices.  Use 0 when the machine allows code to be generated
+with no frame pointer, and doing so saves some time or space.  Use 1
+when there is no possible advantage to avoiding a frame pointer.
 
 In certain cases, the compiler does not know how to produce valid code
 without a frame pointer.  The compiler recognizes those cases and
@@ -8234,6 +8399,15 @@ This macro should expand into a C expression whose value is the offset
 of the first parameter's shadow location from the nominal stack
 pointer value.  (That value is itself computed by adding the value of
 @code{STACK_POINTER_OFFSET} to the stack pointer register.)
+
+@item REG_PARM_STACK_SPACE
+Define this macro if functions should assume that stack space has been
+allocated for arguments even when their values are passed in
+registers.
+
+The actual allocation of such space would be done either by
+the call instruction or by the function prologue, or by
+defining FIRST_PARM_CALLER_OFFSET.
 
 @item STACK_ARGS_ADJUST (@var{size})
 Define this macro if the machine requires padding on the stack for
@@ -8872,7 +9046,7 @@ processing a sequence, otherwise it contains the @code{sequence} rtx
 being output.
 @end table
 
-@node Condition Code, Misc, Delayed Branch, Machine Macros
+@node Condition Code, Cross-compilation, Delayed Branch, Machine Macros
 @section Condition Code Information
 
 The file @file{conditions.h} defines a variable @code{cc_status} to
@@ -8891,8 +9065,10 @@ C code for a data type which is used for declaring the @code{mdep}
 component of @code{cc_status}.  It defaults to @code{int}.
 
 @item CC_STATUS_MDEP_INIT
-A C expression for the initial value of the @code{mdep} field.  It
-defaults to 0.
+A C expression to initialize the @code{mdep} field to ``empty''.
+The default definition does nothing, since most machines don't use
+the field anyway.  If you want to use the field, you should probably
+define this macro to initialize it.
 
 @item NOTICE_UPDATE_CC (@var{exp}, @var{insn})
 A C compound statement to set the components of @code{cc_status}
@@ -8927,7 +9103,7 @@ insns is not sufficient to indicate what the insns actually do.  What
 @node Cross-compilation, Misc, Condition Code, Machine Macros
 @section Cross Compilation and Floating-Point Format
 
-While all modern machines use 2's compliment representation for integers,
+While all modern machines use 2's complement representation for integers,
 there are a variety of representations for floating point numbers.  This
 means that in a cross-compiler the representation of floating point numbers
 in the compiled program may be different from that used in the machine
@@ -9161,7 +9337,7 @@ mismatch, it also makes for better code on certain machines.
 @item STORE_FLAG_VALUE
 A C expression for the value stored by a store-flag instruction
 (@code{s@var{cond}}) when the condition is true.  This is usually 1 or
--1; it is required to be an odd number.
+-1; it is required to be an odd number or a negative number.
 
 Do not define @code{STORE_FLAG_VALUE} if the machine has no store-flag
 instructions.
@@ -9216,8 +9392,8 @@ by default in identifier names.
 @item USE_C_ALLOCA
 Define this macro to indicate that the compiler is running with the
 @code{alloca} implemented in C.  This version of @code{alloca} can be
-found in the file @file{alloca.c}; to use it, you must also edit the
-@file{Makefile}.
+found in the file @file{alloca.c}; to use it, you must also alter the
+@file{Makefile} variable @code{ALLOCA}.
 
 This macro, unlike most, describes the machine that the compiler is
 running on, rather than the one the compiler is compiling for.
@@ -9416,7 +9592,7 @@ not define them yourself.
 @item SDB_GENERATE_FAKE
 Define this macro to override the usual method of constructing a dummy
 name for anonymous structure and union types.  See @file{sdbout.c} for
-more infomation.
+more information.
 
 @item DBX_NO_XREFS
 Define this macro if DBX on your system does not support the construct

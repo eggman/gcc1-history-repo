@@ -1,4 +1,4 @@
-/* Configuration for GNU C-compiler for Intel 80386 running Sequent Symmetry
+/* Configuration for GNU C-compiler for Intel i860.
    Copyright (C) 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -36,7 +36,3 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    tm.h is a symbolic link to the actual target specific file.   */
 
 #include "tm.h"
-
-#ifdef __GNUC__
-#define alloca(n) __builtin_alloca(n)
-#endif

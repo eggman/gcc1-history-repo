@@ -147,10 +147,10 @@ do { union { float f; long l;} tem;			\
    so we must output 0s explicitly in the text segment.  */
 #undef ASM_OUTPUT_SKIP
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  if (in_section == text_section)                                           \
+  if (in_text_section ())                                           	    \
     {									    \
       int i;								    \
-      for (i = 0; i < (SIZE); i += 20)					    \
+      for (i = 0; i < (SIZE) - 20; i += 20)				    \
 	fprintf (FILE, "\tbyte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"); \
       if (i < (SIZE))							    \
         {								    \

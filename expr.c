@@ -1045,7 +1045,7 @@ emit_move_insn (x, y)
       && ! LEGITIMATE_CONSTANT_P (y))
     {
       y = force_const_mem (mode, y);
-      if (! memory_address_p (mode, y))
+      if (! memory_address_p (mode, XEXP (y, 0)))
 	y = gen_rtx (MEM, mode, memory_address (mode, XEXP (y, 0)));
     }
 
@@ -1502,6 +1502,7 @@ emit_library_call (va_alist)
   int old_inhibit_defer_pop = inhibit_defer_pop;
   int stack_padding = 0;
   int no_queue = 0;
+  rtx use_insns;
 
   va_start (p);
   orgfun = fun = va_arg (p, rtx);
@@ -1634,15 +1635,14 @@ emit_library_call (va_alist)
 
   fun = prepare_call_address (fun, 0);
 
-  /* Any regs containing parms remain in use through the call.
-     ??? This is not quite correct, since it doesn't indicate
-     that they are in use immediately before the call insn.
-     Currently that doesn't matter since explicitly-used regs
-     won't be used for reloading.  But if the reloader becomes smarter,
-     this will have to change somehow.  */
+  /* Any regs containing parms remain in use through the call.  */
+  start_sequence ();
   for (count = 0; count < nargs; count++)
     if (regvec[count] != 0)
       emit_insn (gen_rtx (USE, VOIDmode, regvec[count]));
+
+  use_insns = gen_sequence ();
+  end_sequence ();
 
 #ifdef STACK_BOUNDARY
   args_size = (args_size + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
@@ -1654,7 +1654,7 @@ emit_library_call (va_alist)
   emit_call_1 (fun, get_identifier (XSTR (orgfun, 0)), args_size,
 	       FUNCTION_ARG (args_so_far, VOIDmode, void_type_node, 1),
 	       outmode != VOIDmode ? hard_libcall_value (outmode) : 0,
-	       old_inhibit_defer_pop + 1);
+	       old_inhibit_defer_pop + 1, use_insns);
   OK_DEFER_POP;
 }
 
@@ -2562,6 +2562,10 @@ expand_expr (exp, target, tmode, modifier)
 	return op0;
       if (flag_force_mem && GET_CODE (op0) == MEM)
 	op0 = copy_to_reg (op0);
+      if (GET_MODE (op0) == VOIDmode)
+	/* Avoid problem in convert_move due to unknown mode of OP0.  */
+	op0 = copy_to_mode_reg (TYPE_MODE (TREE_TYPE (TREE_OPERAND (exp, 0))),
+				op0);
       if (target == 0)
 	target = gen_reg_rtx (mode);
       convert_move (target, op0, TREE_UNSIGNED (TREE_TYPE (TREE_OPERAND (exp, 0))));
@@ -2635,7 +2639,8 @@ expand_expr (exp, target, tmode, modifier)
 
     case MINUS_EXPR:
       preexpand_calls (exp);
-      if (TREE_CODE (TREE_OPERAND (exp, 1)) == INTEGER_CST)
+      if (TREE_CODE (TREE_OPERAND (exp, 1)) == INTEGER_CST
+	  && GET_MODE_BITSIZE (TYPE_MODE (type)) <= HOST_BITS_PER_INT)
 	{
 	  int negated;
 	  if (modifier == EXPAND_SUM)
@@ -2821,6 +2826,10 @@ expand_expr (exp, target, tmode, modifier)
       op0 = expand_expr (TREE_OPERAND (exp, 0), 0, VOIDmode, 0);
       if (target == 0)
 	target = gen_reg_rtx (mode);
+      if (GET_MODE (op0) == VOIDmode)
+	/* Avoid problem in convert_move due to unknown mode of OP0.  */
+	op0 = copy_to_mode_reg (TYPE_MODE (TREE_TYPE (TREE_OPERAND (exp, 0))),
+				op0);
       {
 	int unsignedp = TREE_UNSIGNED (TREE_TYPE (TREE_OPERAND (exp, 0)));
 	if (GET_MODE (op0) == HImode
@@ -3484,7 +3493,10 @@ expand_increment (exp, post)
     temp = copy_to_reg (op0);
   else
     /* Arrange to return the incremented value.  */
-    temp = op0;
+    /* Copy the rtx because expand_binop will protect from the queue,
+       and the results of that would be invalid for us to return
+       if our caller does emit_queue before using our result.  */
+    temp = copy_rtx (op0);
 
   /* Increment however we can.  */
   op1 = expand_binop (mode, this_optab, op0, op1, op0,
@@ -3637,18 +3649,23 @@ prepare_call_address (funexp, context)
 
    OLD_INHIBIT_DEFER_POP is the value that `inhibit_defer_pop' had before
    the args to this call were processed.
-   We restore `inhibit_defer_pop' to that value.  */
+   We restore `inhibit_defer_pop' to that value.
+
+   USE_INSNS is a SEQUENCE of USE insns to be emitted immediately before
+   the actual CALL insn.  */
 
 static void
-emit_call_1 (funexp, funtype, stack_size, next_arg_reg, valreg, old_inhibit_defer_pop)
+emit_call_1 (funexp, funtype, stack_size, next_arg_reg, valreg, old_inhibit_defer_pop, use_insns)
      rtx funexp;
      tree funtype;
      int stack_size;
      rtx next_arg_reg;
      rtx valreg;
      int old_inhibit_defer_pop;
+     rtx use_insns;
 {
   rtx stack_size_rtx = gen_rtx (CONST_INT, VOIDmode, stack_size);
+  rtx call_insn;
 
   if (valreg)
     emit_call_insn (gen_call_value (valreg,
@@ -3657,6 +3674,18 @@ emit_call_1 (funexp, funtype, stack_size, next_arg_reg, valreg, old_inhibit_defe
   else
     emit_call_insn (gen_call (gen_rtx (MEM, FUNCTION_MODE, funexp),
 			      stack_size_rtx, next_arg_reg));
+
+  /* Find the CALL insn we just emitted and write the USE insns before it.  */
+  for (call_insn = get_last_insn();
+       call_insn && GET_CODE (call_insn) != CALL_INSN;
+       call_insn = PREV_INSN (call_insn))
+    ;
+
+  if (! call_insn)
+    abort ();
+
+  /* Put the USE insns before the CALL.  */
+  emit_insn_before (use_insns, call_insn);
 
   inhibit_defer_pop = old_inhibit_defer_pop;
 
@@ -3838,6 +3867,7 @@ expand_call (exp, target, ignore)
   int old_pending_adj;
   int old_inhibit_defer_pop = inhibit_defer_pop;
   tree old_cleanups = cleanups_of_this_call;
+  rtx use_insns;
 
   register tree p;
   register int i;
@@ -4427,12 +4457,8 @@ expand_call (exp, target, ignore)
   /* ??? Other languages need a nontrivial second argument (static chain).  */
   funexp = prepare_call_address (funexp, 0);
 
-  /* Mark all register-parms as living through the call.
-     ??? This is not quite correct, since it doesn't indicate
-     that they are in use immediately before the call insn.
-     Currently that doesn't matter since explicitly-used regs
-     won't be used for reloading.  But if the reloader becomes smarter,
-     this will have to change somehow.  */
+  /* Mark all register-parms as living through the call.  */
+  start_sequence ();
   for (i = 0; i < num_actuals; i++)
     if (args[i].reg != 0)
       {
@@ -4440,7 +4466,8 @@ expand_call (exp, target, ignore)
 	  use_regs (REGNO (args[i].reg), args[i].partial);
 	else if (GET_MODE (args[i].reg) == BLKmode)
 	  use_regs (REGNO (args[i].reg),
-		    (int_size_in_bytes (TREE_TYPE (args[i].tree_value))
+		    ((int_size_in_bytes (TREE_TYPE (args[i].tree_value))
+		      + UNITS_PER_WORD - 1)
 		     / UNITS_PER_WORD));
 	else
 	  emit_insn (gen_rtx (USE, VOIDmode, args[i].reg));
@@ -4450,18 +4477,28 @@ expand_call (exp, target, ignore)
       && GET_CODE (struct_value_rtx) == REG)
     emit_insn (gen_rtx (USE, VOIDmode, struct_value_rtx));
 
+  use_insns = gen_sequence ();
+  end_sequence ();
+
   /* Figure out the register where the value, if any, will come back.  */
   valreg = 0;
   if (TYPE_MODE (TREE_TYPE (exp)) != VOIDmode
-      && TYPE_MODE (TREE_TYPE (exp)) != BLKmode)
-    valreg = hard_function_value (TREE_TYPE (exp), fndecl);
+      && ! structure_value_addr)
+    {
+      if (pcc_struct_value)
+	valreg = hard_libcall_value (Pmode);
+      else
+	valreg = hard_function_value (TREE_TYPE (exp), fndecl);
+    }
 
   /* Generate the actual call instruction.  */
+  /* This also has the effect of turning off any pop-inhibition
+     done in expand_call.  */
   if (args_size.constant < 0)
     args_size.constant = 0;
   emit_call_1 (funexp, funtype, args_size.constant,
 	       FUNCTION_ARG (args_so_far, VOIDmode, void_type_node, 1),
-	       valreg, old_inhibit_defer_pop);
+	       valreg, old_inhibit_defer_pop, use_insns);
 
 /* ???  Nothing has been done here to record control flow
    when contained functions can do nonlocal gotos.  */
@@ -4559,24 +4596,31 @@ expand_call (exp, target, ignore)
       rtx insn_last = get_last_insn ();
       rtx note = 0;
 
-      /* Cancel the NO_DEFER_POP done at start of expand_call.  */
-      OK_DEFER_POP;
+      /* Don't put the notes on if we don't have insns that can hold them.  */
+      if ((GET_CODE (insn_first) == INSN
+	   || GET_CODE (insn_first) == CALL_INSN
+	   || GET_CODE (insn_first) == JUMP_INSN)
+	  && (GET_CODE (insn_last) == INSN
+	      || GET_CODE (insn_last) == CALL_INSN
+	      || GET_CODE (insn_last) == JUMP_INSN))
+	{
+	  /* Construct an "equal form" for the value
+	     which mentions all the arguments in order
+	     as well as the function name.  */
+	  for (i = 0; i < num_actuals; i++)
+	    if (args[i].reg != 0 || is_const)
+	      note = gen_rtx (EXPR_LIST, VOIDmode, args[i].value, note);
+	  note = gen_rtx (EXPR_LIST, VOIDmode,
+			  XEXP (DECL_RTL (fndecl), 0), note);
 
-      /* Construct an "equal form" for the value
-	 which mentions all the arguments in order
-	 as well as the function name.  */
-      for (i = 0; i < num_actuals; i++)
-	if (args[i].reg != 0 || is_const)
-	  note = gen_rtx (EXPR_LIST, VOIDmode, args[i].value, note);
-      note = gen_rtx (EXPR_LIST, VOIDmode, XEXP (DECL_RTL (fndecl), 0), note);
-
-      REG_NOTES (insn_last)
-	= gen_rtx (EXPR_LIST, REG_EQUAL, note,
-		   gen_rtx (INSN_LIST, REG_RETVAL, insn_first,
-			    REG_NOTES (insn_last)));
-      REG_NOTES (insn_first)
-	= gen_rtx (INSN_LIST, REG_LIBCALL, insn_last,
-		   REG_NOTES (insn_first));
+	  REG_NOTES (insn_last)
+	    = gen_rtx (EXPR_LIST, REG_EQUAL, note,
+		       gen_rtx (INSN_LIST, REG_RETVAL, insn_first,
+				REG_NOTES (insn_last)));
+	  REG_NOTES (insn_first)
+	    = gen_rtx (INSN_LIST, REG_LIBCALL, insn_last,
+		       REG_NOTES (insn_first));
+	}
     }
 
   return target;
@@ -4645,7 +4689,8 @@ store_one_arg (arg, argblock, may_be_alloca)
 	{
 	  if (GET_MODE (arg->value) == BLKmode)
 	    move_block_to_reg (REGNO (arg->reg), arg->value,
-			       (int_size_in_bytes (TREE_TYPE (pval))
+			       ((int_size_in_bytes (TREE_TYPE (pval))
+				 + UNITS_PER_WORD - 1)
 				/ UNITS_PER_WORD));
 	  else
 	    emit_move_insn (arg->reg, arg->value);
@@ -5015,7 +5060,7 @@ do_jump (exp, if_false_label, if_true_label)
 	    {
 	      int i;
 	      /* We can invert a sequence if the only jump is at the end.  */
-	      for (i = 0; i < XVECLEN (pat, 0) - 1; i++)
+	      for (i = 0; i < (int) (XVECLEN (pat, 0) - 1); i++)
 		if (GET_CODE (XVECEXP (pat, 0, i)) == JUMP_INSN)
 		  abort ();
 	      invert_exp (PATTERN (XVECEXP (pat, 0, XVECLEN (pat, 0) - 1)),

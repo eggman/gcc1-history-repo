@@ -129,7 +129,7 @@ struct tree_common
   int uid;
   union tree_node *chain;
   union tree_node *type;
-  unsigned int code : 8;
+  unsigned char code : 8;
 
   unsigned external_attr : 1;
   unsigned public_attr : 1;
@@ -878,6 +878,9 @@ extern tree char_type_node;
 /* Points to the name of the input file from which the current input
    being parsed originally came (before it went into cpp).  */
 extern char *input_filename;
+
+/* Current source line number in that file.  */
+extern int lineno;
 
 /* Nonzero for -pedantic switch: warn about anything
    that standard C forbids.  */

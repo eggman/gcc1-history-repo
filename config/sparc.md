@@ -1010,7 +1010,12 @@
   if (REG_P (operands[1]))
     return \"sll %1,0x10,%0\;srl %0,0x10,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      operands[1] = gen_rtx (CONST_INT, VOIDmode,
+			     INTVAL (operands[1]) & 0xffff);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1031,7 +1036,12 @@
   if (REG_P (operands[1]))
     return \"and %1,0xff,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      operands[1] = gen_rtx (CONST_INT, VOIDmode,
+			     INTVAL (operands[1]) & 0xff);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1052,7 +1062,12 @@
   if (REG_P (operands[1]))
     return \"and %1,0xff,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      operands[1] = gen_rtx (CONST_INT, VOIDmode,
+			     INTVAL (operands[1]) & 0xff);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1077,7 +1092,12 @@
   if (REG_P (operands[1]))
     return \"sll %1,0x10,%0\;sra %0,0x10,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      int i = (short)INTVAL (operands[1]);
+      operands[1] = gen_rtx (CONST_INT, VOIDmode, i);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1098,7 +1118,12 @@
   if (REG_P (operands[1]))
     return \"sll %1,0x18,%0\;sra %0,0x18,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      int i = (char)INTVAL (operands[1]);
+      operands[1] = gen_rtx (CONST_INT, VOIDmode, i);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1119,7 +1144,12 @@
   if (REG_P (operands[1]))
     return \"sll %1,0x18,%0\;sra %0,0x18,%0\";
   if (GET_CODE (operands[1]) == CONST_INT)
-    abort ();
+    {
+      int i = (char)INTVAL (operands[1]);
+      operands[1] = gen_rtx (CONST_INT, VOIDmode, i);
+      output_asm_insn (\"set %1,%0\", operands);
+      return \"\";
+    }
   if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
     {
       cc_status.flags |= CC_KNOW_HI_G1;
@@ -1538,6 +1568,17 @@
   return \"mov %1,%0\";
 }")
 
+;; In case constant factor turns out to be -1.
+(define_insn ""
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(neg:SI (match_operand:SI 1 "general_operand" "rI")))
+   (clobber (reg:SI 8))
+   (clobber (reg:SI 9))
+   (clobber (reg:SI 12))
+   (clobber (reg:SI 13))]
+  ""
+  "sub %%g0,%1,%0")
+
 ;;- and instructions (with compliment also)			   
 (define_insn "andsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
@@ -1860,7 +1901,12 @@
 	  && GET_CODE (PATTERN (nhead)) == SET
 	  && strict_single_insn_op_p (SET_SRC (PATTERN (nhead)),
 				      GET_MODE (SET_DEST (PATTERN (nhead))))
-	  && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode))
+	  && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode)
+	  /* Moves between FP regs and CPU regs are two insns.  */
+	  && !(GET_CODE (SET_SRC (PATTERN (nhead))) == REG
+	       && GET_CODE (SET_DEST (PATTERN (nhead))) == REG
+	       && (FP_REG_P (SET_SRC (PATTERN (nhead)))
+		   != FP_REG_P (SET_DEST (PATTERN (nhead))))))
 	{
 	  head = nhead;
 	}
@@ -1947,7 +1993,12 @@
       && GET_CODE (PATTERN (head)) == SET
       && strict_single_insn_op_p (SET_SRC (PATTERN (head)),
 				  GET_MODE (SET_DEST (PATTERN (head))))
-      && strict_single_insn_op_p (SET_DEST (PATTERN (head)), VOIDmode))
+      && strict_single_insn_op_p (SET_DEST (PATTERN (head)), VOIDmode)
+      /* Moves between FP regs and CPU regs are two insns.  */
+      && !(GET_CODE (SET_SRC (PATTERN (head))) == REG
+	   && GET_CODE (SET_DEST (PATTERN (head))) == REG
+	   && (FP_REG_P (SET_SRC (PATTERN (head)))
+	       != FP_REG_P (SET_DEST (PATTERN (head))))))
     {
       /* If at the target of this label we set the condition codes,
 	 and the condition codes are already set for that value,
@@ -1962,7 +2013,12 @@
 	      && GET_CODE (PATTERN (nhead)) == SET
 	      && strict_single_insn_op_p (SET_SRC (PATTERN (nhead)),
 					  GET_MODE (SET_DEST (nhead)))
-	      && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode))
+	      && strict_single_insn_op_p (SET_DEST (PATTERN (nhead)), VOIDmode)
+	      /* Moves between FP regs and CPU regs are two insns.  */
+	      && !(GET_CODE (SET_SRC (PATTERN (nhead))) == REG
+		   && GET_CODE (SET_DEST (PATTERN (nhead))) == REG
+		   && (FP_REG_P (SET_SRC (PATTERN (nhead)))
+		       != FP_REG_P (SET_DEST (PATTERN (nhead))))))
 	    head = nhead;
 	}
 
@@ -2013,7 +2069,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(match_operand:SI 1 "single_insn_src_p" "p"))
    (set (pc) (label_ref (match_operand 2 "" "")))]
-  ""
+  "single_insn_extra_test (operands[0], operands[1])"
   "* return output_delayed_branch (\"b %l2\", operands, insn);")
 
 (define_peephole
@@ -2032,16 +2088,17 @@
 (define_peephole
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(match_operand:SI 1 "single_insn_src_p" "p"))
-   (set (pc) (match_operand:SI 2 "register_operand" "r"))
-   (use (label_ref (match_operand 3 "" "")))]
-  "REGNO (operands[0]) != REGNO (operands[2])"
+   (parallel [(set (pc) (match_operand:SI 2 "register_operand" "r"))
+	      (use (label_ref (match_operand 3 "" "")))])]
+  "REGNO (operands[0]) != REGNO (operands[2])
+   && single_insn_extra_test (operands[0], operands[1])"
   "* return output_delayed_branch (\"jmp %2\", operands, insn);")
 
 (define_peephole
   [(set (match_operand:SI 0 "memory_operand" "=m")
 	(match_operand:SI 1 "reg_or_0_operand" "rJ"))
-   (set (pc) (match_operand:SI 2 "register_operand" "r"))
-   (use (label_ref (match_operand 3 "" "")))]
+   (parallel [(set (pc) (match_operand:SI 2 "register_operand" "r"))
+	      (use (label_ref (match_operand 3 "" "")))])]
   ""
   "* return output_delayed_branch (\"jmp %2\", operands, insn);")
 
@@ -2105,7 +2162,8 @@
 		    (match_operand 3 "" "i"))
 	      (use (reg:SI 31))])]
   ;;- Don't use operand 1 for most machines.
-  "! reg_mentioned_p (operands[0], operands[2])"
+  "! reg_mentioned_p (operands[0], operands[2])
+   && single_insn_extra_test (operands[0], operands[1])"
   "*
 {
   /* strip the MEM.  */
@@ -2195,7 +2253,8 @@
 			 (match_operand 4 "" "i")))
 	      (use (reg:SI 31))])]
   ;;- Don't use operand 4 for most machines.
-  "! reg_mentioned_p (operands[0], operands[3])"
+  "! reg_mentioned_p (operands[0], operands[3])
+   && single_insn_extra_test (operands[0], operands[1])"
   "*
 {
   /* strip the MEM.  */

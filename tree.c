@@ -370,6 +370,11 @@ make_node (code)
       /* All decls in an inline function need to be saved.  */
       if (obstack != &permanent_obstack)
 	obstack = saveable_obstack;
+      /* PARM_DECLs always go on saveable_obstack, not permanent,
+	 even though we may make them before the function turns
+	 on temporary allocation.  */
+      else if (code == PARM_DECL)
+	obstack = &maybepermanent_obstack;
       break;
 
     case 't':  /* a type node */

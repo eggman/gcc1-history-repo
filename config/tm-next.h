@@ -2,6 +2,9 @@
 
 #include "tm-m68k.h"
 
+/* Enable recent gcc to compile under the old gcc in Next release 1.0.  */
+#define __inline inline
+
 /* See tm-m68k.h.  7 means 68020/030 with 68881/882.  */
 
 #define TARGET_DEFAULT 7
@@ -21,7 +24,7 @@
 
 /* Machine dependent ld options.  */
 
-#define LINK_SPEC "${Z} %{M} %{Mach} %{segcreate*} %{seglinkedit}"
+#define LINK_SPEC "%{Z} %{M} %{Mach} %{segcreate*} %{seglinkedit}"
 
 /* Machine dependent libraries.  */
 

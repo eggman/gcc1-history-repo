@@ -23,7 +23,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Dmips -Dunix"
+#define CPP_PREDEFINES "-Dmips -Dunix -Dhost_mips -DMIPSEB -DR3000 -DLANGUAGE_C"
 
 /*----------------------------------------------------------------------
 
@@ -91,10 +91,9 @@ WARNING:
 
 /* Extra switches sometimes passed to the assembler.  */
 
-/* #define ASM_SPEC   "%{O:-O2} %{O2: -O2} %{!G32: %{G*}}			\
-%{!G:%{!G32: -G 8}} %{G32: -G 32}" */
-#define ASM_SPEC   "-nocpp %{O:-O2} %{O2: -O2} %{!G32: %{G*}} \
+#define ASM_SPEC   "-nocpp %{O:-O2} %{O2: -O2} %{!G32: %{G*}}		\
 %{!G:%{!G32: -G 8}} %{G32: -G 32}"
+
 
 /* Extra switches sometimes passed to the loader.  */
 
@@ -143,37 +142,31 @@ WARNING:
 
 /* CC1 SPECS */
 
-#define CC1_SPEC   "%{!O2:%{O:-O -fstrength-reduce -fomit-frame-pointer}}\
-                    %{O2:-O -fstrength-reduce -fomit-frame-pointer -mgpOPT}\
-                    %{g:%eThis port of GCC does not support -g flag}	\
+#define CC1_SPEC   "%{O2:-O -fstrength-reduce -fomit-frame-pointer -mgpOPT}\
                     %{G32: -mG2 -mnG1 }					\
                     %{G32:%{!O2:%eOption -G32 may require -O2}}"
 
 /* CPP SPECS */
 
-#ifdef DECSTATION
-				/* default DECSTATION environment */
-#define CPP_SPEC "-DR3000 -DLANGUAGE_C -DMIPSEL -DSYSTYPE_BSD -Dultrix"
-#else /* not DECSTATION */
+#ifndef DECSTATION
+
 #if defined(MIPS_SYSV) || defined(MIPS_BSD43)
 				/* MIPS RISC-OS environments */
 
 #ifdef MIPS_SYSV
-#define CPP_SPEC "-DR3000  -Dhost_mips -DMIPSEB				\
-                   %{!ZBSD43:-DSYSTYPE_SYSV}%{ZBSD43:-DSYSTYPE_BSD43}	\
-                   -DLANGUAGE_C						\
+#define CPP_SPEC " %{!ansi:%{!ZBSD43:-DSYSTYPE_SYSV}%{ZBSD43:-DSYSTYPE_BSD43}}\
+		   %{!ZBSD43:-D__SYSTYPE_SYSV__}%{ZBSD43:-D__SYSTYPE_BSD43__} \
                    %{!ZBSD43:-I/sysv/usr/include}			\
                    %{ZBSD43:-I/bsd43/usr/include}"
 #else /* not MIPS_SYSV */
-#define CPP_SPEC "-DR3000  -Dhost_mips -DMIPSEB				\
-                   %{!ZSYSV:-DSYSTYPE_BSD43}%{ZSYSV:-DSYSTYPE_SYSV}	\
-                   -DLANGUAGE_C						\
-                   %{!ZYSV:-I/bsd43/usr/include}%{ZBSD43:-I/sysv/usr/include}"
+#define CPP_SPEC " %{!ansi:%{!ZSYSV:-DSYSTYPE_BSD43}%{ZSYSV:-DSYSTYPE_SYSV}}\
+		   %{!ZSYSV:-D__SYSTYPE_BSD43__}%{ZSYSV:-D__SYSTYPE_SYSV__}\
+                   %{!ZSYSV:-I/bsd43/usr/include}%{ZSYSV:-I/sysv/usr/include}"
 #endif /* not MIPS_SYSV */
 
 #else /* not MIPS_SYSV and not MIPS_BSD43 */
 				/* default MIPS Bsd environment */
-#define CPP_SPEC "-DR3000  -Dhost_mips -DMIPSEB -DSYSTYPE_BSD -DLANGUAGE_C "
+#define CPP_SPEC "%{!ansi:-DSYSTYPE_BSD} -D__SYSTYPE_BSD__ "
 
 #endif /* not MIPS_SYSV and not MIPS_BSD43 */
 #endif /* not DECSTATION */
@@ -263,9 +256,6 @@ extern int target_flags;
 */
 #define MIPS_GVALUE_DEFAULT 8
 
-#ifdef DECSTATION
-#define DOLLARS_IN_IDENTIFIERS 1
-#endif
 /* Target machine storage layout */
 
 /* Define this if most significant bit is lowest numbered
@@ -550,17 +540,21 @@ description.  */
    C is the letter, and VALUE is a constant value.
    Return 1 if VALUE is in the range specified by C.  */
 
-/*   For MIPS, `I' is used for the range of constants an insn
+/*   For MIPS, `I' is used for the range of constants an arithmetic insn
                    can actually contain (16 bits signed integers).
                `J' is used for the range which is just zero (since that is
 	           available as $R0).
+	       `K' is used for the range of constants a logical insn
+	           can actually contain (16 bit zero-extended integers).
 */
 
-#define SMALL_INT(X) ((unsigned) (INTVAL (X) + 0x10000) < 0x20000)
+#define SMALL_INT(X) ((unsigned) (INTVAL (X) + 0x8000) < 0x10000)
+#define SMALL_INT_UNSIGNED(X) ((unsigned) (INTVAL (X)) < 0x10000)
 
 #define CONST_OK_FOR_LETTER_P(VALUE, C)					\
-  ((C) == 'I' ? (unsigned) ((VALUE) + 0x10000) < 0x20000		\
+  ((C) == 'I' ? (unsigned) ((VALUE) + 0x8000) < 0x10000			\
    : (C) == 'J' ? (VALUE) == 0						\
+   : (C) == 'K' ? (unsigned) (VALUE) < 0x10000				\
    : 0)
 
 /* Similar, but for floating constants, and defining letters G and H.
@@ -867,24 +861,27 @@ extern int  this_varargs_suspect ;
 #define THIS_VARARGS_NOTSUSPECT    this_varargs_suspect = 0
 #define THIS_VARARGS_SUSPECTED    (this_varargs_suspect)
 
+/* When eliminating the frame pointer, this is the size of the frame
+   aside from explicit stack slots.  */
+extern int frame_stack_difference;
 
 #define FUNCTION_PROLOGUE(FILE, SIZE)					\
 { register int regno;							\
   register int mask = 0, fmask=0;					\
-  static char dont_save_regs[] = CALL_USED_REGISTERS;			\
   register int push_loc = 0,tsize = SIZE+8;				\
   char *fp_str;								\
   extern char *reg_numchar[];						\
   extern int  current_function_total_framesize;				\
+  extern char call_used_regs[];						\
   this_varargs_suspect = VARARGS_SUSPECTED  ;				\
   fp_str = TARGET_NAME_REGS ? reg_names[STACK_POINTER_REGNUM]		\
     : reg_numchar[STACK_POINTER_REGNUM];				\
   for (regno = 0; regno < 32; regno++)					\
     if (  MUST_SAVE_REG_LOGUES						\
-	|| (regs_ever_live[regno] && !dont_save_regs[regno]))		\
+	|| (regs_ever_live[regno] && !call_used_regs[regno]))		\
       {tsize += 4; mask |= 1 << regno;}					\
   for (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if (regs_ever_live[regno] && !dont_save_regs[regno])		\
+    if (regs_ever_live[regno] && !call_used_regs[regno])		\
       {tsize += 8; fmask |= 1 << (regno-32);}				\
   if (THIS_VARARGS_SUSPECTED) tsize += 16;				\
   fprintf (FILE," #PROLOGUE\n");					\
@@ -892,11 +889,11 @@ extern int  this_varargs_suspect ;
   tsize = AL_ADJUST_ALIGN (tsize);					\
 									\
   if (!frame_pointer_needed)						\
-    fprintf (FILE,"#define __0__gcc  %d\n",				\
-	     (!( regs_ever_live[29] || regs_ever_live[30]		\
-		|| fmask || mask					\
-		|| (SIZE > 0)))						\
-	     ? 0:tsize);						\
+    frame_stack_difference						\
+      = ((!(regs_ever_live[29] || regs_ever_live[30]			\
+	    || fmask || mask						\
+	    || (SIZE > 0)))						\
+	 ? 0:tsize);							\
 									\
   push_loc = 0; current_function_total_framesize = tsize;		\
   fprintf (FILE, " #\t.mask\t0x%x\n", mask);				\
@@ -914,7 +911,7 @@ extern int  this_varargs_suspect ;
   for  (regno = 31; regno >= 30; regno--)				\
     {									\
       if (MUST_SAVE_REG_LOGUES						\
-	  || (regs_ever_live[regno] && !dont_save_regs[regno]))		\
+	  || (regs_ever_live[regno] && !call_used_regs[regno]))		\
 	{								\
 	  fprintf (FILE, "\tsw\t%s,%d(%s)\n",				\
 		   TARGET_NAME_REGS ? reg_names[regno] : reg_numchar[regno], \
@@ -943,7 +940,7 @@ extern int  this_varargs_suspect ;
   for (regno = 29; regno >= 0; regno--)					\
     {									\
       if (MUST_SAVE_REG_LOGUES						\
-	  || (regs_ever_live[regno] && !dont_save_regs[regno]))		\
+	  || (regs_ever_live[regno] && !call_used_regs[regno]))		\
 	{								\
 	  fprintf (FILE, "\tsw\t%s,%d(%s)\n",				\
 		   TARGET_NAME_REGS ? reg_names[regno] : reg_numchar[regno], \
@@ -953,7 +950,7 @@ extern int  this_varargs_suspect ;
     }									\
   fprintf (FILE, " #\t.fmask\t0x%x\n", fmask);				\
   for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if (regs_ever_live[regno] && !dont_save_regs[regno])		\
+    if (regs_ever_live[regno] && !call_used_regs[regno])		\
       {									\
 	fprintf (FILE, "\ts.d\t%s,%d(%s)\n",				\
 		 (TARGET_NAME_REGS) ? reg_names[regno] : reg_numchar[regno], \
@@ -961,11 +958,23 @@ extern int  this_varargs_suspect ;
 	push_loc += 8;							\
       }									\
   if (frame_pointer_needed)						\
-    fprintf (FILE, "\taddiu\t%s,%s,%d\t#Establish FramePTR\n",		\
-	     (TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]	\
-	      : reg_numchar[FRAME_POINTER_REGNUM]),			\
-	     (TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]),	\
-	     tsize);							\
+    {									\
+      if (CONST_OK_FOR_LETTER_P (tsize, 'I'))				\
+	fprintf (FILE, "\taddiu %s,%s,%d\t#Establish FramePTR\n",	\
+		 (TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]	\
+		  : reg_numchar[FRAME_POINTER_REGNUM]),			\
+		 (TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]),	\
+		 tsize);						\
+      else								\
+        {								\
+	  fprintf (FILE, "\tlui $15,0x%x\n", (tsize >> 16) & 0xffff);	\
+	  fprintf (FILE, "\tori $15,0x%x\n", tsize & 0xffff);		\
+	  fprintf (FILE, "\taddu %s,%s,$15\t#Establish FramePTR\n",	\
+		   (TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]	\
+		    : reg_numchar[FRAME_POINTER_REGNUM]),		\
+		   (TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]));\
+        }								\
+    }									\
   fprintf (FILE," #END PROLOGUE\n");					\
 }
 
@@ -1015,11 +1024,11 @@ extern char *current_function_name;
   register int fmask = 0;						\
   char *fp_str;								\
   char *sp_str;								\
-  static char dont_save_regs[] = CALL_USED_REGISTERS;			\
   register int push_loc ;						\
   extern char *reg_numchar[];						\
   extern char *current_function_name;					\
   extern int  current_function_total_framesize;				\
+  extern char call_used_regs[];						\
   push_loc = 0;								\
   regno = STACK_POINTER_REGNUM;						\
   sp_str = TARGET_NAME_REGS ? reg_names[STACK_POINTER_REGNUM]		\
@@ -1027,9 +1036,7 @@ extern char *current_function_name;
   fp_str = TARGET_NAME_REGS ? reg_names[8]				\
     :reg_numchar[8];							\
   fprintf (FILE," #EPILOGUE\n");					\
-  if (!frame_pointer_needed)						\
-    fprintf (FILE,"#undef __0__gcc\n");					\
-  else									\
+  if (frame_pointer_needed)						\
     fprintf (FILE,"\taddu\t%s,$0,%s\t# sp not trusted  here \n",	\
 	     fp_str,							\
 	     TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]		\
@@ -1037,12 +1044,12 @@ extern char *current_function_name;
 	     );								\
   for  (regno = 0; regno < 32; regno++)					\
     if  ( MUST_SAVE_REG_LOGUES						\
-	 || (regs_ever_live[regno] && !dont_save_regs[regno]))		\
+	 || (regs_ever_live[regno] && !call_used_regs[regno]))		\
       mask |= 1 << regno;						\
   fprintf  (FILE, " #\t.mask\t0x%x\n", mask);				\
   for  (regno = 31; regno >= 0; regno--)				\
     { if  ( MUST_SAVE_REG_LOGUES					\
-	   || (regs_ever_live[regno] && !dont_save_regs[regno]))	\
+	   || (regs_ever_live[regno] && !call_used_regs[regno]))	\
 	{								\
 	  fprintf (FILE,"\tlw\t%s,%d(%s)\n",				\
 		   TARGET_NAME_REGS ? reg_names[regno]			\
@@ -1056,12 +1063,12 @@ extern char *current_function_name;
       if ( THIS_VARARGS_SUSPECTED &&  (regno == 30)) push_loc += 16;	\
     }									\
   for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if  (regs_ever_live[regno] && !dont_save_regs[regno])		\
+    if  (regs_ever_live[regno] && !call_used_regs[regno])		\
       fmask |= 1 <<  (regno-32);					\
   fprintf  (FILE, " #\t.fmask\t0x%x\n", fmask);				\
     for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)	\
     {									\
-      if  (regs_ever_live[regno] && !dont_save_regs[regno])		\
+      if  (regs_ever_live[regno] && !call_used_regs[regno])		\
 	{								\
 	  fprintf (FILE,"\tl.d\t%s,%d(%s)\n",				\
 		   ( ( TARGET_NAME_REGS) ? reg_names[regno]		\
@@ -1114,10 +1121,11 @@ extern char *current_function_name;
              else abort_with_insn(ADDR,"Unable to FIX");		\
 	  else;								\
    if (frame_offset >= 0)						\
-    { newaddr=gen_rtx(PLUS,Pmode,stack_pointer_rtx,			\
-                      gen_rtx(PLUS,Pmode,				\
-                          gen_rtx(CONST_INT,VOIDmode,frame_offset+(DEPTH)),\
-			      gen_rtx(SYMBOL_REF,SImode,"__0__gcc")));	\
+    { newaddr								\
+	= gen_rtx (PLUS,Pmode,stack_pointer_rtx,			\
+		   gen_rtx (CONST_INT, VOIDmode,			\
+			    (frame_offset + (DEPTH)			\
+			     + frame_stack_difference)));		\
       ADDR = newaddr;							\
     }									\
   }

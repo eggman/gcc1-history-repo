@@ -25,22 +25,28 @@
 ;; cpp macro #define NOTICE_UPDATE_CC in file tm.h handles condition code
 ;; updates for most instructions.
 
-;; * Should we check for SUBREG as well as REG, in some places???
+;; * Try using define_insn instead of some peepholes in more places.
+;; * Set REG_NOTES:REG_EQUIV for cvt[bh]w loads.  This would make the
+;;   backward scan in sign_extend needless.
+;; * Match (pc) (label_ref) case in peephole patterns.
+;; * Should optimize
+;;   "cmpX op1,op2;  b{eq,ne} LY;  ucmpX op1.op2;  b{lt,le,gt,ge} LZ"
+;;   to
+;;   "ucmpX op1,op2;  b{eq,ne} LY;  b{lt,le,gt,ge} LZ"
+;;   by pre-scanning insn and running notice_update_cc for them.
+;; * Is it necessary to do copy_rtx in the test and compare patterns?
+;; * Fix true frame pointer omission.
 ;; * Make the jump tables contain branches, not addresses!  This would
 ;;   save us one instruction.
 ;; * Could the compilcated scheme for compares be simplyfied, if we had
 ;;   no named cmpqi or cmphi patterns, and instead anonymous patterns for
 ;;   the less-than-word compare cases pyr can handle???
 ;; * The jump insn seems to accept more than just IR addressing.  Would
-;;   we win by telling GCC?
+;;   we win by telling GCC?  Or can we use movw into the global reg which
+;;   is a synonym for pc?
 ;; * More DImode patterns.
-;; * Expansion of "cmpsi" is not necessary.  Also, some define_insn could
-;;   be taken away if constraints were used.
 ;; * Scan backwards in "zero_extendhisi2", "zero_extendqisi2" to find out
-;;   if the extension can be omitted.  Also improve the scan (now in the sign
-;;   extenstion patterns), to handle more cases than extension regx->regx.
-;; * Enhance NOTICE_UPDATE_CC.  1) Should not be reset by insn that don't
-;;   modify cc.  2) cc is preserved by CALL.
+;;   if the extension can be omitted.
 ;; * "divmodsi" with Pyramid "ediv" insn.  Is it possible in rtl??
 ;; * Would "rcsp tmpreg; u?cmp[bh] op1_regdispl(tmpreg),op2" win in
 ;;   comparison with the two extensions and single test generated now?
@@ -54,29 +60,19 @@
 ;	Test and Compare Patterns.
 ;______________________________________________________________________
 
-(define_expand "cmpsi"
-  [(set (cc0)
-	(compare (match_operand:SI 0 "general_operand" "")
-		 (match_operand:SI 1 "general_operand" "")))]
-  ""
-  "
-{
-  extern rtx test_op0, test_op1;
-  test_op0 = copy_rtx (operands[0]);
-  test_op1 = copy_rtx (operands[1]);
-  DONE;
-}")
+; The argument for the rather complicated test and compare expansion
+; scheme, is the irregular pyramid instructions for these operations.
+; 1) Pyramid has different signed and unsigned compares.  2) HImode
+; and QImode integers are memory-memory and immediate-memory only.  3)
+; Unsigned HImode compares doesn't exist.  4) Only certain
+; combinations of addresses are allowed for memory-memory compares.
+; Whenever necessary, in order to fulfill these addressing
+; constraints, the compare operands are swapped.
 
 (define_expand "tstsi"
   [(set (cc0)
 	(match_operand:SI 0 "general_operand" ""))]
-  ""
-  "
-{
-  extern rtx test_op0, test_op1;
-  test_op0 = copy_rtx (operands[0]);
-  DONE;
-}")
+  "" "operands[0] = force_reg (SImode, operands[0]);")
 
 (define_insn ""
   [(set (cc0)
@@ -94,18 +90,26 @@
 
   weird_memory_memory (operands[0], operands[1]);
 
-  if (swap_operands == 0)
-    return (br_code >= GEU && br_code <= LTU
-	    ? \"ucmpw %1,%0\" : \"cmpw %1,%0\");
-  else
+  if (swap_operands)
     {
-      cc_status.flags |= CC_REVERSED;
-      return (br_code >= GEU && br_code <= LTU
-	      ? \"ucmpw %0,%1\" : \"cmpw %0,%1\");
+      cc_status.flags = CC_REVERSED;
+      if (TRULY_UNSIGNED_COMPARE_P (br_code))
+	{
+	  cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+	  return \"ucmpw %0,%1\";
+	}
+      return \"cmpw %0,%1\";
     }
+
+  if (TRULY_UNSIGNED_COMPARE_P (br_code))
+    {
+      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+      return \"ucmpw %1,%0\";
+    }
+  return \"cmpw %1,%0\";
 }")
 
-(define_insn ""
+(define_insn "cmpsi"
   [(set (cc0)
 	(compare (match_operand:SI 0 "general_operand" "r,g")
 		 (match_operand:SI 1 "general_operand" "g,r")))]
@@ -119,22 +123,45 @@
     abort();
   br_code =  GET_CODE (XEXP (XEXP (PATTERN (br_insn), 1), 0));
 
-  if (which_alternative == 0)
-    return (br_code >= GEU && br_code <= LTU)
-      ? \"ucmpw %1,%0\" : \"cmpw %1,%0\";
-  else
+  if (which_alternative != 0)
     {
-      cc_status.flags |= CC_REVERSED;
-      return (br_code >= GEU && br_code <= LTU)
-	? \"ucmpw %0,%1\" : \"cmpw %0,%1\";
+      cc_status.flags = CC_REVERSED;
+      if (TRULY_UNSIGNED_COMPARE_P (br_code))
+	{
+	  cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+	  return \"ucmpw %0,%1\";
+	}
+      return \"cmpw %0,%1\";
     }
+
+  if (TRULY_UNSIGNED_COMPARE_P (br_code))
+    {
+      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+      return \"ucmpw %1,%0\";
+    }
+  return \"cmpw %1,%0\";
 }")
 
 (define_insn ""
   [(set (cc0)
-	(match_operand:SI 0 "register_operand" "r"))]
+	(match_operand:SI 0 "general_operand" "r"))]
   ""
-  "mtstw %0,%0")
+  "*
+{
+  rtx br_insn = NEXT_INSN (insn);
+  RTX_CODE br_code;
+
+  if (GET_CODE (br_insn) != JUMP_INSN)
+    abort();
+  br_code =  GET_CODE (XEXP (XEXP (PATTERN (br_insn), 1), 0));
+
+  if (TRULY_UNSIGNED_COMPARE_P (br_code))
+    {
+      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+      return \"ucmpw $0,%0\";
+    }
+  return \"mtstw %0,%0\";
+}")
 
 (define_expand "cmphi"
   [(set (cc0)
@@ -143,9 +170,10 @@
   ""
   "
 {
-  extern rtx test_op0, test_op1;
+  extern rtx test_op0, test_op1;  extern enum machine_mode test_mode;
   test_op0 = copy_rtx (operands[0]);
   test_op1 = copy_rtx (operands[1]);
+  test_mode = HImode;
   DONE;
 }")
 
@@ -155,8 +183,9 @@
   ""
   "
 {
-  extern rtx test_op0, test_op1;
+  extern rtx test_op0;  extern enum machine_mode test_mode;
   test_op0 = copy_rtx (operands[0]);
+  test_mode = HImode;
   DONE;
 }")
 
@@ -174,20 +203,20 @@
 
   weird_memory_memory (operands[0], operands[1]);
 
-  if (swap_operands == 0)
-    return \"cmph %1,%0\";
-  else
+  if (swap_operands)
     {
-      cc_status.flags |= CC_REVERSED;
+      cc_status.flags = CC_REVERSED;
       return \"cmph %0,%1\";
     }
+
+  return \"cmph %1,%0\";
 }")
 
 (define_insn ""
   [(set (cc0)
 	(compare (match_operand:HI 0 "nonimmediate_operand" "r,m")
 		 (match_operand:HI 1 "nonimmediate_operand" "m,r")))]
-  ""
+  "(GET_CODE (operands[0]) != GET_CODE (operands[1]))"
   "*
 {
   rtx br_insn = NEXT_INSN (insn);
@@ -195,13 +224,13 @@
   if (GET_CODE (br_insn) != JUMP_INSN)
     abort();
 
-  if (which_alternative == 0)
-    return \"cmph %1,%0\";
-  else
+  if (which_alternative != 0)
     {
-      cc_status.flags |= CC_REVERSED;
+      cc_status.flags = CC_REVERSED;
       return \"cmph %0,%1\";
     }
+
+  return \"cmph %1,%0\";
 }")
 
 (define_expand "cmpqi"
@@ -211,9 +240,10 @@
   ""
   "
 {
-  extern rtx test_op0, test_op1;
+  extern rtx test_op0, test_op1;  extern enum machine_mode test_mode;
   test_op0 = copy_rtx (operands[0]);
   test_op1 = copy_rtx (operands[1]);
+  test_mode = QImode;
   DONE;
 }")
 
@@ -223,8 +253,9 @@
   ""
   "
 {
-  extern rtx test_op0, test_op1;
+  extern rtx test_op0;  extern enum machine_mode test_mode;
   test_op0 = copy_rtx (operands[0]);
+  test_mode = QImode;
   DONE;
 }")
 
@@ -244,22 +275,30 @@
 
   weird_memory_memory (operands[0], operands[1]);
 
-  if (swap_operands == 0)
-    return (br_code >= GEU && br_code <= LTU
-	    ? \"ucmpb %1,%0\" : \"cmpb %1,%0\");
-  else
+  if (swap_operands)
     {
-      cc_status.flags |= CC_REVERSED;
-      return (br_code >= GEU && br_code <= LTU
-	      ? \"ucmpb %0,%1\" : \"cmpb %0,%1\");
+      cc_status.flags = CC_REVERSED;
+      if (TRULY_UNSIGNED_COMPARE_P (br_code))
+	{
+	  cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+	  return \"ucmpb %0,%1\";
+	}
+      return \"cmpb %0,%1\";
     }
+
+  if (TRULY_UNSIGNED_COMPARE_P (br_code))
+    {
+      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+      return \"ucmpb %1,%0\";
+    }
+  return \"cmpb %1,%0\";
 }")
 
 (define_insn ""
   [(set (cc0)
 	(compare (match_operand:QI 0 "nonimmediate_operand" "r,m")
 		 (match_operand:QI 1 "nonimmediate_operand" "m,r")))]
-  ""
+  "(GET_CODE (operands[0]) != GET_CODE (operands[1]))"
   "*
 {
   rtx br_insn = NEXT_INSN (insn);
@@ -269,15 +308,23 @@
     abort();
   br_code =  GET_CODE (XEXP (XEXP (PATTERN (br_insn), 1), 0));
 
-  if (which_alternative == 0)
-    return (br_code >= GEU && br_code <= LTU)
-      ? \"ucmpb %1,%0\" : \"cmpb %1,%0\";
-  else
+  if (which_alternative != 0)
     {
-      cc_status.flags |= CC_REVERSED;
-      return (br_code >= GEU && br_code <= LTU)
-	? \"ucmpb %0,%1\" : \"cmpb %0,%1\";
+      cc_status.flags = CC_REVERSED;
+      if (TRULY_UNSIGNED_COMPARE_P (br_code))
+	{
+	  cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+	  return \"ucmpb %0,%1\";
+	}
+      return \"cmpb %0,%1\";
     }
+
+  if (TRULY_UNSIGNED_COMPARE_P (br_code))
+    {
+      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+      return \"ucmpb %1,%0\";
+    }
+  return \"cmpb %1,%0\";
 }")
 
 (define_expand "bgt"
@@ -372,11 +419,9 @@
     return \"addw %2,%0\";
   else
     {
-      CC_STATUS_INIT;
-      if (REG_P (operands[2]))
-	return \"mova (%2)[%1*1],%0\";
-      else
-	return \"mova %a2[%1*1],%0\";
+      forget_cc_if_dependent (operands[0]);
+      return REG_P (operands[2])
+	? \"mova (%2)[%1*1],%0\" : \"mova %a2[%1*1],%0\";
     }
 }")
 
@@ -385,13 +430,7 @@
 	(minus:SI (match_operand:SI 1 "general_operand" "0,g")
 		  (match_operand:SI 2 "general_operand" "g,0")))]
   ""
-  "*
-{
-  if (which_alternative == 0)
-    return \"subw %2,%0\";
-  else
-    return \"rsubw %1,%0\";
-}")
+  "* return (which_alternative == 0) ? \"subw %2,%0\" : \"rsubw %1,%0\";")
 
 (define_insn "mulsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
@@ -412,24 +451,14 @@
 	(div:SI (match_operand:SI 1 "general_operand" "0,g")
 		(match_operand:SI 2 "general_operand" "g,0")))]
   ""
-  "*
-{
-  if (which_alternative == 0)
-    return \"divw %2,%0\";
-  else
-    return \"rdivw %1,%0\";
-}")
+  "* return (which_alternative == 0) ? \"divw %2,%0\" : \"rdivw %1,%0\";")
 
 (define_insn "udivsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(udiv:SI (match_operand:SI 1 "register_operand" "0")
 		 (match_operand:SI 2 "general_operand" "g")))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"udivw %2,%0\";
-}")
+  "udivw %2,%0")
 
 (define_insn "modsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
@@ -443,11 +472,7 @@
 	(umod:SI (match_operand:SI 1 "register_operand" "0")
 		 (match_operand:SI 2 "general_operand" "g")))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"umodw %2,%0\";
-}")
+  "umodw %2,%0")
 
 (define_insn "negsi2"
   [(set (match_operand:SI 0 "register_operand" "=r")
@@ -573,12 +598,10 @@
 {
   if (which_alternative == 0)
     return \"andw %2,%0\";
-  else
-    {
-      CC_STATUS_INIT;
-      return (INTVAL (operands[2]) == 255
-	      ? \"movzbw %1,%0\" : \"movzhw %1,%0\");
-    }
+
+  cc_status.flags = CC_NOT_NEGATIVE;
+  return (INTVAL (operands[2]) == 255
+	  ? \"movzbw %1,%0\" : \"movzhw %1,%0\");
 }")
 
 (define_insn "andcbsi3"
@@ -609,170 +632,57 @@
   ""
   "xorw %2,%0")
 
-; Some patterns using De Morgan law.
-;
-;(define_insn ""
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(not:SI (and:SI (not:SI (match_operand:SI 1 "register_operand" "%0"))
-;			(not:SI (match_operand:SI 2 "general_operand" "g")))))]
-;  ""
-;  "orw %2,%0")
-;
-;(define_insn ""
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(not:SI (ior:SI (not:SI (match_operand:SI 1 "register_operand" "%0"))
-;			(not:SI (match_operand:SI 2 "general_operand" "g")))))]
-;  ""
-;  "andw %2,%0")
-;
-;(define_insn ""
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(not:SI (and:SI (not:SI (match_operand:SI 1 "register_operand" "0"))
-;			(match_operand:SI 2 "immediate_operand" "n"))))]
-;  ""
-;  "*
-;  operands[2] = gen_rtx (CONST_INT, VOIDmode, ~INTVAL (operands[2]));
-;  return \"orw %2,%0\";
-;")
-;
-;(define_insn ""
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(not:SI (ior:SI (not:SI (match_operand:SI 1 "register_operand" "0"))
-;			(match_operand:SI 2 "immediate_operand" "n"))))]
-;  ""
-;  "*
-;  operands[2] = gen_rtx (CONST_INT, VOIDmode, ~INTVAL (operands[2]));
-;  return \"andw %2,%0\";
-;")
+; The arithmetic left shift instructions work strangely on pyramids.
+; They fail to modify the sign bit.  Therefore, use logic shifts.
 
 (define_insn "ashlsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(ashift:SI (match_operand:SI 1 "register_operand" "0")
 		   (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 32;
-      if (cnt == 0)
-	  return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  /* Use lshlw, not ashlw, since arithmetic shifts work strangely on pyr.  */
-  return \"lshlw %2,%0\";
-}")
-
-; The arithmetic left shift instructions work strange on pyramids.
-; They fail to modify the sign bit.
-;(define_insn "ashldi3"
-;  [(set (match_operand:DI 0 "register_operand" "=r")
-;	(ashift:DI (match_operand:DI 1 "register_operand" "0")
-;		   (match_operand:SI 2 "general_operand" "rnm")))]
-;  ""
-;  "*
-;{
-;  if (GET_CODE (operands[2]) == CONST_INT)
-;    {
-;      int cnt = INTVAL (operands[2]) % 64;
-;      if (cnt == 0)
-;	  return \"\";
-;      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-;    }
-;  return \"ashll %2,%0\";
-;}")
+  "* return output_shift (\"lshlw %2,%0\", operands[2], 32); ")
 
 (define_insn "ashrsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(ashiftrt:SI (match_operand:SI 1 "register_operand" "0")
 		     (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 32;
-      if (cnt == 0)
-	  return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  return \"ashrw %2,%0\";
-}")
+  "* return output_shift (\"ashrw %2,%0\", operands[2], 32); ")
 
 (define_insn "ashrdi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
 	(ashiftrt:DI (match_operand:DI 1 "register_operand" "0")
 		     (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 64;
-      if (cnt == 0)
-	return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  return \"ashrl %2,%0\";
-}")
+  "* return output_shift (\"ashrl %2,%0\", operands[2], 64); ")
 
 (define_insn "lshrsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(lshiftrt:SI (match_operand:SI 1 "register_operand" "0")
 		     (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 32;
-      if (cnt == 0)
-	  return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  return \"lshrw %2,%0\";
-}")
+  "* return output_shift (\"lshrw %2,%0\", operands[2], 32); ")
 
 (define_insn "rotlsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(rotate:SI (match_operand:SI 1 "register_operand" "0")
 		   (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 32;
-      if (cnt == 0)
-	  return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  return \"rotlw %2,%0\";
-}")
+  "* return output_shift (\"rotlw %2,%0\", operands[2], 32); ")
 
 (define_insn "rotrsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(rotatert:SI (match_operand:SI 1 "register_operand" "0")
 		     (match_operand:SI 2 "general_operand" "rnm")))]
   ""
-  "*
-{
-  if (GET_CODE (operands[2]) == CONST_INT)
-    {
-      int cnt = INTVAL (operands[2]) % 32;
-      if (cnt == 0)
-	  return \"\";
-      operands[2] = gen_rtx (CONST_INT, VOIDmode, cnt);
-    }
-  return \"rotrw %2,%0\";
-}")
+  "* return output_shift (\"rotrw %2,%0\", operands[2], 32); ")
 
 ;______________________________________________________________________
 ;
 ;	Fixed and Floating Moves.
 ;______________________________________________________________________
 
-;; If the destination is a memory address, indexed source operands are
+;; If the destination is a memory operand, indexed source operands are
 ;; disallowed.  Big DImode constants are always loaded into a reg pair,
 ;; although offsetable memory addresses really could be dealt with.
 
@@ -780,11 +690,13 @@
   [(set (match_operand:DI 0 "memory_operand" "=m")
 	(match_operand:DI 1 "nonindexed_operand" "gF"))]
   "(GET_CODE (operands[1]) == CONST_DOUBLE
-    ? CONST_DOUBLE_HIGH (operands[1]) == 0
-    : 1)"
+     ? ((CONST_DOUBLE_HIGH (operands[1]) == 0
+	 && CONST_DOUBLE_LOW (operands[1]) >= 0)
+	|| (CONST_DOUBLE_HIGH (operands[1]) == -1
+	    && CONST_DOUBLE_LOW (operands[1]) < 0))
+     : 1)"
   "*
 {
-  CC_STATUS_INIT;
   if (GET_CODE (operands[1]) == CONST_DOUBLE)
     operands[1] = gen_rtx (CONST_INT, VOIDmode,
 				      CONST_DOUBLE_LOW (operands[1]));
@@ -799,17 +711,14 @@
   ""
   "* return output_move_double (operands); ")
 
-;; If the destination is a memory address, indexed operands are disallowed.
+;; If the destination is a memory address, indexed source operands are
+;; disallowed.
 
 (define_insn ""
   [(set (match_operand:SI 0 "memory_operand" "=m")
 	(match_operand:SI 1 "nonindexed_operand" "g"))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"movw %1,%0\";
-}")
+  "movw %1,%0")
 
 ;; Force the destination to a register, so all source operands are allowed.
 
@@ -817,13 +726,10 @@
   [(set (match_operand:SI 0 "general_operand" "=r")
 	(match_operand:SI 1 "general_operand" "g"))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"movw %1,%0\";
-}")
+  "movw %1,%0")
 
-;; If the destination is a memory address, indexed operands are disallowed.
+;; If the destination is a memory address, indexed source operands are
+;; disallowed.
 
 (define_insn ""
   [(set (match_operand:HI 0 "memory_operand" "=m")
@@ -834,10 +740,7 @@
   if (REG_P (operands[1]))
     return \"cvtwh %1,%0\";		/* reg -> mem */
   else
-    {
-      CC_STATUS_INIT;
-      return \"movh %1,%0\";		/* mem imm -> mem */
-    }
+    return \"movh %1,%0\";		/* mem imm -> mem */
 }")
 
 ;; Force the destination to a register, so all source operands are allowed.
@@ -849,14 +752,12 @@
   "*
 {
   if (GET_CODE (operands[1]) != MEM)
-    {
-      CC_STATUS_INIT;
-      return \"movw %1,%0\";
-    }
-  return \"cvthw %1,%0\";
+    return \"movw %1,%0\";		/* reg imm -> reg  */
+  return \"cvthw %1,%0\";		/* mem -> reg */
 }")
 
-;; If the destination is a memory address, indexed operands are disallowed.
+;; If the destination is a memory address, indexed source operands are
+;; disallowed.
 
 (define_insn ""
   [(set (match_operand:QI 0 "memory_operand" "=m")
@@ -867,10 +768,7 @@
   if (REG_P (operands[1]))
     return \"cvtwb %1,%0\";		/* reg -> mem */
   else
-    {
-      CC_STATUS_INIT;
-      return \"movb %1,%0\";		/* mem imm -> mem */
-    }
+    return \"movb %1,%0\";		/* mem imm -> mem */
 }")
 
 ;; Force the destination to a register, so all source operands are allowed.
@@ -882,26 +780,18 @@
   "*
 {
   if (GET_CODE (operands[1]) != MEM)
-    {
-      CC_STATUS_INIT;
-      return \"movw %1,%0\";
-    }
-  return \"cvtbw %1,%0\";
+    return \"movw %1,%0\";		/* reg imm -> reg  */
+  return \"cvtbw %1,%0\";		/* mem -> reg */
 }")
 
-;; If the destination is a memory address, indexed operands are disallowed, and
-;; so are immediate operands.  (Constants are always loaded into a reg pair,
-;; although offsetable memory addresses really doesn't need that.)
+;; If the destination is a memory address, indexed source operands are
+;; disallowed.
 
 (define_insn ""
   [(set (match_operand:DF 0 "memory_operand" "=m")
 	(match_operand:DF 1 "nonindexed_operand" "g"))]
   "GET_CODE (operands[1]) != CONST_DOUBLE"
-  "*
-{
-  CC_STATUS_INIT;
-  return \"movl %1,%0\";
-}")
+  "movl %1,%0")
 
 ;; Force the destination to a register, so all source operands are allowed.
 
@@ -911,17 +801,14 @@
   ""
   "* return output_move_double (operands); ")
 
-;; If the destination is a memory address, indexed operands are disallowed.
+;; If the destination is a memory address, indexed source operands are
+;; disallowed.
 
 (define_insn ""
   [(set (match_operand:SF 0 "memory_operand" "=m")
 	(match_operand:SF 1 "nonindexed_operand" "g"))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"movw %1,%0\";
-}")
+  "movw %1,%0")
 
 ;; Force the destination to a register, so all source operands are allowed.
 
@@ -929,20 +816,17 @@
   [(set (match_operand:SF 0 "general_operand" "=r")
 	(match_operand:SF 1 "general_operand" "g"))]
   ""
-  "*
-{
-  CC_STATUS_INIT;
-  return \"movw %1,%0\";
-}")
+  "movw %1,%0")
 
 (define_insn ""
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(match_operand:QI 1 "address_operand" "p"))]
   ""
   "*
-  CC_STATUS_INIT;
+{
+  forget_cc_if_dependent (operands[0]);
   return \"mova %a1,%0\";
-")
+}")
 
 ;______________________________________________________________________
 ;
@@ -952,29 +836,35 @@
 ;; The trunc patterns are used only when non compile-time constants are used.
 
 (define_insn "truncsiqi2"
-  [(set (match_operand:QI 0 "general_operand" "=r,m")
-	(truncate:QI (match_operand:SI 1 "nonimmediate_operand" "rm,r")))]
+  [(set (match_operand:QI 0 "register_operand" "=r")
+	(truncate:QI (match_operand:SI 1 "nonimmediate_operand" "rm")))]
   ""
   "*
 {
-  CC_STATUS_INIT;
-  if (REGNO (operands[0]) == REGNO (operands[1]))
-    return \"\";
-  else
-    return \"movw %1,%0\";
+  if (REG_P (operands[0]) && REG_P (operands[1])
+      && REGNO (operands[0]) == REGNO (operands[1]))
+    {
+      cc_status = cc_prev_status;
+      return \"\";
+    }
+  forget_cc_if_dependent (operands[0]);
+  return \"movw %1,%0\";
 }")
 
 (define_insn "truncsihi2"
-  [(set (match_operand:HI 0 "general_operand" "=r,m")
-	(truncate:HI (match_operand:SI 1 "nonimmediate_operand" "rm,r")))]
+  [(set (match_operand:HI 0 "register_operand" "=r")
+	(truncate:HI (match_operand:SI 1 "nonimmediate_operand" "rm")))]
   ""
   "*
 {
-  CC_STATUS_INIT;
-  if (REGNO (operands[0]) == REGNO (operands[1]))
-    return \"\";
-  else
-    return \"movw %1,%0\";
+  if (REG_P (operands[0]) && REG_P (operands[1])
+      && REGNO (operands[0]) == REGNO (operands[1]))
+    {
+      cc_status = cc_prev_status;
+      return \"\";
+    }
+  forget_cc_if_dependent (operands[0]);
+  return \"movw %1,%0\";
 }")
 
 (define_insn "extendhisi2"
@@ -988,7 +878,7 @@
       && REGNO (operands[0]) == REGNO (operands[1])
       && already_sign_extended (insn, HImode, operands[0]))
     {
-      CC_STATUS_INIT;
+      cc_status = cc_prev_status;
       return \"\";
     }
   return \"cvthw %1,%0\";
@@ -1005,7 +895,7 @@
       && REGNO (operands[0]) == REGNO (operands[1])
       && already_sign_extended (insn, QImode, operands[0]))
     {
-      CC_STATUS_INIT;
+      cc_status = cc_prev_status;
       return \"\";
     }
   return \"cvtbw %1,%0\";
@@ -1014,6 +904,7 @@
 ; Pyramid doesn't have insns *called* "cvtbh" or "movzbh".
 ; But we can cvtbw/movzbw into a register, where there is no distinction
 ; between words and halfwords.
+
 (define_insn "extendqihi2"
   [(set (match_operand:HI 0 "register_operand" "=r")
 	(sign_extend:HI (match_operand:QI 1 "nonimmediate_operand" "rm")))]
@@ -1026,7 +917,7 @@
   ""
   "*
 {
-  CC_STATUS_INIT;
+  cc_status.flags = CC_NOT_NEGATIVE;
   return \"movzhw %1,%0\";
 }")
 
@@ -1036,7 +927,7 @@
   ""
   "*
 {
-  CC_STATUS_INIT;
+  cc_status.flags = CC_NOT_NEGATIVE;
   return \"movzbw %1,%0\";
 }")
 
@@ -1046,7 +937,7 @@
   ""
   "*
 {
-  CC_STATUS_INIT;
+  cc_status.flags = CC_NOT_NEGATIVE;
   return \"movzbw %1,%0\";
 }")
 
@@ -1061,18 +952,6 @@
 	(float_truncate:SF (match_operand:DF 1 "nonimmediate_operand" "rm,r")))]
   ""
   "cvtdf %1,%0")
-
-;;----------------------------------------------------------------------------
-;;
-;; Fix-to-Float and Float-to-Fix Conversion Patterns.
-;;
-;; Note that the ones that start with SImode come first.
-;; That is so that an operand that is a CONST_INT
-;; (and therefore lacks a specific machine mode).
-;; will be recognized as SImode (which is always valid)
-;; rather than as QImode or HImode.
-;;
-;;----------------------------------------------------------------------------
 
 (define_insn "floatsisf2"
   [(set (match_operand:SF 0 "general_operand" "=r,m")
@@ -1118,7 +997,26 @@
 		      (label_ref (match_operand 1 "" ""))
 		      (pc)))]
   ""
-  "b%N0 %l1")
+  "*
+{
+  extern int optimize;
+  if (optimize)
+    switch (GET_CODE (operands[0]))
+      {
+      case EQ: case NE:
+	break;
+      case LT: case LE: case GE: case GT:
+	if (cc_prev_status.mdep == CC_VALID_FOR_UNSIGNED)
+	  return 0;
+	break;
+      case LTU: case LEU: case GEU: case GTU:
+	if (cc_prev_status.mdep != CC_VALID_FOR_UNSIGNED)
+	  return 0;
+	break;
+      }
+
+  return \"b%N0 %l1\";
+}")
 
 (define_insn ""
   [(set (pc)
@@ -1126,11 +1024,30 @@
 		      (pc)
 		      (label_ref (match_operand 1 "" ""))))]
   ""
-  "b%C0 %l1")
+  "*
+{
+  extern int optimize;
+  if (optimize)
+    switch (GET_CODE (operands[0]))
+      {
+      case EQ: case NE:
+	break;
+      case LT: case LE: case GE: case GT:
+	if (cc_prev_status.mdep == CC_VALID_FOR_UNSIGNED)
+	  return 0;
+	break;
+      case LTU: case LEU: case GEU: case GTU:
+	if (cc_prev_status.mdep != CC_VALID_FOR_UNSIGNED)
+	  return 0;
+	break;
+      }
+
+  return \"b%C0 %l1\";
+}")
 
 (define_insn "call"
   [(call (match_operand:QI 0 "memory_operand" "m")
-	 (match_operand:QI 1 "immediate_operand" "n"))]
+	 (match_operand:SI 1 "immediate_operand" "n"))]
   ""
   "call %0")
 
@@ -1142,16 +1059,35 @@
   ""
   "call %1")
 
-(define_insn ""
+(define_insn "return"
   [(return)]
   ""
-  "ret")
+  "*
+{
+  if (get_frame_size () + current_function_pretend_args_size
+      + current_function_args_size != 0
+      || current_function_calls_alloca)
+    {
+      int dealloc_size = current_function_pretend_args_size;
+      if (current_function_pops_args)
+        dealloc_size += current_function_args_size;
+      operands[0] = gen_rtx (CONST_INT, VOIDmode, dealloc_size);
+      return \"retd %0\";
+    }
+  else
+    return \"ret\";
+}")
 
 (define_insn "tablejump"
   [(set (pc) (match_operand:SI 0 "register_operand" "r"))
    (use (label_ref (match_operand 1 "" "")))]
   ""
   "jump (%0)")
+
+(define_insn "nop"
+  [(const_int 0)]
+  ""
+  "movw gr0,gr0  # nop")
 
 ;______________________________________________________________________
 ;
@@ -1160,134 +1096,145 @@
 
 ;; Optimize fullword move followed by a test of the moved value.
 
-;(define_peephole
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(match_operand:SI 1 "nonimmediate_operand" "rm"))
-;   (set (cc0) (match_operand:SI 2 "nonimmediate_operand" "rm"))]
-;  "rtx_equal_p (operands[2], operands[0])
-;   || rtx_equal_p (operands[2], operands[1])"
-;  "mtstw %1,%0")
-;
-;;; Optimize loops with a incremented/decremented variable.
-;
-;(define_peephole
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(plus:SI (match_dup 0)
-;		 (const_int -1)))
-;   (set (cc0)
-;	(compare (match_operand:SI 1 "register_operand" "r")
-;		 (match_operand:SI 2 "nonmemory_operand" "ri")))
-;   (set (pc)
-;	(if_then_else (match_operator:SI 3 "signed_comparison"
-;			 [(cc0) (const_int 0)])
-;		      (label_ref (match_operand 4 "" ""))
-;		      (pc)))]
-;  "rtx_equal_p (operands[0], operands[1])
-;     || rtx_equal_p (operands[0], operands[2])"
-;  "*
-;  if (rtx_equal_p (operands[0], operands[1]))
-;    {
-;      output_asm_insn (\"dcmpw %2,%0\", operands);
-;      return output_branch (GET_CODE (operands[3]));
-;    }
-;  else
-;    {
-;      output_asm_insn (\"dcmpw %1,%0\", operands);
-;      return output_inv_branch (GET_CODE (operands[3]));
-;    }
-;")
-;
-;(define_peephole
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(plus:SI (match_dup 0)
-;		 (const_int 1)))
-;   (set (cc0)
-;	(compare (match_operand:SI 1 "register_operand" "r")
-;		 (match_operand:SI 2 "nonmemory_operand" "ri")))
-;   (set (pc)
-;	(if_then_else (match_operator:SI 3 "signed_comparison"
-;			 [(cc0) (const_int 0)])
-;		      (label_ref (match_operand 4 "" ""))
-;		      (pc)))]
-;  "rtx_equal_p (operands[0], operands[1])
-;     || rtx_equal_p (operands[0], operands[2])"
-;  "*
-;  if (rtx_equal_p (operands[0], operands[1]))
-;    {
-;      output_asm_insn (\"icmpw %2,%0\", operands);
-;      return output_branch (GET_CODE (operands[3]));
-;    }
-;  else
-;    {
-;      output_asm_insn (\"icmpw %1,%0\", operands);
-;      return output_inv_branch (GET_CODE (operands[3]));
-;    }
-;")
-;
-;(define_peephole
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(plus:SI (match_dup 0) (const_int -1)))
-;   (set (cc0) (match_dup 0))
-;   (set (pc) (if_then_else (match_operator:SI 1 "signed_comparison"
-;					      [(cc0) (const_int 0)])
-;			   (label_ref (match_operand 4 "" ""))
-;			   (pc)))]
-;  ""
-;  "*
-;    output_asm_insn (\"dcmpw $0,%0\", operands);
-;    return output_branch (GET_CODE (operands[1]));
-;")
-;
-;(define_peephole
-;  [(set (match_operand:SI 0 "register_operand" "=r")
-;	(plus:SI (match_dup 0) (const_int 1)))
-;   (set (cc0) (match_dup 0))
-;   (set (pc) (if_then_else (match_operator:SI 1 "signed_comparison"
-;					      [(cc0) (const_int 0)])
-;			   (label_ref (match_operand 4 "" ""))
-;			   (pc)))]
-;  ""
-;  "*
-;    output_asm_insn (\"icmpw $0,%0\", operands);
-;    return output_branch (GET_CODE (operands[1]));
-;")
-;
-;;; Combine word moves with consequtive operands into a long move.
-;;; Also combines immediate moves, if the high-order destination operand
-;;; is loaded with zero.
-;
-;(define_peephole
-;  [(set (match_operand:SI 0 "general_operand" "=g")
-;	(match_operand:SI 1 "general_operand" "g"))
-;   (set (match_operand:SI 2 "general_operand" "=g")
-;	(match_operand:SI 3 "general_operand" "g"))]
-;  "movdi_possible (operands)"
-;  "*
-;  CC_STATUS_INIT;
-;  movdi_possible (operands);
-;  if (CONSTANT_P (operands[1]))
-;    /* Also operand 3 is guarranteed to be CONSTANT by movdi_possible.  */
-;    return (swap_operands) ? \"movl %3,%0\" : \"movl %1,%2\";
-;
-;  return (swap_operands) ? \"movl %1,%0\" : \"movl %3,%2\";
-;")
-;
-;;; Optimize certain tests after memory stores.
-;
-;(define_peephole
-;  [(set (match_operand 0 "memory_operand" "=m")
-;	(match_operand 1 "register_operand" "r"))
-;   (set (match_operand:SI 2 "register_operand" "=r")
-;	(sign_extend:SI (match_dup 1)))
-;   (set (cc0)
-;	(match_dup 2))]
-;  "dead_or_set_p (insn, operands[2])"
-;  "*
-;  if (GET_MODE (operands[0]) == QImode)
-;    return \"cvtwb %1,%0\";
-;  else
-;    return \"cvtwh %1,%0\";
-;")
+(define_peephole
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(match_operand:SI 1 "nonimmediate_operand" "rm"))
+   (set (cc0) (match_operand:SI 2 "nonimmediate_operand" "rm"))]
+  "rtx_equal_p (operands[2], operands[0])
+   || rtx_equal_p (operands[2], operands[1])"
+  "*
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"mtstw %1,%0\";
+")
+
+;; Same for HI and QI mode move-test as well.
+
+(define_peephole
+  [(set (match_operand:HI 0 "register_operand" "=r")
+	(match_operand:HI 1 "nonimmediate_operand" "rm"))
+   (set (match_operand:SI 2 "register_operand" "=r")
+	(sign_extend:SI (match_operand:HI 3 "nonimmediate_operand" "rm")))
+   (set (cc0) (match_dup 2))]
+  "dead_or_set_p (insn, operands[2])
+   && (rtx_equal_p (operands[3], operands[0])
+       || rtx_equal_p (operands[3], operands[1]))"
+  "*
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"cvthw %1,%0\";
+")
+
+(define_peephole
+  [(set (match_operand:QI 0 "register_operand" "=r")
+	(match_operand:QI 1 "nonimmediate_operand" "rm"))
+   (set (match_operand:SI 2 "register_operand" "=r")
+	(sign_extend:SI (match_operand:QI 3 "nonimmediate_operand" "rm")))
+   (set (cc0) (match_dup 2))]
+  "dead_or_set_p (insn, operands[2])
+   && (rtx_equal_p (operands[3], operands[0])
+       || rtx_equal_p (operands[3], operands[1]))"
+  "*
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"cvtbw %1,%0\";
+")
+
+;; Optimize loops with an incremented/decremented variable.
+
+(define_peephole
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(plus:SI (match_dup 0)
+		 (const_int -1)))
+   (set (cc0)
+	(compare (match_operand:SI 1 "register_operand" "r")
+		 (match_operand:SI 2 "nonmemory_operand" "ri")))
+   (set (pc)
+	(if_then_else (match_operator:SI 3 "signed_comparison"
+			 [(cc0) (const_int 0)])
+		      (label_ref (match_operand 4 "" ""))
+		      (pc)))]
+  "(GET_CODE (operands[2]) == CONST_INT
+    ? (unsigned)INTVAL (operands[2]) + 32 >= 64
+    : 1) && (rtx_equal_p (operands[0], operands[1])
+	     || rtx_equal_p (operands[0], operands[2]))"
+  "*
+  if (rtx_equal_p (operands[0], operands[1]))
+    {
+      output_asm_insn (\"dcmpw %2,%0\", operands);
+      return \"b%N3 %l4\";
+    }
+  else
+    {
+      output_asm_insn (\"dcmpw %1,%0\", operands);
+      return \"b%R3 %l4\";
+    }
+")
+
+(define_peephole
+  [(set (match_operand:SI 0 "register_operand" "=r")
+	(plus:SI (match_dup 0)
+		 (const_int 1)))
+   (set (cc0)
+	(compare (match_operand:SI 1 "register_operand" "r")
+		 (match_operand:SI 2 "nonmemory_operand" "ri")))
+   (set (pc)
+	(if_then_else (match_operator:SI 3 "signed_comparison"
+			 [(cc0) (const_int 0)])
+		      (label_ref (match_operand 4 "" ""))
+		      (pc)))]
+  "(GET_CODE (operands[2]) == CONST_INT
+    ? (unsigned)INTVAL (operands[2]) + 32 >= 64
+    : 1) && (rtx_equal_p (operands[0], operands[1])
+	     || rtx_equal_p (operands[0], operands[2]))"
+  "*
+  if (rtx_equal_p (operands[0], operands[1]))
+    {
+      output_asm_insn (\"icmpw %2,%0\", operands);
+      return \"b%N3 %l4\";
+    }
+  else
+    {
+      output_asm_insn (\"icmpw %1,%0\", operands);
+      return \"b%R3 %l4\";
+    }
+")
+
+;; Combine two word moves with consequtive operands into one long move.
+;; Also combines immediate moves, if the high-order destination operand
+;; is loaded with 0 or -1 and the low-order destination operand is loaded
+;; with a constant with the same sign.
+
+(define_peephole
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:SI 1 "general_operand" "g"))
+   (set (match_operand:SI 2 "general_operand" "=g")
+	(match_operand:SI 3 "general_operand" "g"))]
+  "movdi_possible (operands)"
+  "*
+  output_asm_insn (\"# COMBINE movw %1,%0\", operands);
+  output_asm_insn (\"# COMBINE movw %3,%2\", operands);
+  movdi_possible (operands);
+  if (CONSTANT_P (operands[1]))
+    return (swap_operands) ? \"movl %3,%0\" : \"movl %1,%2\";
+
+  return (swap_operands) ? \"movl %1,%0\" : \"movl %3,%2\";
+")
+
+;; Optimize certain tests after memory stores.
+
+(define_peephole
+  [(set (match_operand 0 "memory_operand" "=m")
+	(match_operand 1 "register_operand" "r"))
+   (set (match_operand:SI 2 "register_operand" "=r")
+	(sign_extend:SI (match_dup 1)))
+   (set (cc0)
+	(match_dup 2))]
+  "dead_or_set_p (insn, operands[2])"
+  "*
+  cc_status.flags |= CC_NO_OVERFLOW;
+  if (GET_MODE (operands[0]) == QImode)
+    return \"cvtwb %1,%0\";
+  else
+    return \"cvtwh %1,%0\";
+")
 
 ;______________________________________________________________________
 ;
@@ -1296,7 +1243,7 @@
 
 (define_expand "extendsidi2"
   [(set (subreg:SI (match_operand:DI 0 "register_operand" "=r") 1)
-	(match_operand:SI 1 "register_operand" "r"))
+	(match_operand:SI 1 "general_operand" "g"))
    (set (subreg:SI (match_dup 0) 0)
 	(subreg:SI (match_dup 0) 1))
    (set (subreg:SI (match_dup 0) 0)
@@ -1304,32 +1251,6 @@
 		     (const_int 31)))]
   ""
   "")
-
-;; I need to debug these.
-
-;(define_expand "cmpdi"
-;  [(set (cc0)
-;	(compare (subreg:SI (match_operand:DI 0 "register_operand" "r") 0)
-;		 (subreg:SI (match_operand:DI 1 "register_operand" "r") 0)))
-;   (set (pc) (if_then_else (ne (cc0) (const_int 0))
-;			   (label_ref (match_dup 2))
-;			   (pc)))
-;   (set (cc0)
-;	(compare (subreg:SI (match_dup 0) 1)
-;		 (subreg:SI (match_dup 1) 1)))
-;   (match_dup 2)]
-;  ""
-;  "operands[2] = gen_label_rtx ();")
-;
-;(define_expand "tstdi"
-;  [(set (cc0) (subreg:SI (match_operand:DI 0 "register_operand" "r") 0))
-;   (set (pc) (if_then_else (ne (cc0) (const_int 0))
-;			   (label_ref (match_dup 1))
-;			   (pc)))
-;   (set (cc0) (subreg:SI (match_dup 0) 1))
-;   (match_dup 1)]
-;  ""
-;  "operands[1] = gen_label_rtx ();")
 
 (define_insn "adddi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -1445,11 +1366,6 @@
   output_asm_insn (\"xorw %1,%0\", xoperands);
   return \"xorw %2,%0\";
 }")
-
-(define_insn "nop"
-  [(const_int 0)]
-  ""
-  "movw gr0,gr0  # nop")
 
 ;;- Local variables:
 ;;- mode:emacs-lisp

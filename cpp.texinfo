@@ -410,21 +410,28 @@ The macro @code{__FILE_FOO_SEEN__} indicates that the file has been
 included once already; its name should begin with @samp{__}, and should
 contain the name of the file to avoid accidental conflicts.
 
-A superior way which works only in GNU C is to include the following
-command in the file, preferably at the beginning:
+One drawback of this method is that the preprocessor must scan the input
+file completely in order to determine that all of it is to be ignored.
+This makes compilation slower.  You can avoid the delay by inserting the
+following command near the beginning of file @emph{in addition to the
+conditionals described above}:
 
 @example
 #pragma once
 @end example
 
-This command tells the preprocessor to ignore any future commands to
-include the same file (whichever file the command appears in).  The
-advantage of this is that it saves the preprocessor from even having to
-reread the file.
+This command tells the GNU C preprocessor to ignore any future commands
+to include the same file (whichever file the @samp{#pragma} appears in).
+
+You should not @emph{rely} on @samp{#pragma once} to prevent multiple
+inclusion of the file.  It is just a hint, and a nonstandard one at
+that.  Most C compilers will ignore it entirely.  For this reason, you
+still need the conditionals if you want to make certain that the file's
+contents are not included twice.
 
 Note that @samp{#pragma once} works by file name; if a file has more
-than one name, it can be included once under each name, despite
-@samp{#pragma once}.
+than one name, it can be included once under each name, even in GNU CC,
+despite @samp{#pragma once}.
 
 @node Macros, Conditionals, Header Files, Top
 @section Macros
@@ -864,12 +871,12 @@ them and will generate incorrect declarations if they do not find the names
 that are expected.  You might think that the header files supplied for the
 Uglix computer would not need to test what machine they are running on,
 because they can simply assume it is the Uglix; but often they do, and they
-do so using the customary names.  As a result, very few C programs will not
+do so using the customary names.  As a result, very few C programs will
 compile with @samp{-ansi}.  We intend to avoid such problems on the GNU
 system.
 
 What, then, should you do in an ANSI C program to test the type of machine
-it will run on?
+it is to run on?
 
 GNU C offers a parallel series of symbols for this purpose, whose names
 are made from the customary ones by adding @samp{__} at the beginning
@@ -1088,8 +1095,8 @@ is useful to change the definition of a macro in mid-compilation.  You can
 inhibit the warning by undefining the macro with @samp{#undef} before the
 second definition.
 
-In order for a reefinition to be trivial, the new definition must exactly match
-the one already in effect, with two possible exceptions:
+In order for a redefinition to be trivial, the new definition must
+exactly match the one already in effect, with two possible exceptions:
 
 @itemize @bullet
 @item
@@ -1107,7 +1114,7 @@ Recall that a comment counts as whitespace.
 @subsection Pitfalls and Subtleties of Macros
 
 In this section we describe some special rules that apply to macros and
-macro expansion, and point out certain cases in which the rules have 
+macro expansion, and point out certain cases in which the rules have
 counterintuitive consequences that you must watch out for.
 
 @menu
@@ -1164,7 +1171,7 @@ above, each occurrence of a macro argument name had parentheses around it.
 In addition, another pair of parentheses usually surround the entire macro
 definition.  Here is why it is best to write macros that way.
 
-Suppose you define a macro as follows
+Suppose you define a macro as follows,
 
 @example
 #define ceil_div(x, y) (x + y - 1) / y
@@ -1252,7 +1259,7 @@ characters:
 @noindent
 Here Backslash-Newline is used to split the macro definition, which must
 be a single line, so that it resembles the way such C code would be
-layed out if not part of a macro definition.
+laid out if not part of a macro definition.
 
 A call to this macro might be @samp{SKIP_SPACES (p, lim)}.  Strictly
 speaking, the call expands to a compound statement, which is a complete
@@ -1276,7 +1283,7 @@ makes invalid C code.
 
 The definition of the macro @samp{SKIP_SPACES} can be altered to solve
 this problem, using a @samp{do @dots{} while} statement.  Here is how:
-  
+
 @example
 #define SKIP_SPACES (p, limit)     \
 do @{ register char *lim = (limit); \
@@ -1333,7 +1340,7 @@ intended.  We say that @samp{min} is an @dfn{unsafe} macro.
 
 The best solution to this problem is to define @samp{min} in a way that
 computes the value of @samp{foo (z)} only once.  The C language offers no
-way standard way to do this, but it can be done with GNU C extensions as
+standard way to do this, but it can be done with GNU C extensions as
 follows:
 
 @example
@@ -1387,12 +1394,11 @@ after one step, at @samp{(4 + foo)}.  Therefore, this macro definition
 has the possibly useful effect of causing the program to add 4 to
 the value of @samp{foo} wherever @samp{foo} is referred to.
 
-In most cases, it is a bad idea to take advantage of this feature.
-A person reading the program who sees that @samp{foo} is a variable will
-not expect that it is a macro as well.  The reader will come across a
-the identifier @samp{foo} in the program and think its value should be
-that of the variable @samp{foo}, whereas in fact the value is four
-greater.
+In most cases, it is a bad idea to take advantage of this feature.  A
+person reading the program who sees that @samp{foo} is a variable will
+not expect that it is a macro as well.  The reader will come across the
+identifier @samp{foo} in the program and think its value should be that
+of the variable @samp{foo}, whereas in fact the value is four greater.
 
 The special rule for self-reference applies also to @dfn{indirect}
 self-reference.  This is the case where a macro @var{x} expands to use a
@@ -1564,7 +1570,7 @@ difference is that the argument of @samp{xstr} is expanded at prescan
 (because @samp{xstr} does not specify stringification or concatenation of
 the argument).  The result of prescan then forms the actual argument for
 @samp{str}.  @samp{str} uses its argument without prescan because it
-performs strigification; but it cannot prevent or undo the prescanning
+performs stringification; but it cannot prevent or undo the prescanning
 already done by @samp{xstr}.
 
 @node Cascaded Macros,, Argument Prescan, Macro Pitfalls
@@ -1661,7 +1667,7 @@ reference.
 Most simple programs that are intended to run on only one machine will
 not need to use preprocessor conditionals.
 
-@node Conditional Syntax, Conditionals-Macros, Conditional Uses, Conditionals
+@node Conditional Syntax, Deleted Code, Conditional Uses, Conditionals
 @subsection Syntax of Conditionals
 
 @findex #if
@@ -1738,7 +1744,7 @@ However, the @samp{#if}'s and @samp{#endif}'s must balance.
 @subsubsection The @samp{#else} Command
 
 @findex #else
-The @samp{#else} command can be added a conditional to provide alternative
+The @samp{#else} command can be added to a conditional to provide alternative
 text to be used if the condition is false.  This looks like
 
 @example
@@ -1991,7 +1997,7 @@ Predefined}.
 @findex #pragma
 @findex #ident
 @cindex null command
-This section describes three additional preprocesor commands.  They are
+This section describes three additional preprocessor commands.  They are
 not very useful, but are mentioned for completeness.
 
 The @dfn{null command} consists of a @samp{#} followed by a Newline, with
@@ -2007,10 +2013,10 @@ arbitrary implementation-defined effect.  In the GNU C preprocessor,
 @samp{#pragma} commands are ignored, except for @samp{#pragma once}
 (@pxref{Once-Only}).
 
-The @samp{#ident} is supported for compatibility with certain other
-systems.  It is followed by a line of text.  On certain systems, the
-text is copied into a special place in the object file; on most systems,
-the text is ignored and this directive has no effect.
+The @samp{#ident} command is supported for compatibility with certain
+other systems.  It is followed by a line of text.  On certain systems,
+the text is copied into a special place in the object file; on most
+systems, the text is ignored and this directive has no effect.
 
 @node Output, Invocation, Other Commands, Top
 @section C Preprocessor Output
@@ -2038,7 +2044,7 @@ The third field, @var{flag}, may be a number, or may be absent.  It is
 to an old source file at the end of an included file.  It is absent
 otherwise.
 
-@node Invocation,, Output, Top
+@node Invocation, Concept Index, Output, Top
 @section Invoking the C Preprocessor
 
 Most often when you use the C preprocessor you will not have to invoke it

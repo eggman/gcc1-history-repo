@@ -290,8 +290,9 @@ lshift_double (l1, h1, count, prec, lv, hv, arith)
     }
 
   encode (arg1, l1, h1);
-  if (prec < HOST_BITS_PER_INT)
-    count &= (1 << prec) - 1;
+
+  if (count > prec)
+    count = prec;
 
   while (count > 0)
     {
@@ -324,8 +325,9 @@ rshift_double (l1, h1, count, prec, lv, hv, arith)
   register int carry;
 
   encode (arg1, l1, h1);
-  if (prec < HOST_BITS_PER_INT)
-    count &= (1 << prec) - 1;
+
+  if (count > prec)
+    count = prec;
 
   carry = arith && arg1[7] >> 7;
   while (count > 0)
@@ -363,8 +365,9 @@ lrotate_double (l1, h1, count, prec, lv, hv)
     }
 
   encode (arg1, l1, h1);
-  if (prec < HOST_BITS_PER_INT)
-    count &= (1 << prec) - 1;
+
+  if (count > prec)
+    count = prec;
 
   carry = arg1[7] >> 7;
   while (count > 0)
@@ -395,8 +398,9 @@ rrotate_double (l1, h1, count, prec, lv, hv)
   register int carry;
 
   encode (arg1, l1, h1);
-  if (prec < HOST_BITS_PER_INT)
-    count &= (1 << prec) - 1;
+
+  if (count > prec)
+    count = prec;
 
   carry = arg1[0] & 1;
   while (count > 0)
@@ -844,7 +848,7 @@ combine (code, arg1, arg2)
 	case MINUS_EXPR:
 	  if (int1h == 0 && int1l == 0)
 	    {
-	      t = build_int_2 (- int2l, - int2h);
+	      t = build_int_2 (- int2l, - int2h - (int2l != 0));
 	      break;
 	    }
 	  if (int2h == 0 && int2l == 0)
@@ -986,7 +990,10 @@ combine (code, arg1, arg2)
       register REAL_VALUE_TYPE value;
 
       if (setjmp (combine_error))
-	return build (code, TREE_TYPE (arg1), arg1, arg2);
+	{
+	  warning ("floating overflow in constant folding");
+	  return build (code, TREE_TYPE (arg1), arg1, arg2);
+	}
       set_float_handler (combine_error);
 
 #ifdef REAL_ARITHMETIC
@@ -1686,13 +1693,12 @@ fold (expr)
 	if (constop && TREE_CODE (varop) == POSTINCREMENT_EXPR)
 	  {
 	    tree newconst
-	      = fold (build (PLUS_EXPR, TREE_TYPE (t),
+	      = fold (build (PLUS_EXPR, TREE_TYPE (constop),
 			     constop, TREE_OPERAND (varop, 1)));
 	    /* This optimization is invalid for ordered comparisons
-	       if CONST+INCR overflows!
-	       We can assume that address + integer will not overflow.  */
-	    if (TREE_CODE (newconst) != INTEGER_CST
-		|| ! tree_int_cst_lt (newconst, constop)
+	       if CONST+INCR overflows or if foo+incr might overflow.
+	       For pointer types we assume overflow doesn't happen.  */
+	    if (TREE_CODE (TREE_TYPE (varop)) == POINTER_TYPE
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
 		TREE_SET_CODE (varop, PREINCREMENT_EXPR);
@@ -1703,10 +1709,9 @@ fold (expr)
 	else if (constop && TREE_CODE (varop) == POSTDECREMENT_EXPR)
 	  {
 	    tree newconst
-	      = fold (build (MINUS_EXPR, TREE_TYPE (t),
+	      = fold (build (MINUS_EXPR, TREE_TYPE (constop),
 			     constop, TREE_OPERAND (varop, 1)));
-	    if (TREE_CODE (newconst) != INTEGER_CST
-		|| tree_int_cst_lt (newconst, constop)
+	    if (TREE_CODE (TREE_TYPE (varop)) == POINTER_TYPE
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
 		TREE_SET_CODE (varop, PREDECREMENT_EXPR);

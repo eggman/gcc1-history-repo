@@ -1432,7 +1432,10 @@ do { union { float f; long l;} tem;			\
     {									\
       output_address (XEXP (X, 0));					\
       if (CODE == 'd' && ! TARGET_68020					\
-	  && CONSTANT_ADDRESS_P (XEXP (X, 0)))				\
+	  && CONSTANT_ADDRESS_P (XEXP (X, 0))				\
+	  && !(GET_CODE (XEXP (X, 0)) == CONST_INT			\
+	       && INTVAL (XEXP (X, 0)) < 0x8000				\
+	       && INTVAL (XEXP (X, 0)) >= -0x8000))			\
 	fprintf (FILE, ":l");						\
     }									\
   else if ((CODE == 'y' || CODE == 'w')					\

@@ -90,7 +90,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* -m68000 requires special flags to the assembler.
    The -C flag is passed to a modified GNU assembler to cause COFF
-   modules to be produced. Remove it if you're not using this. */
+   modules to be produced.  Remove it if you're not using this.
+   (See vasta@apollo.com.)  */
 
 #define ASM_SPEC \
  "-C %{m68000:-mc68010}%{mc68000:-mc68010}%{!mc68000:%{!m68000:-mc68020}}"

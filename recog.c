@@ -106,7 +106,7 @@ next_insns_test_no_inequality (insn)
 {
   register rtx next = NEXT_INSN (insn);
 
-  for (;; next = NEXT_INSN (next))
+  for (; next != 0; next = NEXT_INSN (next))
     {
       if (GET_CODE (next) == CODE_LABEL
 	  || GET_CODE (next) == BARRIER)
@@ -121,6 +121,7 @@ next_insns_test_no_inequality (insn)
       if (! reg_mentioned_p (cc0_rtx, PATTERN (next)))
 	return 1;
     }
+  return 1;
 }
 
 static int
@@ -926,6 +927,7 @@ constrain_operands (insn_code_num)
 	      case '+':
 	      case '?':
 	      case '#':
+	      case '&':
 	      case '!':
 	      case '*':
 	      case '%':

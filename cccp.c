@@ -935,7 +935,7 @@ main (argc, argv)
       }
       /* Output P, but remove known suffixes.  */
       len = strlen (p);
-      if (p[len - 2] == '.' && p[len - 1] == 'c')
+      if (p[len - 2] == '.' && (p[len - 1] == 'c' || p[len - 1] == 'C'))
 	deps_output (p, len - 2);
       else if (p[len - 3] == '.'
 	       && p[len - 2] == 'c'
@@ -1443,8 +1443,12 @@ do { ip = &instack[indepth];		\
 	case '\n':
 	  ++ip->lineno;
 	  ++op->lineno;
-	  if (traditional)
+	  /* Traditionally, end of line ends a string constant with no error.
+	     So exit the loop and record the new line.  */
+	  if (traditional) {
+	    beg_of_line = ibp;
 	    goto while2end;
+	  }
 	  if (pedantic || c == '\'') {
 	    error_with_line (line_for_error (start_line),
 			     "unterminated string or character constant");
@@ -1605,8 +1609,12 @@ do { ip = &instack[indepth];		\
 	  /* A sign can be part of a preprocessing number
 	     if it follows an e.  */
 	  if (c == 'e' || c == 'E') {
-	    if (ibp < limit && (*ibp == '+' || *ibp == '-'))
+	    if (ibp < limit && (*ibp == '+' || *ibp == '-')) {
 	      *obp++ = *ibp++;
+	      /* But traditional C does not let the token go past the sign.  */
+	      if (traditional)
+		break;
+	    }
 	  }
 	}
 	break;
@@ -1832,10 +1840,14 @@ randomchar:
 		    POPMACRO;
 		    RECACHE;
 		  }
-		  /* A comment: copy it to the output unchanged.  */
+		  /* A comment: copy it unchanged or discard it.  */
 		  else if (*ibp == '/' && ibp+1 != limit && ibp[1] == '*') {
-		    *obp++ = '/';
-		    *obp++ = '*';
+		    if (put_out_comments) {
+		      *obp++ = '/';
+		      *obp++ = '*';
+		    } else if (! traditional) {
+		      *obp++ = ' ';
+		    }
 		    ibp += 2;
 		    while (ibp + 1 != limit
 			   && !(ibp[0] == '*' && ibp[1] == '/')) {
@@ -1846,11 +1858,16 @@ randomchar:
 			++ip->lineno;
 			++op->lineno;
 		      }
-		      *obp++ = *ibp++;
+		      if (put_out_comments)
+			*obp++ = *ibp++;
+		      else
+			ibp++;
 		    }
 		    ibp += 2;
-		    *obp++ = '*';
-		    *obp++ = '/';
+		    if (put_out_comments) {
+		      *obp++ = '*';
+		      *obp++ = '/';
+		    }
 		  }
 		  else if (is_space[*ibp]) {
 		    *obp++ = *ibp++;
@@ -2125,7 +2142,6 @@ handle_directive (ip, op)
 	  if (unterminated) {
 	    if (traditional) {
 	      /* Traditional preprocessing permits unterminated strings.  */
-	      --bp;
 	      ip->bufp = bp;
 	      goto endloop1;
 	    }
@@ -2222,7 +2238,7 @@ handle_directive (ip, op)
 
 	  case '\'':
 	  case '\"':
-	    if (!traditional) {
+	    {
 	      register U_CHAR *bp1
 		= skip_quoted_string (xp - 1, limit, ip->lineno, 0, 0, 0);
 	      while (xp != bp1)
@@ -2231,16 +2247,18 @@ handle_directive (ip, op)
 	    break;
 
 	  case '/':
-	    if (keep_comments)
-	      break;
 	    if (*xp == '*'
 		|| (cplusplus && *xp == '/')) {
-	      if (traditional)
+	      ip->bufp = xp + 1;
+	      skip_to_end_of_comment (ip, 0);
+	      if (keep_comments)
+		while (xp != ip->bufp)
+		  *cp++ = *xp++;
+	      /* Delete or replace the slash.  */
+	      else if (traditional)
 		cp--;
 	      else
 		cp[-1] = ' ';
-	      ip->bufp = xp + 1;
-	      skip_to_end_of_comment (ip, 0);
 	      xp = ip->bufp;
 	    }
 	  }
@@ -2781,14 +2799,21 @@ do_define (buf, limit, op, keyword)
 
   while (is_hor_space[*bp])
     bp++;
-  if (!is_idstart[*bp])
-    warning ("macro name starts with a digit");
 
   symname = bp;			/* remember where it starts */
   while (is_idchar[*bp] && bp < limit) {
     bp++;
   }
   sym_length = bp - symname;
+  if (sym_length == 0)
+    error ("invalid macro name");
+  else if (!is_idstart[*symname]) {
+    U_CHAR *msg;			/* what pain... */
+    msg = (U_CHAR *) alloca (sym_length + 1);
+    bcopy (symname, msg, sym_length);
+    msg[sym_length] = 0;
+    error ("invalid macro name `%s'", msg);
+  }
 
   /* lossage will occur if identifiers or control keywords are broken
      across lines using backslash.  This is not the right place to take
@@ -3634,8 +3659,7 @@ skip_if_group (ip, any)
       break;
     case '\"':
     case '\'':
-      if (!traditional)
-	bp = skip_quoted_string (bp - 1, endb, ip->lineno, &ip->lineno, 0, 0);
+      bp = skip_quoted_string (bp - 1, endb, ip->lineno, &ip->lineno, 0, 0);
       break;
     case '\\':
       /* Char after backslash loses its special meaning.  */
@@ -3994,6 +4018,13 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
       }
       bp++;
     } else if (c == '\n') {
+      if (traditional) {
+ 	/* Unterminated strings and character constants are 'legal'.  */
+ 	bp--;	/* Don't consume the newline. */
+ 	if (eofp)
+ 	  *eofp = 1;
+ 	break;
+      }
       if (match == '\'') {
 	error_with_line (line_for_error (start_line),
 			 "unterminated character constant");
@@ -4007,6 +4038,7 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
 	  *eofp = 1;
 	break;
       }
+      /* If not traditional, then allow newlines inside strings.  */
       if (count_newlines)
 	++*count_newlines;
     } else if (c == match)
@@ -4524,7 +4556,13 @@ macarg1 (start, limit, depthptr, newlines, comments)
       break;
     case '\\':
       /* Backslash makes following char not special.  */
-      if (bp + 1 < limit) bp++;
+      if (bp + 1 < limit)
+	{
+	  bp++;
+	  /* But count source lines anyway.  */
+	  if (*bp == '\n')
+	    ++*newlines;
+	}
       break;
     case '\n':
       ++*newlines;
@@ -5170,10 +5208,17 @@ make_definition (str)
   buf = str;
   p = str;
   while (is_idchar[*p]) p++;
+  if (p == str) {
+    error ("malformed option `-D %s'", str);
+    return;
+  }
   if (*p == 0) {
     buf = (U_CHAR *) alloca (p - buf + 4);
     strcpy ((char *)buf, str);
     strcat ((char *)buf, " 1");
+  } else if (*p != ' ') {
+    error ("malformed option `-D %s'", str);
+    return;
   }
   
   ip = &instack[++indepth];

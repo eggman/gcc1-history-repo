@@ -407,7 +407,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    invisible first argument.  */
 
 #define INIT_CUMULATIVE_ARGS(CUM,FNTYPE)	\
- ((CUM).ints = ((FNTYPE) != 0 && TYPE_MODE (TREE_TYPE (FNTYPE)) == BLKmode \
+ ((CUM).ints = ((FNTYPE) != 0 && aggregate_value_p ((FNTYPE)) \
 		? 4 : 0),			\
   (CUM).floats = 0)
 
@@ -613,7 +613,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* #define HAVE_POST_DECREMENT */
 
 /* #define HAVE_PRE_DECREMENT */
-#define HAVE_PRE_INCREMENT
+/* #define HAVE_PRE_INCREMENT */
 
 /* Macros to check register numbers against specific register classes.  */
 
@@ -949,6 +949,13 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_OUTPUT_LABEL(FILE,NAME)	\
   do { assemble_name (FILE, NAME); fputs (":\n", FILE); } while (0)
 
+/* Likewise, for function names.  The difference is that we output a no-op
+   just before the beginning of the function, to ensure that there does not
+   appear to be a delayed branch there.
+   Such a thing would confuse interrupt recovery.  */
+#define ASM_DECLARE_FUNCTION_NAME(FILE,NAME,DECL) \
+  do { fprintf (FILE, "\tnop\n"); ASM_OUTPUT_LABEL (FILE,NAME); } while (0)
+
 /* This is how to output a command to make the user-level label named NAME
    defined for reference from other files.  */
 
@@ -1146,8 +1153,8 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (GET_CODE (X) == REG)						\
     fprintf (FILE, "%s", reg_names[REGNO (X)]);				\
-  else if ((CODE) == 'm')					\
-    output_address (XEXP (X, 0));				\
+  else if ((CODE) == 'm')						\
+    output_address (XEXP (X, 0));					\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
   else if ((CODE) == 'r' && (X) == const0_rtx)				\
@@ -1155,7 +1162,12 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
   else if ((CODE) == 'r' && (X) == CONST0_RTX (GET_MODE (X)))		\
     fprintf (FILE, "f0");						\
   else if (GET_CODE (X) == CONST_DOUBLE)				\
-    abort ();								\
+    {									\
+      if (GET_MODE (X) == SFmode)					\
+        fprintf (FILE, "0x%x", CONST_DOUBLE_LOW (X));			\
+      else								\
+        abort ();							\
+      }									\
   else									\
     output_addr_const (FILE, X); }
 

@@ -55,9 +55,11 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "flags.h"
 #include "insn-flags.h"
 #include "insn-config.h"
+#include "insn-codes.h"
 #include "expr.h"
 #include "regs.h"
 #include "hard-reg-set.h"
+#include "recog.h"
 
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
@@ -2454,61 +2456,54 @@ pushcase_range (value1, value2, label)
    expressions of a switch.  Also, warn if there are any extra
    switch cases that are *not* elements of the enumerated type. */
 
-void
-check_for_full_enumeration_handling ()
+static void
+check_for_full_enumeration_handling (type)
+     tree type;
 {
-  tree index_expr = case_stack->data.case_stmt.index_expr;
-
-  if (TREE_CODE (index_expr) == INTEGER_CST)
-    return;
-  else
-    {
-      register struct case_node *n;
-      register tree chain;
-      tree enum_node = TREE_OPERAND (index_expr, 0);
+  register struct case_node *n;
+  register tree chain;
           
-      /* The time complexity of this loop is currently O(N * M), with
-         N being the number of enumerals in the enumerated type, and 
-         M being the number of case expressions in the switch. */
+  /* The time complexity of this loop is currently O(N * M), with
+     N being the number of enumerals in the enumerated type, and 
+     M being the number of case expressions in the switch. */
              
-      for (chain = TYPE_VALUES (TREE_TYPE (enum_node));
-           chain; 
-           chain = TREE_CHAIN (chain))
-        {
-          /* Find a match between enumeral and case expression, if possible.
-             Quit looking when we've gone too far (since case expressions
-             are kept sorted in ascending order).  Warn about enumerals not
-             handled in the switch statement case expression list. */
+  for (chain = TYPE_VALUES (type);
+       chain; 
+       chain = TREE_CHAIN (chain))
+    {
+      /* Find a match between enumeral and case expression, if possible.
+	 Quit looking when we've gone too far (since case expressions
+	 are kept sorted in ascending order).  Warn about enumerals not
+	 handled in the switch statement case expression list. */
 
-          for (n = case_stack->data.case_stmt.case_list; 
-               n && tree_int_cst_lt (n->high, TREE_VALUE (chain));
-               n = n->right)
-            ;
+      for (n = case_stack->data.case_stmt.case_list; 
+	   n && tree_int_cst_lt (n->high, TREE_VALUE (chain));
+	   n = n->right)
+	;
 
-          if (!(n && tree_int_cst_equal (n->low, TREE_VALUE (chain))))
-	    warning ("enumerated value `%s' not handled in switch",
-		     IDENTIFIER_POINTER (TREE_PURPOSE (chain)));
-        }
+      if (!(n && tree_int_cst_equal (n->low, TREE_VALUE (chain))))
+	warning ("enumerated value `%s' not handled in switch",
+		 IDENTIFIER_POINTER (TREE_PURPOSE (chain)));
+    }
 
-      /* Now we go the other way around; we warn if there are case 
-         expressions that don't correspond to enumerals.  This can
-         occur since C and C++ don't enforce type-checking of 
-         assignments to enumeration variables. */
+  /* Now we go the other way around; we warn if there are case 
+     expressions that don't correspond to enumerals.  This can
+     occur since C and C++ don't enforce type-checking of 
+     assignments to enumeration variables. */
 
-      for (n = case_stack->data.case_stmt.case_list; n; n = n->right)
-        {
-          for (chain = TYPE_VALUES ( TREE_TYPE (enum_node));
-               chain && !tree_int_cst_equal (n->low, TREE_VALUE (chain)); 
-               chain = TREE_CHAIN (chain))
-            ;
+  for (n = case_stack->data.case_stmt.case_list; n; n = n->right)
+    {
+      for (chain = TYPE_VALUES (type);
+	   chain && !tree_int_cst_equal (n->low, TREE_VALUE (chain)); 
+	   chain = TREE_CHAIN (chain))
+	;
 
-          if (!chain)
-	    warning ("case value `%d' not in enumerated type `%s'",
-		     TREE_INT_CST_LOW (n->low), 
-		     IDENTIFIER_POINTER (TREE_CODE (TYPE_NAME (TREE_TYPE (enum_node))) == IDENTIFIER_NODE
-					 ? TYPE_NAME (TREE_TYPE (enum_node))
-					 : DECL_NAME (TYPE_NAME (TREE_TYPE (enum_node)))));
-        }
+      if (!chain)
+	warning ("case value `%d' not in enumerated type `%s'",
+		 TREE_INT_CST_LOW (n->low), 
+		 IDENTIFIER_POINTER (TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE
+				     ? TYPE_NAME (type)
+				     : DECL_NAME (TYPE_NAME (type))));
     }
 }
 
@@ -2545,8 +2540,9 @@ expand_end_case (orig_index)
 
       if (!thiscase->data.case_stmt.default_label 
 	  && TREE_CODE (TREE_TYPE (orig_index)) == ENUMERAL_TYPE
+	  && TREE_CODE (index_expr) != INTEGER_CST
 	  && warn_switch)
-	check_for_full_enumeration_handling ();
+	check_for_full_enumeration_handling (TREE_TYPE (orig_index));
 
       /* If we don't have a default-label, create one here,
 	 after the body of the switch.  */
@@ -3414,6 +3410,11 @@ fixup_var_refs_1 (var, x, insn)
 	{
 	  x = fixup_stack_1 (x, insn);
 	  tem = gen_reg_rtx (GET_MODE (x));
+	  /* Put new insn before a CALL, before any USEs before it.  */
+	  if (GET_CODE (insn) == CALL_INSN)
+	    while (PREV_INSN (insn) != 0 && GET_CODE (PREV_INSN (insn)) == INSN
+		   && GET_CODE (PATTERN (PREV_INSN (insn))) == USE)
+	      insn = PREV_INSN (insn);
 	  emit_insn_before (gen_move_insn (tem, x), insn);
 	  return tem;
 	}
@@ -3494,6 +3495,35 @@ fixup_var_refs_1 (var, x, insn)
 	    && GET_CODE (XEXP (outersrc, 0)) == SUBREG
 	    && SUBREG_REG (XEXP (outersrc, 0)) == var)
 	  XEXP (outersrc, 0) = fixup_memory_subreg (XEXP (outersrc, 0), insn);
+
+	/* Make sure that the machine's SIGN_EXTRACT and ZERO_EXTRACT insns
+	   accept a memory operand.  */
+#ifdef HAVE_extzv
+	if (GET_CODE (outersrc) == ZERO_EXTRACT
+	    && ! ((*insn_operand_predicate[(int) CODE_FOR_extzv][0])
+		  (XEXP (outersrc, 0), VOIDmode)))
+	  XEXP (outersrc, 0) = src
+	    = fixup_var_refs_1 (var, XEXP (outersrc, 0), insn);
+#endif
+#ifdef HAVE_extv
+	if (GET_CODE (outersrc) == SIGN_EXTRACT
+	    && ! ((*insn_operand_predicate[(int) CODE_FOR_extv][0])
+		  (XEXP (outersrc, 0), VOIDmode)))
+	  XEXP (outersrc, 0) = src
+	    = fixup_var_refs_1 (var, XEXP (outersrc, 0), insn);
+#endif
+#ifdef HAVE_insv
+	if (GET_CODE (outerdest) == ZERO_EXTRACT
+	    && ! ((*insn_operand_predicate[(int) CODE_FOR_insv][0])
+		  (XEXP (outerdest, 0), VOIDmode)))
+	  {
+	    rtx tem = gen_reg_rtx (GET_MODE (XEXP (outerdest, 0)));
+
+	    emit_insn_before (gen_move_insn (tem, XEXP (outerdest, 0)), insn);
+	    emit_insn_after (gen_move_insn (XEXP (outerdest, 0), tem), insn);
+	    dest = XEXP (outerdest, 0) = tem;
+	  }
+#endif
 
 	/* Make sure a MEM inside a SIGN_EXTRACT has QImode
 	   since that's what bit-field insns want.  */
@@ -3945,6 +3975,21 @@ aggregate_value_p (exp)
     return 1;
   return 0;
 }
+
+/* Convert a mem ref into one with a valid memory address.
+   Pass through anything else unchanged.  */
+
+rtx
+validize_mem (ref)
+     rtx ref;
+{
+  if (GET_CODE (ref) != MEM)
+    return ref;
+  if (memory_address_p (GET_MODE (ref), XEXP (ref, 0)))
+    return ref;
+  return change_address (ref, VOIDmode,
+			 memory_address (GET_MODE (ref), XEXP (ref, 0)));
+}
 
 /* Assign RTL expressions to the function's parameters.
    This may involve copying them into registers and using
@@ -4290,8 +4335,9 @@ assign_parms (fndecl)
 					int_size_in_bytes (TREE_TYPE (parm)));
 
 	      move_block_from_reg (REGNO (entry_parm), stack_parm,
-				   int_size_in_bytes (TREE_TYPE (parm))
-				   / UNITS_PER_WORD);
+				   ((int_size_in_bytes (TREE_TYPE (parm))
+				     + UNITS_PER_WORD - 1)
+				    / UNITS_PER_WORD));
 	    }
 	  DECL_RTL (parm) = stack_parm;
 	}
@@ -4313,9 +4359,9 @@ assign_parms (fndecl)
 
 	  /* Copy the value into the register.  */
 	  if (GET_MODE (parmreg) != GET_MODE (entry_parm))
-	    convert_move (parmreg, entry_parm, 0);
+	    convert_move (parmreg, validize_mem (entry_parm), 0);
 	  else
-	    emit_move_insn (parmreg, entry_parm);
+	    emit_move_insn (parmreg, validize_mem (entry_parm));
 
 	  /* In any case, record the parm's desired stack location
 	     in case we later discover it must live in the stack.  */
@@ -4360,7 +4406,8 @@ assign_parms (fndecl)
 	      if (stack_parm == 0)
 		stack_parm = assign_stack_local (GET_MODE (entry_parm),
 						 GET_MODE_SIZE (GET_MODE (entry_parm)));
-	      emit_move_insn (stack_parm, entry_parm);
+	      emit_move_insn (validize_mem (stack_parm),
+			      validize_mem (entry_parm));
 	    }
 
 	  DECL_RTL (parm) = stack_parm;
@@ -4511,6 +4558,10 @@ init_function_start (subr)
   /* No invalid stack slots have been made yet.  */
   invalid_stack_slot = 0;
 
+  /* No parm regs have been allocated.
+     (This is important for output_inline_function.)  */
+  max_parm_reg = FIRST_PSEUDO_REGISTER;
+
   /* Initialize the RTL mechanism.  */
   init_emit (write_symbols);
 
@@ -4607,6 +4658,10 @@ expand_function_start (subr, parms_have_cleanups)
 {
   register int i;
   tree tem;
+
+  /* Make sure volatile mem refs aren't considered
+     valid operands of arithmetic insns.  */
+  init_recog ();
 
   /* If the parameters of this function need cleaning up, get a label
      for the beginning of the code which executes those cleanups.  This must
@@ -4838,9 +4893,15 @@ expand_function_end (filename, line)
     {
       rtx value_address = XEXP (DECL_RTL (DECL_RESULT (current_function_decl)), 0);
       tree type = TREE_TYPE (DECL_RESULT (current_function_decl));
+#ifdef FUNCTION_OUTGOING_VALUE
+      rtx outgoing
+	= FUNCTION_OUTGOING_VALUE (build_pointer_type (type),
+				   current_function_decl);
+#else
       rtx outgoing
 	= hard_function_value (build_pointer_type (type),
 			       current_function_decl);
+#endif
 
       REG_FUNCTION_VALUE_P (outgoing) = 1;
       emit_move_insn (outgoing, value_address);

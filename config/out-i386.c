@@ -289,13 +289,13 @@ fp_pop_int (target)
       output_asm_insn (AS2 (sub%L0,%1,%0), xxops);
       xxops[0] = AT_SP (Pmode);
       /* fp_pop_level--; */
-      output_asm_insn ("fistps %0", xxops);
+      output_asm_insn ("fistp%L0 %0", xxops);
       output_asm_insn ("pop%L0 %0", &target);
     }
   else if (GET_CODE (target) == MEM)
     {
       /* fp_pop_level--; */
-      output_asm_insn ("fistps %0", &target);
+      output_asm_insn ("fistp%L0 %0", &target);
     }
   else abort ();
 }
@@ -366,6 +366,8 @@ singlemove_string (operands)
       return output_move_const_single (operands);
     }
   else if (GET_CODE (operands[0]) == REG || GET_CODE (operands[1]) == REG)
+    return AS2 (mov%L0,%1,%0);
+  else if (CONSTANT_P (operands[1]))
     return AS2 (mov%L0,%1,%0);
   else
     {
@@ -855,11 +857,14 @@ hard_regno_mode_ok (regno, mode)
 }
 
 /* Print the name of a register based on its machine mode and number.
-   If CODE is 'w', pretend the mode is HImode.  */
+   If CODE is 'w', pretend the mode is HImode.
+   If CODE is 'b', pretend the mode is QImode.  */
 
 #define PRINT_REG(X, CODE, FILE) \
   do { fprintf (FILE, "%s", RP);			\
-       switch ((CODE == 'w' ? 2 : GET_MODE_SIZE (GET_MODE (X)))) \
+       switch ((CODE == 'w' ? 2 			\
+		: CODE == 'b' ? 1			\
+		: GET_MODE_SIZE (GET_MODE (X))))	\
 	 {						\
 	 case 4:					\
 	 case 8:					\
@@ -1093,6 +1098,24 @@ print_operand_address (file, addr)
 	  PRINT_B_I_S (breg, ireg, scale, file);
 	  break;
 	}
+
+    case MULT:
+      {
+	int scale;
+	if (GET_CODE (XEXP (addr, 0)) == CONST_INT)
+	  {
+	    scale = INTVAL (XEXP (addr, 0));
+	    ireg = XEXP (addr, 1);
+	  }
+	else
+	  {
+	    scale = INTVAL (XEXP (addr, 1));
+	    ireg = XEXP (addr, 0);
+	  }
+	output_addr_const (file, const0_rtx);
+	PRINT_B_I_S ((rtx) 0, ireg, scale, file);
+      }
+      break;
 
     default:
       if (GET_CODE (addr) == CONST_INT

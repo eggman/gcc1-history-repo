@@ -18,6 +18,8 @@ along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
+#undef FFS  /* Some systems predefine this symbol; don't let it interfere.  */
+
 /* Register Transfer Language EXPRESSIONS CODES */
 
 #define RTX_CODE	enum rtx_code
@@ -274,14 +276,15 @@ typedef struct rtvec_def{
    The REG_WAS_0 note is actually an INSN_LIST, not an EXPR_LIST.
      REG_NONNEG means that the register is always nonnegative during
    the containing loop.  This is used in branches so that decrement and
-   branch instructions terminating on zero can be matched.  */
+   branch instructions terminating on zero can be matched.
+     REG_UNSET identifies a pseudo-reg used in this insn and never set.  */
 
 #define REG_NOTES(INSN)	((INSN)->fld[6].rtx)
 
 /* Don't forget to change reg_note_name in rtl.c.  */
 enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 		REG_EQUAL = 5, REG_RETVAL = 6, REG_LIBCALL = 7,
-		REG_NONNEG = 8 };
+		REG_NONNEG = 8, REG_UNSET = 9 };
 
 /* Extract the reg-note kind from an EXPR_LIST.  */
 #define REG_NOTE_KIND(LINK) ((enum reg_note) GET_MODE (LINK))

@@ -852,6 +852,9 @@ load_opcode (mode, args, reg)
 	opcode = "ld.l";
       break;
 
+    case DImode:
+      if (!FP_REG_P (reg))
+	abort ();
     case DFmode:
       opcode = "fld.d";
       break;
@@ -896,6 +899,9 @@ store_opcode (mode, args, reg)
 	opcode = "st.l";
       break;
 
+    case DImode:
+      if (!FP_REG_P (reg))
+	abort ();
     case DFmode:
       opcode = "fst.d";
       break;

@@ -109,7 +109,7 @@ static int total_distrib_attempts, total_distrib_merges_1, total_distrib_merges_
    proves to be a bad idea because it makes it hard to compare
    the dumps produced by earlier passes with those from later passes.  */
 
-static short *uid_cuid;
+static int *uid_cuid;
 
 /* Get the cuid of an insn.  */
 
@@ -236,7 +236,7 @@ combine_instructions (f, nregs)
     if (INSN_UID (insn) > i)
       i = INSN_UID (insn);
 
-  uid_cuid = (short *) alloca ((i + 1) * sizeof (short));
+  uid_cuid = (int *) alloca ((i + 1) * sizeof (int));
 
   /* Compute the mapping from uids to cuids.
      Cuids are numbers assigned to insns, like uids,
@@ -420,9 +420,20 @@ try_combine (i3, i2, i1)
   /* Don't eliminate a store in the stack pointer.  */
   if (i2dest == stack_pointer_rtx)
     return 0;
+  /* Don't install a subreg involving two modes not tieable.
+     It can worsen register allocation, and can even make invalid reload insns,
+     since the reg inside may need to be copied from in the outside mode,
+     and that may be invalid if it is an fp reg copied in integer mode.  */
+  if (GET_CODE (i2src) == SUBREG
+      && ! MODES_TIEABLE_P (GET_MODE (i2src), GET_MODE (SUBREG_REG (i2src))))
+    return 0;
   if (GET_CODE (i2dest) != CC0
       && (GET_CODE (i2dest) != REG
 	  || (GET_CODE (i2src) == REG
+	      /* Do allow the combination of y = x; x = y; (with x dead)
+		 because the result will turn into nothing.  */
+	      && !(GET_CODE (PATTERN (i3)) == SET
+		   && i2src == SET_DEST (PATTERN (i3)))
 	      && (!flag_combine_regs
 		  /* Don't substitute a function value reg for any other.  */
 		  || FUNCTION_VALUE_REGNO_P (REGNO (i2src))))
@@ -430,6 +441,8 @@ try_combine (i3, i2, i1)
 	  /* Don't substitute into an incremented register.  */
 	  || find_reg_note (i3, REG_INC, i2dest)
 	  || use_crosses_set_p (i2src, INSN_CUID (i2))))
+    return 0;
+  if (GET_CODE (i2src) == ASM_OPERANDS && MEM_VOLATILE_P (i2src))
     return 0;
   /* Don't substitute for a register intended as a clobberable operand.  */
   if (GET_CODE (PATTERN (i3)) == PARALLEL)
@@ -451,6 +464,10 @@ try_combine (i3, i2, i1)
 	}
       if (i1dest == stack_pointer_rtx)
 	return 0;
+      if (GET_CODE (i1src) == SUBREG
+	  && ! MODES_TIEABLE_P (GET_MODE (i1src),
+				GET_MODE (SUBREG_REG (i1src))))
+	return 0;
       if (GET_CODE (i1dest) != CC0
 	  && (GET_CODE (i1dest) != REG
 	      || (GET_CODE (i1src) == REG
@@ -460,6 +477,8 @@ try_combine (i3, i2, i1)
 	      || find_reg_note (i3, REG_INC, i1dest)
 	      || find_reg_note (i2, REG_INC, i1dest)
 	      || use_crosses_set_p (i1src, INSN_CUID (i1))))
+	return 0;
+      if (GET_CODE (i1src) == ASM_OPERANDS && MEM_VOLATILE_P (i1src))
 	return 0;
       /* Don't substitute for a register intended as a clobberable operand.  */
       if (GET_CODE (PATTERN (i3)) == PARALLEL)
@@ -1347,7 +1366,7 @@ subst (x, from, to)
       /* hacks added by tiemann.  */
       /* Change (sign_extend:M (subreg:N (and:M ... <const>) 0))
 	 to (and:M ...), provided the result fits in mode N,
-	 and the high bit of the constant is 0.  */
+	 and the high bit of the constant is 0 in mode N.  */
       if (GET_CODE (XEXP (x, 0)) == SUBREG
 	  && SUBREG_REG (XEXP (x, 0)) == to
 	  && SUBREG_WORD (XEXP (x, 0)) == 0
@@ -1355,7 +1374,7 @@ subst (x, from, to)
 	  && GET_CODE (XEXP (to, 1)) == CONST_INT
 	  && FAKE_EXTEND_SAFE_P (GET_MODE (x), XEXP (to, 0))
 	  && ((INTVAL (XEXP (to, 1))
-	       & (-1 << (GET_MODE_BITSIZE (GET_MODE (to)) - 1)))
+	       & (-1 << (GET_MODE_BITSIZE (GET_MODE (XEXP (x, 0))) - 1)))
 	      == 0))
 	{
 	  if (!undobuf.storage)
@@ -2602,12 +2621,19 @@ try_distrib (insn, xprev1, xprev2)
 	return 0;
 
     do_distrib:
-      /* Try changing (+ (* x c) (* y c)) to (* (+ x y) c).  */
-
       if (GET_CODE (XEXP (src1, 1)) != CONST_INT
 	  || GET_CODE (XEXP (src2, 1)) != CONST_INT
 	  || INTVAL (XEXP (src1, 1)) != INTVAL (XEXP (src2, 1)))
 	return 0;
+
+      /* Give up if we would move a use of a reg across an alteration.
+	 Note this is unnecessarily conservative, since a problem really
+	 happens only if this reg is set *between* PREV2 and PREV1
+	 But this test is easier.  */
+      if (use_crosses_set_p (XEXP (src2, 0), INSN_CUID (prev2)))
+	return 0;
+
+      /* Try changing (+ (* x c) (* y c)) to (* (+ x y) c).  */
       to_prev = gen_rtx (code, GET_MODE (src1),
 			 XEXP (src1, 0), XEXP (src2, 0));
       to_insn = gen_rtx (GET_CODE (src1), GET_MODE (src1), SET_DEST (pat1), XEXP (src1, 1));
@@ -2623,25 +2649,36 @@ try_distrib (insn, xprev1, xprev2)
 	rtx inner1 = XEXP (src1, 0), inner2 = XEXP (src2, 0);
 	int subreg_needed = 0;
 
-	/* Try changing (+ (extend x) (extend y)) to (extend (+ x y)).  */
+	/* Try changing (& (extend x) (extend y)) to (extend (& x y)).  */
 	/* But keep extend insns together with their subregs.  */
 	if (GET_CODE (inner1) == SUBREG)
-	  if (SUBREG_WORD (inner1) != 0)
-	    return 0;
-	  else
-	    {
-	      subreg_needed = 1;
-	      inner1 = SUBREG_REG (inner1);
-	    }
+	  {
+	    if (SUBREG_WORD (inner1) != 0)
+	      return 0;
+	    else
+	      {
+		subreg_needed = 1;
+		inner1 = SUBREG_REG (inner1);
+	      }
+	  }
 
 	if (GET_CODE (inner2) == SUBREG)
-	  if (SUBREG_WORD (inner2) != 0)
-	    return 0;
-	  else
-	    {
-	      subreg_needed = 1;
-	      inner2 = SUBREG_REG (inner2);
-	    }
+	  {
+	    if (SUBREG_WORD (inner2) != 0)
+	      return 0;
+	    else
+	      {
+		subreg_needed = 1;
+		inner2 = SUBREG_REG (inner2);
+	      }
+	  }
+
+	/* Give up if we would move a use of a reg across an alteration.
+	   Note this is unnecessarily conservative, since a problem really
+	   happens only if this reg is set *between* PREV2 and PREV1
+	   But this test is easier.  */
+	if (use_crosses_set_p (inner2, INSN_CUID (prev2)))
+	  return 0;
 
 	to_prev = gen_rtx (code, GET_MODE (src1), inner1, inner2);
 	to_insn = gen_rtx (GET_CODE (src1), GET_MODE (src1),

@@ -174,7 +174,7 @@ static HARD_REG_SET *regs_live_at;
 static int call_seen;
 
 /* Communicate local vars `insn_number' and `insn'
-   from `block_alloc' to `reg_is_set'.  */
+   from `block_alloc' to `reg_is_set' and `wipe_dead_reg'.  */
 static int this_insn_number;
 static rtx this_insn;
 
@@ -372,6 +372,9 @@ block_alloc (b)
 	  int insn_code_number = recog_memoized (insn);
 	  int commutative = 0;
 
+	  this_insn_number = insn_number;
+	  this_insn = insn;
+
 	  /* Set COMMUTATIVE if operands 1 and 2 are commutative.  */
 	  if (insn_code_number >= 0
 	      && insn_n_operands[insn_code_number] > 2
@@ -516,8 +519,6 @@ block_alloc (b)
 	     that are born (set) in this instruction.
 	     A pseudo that already has a qty is not changed.  */
 
-	  this_insn_number = insn_number;
-	  this_insn = insn;
 	  note_stores (PATTERN (insn), reg_is_set);
 	}
       if (GET_CODE (insn) == CALL_INSN)
@@ -1001,7 +1002,11 @@ wipe_dead_reg (reg, this_insn_number, death_insn_number)
 	 Since these regs do not conflict with anything,
 	 mark them as born and dead in the same place.  */
       if (reg_qty[regno] == -2)
-	alloc_qty (regno, GET_MODE (reg), REG_SIZE (reg), this_insn_number);
+	{
+	  alloc_qty (regno, GET_MODE (reg), REG_SIZE (reg), this_insn_number);
+	  REG_NOTES (this_insn) = gen_rtx (EXPR_LIST, REG_UNSET, reg,
+					   REG_NOTES (this_insn));
+	}
 
       if (reg_qty[regno] >= 0)
 	qty_death[reg_qty[regno]] = death_insn_number;

@@ -13,12 +13,15 @@ I built the X stuff with with the "CC" line in the "Sun.macros" file set to:
 
              CC = gcc -fcombine-regs -fstrength-reduce -finline-functions -fpcc-struct-return -DPURDUE -Dinline=INLINE -DNOSTDHDRS
 
-where -fcombine-regs, -fstrength-reduce, and -finline-functions specify desired
-optimizations, -fpcc-struct-return makes things compatible with the dbm library,
--DPURDUE buys the Purdue speedups, -Dinline=INLINE avoids a problem with a
-variable named "inline" in the X file "fonts/bdftosnf/fontutil.c", and
--DNOSTDHDRS avoids a problem with multiple (and conflicting) typedef'ing of
-"size_t" in the gcc-provided STDDEF_H and Sun's "sys/types.h".
+where -fcombine-regs, -fstrength-reduce, and -finline-functions
+specify desired optimizations, -fpcc-struct-return makes things
+compatible with the dbm library, -DPURDUE buys the Purdue speedups,
+-Dinline=INLINE avoids a problem with a variable named "inline" in the
+X file "fonts/bdftosnf/fontutil.c", and -DNOSTDHDRS avoids a problem
+with multiple (and conflicting) typedef'ing of "size_t" in the
+gcc-provided STDDEF_H and Sun's "sys/types.h".
+
+Some clients may need -fwritable-strings.  twm is said to need it.
 
 The ANSIfication fix:
 

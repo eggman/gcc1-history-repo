@@ -87,6 +87,7 @@ rtx next_label ();
 
 static void mark_jump_label ();
 static void delete_jump ();
+static void squeeze_block_notes ();
 void invert_exp ();
 static void redirect_exp ();
 static rtx follow_jumps ();
@@ -203,14 +204,22 @@ jump_optimize (f, cross_jump, noop_moves)
 	 If so record that this function can drop off the end.  */
 
       insn = last_insn;
-      while (insn && (GET_CODE (insn) == CODE_LABEL
-		      /* If machine uses explicit RETURN insns, no epilogue,
-			 then this note precedes the drop-through RETURN.  */
-		      || (GET_CODE (insn) == JUMP_INSN
-			  && GET_CODE (PATTERN (insn)) == RETURN)
-		      || (GET_CODE (insn) == NOTE
-			  && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
-	insn = PREV_INSN (insn);
+      {
+	int n_labels = 1;
+	while (insn
+	       /* One label can follow the end-note: the return label.  */
+	       && ((GET_CODE (insn) == CODE_LABEL && n_labels-- > 0)
+		   /* Ordinary insns can follow it if returning a structure.  */
+		   || GET_CODE (insn) == INSN
+		   /* If machine uses explicit RETURN insns, no epilogue,
+		      then one of them follows the note.  */
+		   || (GET_CODE (insn) == JUMP_INSN
+		       && GET_CODE (PATTERN (insn)) == RETURN)
+		   /* Other kinds of notes can follow also.  */
+		   || (GET_CODE (insn) == NOTE
+		       && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
+	  insn = PREV_INSN (insn);
+      }
 
       if (insn && GET_CODE (insn) == NOTE
 	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
@@ -446,18 +455,30 @@ jump_optimize (f, cross_jump, noop_moves)
 			    && GET_CODE (range2end) == JUMP_INSN
 			    && GET_CODE (NEXT_INSN (range2end)) == BARRIER)
 			  {
-			    rtx range1beg = NEXT_INSN (insn);
-			    rtx range2beg = NEXT_INSN (label1);
-			    rtx range1after = NEXT_INSN (range1end);
-			    rtx range2after = NEXT_INSN (range2end);
-			    /* Splice range2 between INSN and LABEL1.  */
-			    NEXT_INSN (insn) = range2beg;
-			    PREV_INSN (range2beg) = insn;
+			    rtx range1beg = next_real_insn (insn);
+			    rtx range2beg = next_real_insn (label1);
+			    rtx range1after, range2after;
+			    rtx range1before, range2before;
+
+			    /* Don't move NOTEs for blocks; shift them
+			       outside the ranges, where they'll stay put.  */
+			    squeeze_block_notes (range1beg, range1end);
+			    squeeze_block_notes (range2beg, range2end);
+
+			    /* Get current surrounds of the 2 ranges.  */
+			    range1before = PREV_INSN (range1beg);
+			    range2before = PREV_INSN (range2beg);
+			    range1after = NEXT_INSN (range1end);
+			    range2after = NEXT_INSN (range2end);
+
+			    /* Splice range2 where range1 was.  */
+			    NEXT_INSN (range1before) = range2beg;
+			    PREV_INSN (range2beg) = range1before;
 			    NEXT_INSN (range2end) = range1after;
 			    PREV_INSN (range1after) = range2end;
-			    /* Splice range1 between LABEL1 and LABEL2.  */
-			    NEXT_INSN (label1) = range1beg;
-			    PREV_INSN (range1beg) = label1;
+			    /* Splice range1 where range2 was.  */
+			    NEXT_INSN (range2before) = range1beg;
+			    PREV_INSN (range1beg) = range2before;
 			    NEXT_INSN (range1end) = range2after;
 			    PREV_INSN (range2after) = range1end;
 			    /* Invert the jump condition, so we
@@ -590,14 +611,22 @@ jump_optimize (f, cross_jump, noop_moves)
      If so, delete it, and record that this function can drop off the end.  */
 
   insn = last_insn;
-  while (insn && (GET_CODE (insn) == CODE_LABEL
-		  /* If machine uses explicit RETURN insns, no epilogue,
-		     then this note precedes the drop-through RETURN.  */
-		  || (GET_CODE (insn) == JUMP_INSN
-		      && GET_CODE (PATTERN (insn)) == RETURN)
-		  || (GET_CODE (insn) == NOTE
-		      && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
-    insn = PREV_INSN (insn);
+  {
+    int n_labels = 1;
+    while (insn
+	   /* One label can follow the end-note: the return label.  */
+	   && ((GET_CODE (insn) == CODE_LABEL && n_labels-- > 0)
+	       /* Ordinary insns can follow it if returning a structure.  */
+	       || GET_CODE (insn) == INSN
+	       /* If machine uses explicit RETURN insns, no epilogue,
+		  then one of them follows the note.  */
+	       || (GET_CODE (insn) == JUMP_INSN
+		   && GET_CODE (PATTERN (insn)) == RETURN)
+	       /* Other kinds of notes can follow also.  */
+	       || (GET_CODE (insn) == NOTE
+		   && NOTE_LINE_NUMBER (insn) != NOTE_INSN_FUNCTION_END)))
+      insn = PREV_INSN (insn);
+  }
   if (insn && GET_CODE (insn) == NOTE
       && NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END)
     {
@@ -737,6 +766,34 @@ do_cross_jump (insn, newjpos, newlpos)
       newjpos = NEXT_INSN (newjpos);
 }
 
+/* Move all block-beg and block-end notes between START and END
+   out before START.  Assume neither START nor END is such a note.  */
+
+static void
+squeeze_block_notes (start, end)
+     rtx start, end;
+{
+  rtx insn;
+  rtx next;
+
+  for (insn = start; insn != end; insn = next)
+    {
+      next = NEXT_INSN (insn);
+      if (GET_CODE (insn) == NOTE
+	  && (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_END
+	      || NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_BEG))
+	{
+	  rtx prev = PREV_INSN (insn);
+	  PREV_INSN (insn) = PREV_INSN (start);
+	  NEXT_INSN (insn) = start;
+	  NEXT_INSN (PREV_INSN (insn)) = insn;
+	  PREV_INSN (NEXT_INSN (insn)) = insn;
+	  NEXT_INSN (prev) = next;
+	  PREV_INSN (next) = prev;
+	}
+    }
+}
+
 /* Return 1 if INSN is a jump that jumps to right after TARGET
    only on the condition that TARGET itself would drop through.
    Assumes that TARGET is a conditional jump.  */
@@ -1106,7 +1163,7 @@ mark_jump_label (x, insn, cross_jump)
 	}
     }
 }
-
+
 /* If all INSN does is set the pc, delete it,
    and delete the insn that set the condition codes for it
    if that's what the previous thing was.  */
@@ -1181,7 +1238,7 @@ delete_insn (insn)
       if (next)
 	PREV_INSN (next)= prev;
 
-      if (NEXT_INSN (prev) == 0)
+      if (prev && NEXT_INSN (prev) == 0)
 	set_last_insn (prev);
     }
 

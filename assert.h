@@ -4,25 +4,29 @@
 #undef __assert
 
 #ifdef NDEBUG
-#define assert(ignore)
+#define assert(ignore)  ((void)0)
 #else
-
-#define assert(expression)  \
-  ((expression) ? 0 : __assert (#expression, __FILE__, __LINE__))
 
 void __eprintf ();		/* Defined in gnulib */
 
 #ifdef __STDC__
 
+#define assert(expression)  \
+  ((expression) ? 0 : (__assert (#expression, __FILE__, __LINE__), 0))
+
 #define __assert(expression, file, line)  \
-  (__eprintf ("Failed assertion " expression		\
-	      " at line %d of `" file "'.\n", line),	\
+  (__eprintf ("Failed assertion `%s' at line %d of `%s'.\n",	\
+	      expression, line, file),				\
    abort ())
 
 #else /* no __STDC__; i.e. -traditional.  */
 
-#define __assert(expression, file, line)  \
-  (__eprintf ("Failed assertion at line %d of `%s'.\n", line, file),	\
+#define assert(expression)  \
+  ((expression) ? 0 : __assert (expression, __FILE__, __LINE__))
+
+#define __assert(expression, file, lineno)  \
+  (__eprintf ("Failed assertion `%s' at line %d of `%s'.\n",	\
+	      "expression", lineno, file),			\
    abort ())
 
 #endif /* no __STDC__; i.e. -traditional.  */

@@ -646,7 +646,8 @@ copy_rtx_if_shared (orig)
       unshare_copies++;
 
       copy = rtx_alloc (code);
-      bcopy (x, copy, sizeof (int) * (GET_RTX_LENGTH (code) + 1));
+      bcopy (x, copy, (sizeof (*copy) - sizeof (copy->fld)
+		       + sizeof (copy->fld[0]) * GET_RTX_LENGTH (code)));
       x = copy;
       copied = 1;
     }

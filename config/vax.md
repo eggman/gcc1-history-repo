@@ -2006,6 +2006,14 @@
 		 (label_ref:SI (match_operand 3 "" ""))))]
   ""
   "casel %0,$0,%0")
+
+;; This arises from the above if both operands are the same.
+(define_insn ""
+  [(set (pc)
+        (plus:SI (sign_extend:SI (mem:HI (pc)))
+		 (label_ref:SI (match_operand 3 "" ""))))]
+  ""
+  "casel $0,$0,$0")
 
 ;;- load or push effective address 
 ;; These come after the move and add/sub patterns

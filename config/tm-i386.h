@@ -100,6 +100,9 @@ extern int target_flags;
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
 #define PARM_BOUNDARY 32
 
+/* Boundary (in *bits*) on which stack pointer should be aligned.  */
+#define STACK_BOUNDARY 32
+
 /* Allocation boundary (in *bits*) for the code of a function.  */
 #define FUNCTION_BOUNDARY 32
 
@@ -1041,6 +1044,7 @@ do { union { float f; long l;} tem;			\
    z -- print the opcode suffix for the size of the current operand.
    * -- print a star (in certain assembler syntax)
    w -- print the operand as if it's a "word" (HImode) even if it isn't.
+   w -- print the operand as if it's a byte (QImode) even if it isn't.
    c -- don't print special prefixes before constant operands.  */
 
 #define PRINT_OPERAND_PUNCT_VALID_P(CODE)				\

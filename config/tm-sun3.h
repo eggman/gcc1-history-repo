@@ -105,8 +105,31 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Specify library to handle `-a' basic block profiling.  */
 
+/* Specify library to handle `-a' basic block profiling.
+   Control choice of libm.a (if user says -lm)
+   based on fp arith default and options.  */
+
+#if TARGET_DEFAULT & 0100
+/* -mfpa is the default */
 #define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
-%{a:/usr/lib/bb_link.o} "
+%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{msoft-float:-L/usr/lib/fsoft}%{m68881:-L/usr/lib/f68881}\
+%{!msoft_float:%{!m68881:-L/usr/lib/ffpa}}"
+#else
+#if TARGET_DEFAULT & 2
+/* -m68881 is the default */
+#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
+%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{msoft-float:-L/usr/lib/fsoft}%{!msoft-float:%{!mfpa:-L/usr/lib/f68881}}\
+%{mfpa:-L/usr/lib/ffpa}"
+#else
+/* -msoft-float is the default */
+#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
+%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{!m68881:%{!mfpa:-L/usr/lib/fsoft}}%{m68881:-L/usr/lib/f68881}\
+%{mfpa:-L/usr/lib/ffpa}"
+#endif
+#endif
 
 /* Provide required defaults for linker -e and -d switches.
    Also, it is hard to debug with shared libraries,

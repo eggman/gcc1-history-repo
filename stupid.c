@@ -88,7 +88,7 @@ static char *reg_crosses_blocks;
 
 /* Numbers of pseudo-regs to be allocated, highest priority first.  */
 
-static short *reg_order;
+static int *reg_order;
 
 /* Indexed by reg number (hard or pseudo), nonzero if register is live
    at the current point in the instruction stream.  */
@@ -170,8 +170,8 @@ stupid_life_analysis (f, nregs, file)
   reg_crosses_blocks = (char *) alloca (nregs);
   bzero (reg_crosses_blocks, nregs);
 
-  reg_order = (short *) alloca (nregs * sizeof (short));
-  bzero (reg_order, nregs * sizeof (short));
+  reg_order = (int *) alloca (nregs * sizeof (int));
+  bzero (reg_order, nregs * sizeof (int));
 
   reg_renumber = (short *) oballoc (nregs * sizeof (short));
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
@@ -253,7 +253,7 @@ stupid_life_analysis (f, nregs, file)
     reg_order[i] = i;
 
   qsort (&reg_order[FIRST_PSEUDO_REGISTER],
-	 max_regno - FIRST_PSEUDO_REGISTER, sizeof (short),
+	 max_regno - FIRST_PSEUDO_REGISTER, sizeof (int),
 	 stupid_reg_compare);
 
   /* Now, in that order, try to find hard registers for those pseudo regs.  */
@@ -301,7 +301,7 @@ stupid_life_analysis (f, nregs, file)
 
 static int
 stupid_reg_compare (r1p, r2p)
-     short *r1p, *r2p;
+     int *r1p, *r2p;
 {
   register int r1 = *r1p, r2 = *r2p;
   register int len1 = reg_where_dead[r1] - reg_where_born[r1];

@@ -88,6 +88,8 @@ exp	:	'-' exp    %prec UNARY
 	|	'!' exp    %prec UNARY
 			{ $$.value = ! $2.value;
 			  $$.unsignedp = 0; }
+	|	'+' exp    %prec UNARY
+			{ $$ = $2; }
 	|	'~' exp    %prec UNARY
 			{ $$.value = ~ $2.value;
 			  $$.unsignedp = $2.unsignedp; }
@@ -622,7 +624,7 @@ initialize_random_junk ()
     ++is_idchar[i];
   ++is_idchar['_'];
   ++is_idstart['_'];
-#ifdef DOLLARS_IN_IDENTIFIERS
+#if DOLLARS_IN_IDENTIFIERS
   ++is_idchar['$'];
   ++is_idstart['$'];
 #endif

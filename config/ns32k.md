@@ -245,9 +245,13 @@
     }
   else if (GET_CODE (operands[1]) == CONST_DOUBLE)
     {
+      union {int i[2]; float f; double d;} convrt;
+      convrt.i[0] = CONST_DOUBLE_LOW (operands[1]);
+      convrt.i[1] = CONST_DOUBLE_HIGH (operands[1]);
+      convrt.f = convrt.d;
+
       /* Is there a better machine-independent way to to this?  */
-      operands[1] = gen_rtx (CONST_INT, VOIDmode,
-			     CONST_DOUBLE_LOW (operands[1]));
+      operands[1] = gen_rtx (CONST_INT, VOIDmode, convrt.i[0]);
       return \"movd %1,%0\";
     }
   else return \"movd %1,%0\";
@@ -691,15 +695,11 @@
   "GET_CODE (operands[0]) == CONST_INT"
   "*
 {
-#if defined(ns32532)
-  if (INTVAL(operands[0]) == 8)
-      return \"cmpd tos,tos # adjsp -8\";
-#endif
-#if defined(ns32532) || defined(ns32332)
-  if (INTVAL(operands[0]) == 4)
-      return \"cmpqd %$0,tos # adjsp -4\";
-#endif
-  if (INTVAL(operands[0]) < 64 && INTVAL(operands[0]) > -64)
+  if (INTVAL (operands[0]) == 8)
+    return \"cmpd tos,tos # adjsp -8\";
+  if (INTVAL (operands[0]) == 4)
+    return \"cmpqd %$0,tos # adjsp -4\";
+  if (INTVAL (operands[0]) < 64 && INTVAL (operands[0]) > -64)
     return \"adjspb %$%n0\";
   else if (INTVAL (operands[0]) < 8192 && INTVAL (operands[0]) >= -8192)
     return \"adjspw %$%n0\";
@@ -1818,11 +1818,7 @@
       else
 	output_asm_insn (\"movzbd 3(sp),%0\", operands);
     }
-#if defined(ns32532) || defined(ns32332)
   return \"cmpqd %$0,tos # adjsp -4\";
-#else
-  return \"adjspb %$-4\";
-#endif
 }")
 
 (define_insn ""

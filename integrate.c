@@ -137,6 +137,9 @@ function_cannot_inline_p (fndecl)
   if (last && TREE_VALUE (last) != void_type_node)
     return "varargs function cannot be inline";
 
+  if (current_function_calls_alloca)
+    return "function using alloca cannot be inline";
+
   /* If its not even close, don't even look.  */
   if (!TREE_INLINE (fndecl) && get_max_uid () > 3 * max_insns)
     return "function too large to be inline";
@@ -358,10 +361,8 @@ save_for_inline (fndecl)
       switch (GET_CODE (insn))
 	{
 	case NOTE:
-	  /* It is probably essential to discard these.  */
-	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_END
-	      /* No need to keep these.  */
-	      || NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
+	  /* No need to keep these.  */
+	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
 	    continue;
 
 	  copy = rtx_alloc (NOTE);
@@ -521,7 +522,8 @@ copy_for_inline (orig)
   /* Replace this rtx with a copy of itself.  */
 
   x = rtx_alloc (code);
-  bcopy (orig, x, sizeof (int) * (GET_RTX_LENGTH (code) + 1));
+  bcopy (orig, x, (sizeof (*x) - sizeof (x->fld)
+		   + sizeof (x->fld[0]) * GET_RTX_LENGTH (code)));
 
   /* Now scan the subexpressions recursively.
      We can store any replaced subexpressions directly into X
@@ -541,7 +543,8 @@ copy_for_inline (orig)
 	case 'u':
 	  /* Change any references to old-insns to point to the
 	     corresponding copied insns.  */
-	  return insn_map[INSN_UID (XEXP (x, i))];
+	  XEXP (x, i) = insn_map[INSN_UID (XEXP (x, i))];
+	  break;
 
 	case 'E':
 	  if (XVEC (x, i) != NULL && XVECLEN (x, i) != 0)
@@ -591,6 +594,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   tree formal, actual;
   rtx header = DECL_SAVED_INSNS (fndecl);
   rtx insns = FIRST_FUNCTION_INSN (header);
+  rtx parm_insns = FIRST_PARM_INSN (header);
   rtx insn;
   int max_regno = MAX_REGNUM (header) + 1;
   register int i;
@@ -636,6 +640,9 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   /* Make a fresh binding contour that we can easily remove.  */
   pushlevel (0);
   expand_start_bindings (0);
+  if (GET_CODE (parm_insns) == NOTE
+      && NOTE_LINE_NUMBER (parm_insns) < 0)
+    emit_note (NOTE_SOURCE_FILE (parm_insns), NOTE_LINE_NUMBER (parm_insns));
 
   /* Get all the actual args as RTL, and store them in ARG_VEC.  */
 
@@ -1036,6 +1043,9 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	     whether it copies the value from the fcn return reg.  */
 	  if (GET_CODE (PATTERN (insn)) == SET)
 	    follows_call = SET_DEST (PATTERN (insn));
+	  else if (GET_CODE (PATTERN (insn)) == PARALLEL
+		   && GET_CODE (XVECEXP (PATTERN (insn), 0, 0)) == SET)
+	    follows_call = SET_DEST (XVECEXP (PATTERN (insn), 0, 0));
 	  break;
 
 	case CODE_LABEL:
@@ -1076,6 +1086,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   poplevel (1, 1, 0);
   poplevel (0, 0, 0);
 
+  emit_line_note (input_filename, lineno);
   reg_map = NULL;
   label_map = NULL;
 

@@ -19,6 +19,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Some output-actions in pyr.md need these.  */
 #include <stdio.h>
+
 extern FILE *asm_out_file;
 #include "tree.h"
 
@@ -82,7 +83,7 @@ nonindexed_operand(op, mode)
     register rtx op;
     enum machine_mode mode;
 {
-  register enum rtx_code code = GET_CODE (op);
+  register RTX_CODE code = GET_CODE (op);
   int mode_altering_drug = 0;
 
   if (mode == VOIDmode)
@@ -127,14 +128,21 @@ nonindexed_operand(op, mode)
   return 1;
 }
 
+/* Return non-zero if the rtx OP has an immediate component.  An
+   immediate component or additive term equal to zero is rejected
+   due to assembler problems.  */
+
 int
 has_direct_base (op)
      rtx op;
 {
-  if ((GET_CODE (op) == PLUS
-       && (CONSTANT_ADDRESS_P (XEXP (op, 1))
-	   || CONSTANT_ADDRESS_P (XEXP (op, 0))))
-      || CONSTANT_ADDRESS_P (op))
+  if ((CONSTANT_ADDRESS_P (op)
+       && op != const0_rtx)
+      || (GET_CODE (op) == PLUS
+	  && ((CONSTANT_ADDRESS_P (XEXP (op, 1))
+	       && XEXP (op, 1) != const0_rtx)
+	      || (CONSTANT_ADDRESS_P (XEXP (op, 0))
+		  && XEXP (op, 0) != const0_rtx))))
     return 1;
 
   return 0;
@@ -166,7 +174,7 @@ weird_memory_memory (op0, op1)
 {
   int ret;
   int c;
-  enum rtx_code code0, code1;
+  RTX_CODE code0, code1;
 
   op0 = XEXP (op0, 0);
   op1 = XEXP (op1, 0);
@@ -175,11 +183,11 @@ weird_memory_memory (op0, op1)
 
   swap_operands = 0;
 
-  if (code1 == REG)
+  if (code1 == REG || code1 == SUBREG)
     {
       return 1;
     }
-  if (code0 == REG)
+  if (code0 == REG || code0 == SUBREG)
     {
       swap_operands = 1;
       return 1;
@@ -203,68 +211,29 @@ signed_comparison (x, mode)
      rtx x;
      enum machine_mode mode;
 {
-  enum rtx_code code = GET_CODE (x);
-
-  return (code == NE || code == EQ || code == GE || code == GT || code == LE
-	 || code == LT);
-}
-
-char *
-output_branch (code)
-     enum rtx_code code;
-{
-  switch (code)
-    {
-    case NE:  return "bne %l4";
-    case EQ:  return "beq %l4";
-    case GE:  return "bge %l4";
-    case GT:  return "bgt %l4";
-    case LE:  return "ble %l4";
-    case LT:  return "blt %l4";
-    }
-}
-
-char *
-output_inv_branch (code)
-     enum rtx_code code;
-{
-  switch (code)
-    {
-    case NE:  return "beq %l4";
-    case EQ:  return "bne %l4";
-    case GE:  return "ble %l4";
-    case GT:  return "blt %l4";
-    case LE:  return "bge %l4";
-    case LT:  return "bgt %l4";
-    }
+  return ! TRULY_UNSIGNED_COMPARE_P (GET_CODE (x));
 }
 
 extern rtx force_reg ();
 rtx test_op0, test_op1;
-
-rtx
-ensure_extended (op, extop)
-     rtx op;
-     enum rtx_code extop;
-{
-  if (GET_MODE (op) == HImode || GET_MODE (op) == QImode)
-    op = gen_rtx (extop, SImode, op);
-  op = force_reg (SImode, op);
-  return op;
-}
+enum machine_mode test_mode;
 
 /* Sign-extend or zero-extend constant X from FROM_MODE to TO_MODE.  */
 
 rtx
 extend_const (x, extop, from_mode, to_mode)
     rtx x;
-    enum rtx_code extop;
+    RTX_CODE extop;
     enum machine_mode from_mode, to_mode;
 {
-  int val = INTVAL (x);
-  int negative = val & (1 << (GET_MODE_BITSIZE (from_mode) - 1));
+  int val;
+  int negative;
   if (from_mode == to_mode)
     return x;
+  if (GET_CODE (x) != CONST_INT)
+    abort ();
+  val = INTVAL (x);
+  negative = val & (1 << (GET_MODE_BITSIZE (from_mode) - 1));
   if (GET_MODE_BITSIZE (from_mode) == HOST_BITS_PER_INT)
     abort ();
   if (negative && extop == SIGN_EXTEND)
@@ -277,16 +246,28 @@ extend_const (x, extop, from_mode, to_mode)
 		  val & ~((-1) << (GET_MODE_BITSIZE (to_mode))));
 }
 
+rtx
+ensure_extended (op, extop, from_mode)
+     rtx op;
+     RTX_CODE extop;
+     enum machine_mode from_mode;
+{
+  if (GET_CODE (op) == CONST_INT)
+    return extend_const (op, extop, from_mode, SImode);
+  else
+    return force_reg (SImode, gen_rtx (extop, SImode, op));
+}
+
 /* Emit rtl for a branch, as well as any delayed (integer) compare insns.
    The compare insn to perform is determined by the global variables
    test_op0 and test_op1.  */
 
 void
 extend_and_branch (extop)
-     enum rtx_code extop;
+     RTX_CODE extop;
 {
   rtx op0, op1;
-  enum rtx_code code0, code1;
+  RTX_CODE code0, code1;
 
   op0 = test_op0, op1 = test_op1;
   if (op0 == 0)
@@ -299,46 +280,47 @@ extend_and_branch (extop)
 
   if (op1 == 0)
     {
-      op0 = ensure_extended (op0, extop);
+      op0 = ensure_extended (op0, extop, test_mode);
       emit_insn (gen_rtx (SET, VOIDmode, cc0_rtx, op0));
     }
   else
     {
       if (CONSTANT_P (op0) && CONSTANT_P (op1))
 	{
-	  op0 = force_reg (SImode, op0);
-	  op1 = force_reg (SImode, op1);
+	  op0 = ensure_extended (op0, extop, test_mode);
+	  op1 = ensure_extended (op1, extop, test_mode);
 	}
-      else if (extop == ZERO_EXTEND && GET_MODE (op0) == HImode)
+      else if (extop == ZERO_EXTEND && test_mode == HImode)
 	{
 	  /* Pyramids have no unsigned "cmphi" instructions.  We need to
 	     zero extend unsigned halfwords into temporary registers. */
-	  op0 = ensure_extended (op0, extop);
-	  op1 = ensure_extended (op1, extop);
+	  op0 = ensure_extended (op0, extop, test_mode);
+	  op1 = ensure_extended (op1, extop, test_mode);
 	}
       else if (CONSTANT_P (op0))
 	{
-	  op0 = extend_const (op0, extop, GET_MODE (op1), SImode);
-	  op1 = ensure_extended (op1, extop);
+	  op0 = ensure_extended (op0, extop, test_mode);
+	  op1 = ensure_extended (op1, extop, test_mode);
 	}
       else if (CONSTANT_P (op1))
 	{
-	  op1 = extend_const (op1, extop, GET_MODE (op0), SImode);
-	  op0 = ensure_extended (op0, extop);
+	  op1 = ensure_extended (op1, extop, test_mode);
+	  op0 = ensure_extended (op0, extop, test_mode);
 	}
-      else if (code0 == REG && code1 == REG)
+      else if ((code0 == REG || code0 == SUBREG)
+	       && (code1 == REG || code1 == SUBREG))
 	{
 	  /* I could do this case without extension, by using the virtual
 	     register address (but that would lose for global regs).  */
-	  op0 = ensure_extended (op0, extop);
-	  op1 = ensure_extended (op1, extop);
+	  op0 = ensure_extended (op0, extop, test_mode);
+	  op1 = ensure_extended (op1, extop, test_mode);
 	}
       else if (code0 == MEM && code1 == MEM)
 	{
 	  /* Load into a reg if the address combination can't be handled
 	     directly.  */
 	  if (! weird_memory_memory (op0, op1))
-	    op0 = force_reg (GET_MODE (op0), op0);
+	    op0 = force_reg (test_mode, op0);
 	}
 
       emit_insn (gen_rtx (SET, VOIDmode, cc0_rtx,
@@ -346,10 +328,10 @@ extend_and_branch (extop)
     }
 }
 
-/* Return non-zero if the two single-word operations with operands[0]
-   and operands[1] for the first single-word operation, and operands[2]
-   and operands[3] for the second single-word operation, is possible to
-   combine to a double word operation.
+/* Return non-zero if the two single-word moves with operands[0]
+   and operands[1] for the first single-word move, and operands[2]
+   and operands[3] for the second single-word move, is possible to
+   combine to a double word move.
 
    The criterion is whether the operands are in consecutive memory cells,
    registers, etc.  */
@@ -359,24 +341,60 @@ movdi_possible (operands)
      rtx operands[];
 {
   int cnst_diff0, cnst_diff1;
+  RTX_CODE code0 = GET_CODE (operands[0]);
+  RTX_CODE code1 = GET_CODE (operands[1]);
+
+  /* Don't dare to combine (possibly overlapping) memory -> memory moves.  */
+  /* It would be possible to detect the cases where we dare, by using
+     constant_diff (operands[0], operands[1])!!!  */
+  if (code0 == MEM && code1 == MEM)
+    return 0;
 
   cnst_diff0 = consecutive_operands (operands[0], operands[2]);
   if (cnst_diff0 == 0)
     return 0;
 
   cnst_diff1 = consecutive_operands (operands[1], operands[3]);
+  if (cnst_diff1 == 0)
+    return 0;
+
   if (cnst_diff0 & cnst_diff1)
     {
+      /* The source and destination operands are consecutive.  */
+
+      /* If the first move writes into the source of the second move,
+	 we cannot combine.  */
+      if ((code0 == REG
+	   && reg_overlap_mentioned_p (operands[0], operands[3]))
+	  || (code0 == SUBREG
+	      && subreg_overlap_mentioned_p (operands[0], operands[3])))
+	  return 0;
+
       if (cnst_diff0 & 1)
+	/* operands[0],[1] has higher addresses than operands[2],[3].  */
 	swap_operands = 0;
       else
+	/* operands[0],[1] has lower addresses than operands[2],[3].  */
 	swap_operands = 1;
       return 1;
     }
   return 0;
 }
 
-/* Return +1 of OP0 is a consecutive operand to OP1, -1 if OP1 is a
+/* Like reg_overlap_mentioned_p, but accepts a subreg rtx instead
+   of a reg.  */
+
+int
+subreg_overlap_mentioned_p (subreg, x)
+     rtx subreg, x;
+{
+  rtx reg = SUBREG_REG (subreg);
+  int regno = REGNO (reg) + SUBREG_WORD (subreg);
+  int endregno = regno + HARD_REGNO_NREGS (regno, GET_MODE (subreg));
+  return refers_to_regno_p (regno, endregno, x, 0);
+}
+
+/* Return 1 if OP0 is a consecutive operand to OP1, 2 if OP1 is a
    consecutive operand to OP0.
 
    This function is used to determine if addresses are consecutive,
@@ -386,57 +404,111 @@ int
 consecutive_operands (op0, op1)
      rtx op0, op1;
 {
-  enum rtx_code code0, code1;
+  RTX_CODE code0, code1;
   int cnst_diff;
+  int regno_off0, regno_off1;
 
   code0 = GET_CODE (op0);
   code1 = GET_CODE (op1);
 
-  if (CONSTANT_P (op0) && CONSTANT_P (op1))
+  regno_off0 = 0;
+  if (code0 == SUBREG)
     {
-      if (op0 == const0_rtx)
-	if (op1 == const0_rtx)
-	  return 3;
-	else
-	  return 2;
-      if (op1 == const0_rtx)
-	return 1;
+      if (GET_MODE_SIZE (GET_MODE (SUBREG_REG (op0))) <= UNITS_PER_WORD)
+	return 0;
+      regno_off0 = SUBREG_WORD (op0);
+      op0 = SUBREG_REG (op0);
+      code0 = REG;
+    }
+
+  regno_off1 = 0;
+  if (code1 == SUBREG)
+    {
+      if (GET_MODE_SIZE (GET_MODE (SUBREG_REG (op1))) <= UNITS_PER_WORD)
+	return 0;
+      regno_off1 = SUBREG_WORD (op1);
+      op1 = SUBREG_REG (op1);
+      code1 = REG;
     }
 
   if (code0 != code1)
     return 0;
 
-  if (code0 == REG)
+  switch (code0)
     {
-      cnst_diff = REGNO (op0) - REGNO (op1);
-      if (cnst_diff == 1)
-	return 1;
-      else if (cnst_diff == -1)
+    case CONST_INT:
+      /* Cannot permit any symbolic constants, even if the consecutive
+	 operand is 0, since a movl really performs sign extension.  */
+      if (code1 != CONST_INT)
+	return 0;
+      if ((INTVAL (op0) == 0 && INTVAL (op1) == 0)
+	  || (INTVAL (op0) == -1 && INTVAL (op1) == -1))
+	return 3;
+      if ((INTVAL (op0) == 0 && INTVAL (op1) > 0)
+	  || (INTVAL (op0) == -1 && INTVAL (op1) < 0))
 	return 2;
-    }
-  else if (code0 == MEM)
-    {
-      cnst_diff = radr_diff (XEXP (op0, 0), XEXP (op1, 0));
+      if ((INTVAL (op1) == 0 && INTVAL (op0) > 0)
+	  || (INTVAL (op1) == -1 && INTVAL (op0) < 0))
+	return 1;
+      break;
+
+    case REG:
+      regno_off0 = REGNO (op0) + regno_off0;
+      regno_off1 = REGNO (op1) + regno_off1;
+
+      cnst_diff = regno_off0 - regno_off1;
+      if (cnst_diff == 1)
+	{
+	  /* movl with the highest numbered parameter (local) register as
+	     source or destination, doesn't wrap to the lowest numbered local
+	     (temporary) register.  */
+
+	  if (regno_off0 % 16 != 0)
+	    return 1;
+	  else
+	    return 0;
+	}
+      else if (cnst_diff == -1)
+	{
+	  if (regno_off1 % 16 != 0)
+	    return 2;
+	  else
+	    return 0;
+	}
+      break;
+
+    case MEM:
+      op0 = XEXP (op0, 0);
+      op1 = XEXP (op1, 0);
+      if (GET_CODE (op0) == CONST)
+	op0 = XEXP (op0, 0);
+      if (GET_CODE (op1) == CONST)
+	op1 = XEXP (op1, 0);
+
+      cnst_diff = constant_diff (op0, op1);
       if (cnst_diff)
-	if (cnst_diff == 4)
-	  return 1;
-	else if (cnst_diff == -4)
-	  return 2;
+	{
+	  if (cnst_diff == 4)
+	    return 1;
+	  else if (cnst_diff == -4)
+	    return 2;
+	}
+      break;
     }
   return 0;
 }
 
 /* Return the constant difference of the rtx expressions OP0 and OP1,
-   or 0 if the y don't have a constant difference.
+   or 0 if they don't have a constant difference.
 
    This function is used to determine if addresses are consecutive,
    and therefore possible to combine to fewer instructions.  */
 
 int
-radr_diff (op0, op1)
+constant_diff (op0, op1)
      rtx op0, op1;
 {
-  enum rtx_code code0, code1;
+  RTX_CODE code0, code1;
   int cnst_diff;
 
   code0 = GET_CODE (op0);
@@ -464,11 +536,11 @@ radr_diff (op0, op1)
 
   if (code0 == PLUS)
     {
-      cnst_diff = radr_diff (XEXP (op0, 0), XEXP (op1, 0));
+      cnst_diff = constant_diff (XEXP (op0, 0), XEXP (op1, 0));
       if (cnst_diff)
 	return (rtx_equal_p (XEXP (op0, 1), XEXP (op1, 1)))
 	  ? cnst_diff : 0;
-      cnst_diff = radr_diff (XEXP (op0, 1), XEXP (op1, 1));
+      cnst_diff = constant_diff (XEXP (op0, 1), XEXP (op1, 1));
       if (cnst_diff)
 	return (rtx_equal_p (XEXP (op0, 0), XEXP (op1, 0)))
 	  ? cnst_diff : 0;
@@ -483,17 +555,16 @@ already_sign_extended (insn, from_mode, op)
      enum machine_mode from_mode;
      rtx op;
 {
-  rtx xinsn;
+  rtx xinsn, xdest, xsrc;
 
-  return 0;
-
-#if 0
   for (;;)
     {
       insn = PREV_INSN (insn);
       if (insn == 0)
 	return 0;
-      if (GET_CODE (insn) == NOTE)
+      if (GET_CODE (insn) == NOTE || GET_CODE (insn) == JUMP_INSN)
+	continue;
+      if (GET_CODE (insn) == CALL_INSN && ! call_used_regs[REGNO (op)])
 	continue;
       if (GET_CODE (insn) != INSN)
 	return 0;
@@ -502,35 +573,42 @@ already_sign_extended (insn, from_mode, op)
       if (GET_CODE (xinsn) != SET)
 	return 0;
 
-      /* Is it another register that is set in this insn?  */
-      if (GET_CODE (SET_DEST (xinsn)) != REG
-	  || REGNO (SET_DEST (xinsn)) != REGNO (op))
+      xdest = SET_DEST (xinsn);
+      xsrc = SET_SRC (xinsn);
+
+      if (GET_CODE (xdest) == SUBREG)
+	abort ();
+
+      if ( ! REG_P (xdest))
 	continue;
 
-      if (GET_CODE (SET_SRC (xinsn)) == SIGN_EXTEND
-	  || (GET_CODE (SET_SRC (xinsn)) == MEM
-	      && GET_MODE (SET_SRC (xinsn)) == from_mode))
+      if (REGNO (op) == REGNO (xdest)
+	  && ((GET_CODE (xsrc) == SIGN_EXTEND
+	   && GET_MODE (XEXP (xsrc, 0)) == from_mode)
+	  || (GET_CODE (xsrc) == MEM
+	      && GET_MODE (xsrc) == from_mode)))
 	return 1;
 
-      /* Is the register modified by another operation?  */
-      if (REGNO (SET_DEST (xinsn)) == REGNO (op))
+      /* The register is modified by another operation.  */
+      if (reg_overlap_mentioned_p (xdest, op))
 	return 0;
     }
-#endif
 }
 
 char *
 output_move_double (operands)
      rtx *operands;
 {
-  CC_STATUS_INIT;
   if (GET_CODE (operands[1]) == CONST_DOUBLE)
     {
       if (GET_MODE_CLASS (GET_MODE (operands[1])) == MODE_INT)
 	{
 	  /* In an integer, the low-order word is in CONST_DOUBLE_LOW.  */
 	  rtx const_op = operands[1];
-	  if (CONST_DOUBLE_HIGH (const_op) == 0)
+	  if ((CONST_DOUBLE_HIGH (const_op) == 0
+	       && CONST_DOUBLE_LOW (const_op) >= 0)
+	      || (CONST_DOUBLE_HIGH (const_op) == -1
+		  && CONST_DOUBLE_LOW (const_op) < 0))
 	    {
 	      operands[1] = gen_rtx (CONST_INT, VOIDmode,
 				     CONST_DOUBLE_LOW (const_op));
@@ -548,7 +626,10 @@ output_move_double (operands)
 	{
 	  /* In a real, the low-address word is in CONST_DOUBLE_LOW.  */
 	  rtx const_op = operands[1];
-	  if (CONST_DOUBLE_LOW (const_op) == 0)
+	  if ((CONST_DOUBLE_LOW (const_op) == 0
+	       && CONST_DOUBLE_HIGH (const_op) >= 0)
+	      || (CONST_DOUBLE_LOW (const_op) == -1
+		  && CONST_DOUBLE_HIGH (const_op) < 0))
 	    {
 	      operands[1] = gen_rtx (CONST_INT, VOIDmode,
 				     CONST_DOUBLE_HIGH (const_op));
@@ -567,7 +648,30 @@ output_move_double (operands)
   return "movl %1,%0";
 }
 
+/* Output a shift insns, after having reduced integer arguments to
+   avoid as warnings.  */
+
+char *
+output_shift (pattern, op2, mod)
+     char *pattern;
+     rtx op2;
+     int mod;
+{
+  if (GET_CODE (op2) == CONST_INT)
+    {
+      int cnt = INTVAL (op2) % mod;
+      if (cnt == 0)
+	{
+	  cc_status = cc_prev_status;
+	  return "";
+	}
+      op2 = gen_rtx (CONST_INT, VOIDmode, cnt);
+    }
+  return pattern;
+}
+
 /* Return non-zero if the code of this rtx pattern is a relop.  */
+
 int
 relop (op, mode)
      rtx op;
@@ -588,4 +692,158 @@ relop (op, mode)
       return 1;
     }
   return 0;
+}
+
+void
+notice_update_cc (EXP, INSN)
+     rtx EXP, INSN;
+{
+  switch (GET_CODE (EXP))
+    {
+    case SET:
+      switch (GET_CODE (SET_DEST (EXP)))
+	{
+	case CC0:
+	  cc_status.mdep = 0;
+	  cc_status.flags = 0;
+	  cc_status.value1 = 0;
+	  cc_status.value2 = SET_SRC (EXP);
+	  break;
+
+	case PC:
+	  break;
+
+	case REG:
+	  switch (GET_CODE (SET_SRC (EXP)))
+	    {
+	    case CALL:
+	      goto call;
+	    case MEM:
+	      if (GET_MODE (SET_SRC (EXP)) == QImode
+		  || GET_MODE (SET_SRC (EXP)) == HImode)
+		{
+		  cc_status.mdep = 0;
+		  cc_status.flags = CC_NO_OVERFLOW;
+		  cc_status.value1 = SET_DEST (EXP);
+		  cc_status.value2 = SET_SRC (EXP);
+		  break;
+		}
+	      /* else: Fall through.  */
+	    case CONST_INT:
+	    case SYMBOL_REF:
+	    case LABEL_REF:
+	    case CONST:
+	    case CONST_DOUBLE:
+	    case REG:
+	      if (cc_status.value1
+		  && reg_overlap_mentioned_p (SET_DEST (EXP),
+					      cc_status.value1))
+		cc_status.value1 = 0;
+	      if (cc_status.value2
+		  && reg_overlap_mentioned_p (SET_DEST (EXP),
+					      cc_status.value2))
+		cc_status.value2 = 0;
+	      break;
+
+	    case UDIV:
+	    case UMOD:
+	      cc_status.mdep = CC_VALID_FOR_UNSIGNED;
+	      cc_status.flags = CC_NO_OVERFLOW;
+	      cc_status.value1 = SET_DEST (EXP);
+	      cc_status.value2 = SET_SRC (EXP);
+	      break;
+	    default:
+	      cc_status.mdep = 0;
+	      cc_status.flags = CC_NO_OVERFLOW;
+	      cc_status.value1 = SET_DEST (EXP);
+	      cc_status.value2 = SET_SRC (EXP);
+	      break;
+	    }
+	  break;
+
+	case MEM:
+	  switch (GET_CODE (SET_SRC (EXP)))
+	    {
+	    case REG:
+	      if (GET_MODE (SET_SRC (EXP)) == QImode
+		  || GET_MODE (SET_SRC (EXP)) == HImode)
+		{
+		  cc_status.flags = CC_NO_OVERFLOW;
+		  cc_status.value1 = SET_DEST (EXP);
+		  cc_status.value2 = SET_SRC (EXP);
+		  cc_status.mdep = 0;
+		  break;
+		}
+	      /* else: Fall through.  */
+	    case CONST_INT:
+	    case SYMBOL_REF:
+	    case LABEL_REF:
+	    case CONST:
+	    case CONST_DOUBLE:
+	    case MEM:
+	      /* Need to forget cc_status about memory positions each
+		 time a memory store is made, even if the memory store
+		 insns in question doesn't modify the condition codes.  */
+	      if (cc_status.value1 &&
+		  GET_CODE (cc_status.value1) == MEM)
+		cc_status.value1 = 0;
+	      if (cc_status.value2 &&
+		  GET_CODE (cc_status.value2) == MEM)
+		cc_status.value2 = 0;
+	      break;
+	    case SIGN_EXTEND:
+	    case FLOAT_EXTEND:
+	    case FLOAT_TRUNCATE:
+	    case FLOAT:
+	    case FIX:
+	      cc_status.flags = CC_NO_OVERFLOW;
+	      cc_status.value1 = SET_DEST (EXP);
+	      cc_status.value2 = SET_SRC (EXP);
+	      cc_status.mdep = 0;
+	      break;
+
+	    default:
+	      abort ();
+	    }
+	  break;
+
+	default:
+	  abort ();
+	}
+      break;
+
+    case CALL:
+    call:
+      CC_STATUS_INIT;
+      break;
+      /* Do calls preserve the condition codes?  (At least forget
+	 cc_status expressions if they refer to registers
+	 not preserved across calls.  Also forget expressions
+	 about memory contents.)  */
+      if (cc_status.value1
+	  && (refers_to_regno_p (PYR_TREG (0), PYR_TREG (15),
+				 cc_status.value1, 0)
+	      || GET_CODE (cc_status.value1) == MEM))
+	cc_status.value1 = 0;
+      if (cc_status.value2
+	  && (refers_to_regno_p (PYR_TREG (0), PYR_TREG (15),
+				 cc_status.value2, 0)
+	      || GET_CODE (cc_status.value2) == MEM))
+	cc_status.value2 = 0;
+      break;
+
+    default:
+      CC_STATUS_INIT;
+    }
+}
+
+void
+forget_cc_if_dependent (op)
+     rtx op;
+{
+  cc_status = cc_prev_status;
+  if (cc_status.value1 && reg_overlap_mentioned_p (op, cc_status.value1))
+    cc_status.value1 = 0;
+  if (cc_status.value2 && reg_overlap_mentioned_p (op, cc_status.value2))
+    cc_status.value2 = 0;
 }

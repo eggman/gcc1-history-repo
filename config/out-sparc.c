@@ -383,6 +383,19 @@ single_insn_src_p (op, mode)
     }
 }
 
+/* This extra test must be done to verify that a move insn
+   really is just one assembler insn.  */
+
+int
+single_insn_extra_test (dest, src)
+     rtx dest, src;
+{
+  /* Moves between FP regs and CPU regs are two insns.  */
+  return (!(GET_CODE (src) == REG
+	    && GET_CODE (dest) == REG
+	    && (FP_REG_P (src) != FP_REG_P (dest))));
+}
+
 /* Nonzero only if this *really* is a single insn operand.  */
 int
 strict_single_insn_op_p (op, mode)
@@ -840,21 +853,18 @@ output_fp_move_double (operands)
 	      return "";
 	    }
 	}
+      /* Use ldd if known to be aligned.  */
       if (GET_CODE (XEXP (operands[1], 0)) == PLUS
-	  && (XEXP (XEXP (operands[1], 0), 0) == frame_pointer_rtx
-	      || XEXP (XEXP (operands[1], 0), 0) == stack_pointer_rtx)
-	  && GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == CONST_INT
-	  && (INTVAL (XEXP (XEXP (operands[1], 0), 1)) & 0x7) != 0)
-	{
-	  rtx xoperands[2];
-	  output_asm_insn ("ld %1,%0", operands);
-	  xoperands[0] = gen_rtx (REG, GET_MODE (operands[0]),
-				  REGNO (operands[0]) + 1);
-	  xoperands[1] = gen_rtx (MEM, GET_MODE (operands[1]),
-				  plus_constant (XEXP (operands[1], 0), 4));
-	  output_asm_insn ("ld %1,%0", xoperands);
-	  return "";
-	}
+	  && (((XEXP (XEXP (operands[1], 0), 0) == frame_pointer_rtx
+		|| XEXP (XEXP (operands[1], 0), 0) == stack_pointer_rtx)
+	       && GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == CONST_INT
+	       && (INTVAL (XEXP (XEXP (operands[1], 0), 1)) & 0x7) == 0)
+	      /* Arrays are known to be aligned,
+		 and reg+reg addresses are used (on this machine)
+		 only for array accesses.  */
+	      || (REG_P (XEXP (XEXP (operands[1], 0), 0))
+		  && REG_P (XEXP (XEXP (operands[1], 0), 1)))))
+	return "ldd %1,%0";
       if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
 	{
 	  if (! ((cc_prev_status.flags & CC_KNOW_HI_G1)
@@ -864,7 +874,17 @@ output_fp_move_double (operands)
 	  cc_status.mdep = XEXP (operands[1], 0);
 	  return "ldd [%%lo(%m1)+%%g1],%0";
 	}
-      return "ldd %1,%0";
+      /* Otherwise use two ld insns.  */
+      {
+	rtx xoperands[2];
+	output_asm_insn ("ld %1,%0", operands);
+	xoperands[0] = gen_rtx (REG, GET_MODE (operands[0]),
+				REGNO (operands[0]) + 1);
+	xoperands[1] = gen_rtx (MEM, GET_MODE (operands[1]),
+				plus_constant (XEXP (operands[1], 0), 4));
+	output_asm_insn ("ld %1,%0", xoperands);
+	return "";
+      }
     }
   else if (FP_REG_P (operands[1]))
     {
@@ -1345,8 +1365,7 @@ output_mul_by_constant (insn, operands, unsignedp)
   c = INTVAL (operands[2]);
   if (c == 0)
     {
-      /* should not happen.  */
-      abort ();
+      /* Does happen, at least when not optimizing.  */
       if (GET_CODE (operands[0]) == MEM)
 	return "st %%g0,%0";
       return "mov %%g0,%0";
@@ -1939,7 +1958,12 @@ operands_satisfy_eager_branch_peephole (operands, conditional)
 	      && strict_single_insn_op_p (SET_SRC (PATTERN (head)),
 					  GET_MODE (SET_DEST (PATTERN (head))))
 	      && strict_single_insn_op_p (SET_DEST (PATTERN (head)),
-					  GET_MODE (SET_DEST (PATTERN (head)))))
+					  GET_MODE (SET_DEST (PATTERN (head))))
+	      /* Moves between FP regs and CPU regs are two insns.  */
+	      && !(GET_CODE (SET_SRC (PATTERN (head))) == REG
+		   && GET_CODE (SET_DEST (PATTERN (head))) == REG
+		   && (FP_REG_P (SET_SRC (PATTERN (head)))
+		       != FP_REG_P (SET_DEST (PATTERN (head))))))
 	    {
 	      if (conditional == 2)
 		return (GET_CODE (operands[1]) != PC

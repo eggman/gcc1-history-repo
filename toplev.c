@@ -38,6 +38,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #undef FLOAT
 #include <sys/times.h>
 #include <time.h>   /* Correct for hpux at least.  Is it good on other USG?  */
+#undef FFS  /* Some systems define this in param.h.  */
 #else
 #ifndef VMS
 #include <sys/time.h>
@@ -845,7 +846,6 @@ float_signal ()
 {
   if (float_handled == 0)
     abort ();
-  warning ("floating overflow in constant folding");
   float_handled = 0;
   longjmp (float_handler, 1);
 }
@@ -1177,7 +1177,11 @@ compile_file (name)
 	    && ! TREE_EXTERNAL (decl)
 	    && ! TREE_PUBLIC (decl)
 	    && ! TREE_USED (decl)
-	    && ! TREE_INLINE (decl))
+	    && ! TREE_INLINE (decl)
+	    /* The TREE_USED bit for file-scope decls
+	       is kept in the identifier, to handle multiple
+	       external decls in different scopes.  */
+	    && ! TREE_USED (DECL_NAME (decl)))
 	  warning_with_decl (decl, "`%s' defined but not used");
       }
   }

@@ -177,7 +177,7 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align)
 	{
 	  rtx tempreg;
 	  enum machine_mode trymode, bestmode = VOIDmode, insn_mode;
-	  int maxsize = GET_MODE_SIZE (insn_operand_mode[(int) CODE_FOR_extzv][0]);
+	  int maxsize = GET_MODE_SIZE (insn_operand_mode[(int) CODE_FOR_insv][0]);
 
 	  /* Find biggest machine mode we can safely use
 	     to fetch from this structure.
@@ -693,8 +693,9 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 		  xop0 = force_reg (bestmode, xop0);
 
 		  /* Now ref the register in the mode extzv wants.  */
-		  xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extzv][1],
-				  xop0, 0);
+		  if (bestmode != insn_operand_mode[(int) CODE_FOR_extzv][1])
+		    xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extzv][1],
+				    xop0, 0);
 #ifdef BITS_BIG_ENDIAN
 		  if (GET_MODE_BITSIZE (GET_MODE (xop0)) > unit)
 		    xbitpos += GET_MODE_BITSIZE (GET_MODE (xop0)) - unit;
@@ -803,8 +804,9 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp,
 		  xop0 = force_reg (bestmode, xop0);
 
 		  /* Now ref the register in the mode extv wants.  */
-		  xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extv][1],
-				  xop0, 0);
+		  if (bestmode != insn_operand_mode[(int) CODE_FOR_extv][1])
+		    xop0 = gen_rtx (SUBREG, insn_operand_mode[(int) CODE_FOR_extv][1],
+				    xop0, 0);
 #ifdef BITS_BIG_ENDIAN
 		  if (GET_MODE_BITSIZE (GET_MODE (xop0)) > unit)
 		    xbitpos += GET_MODE_BITSIZE (GET_MODE (xop0)) - unit;

@@ -92,6 +92,9 @@ rtx *reg_equiv_address;
    or zero if pseudo reg N is not equivalent to a memory slot.  */
 rtx *reg_equiv_mem;
 
+/* Widest width in which each pseudo reg is referred to (via subreg).  */
+static int *reg_max_ref_width;
+
 /* Element N is the insn that initialized reg N from its equivalent
    constant or memory slot.  */
 static rtx *reg_equiv_init;
@@ -167,6 +170,10 @@ char double_reg_address_ok;
 
 static rtx spill_stack_slot[FIRST_PSEUDO_REGISTER];
 
+/* Width allocated so far for that stack slot.  */
+
+static int spill_stack_slot_width[FIRST_PSEUDO_REGISTER];
+
 /* Indexed by basic block number, nonzero if there is any need
    for a spill register in that basic block.
    The pointer is 0 if we did stupid allocation and don't know
@@ -188,6 +195,7 @@ int caller_save_needed;
 static int frame_pointer_address_altered;
 
 void mark_home_live ();
+static rtx scan_paradoxical_subregs ();
 static void reload_as_needed ();
 static int modes_equiv_for_class_p ();
 static rtx alter_frame_pointer_addresses ();
@@ -271,6 +279,7 @@ reload (first, global, dumpfile)
 
   /* We don't have a stack slot for any spill reg yet.  */
   bzero (spill_stack_slot, sizeof spill_stack_slot);
+  bzero (spill_stack_slot_width, sizeof spill_stack_slot_width);
 
   /* Compute which hard registers are now in use
      as homes for pseudo registers.
@@ -302,36 +311,45 @@ reload (first, global, dumpfile)
   bzero (reg_equiv_init, max_regno * sizeof (rtx));
   reg_equiv_address = (rtx *) alloca (max_regno * sizeof (rtx));
   bzero (reg_equiv_address, max_regno * sizeof (rtx));
+  reg_max_ref_width = (int *) alloca (max_regno * sizeof (int));
+  bzero (reg_max_ref_width, max_regno * sizeof (int));
 
-  /* Look for REG_EQUIV notes; record what each pseudo is equivalent to.  */
+  /* Look for REG_EQUIV notes; record what each pseudo is equivalent to.
+     Also find all paradoxical subregs
+     and find largest such for each pseudo.  */
 
   for (insn = first; insn; insn = NEXT_INSN (insn))
-    if (GET_CODE (insn) == INSN
-	&& GET_CODE (PATTERN (insn)) == SET
-	&& GET_CODE (SET_DEST (PATTERN (insn))) == REG)
-      {
-	rtx note = find_reg_note (insn, REG_EQUIV, 0);
-	if (note)
-	  {
-	    rtx x = XEXP (note, 0);
-	    i = REGNO (SET_DEST (PATTERN (insn)));
-	    if (i >= FIRST_PSEUDO_REGISTER)
-	      {
-		if (GET_CODE (x) == MEM)
-		  {
-		    if (memory_address_p (GET_MODE (x), XEXP (x, 0)))
-		      reg_equiv_mem[i] = x;
-		    else
-		      reg_equiv_address[i] = XEXP (x, 0);
-		  }
-		else if (immediate_operand (x, VOIDmode))
-		  reg_equiv_constant[i] = x;
-		else
-		  continue;
-		reg_equiv_init[i] = insn;
-	      }
-	  }
-      }
+    {
+      if (GET_CODE (insn) == INSN
+	  && GET_CODE (PATTERN (insn)) == SET
+	  && GET_CODE (SET_DEST (PATTERN (insn))) == REG)
+	{
+	  rtx note = find_reg_note (insn, REG_EQUIV, 0);
+	  if (note)
+	    {
+	      rtx x = XEXP (note, 0);
+	      i = REGNO (SET_DEST (PATTERN (insn)));
+	      if (i >= FIRST_PSEUDO_REGISTER)
+		{
+		  if (GET_CODE (x) == MEM)
+		    {
+		      if (memory_address_p (GET_MODE (x), XEXP (x, 0)))
+			reg_equiv_mem[i] = x;
+		      else
+			reg_equiv_address[i] = XEXP (x, 0);
+		    }
+		  else if (immediate_operand (x, VOIDmode))
+		    reg_equiv_constant[i] = x;
+		  else
+		    continue;
+		  reg_equiv_init[i] = insn;
+		}
+	    }
+	}
+      if (GET_CODE (insn) == INSN || GET_CODE (insn) == CALL_INSN
+	  || GET_CODE (insn) == JUMP_INSN)
+	scan_paradoxical_subregs (PATTERN (insn));
+    }
 
   /* Does this function require a frame pointer?  */
 
@@ -522,6 +540,13 @@ reload (first, global, dumpfile)
 		  int *this_groups;
 		  int *this_needs;
 		  int *this_total_groups;
+
+		  /* Don't use dummy reloads in regs
+		     being spilled in this block.  */
+		  if (reload_reg_rtx[i] != 0
+		      && (!global || basic_block_needs[this_block])
+		      && spill_reg_order[REGNO (reload_reg_rtx[i])] >= 0)
+		    reload_reg_rtx[i] = 0;
 
 		  /* Don't count the dummy reloads, for which one of the
 		     regs mentioned in the insn can be used for reloading.
@@ -775,7 +800,7 @@ reload (first, global, dumpfile)
 		    {
 		      int j = potential_reload_regs[i];
 		      int other;
-		      if (j >= 0
+		      if (j >= 0 && !fixed_regs[j]
 			  &&
 			  ((j > 0 && (other = j - 1, spill_reg_order[other] >= 0)
 			    && TEST_HARD_REG_BIT (reg_class_contents[class], j)
@@ -847,6 +872,7 @@ reload (first, global, dumpfile)
 			  /* Check each reg in the sequence.  */
 			  for (k = 0; k < group_size[class]; k++)
 			    if (! (spill_reg_order[j + k] < 0
+				   && !fixed_regs[j + k]
 				   && TEST_HARD_REG_BIT (reg_class_contents[class], j + k)))
 			      break;
 			  /* We got a full sequence, so spill them all.  */
@@ -1277,18 +1303,75 @@ alter_reg (i, from_reg)
       && reg_equiv_address[i] == 0)
     {
       register rtx x, addr;
+      int inherent_size = PSEUDO_REGNO_BYTES (i);
+      int total_size = max (inherent_size, reg_max_ref_width[i]);
 
+      /* Each pseudo reg has an inherent size which comes from its own mode,
+	 and a total size which provides room for paradoxical subregs
+	 which refer to the pseudo reg in wider modes.
+
+	 We can use a slot already allocated if it provides both
+	 enough inherent space and enough total space.
+	 Otherwise, we allocate a new slot, making sure that it has no less
+	 inherent space, and no less total space, then the previous slot.  */
       if (from_reg == -1)
-	x = assign_stack_local (GET_MODE (regno_reg_rtx[i]),
-				PSEUDO_REGNO_BYTES (i));
+	{
+	  /* No known place to spill from => no slot to reuse.  */
+	  x = assign_stack_local (GET_MODE (regno_reg_rtx[i]), total_size);
+#ifdef BYTES_BIG_ENDIAN
+	  /* Cancel the  big-endian correction done in assign_stack_local.
+	     Get the address of the beginning of the slot.
+	     This is so we can do a big-endian correction unconditionally
+	     below.  */
+	  x = gen_rtx (MEM, GET_MODE (regno_reg_rtx[i]),
+		       plus_constant (XEXP (x, 0),
+				      inherent_size - total_size));
+#endif
+	}
+      /* Reuse a stack slot if possible.  */
       else if (spill_stack_slot[from_reg] != 0
+	       && spill_stack_slot_width[from_reg] >= total_size
 	       && (GET_MODE_SIZE (GET_MODE (spill_stack_slot[from_reg]))
-		   >= PSEUDO_REGNO_BYTES (i)))
+		   >= inherent_size))
 	x = spill_stack_slot[from_reg];
+      /* Allocate a new or bigger slot.  */
       else
-	spill_stack_slot[from_reg] = x
-	  = assign_stack_local (GET_MODE (regno_reg_rtx[i]),
-				PSEUDO_REGNO_BYTES (i));
+	{
+	  /* Compute maximum size needed, both for inherent size
+	     and for total size.  */
+	  enum machine_mode mode = GET_MODE (regno_reg_rtx[i]);
+	  if (spill_stack_slot[from_reg])
+	    {
+	      if (GET_MODE_SIZE (GET_MODE (spill_stack_slot[from_reg]))
+		  > inherent_size)
+		mode = GET_MODE (spill_stack_slot[from_reg]);
+	      if (spill_stack_slot_width[from_reg] > total_size)
+		total_size = spill_stack_slot_width[from_reg];
+	    }
+	  /* Make a slot with that size.  */
+	  x = assign_stack_local (mode, total_size);
+#ifdef BYTES_BIG_ENDIAN
+	  /* Cancel the  big-endian correction done in assign_stack_local.
+	     Get the address of the beginning of the slot.
+	     This is so we can do a big-endian correction unconditionally
+	     below.  */
+	  x = gen_rtx (MEM, mode,
+		       plus_constant (XEXP (x, 0),
+				      GET_MODE_SIZE (mode) - total_size));
+#endif
+	  spill_stack_slot[from_reg] = x;
+	  spill_stack_slot_width[from_reg] = total_size;
+	}
+
+#ifdef BYTES_BIG_ENDIAN
+      /* On a big endian machine, the "address" of the slot
+	 is the address of the low part that fits its inherent mode.  */
+      if (inherent_size < total_size)
+	x = gen_rtx (MEM, GET_MODE (regno_reg_rtx[i]),
+		     plus_constant (XEXP (x, 0),
+				    total_size - inherent_size));
+#endif /* BYTES_BIG_ENDIAN */
+
       addr = XEXP (x, 0);
 
       /* If the stack slot is directly addressable, substitute
@@ -1322,7 +1405,8 @@ mark_home_live (regno)
    If GLOBAL is nonzero, try to find someplace else to put them.
    If DUMPFILE is nonzero, log actions taken on that file.
 
-   Return nonzero if any pseudos needed to be kicked out.  */
+   Return nonzero if any pseudos needed to be kicked out
+   or if this hard reg may appear explicitly in some instructions.  */
 
 static int
 spill_hard_reg (regno, global, dumpfile)
@@ -1381,7 +1465,53 @@ spill_hard_reg (regno, global, dumpfile)
 	  }
       }
 
-  return something_changed;
+  return something_changed || regs_explicitly_used[i];
+}
+
+/* Find all paradoxical subregs within X and update reg_max_ref_width.  */
+
+static rtx
+scan_paradoxical_subregs (x)
+     register rtx x;
+{
+  register int i;
+  register char *fmt;
+  register enum rtx_code code = GET_CODE (x);
+
+  switch (code)
+    {
+    case CONST_INT:
+    case CONST:
+    case SYMBOL_REF:
+    case LABEL_REF:
+    case CONST_DOUBLE:
+    case CC0:
+    case PC:
+    case REG:
+    case USE:
+    case CLOBBER:
+      return;
+
+    case SUBREG:
+      if (GET_CODE (SUBREG_REG (x)) == REG
+	  && GET_MODE_SIZE (GET_MODE (x)) > GET_MODE_SIZE (GET_MODE (SUBREG_REG (x))))
+	reg_max_ref_width[REGNO (SUBREG_REG (x))]
+	  = GET_MODE_SIZE (GET_MODE (x));
+      return;
+    }
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	scan_paradoxical_subregs (XEXP (x, i));
+      else if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = XVECLEN (x, i) - 1; j >=0; j--)
+	    scan_paradoxical_subregs (XVECEXP (x, i, j));
+	}
+    }
 }
 
 struct hard_reg_n_uses { int regno; int uses; };
@@ -1431,12 +1561,16 @@ order_regs_for_reload ()
 
   /* Now fixed registers (which cannot safely be used for reloading)
      get a very high use count so they will be considered least desirable.
-     Likewise registers used explicitly in the rtl code.  */
+     Registers used explicitly in the rtl code are almost as bad.  */
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    if (fixed_regs[i] || regs_explicitly_used[i])
-      hard_reg_n_uses[i].uses += large;
-  hard_reg_n_uses[FRAME_POINTER_REGNUM].uses += large;
+    {
+      if (fixed_regs[i])
+	hard_reg_n_uses[i].uses += large + 2;
+      else if (regs_explicitly_used[i])
+	hard_reg_n_uses[i].uses += large + 1;
+    }
+  hard_reg_n_uses[FRAME_POINTER_REGNUM].uses += large + 2;
 
   qsort (hard_reg_n_uses, FIRST_PSEUDO_REGISTER,
 	 sizeof hard_reg_n_uses[0], hard_reg_use_compare);
@@ -1866,14 +2000,7 @@ choose_reload_regs (insn)
   /* Non-zero means we must reuse spill regs for multiple reloads in this insn
      or we will not have enough spill regs.  */
   int must_reuse = 0;
-
-  bzero (reload_inherited, MAX_RELOADS);
-  bzero (reload_override_in, MAX_RELOADS * sizeof (rtx));
-  bzero (reload_reg_in_use, FIRST_PSEUDO_REGISTER);
-  bzero (reload_reg_in_use_at_all, FIRST_PSEUDO_REGISTER);
-  bzero (reload_reg_in_use_for_inputs, FIRST_PSEUDO_REGISTER);
-  bzero (reload_reg_in_use_for_outputs, FIRST_PSEUDO_REGISTER);
-  bzero (reload_reg_in_use_for_operands, FIRST_PSEUDO_REGISTER);
+  rtx original_reload_reg_rtx[MAX_RELOADS];
 
   /* See if we have more mandatory reloads than spill regs.
      If so, then we cannot risk optimizations that could prevent
@@ -1887,6 +2014,19 @@ choose_reload_regs (insn)
     if (tem > n_spills)
       must_reuse = 1;
   }
+
+  bcopy (reload_reg_rtx, original_reload_reg_rtx, sizeof (reload_reg_rtx));
+
+  /* If we fail to get enough regs without must_reuse,
+     set must_reuse and jump back here.  */
+ retry:
+  bzero (reload_inherited, MAX_RELOADS);
+  bzero (reload_override_in, MAX_RELOADS * sizeof (rtx));
+  bzero (reload_reg_in_use, FIRST_PSEUDO_REGISTER);
+  bzero (reload_reg_in_use_at_all, FIRST_PSEUDO_REGISTER);
+  bzero (reload_reg_in_use_for_inputs, FIRST_PSEUDO_REGISTER);
+  bzero (reload_reg_in_use_for_outputs, FIRST_PSEUDO_REGISTER);
+  bzero (reload_reg_in_use_for_operands, FIRST_PSEUDO_REGISTER);
 
   /* In order to be certain of getting the registers we need,
      we must sort the reloads into order of increasing register class.
@@ -1931,6 +2071,7 @@ choose_reload_regs (insn)
       register int i;
       register rtx new;
       enum machine_mode reload_mode = reload_inmode[r];
+      int h1_ok, h2_ok, h3_ok;
 
       /* Ignore reloads that got marked inoperative.  */
       if (reload_out[r] == 0 && reload_in[r] == 0)
@@ -1981,7 +2122,7 @@ choose_reload_regs (insn)
 	    i = spill_reg_order[REGNO (reg_last_reload_reg[regno])];
 
 	    if (reg_reloaded_contents[i] == regno
-		&& HARD_REGNO_MODE_OK (regno, reload_mode)
+		&& HARD_REGNO_MODE_OK (spill_regs[i], reload_mode)
 		&& TEST_HARD_REG_BIT (reg_class_contents[(int) reload_reg_class[r]],
 				      spill_regs[i])
 		&& reload_reg_free_p (spill_regs[i], reload_when_needed[r])
@@ -2218,7 +2359,13 @@ choose_reload_regs (insn)
 
       /* We should have found a spill register by now.  */
       if (i == n_spills)
-	abort ();
+	{
+	  if (must_reuse)
+	    abort ();
+	  bcopy (original_reload_reg_rtx, reload_reg_rtx, sizeof (reload_reg_rtx));
+	  must_reuse = 1;
+	  goto retry;
+	}
 
       /* Mark as in use for this insn the reload regs we use for this.  */
       {
@@ -2239,27 +2386,32 @@ choose_reload_regs (insn)
       reload_reg_rtx[r] = new;
       reload_spill_index[r] = i;
 
-      /* Detect when the reload reg can't hold the reload mode.  */
-      if (! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]), reload_mode)
-	  || (reload_in[r] != 0
-	      && ! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]),
-				       GET_MODE (reload_in[r])))
-	  || (reload_out[r] != 0
-	      && ! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]),
-				       GET_MODE (reload_out[r]))))
-	{
-	  if (asm_noperands (PATTERN (insn)) < 0)
-	    /* It's the compiler's fault.  */
-	    abort ();
-	  /* It's the user's fault; the operand's mode and constraint
-	     don't match.  Disable this reload so we don't crash in final.  */
-	  error_for_asm (insn,
-			 "`asm' operand constraint incompatible with operand size");
-	  reload_in[r] = 0;
-	  reload_out[r] = 0;
-	  reload_reg_rtx[r] = 0;
-	  reload_optional[r] = 1;
-	}
+      /* Detect when the reload reg can't hold the reload mode.
+	 This used to be one `if', but Sequent compiler can't handle that.  */
+      if (HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]), reload_mode))
+	if (! (reload_in[r] != 0
+	       && ! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]),
+					GET_MODE (reload_in[r]))))
+	  if (! (reload_out[r] != 0
+		 && ! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]),
+					  GET_MODE (reload_out[r]))))
+	    /* The reg is OK.  */
+	    continue;
+
+      /* The reg is not OK.  */
+      {
+	if (asm_noperands (PATTERN (insn)) < 0)
+	  /* It's the compiler's fault.  */
+	  abort ();
+	/* It's the user's fault; the operand's mode and constraint
+	   don't match.  Disable this reload so we don't crash in final.  */
+	error_for_asm (insn,
+		       "`asm' operand constraint incompatible with operand size");
+	reload_in[r] = 0;
+	reload_out[r] = 0;
+	reload_reg_rtx[r] = 0;
+	reload_optional[r] = 1;
+      }
     }
 
   /* If we thought we could inherit a reload, because it seemed that
@@ -2477,6 +2629,21 @@ emit_reload_insns (insn)
 		  || ! reload_reg_free_before_p (REGNO (oldequiv),
 						 reload_when_needed[j])))
 	    oldequiv = 0;
+
+	  /* If OLDEQUIV is not a spill register,
+	     don't use it if any other reload wants it.  */
+	  if (oldequiv && GET_CODE (oldequiv) == REG
+	      && spill_reg_order[REGNO (oldequiv)] < 0)
+	    {
+	      int k;
+	      for (k = 0; k < n_reloads; k++)
+		if (reload_reg_rtx[k] != 0 && k != j
+		    && reg_overlap_mentioned_p (reload_reg_rtx[k], oldequiv))
+		  {
+		    oldequiv = 0;
+		    break;
+		  }
+	    }
 
 	  if (oldequiv == 0)
 	    oldequiv = old;
@@ -2947,6 +3114,13 @@ inc_for_reload (reloadreg, value, inc_amount, insn)
   rtx incloc = XEXP (value, 0);
   /* Nonzero if increment after copying.  */
   int post = (GET_CODE (value) == POST_DEC || GET_CODE (value) == POST_INC);
+
+  /* No hard register is equivalent to this register after
+     inc/dec operation.  If REG_LAST_RELOAD_REG were non-zero,
+     we could inc/dec that register as well (maybe even using it for
+     the source), but I'm not sure it's worth worrying about.  */
+  if (GET_CODE (incloc) == REG)
+    reg_last_reload_reg[REGNO (incloc)] = 0;
 
   if (GET_CODE (value) == PRE_DEC || GET_CODE (value) == POST_DEC)
     inc_amount = - inc_amount;

@@ -63,7 +63,6 @@ extern int target_flags;
 #define TARGET_DEFAULT 1
 #endif
 
-#define DOLLARS_IN_IDENTIFIERS 1
 /* Target machine storage layout */
 
 /* Define this if most significant bit is lowest numbered
@@ -1022,4 +1021,3 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  \
  print_operand_address (FILE, ADDR)
-

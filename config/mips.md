@@ -528,14 +528,14 @@
 (define_insn "andsi3"
   [(set (match_operand:SI 0 "general_operand" "=r,&r")
 	(and:SI (match_operand:SI 1 "general_operand" "%r,r")
-		(match_operand:SI 2 "general_operand" "rJ,I")))]
+		(match_operand:SI 2 "general_operand" "rJ,K")))]
   ""
   "*
 {
   rtx xops[3];
   if (GET_CODE (operands[2]) == CONST_INT)
     {
-      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'I'))
+      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'K'))
 	if (INTVAL (operands[2]) >= 0)
 	  {
 	    return \"andi\\t%0,%1,%x2\\t#andsi3\\t%1,%d2 -> %0\";
@@ -607,13 +607,13 @@
 (define_insn "iorsi3"
   [(set (match_operand:SI 0 "general_operand" "=r")
 	(ior:SI (match_operand:SI 1 "general_operand" "%r")
-		(match_operand:SI 2 "general_operand" "rIJ")))]
+		(match_operand:SI 2 "general_operand" "rKJ")))]
   ""
   "*
 {
   if (GET_CODE (operands[2]) == CONST_INT)
     {
-      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'I'))
+      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'K'))
 	{
 	  return \"ori\\t%0,%1,%x2\\t#iorsi3\\t%1,%d2 -> %0\";
 	}
@@ -669,13 +669,13 @@
 (define_insn "xorsi3"
   [(set (match_operand:SI 0 "general_operand" "=r")
 	(xor:SI (match_operand:SI 1 "general_operand" "%r")
-		(match_operand:SI 2 "general_operand" "rIJ")))]
+		(match_operand:SI 2 "general_operand" "rKJ")))]
   ""
   "*
 {
   if (GET_CODE (operands[2]) == CONST_INT)
     {
-      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'I'))
+      if (CONST_OK_FOR_LETTER_P (INTVAL (operands[2]), 'K'))
 	{
 	  return \"xori\\t%0,%1,%x2\\t#xorsi3\\t%1,%d2 -> %0\";
 	}
@@ -1272,14 +1272,24 @@
 }")
 
 (define_insn "movsf"
-  [(set (match_operand:SF 0 "general_operand" "=f,f,m,f")
-	(match_operand:SF 1 "general_operand" "f,m,f,F"))
+  [(set (match_operand:SF 0 "general_operand" "=f,rf,m,f,!rf")
+	(match_operand:SF 1 "general_operand" "f,m,rf,F,rf"))
    (clobber (reg:SI 24))]
   ""
   "*
 {
   if (GET_CODE (operands[0]) == REG && GET_CODE (operands[1]) == REG)
-    return \"mov.s %0,%1\\t#movsf %1 -> %0 \";
+    {
+      if (REGNO (operands[0]) >= 32)
+	{
+	  if (REGNO (operands[1]) >= 32)
+	    return \"mov.s %0,%1\\t#movsf %1 -> %0 \";
+	  return \"mtc1 %1,%0\";
+	}
+      if (REGNO (operands[1]) >= 32)
+	return \"mfc1 %0,%1\";
+      return \"add%: %0,$0,%1\";
+    }
 
   if (GET_CODE (operands[0]) == REG
       && GET_CODE (operands[1]) == CONST_DOUBLE)
@@ -1313,9 +1323,17 @@
    ** bits correctly
    */
   else if (GET_CODE (operands[0]) == REG)
-    return \"l.s\\t %0,%1\\t#movsf %1 -> %0\";
+    {
+      if (REGNO (operands[0]) < 32)
+	return \"lw\\t %0,%1\\t#movsf %1 -> %0\";
+      return \"l.s\\t %0,%1\\t#movsf %1 -> %0\";
+    }
   else
-    return \"s.s\\t %1,%0\\t#movsf %1 -> %0\";
+    {
+      if (REGNO (operands[1]) < 32)
+	return \"sw\\t %1,%0\\t#movsf %1 -> %0\";
+      return \"s.s\\t %1,%0\\t#movsf %1 -> %0\";
+    }
 }")
 
 ;; ---
@@ -1609,7 +1627,7 @@
 
 (define_insn "negsi2"
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(neg:SI (match_operand:SI 1 "arith_operand" "r")))]
+	(neg:SI (match_operand:SI 1 "general_operand" "r")))]
   ""
   "sub%:\\t%0,$0,%1\\t#negsi2")
 
@@ -1632,7 +1650,7 @@
 
 (define_insn "one_cmplsi2"
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(not:SI (match_operand:SI 1 "arith_operand" "r")))]
+	(not:SI (match_operand:SI 1 "general_operand" "r")))]
   ""
   "nor\\t%0,$0,%1\\t#one_cmplsi2")
 
@@ -1640,7 +1658,7 @@
 
 (define_insn "one_cmplhi2"
   [(set (match_operand:HI 0 "general_operand" "=r")
-	(not:HI (match_operand:HI 1 "arith_operand" "r")))]
+	(not:HI (match_operand:HI 1 "general_operand" "r")))]
   ""
   "nor\\t%0,$0,%1\\t#one_cmplhi2")
 
@@ -1648,7 +1666,7 @@
 
 (define_insn "one_cmplqi2"
   [(set (match_operand:QI 0 "general_operand" "=r")
-	(not:QI (match_operand:QI 1 "arith_operand" "r")))]
+	(not:QI (match_operand:QI 1 "general_operand" "r")))]
   ""
   "nor\\t%0,$0,%1\\t#one_cmplqi2")
 

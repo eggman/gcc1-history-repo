@@ -530,7 +530,7 @@ round_push (size)
 #ifdef STACK_BOUNDARY
   int align = STACK_BOUNDARY / BITS_PER_UNIT;
   if (align == 1)
-    ;
+    return size;
   if (GET_CODE (size) == CONST_INT)
     {
       int new = (INTVAL (size) + align - 1) / align * align;

@@ -730,13 +730,13 @@ emit_cmp_insn (x, y, size, unsignedp, align)
   enum mode_class class;
   enum machine_mode wider_mode;
 
-  class = GET_MODE_CLASS (mode);
-
   if (mode == VOIDmode) mode = GET_MODE (y);
   /* They could both be VOIDmode if both args are immediate constants,
      but we should fold that at an earlier stage.
      With no special code here, this will call abort,
      reminding the programmer to implement such folding.  */
+
+  class = GET_MODE_CLASS (mode);
 
   if (mode != BLKmode && flag_force_mem)
     {
@@ -1161,6 +1161,11 @@ expand_float (real_to, from, unsignedp)
 {
   enum insn_code icode;
   register rtx to;
+
+  /* Constants should get converted in `fold'.
+     We lose here since we don't know the mode.  */
+  if (GET_MODE (from) == VOIDmode)
+    abort ();
 
   to = real_to = protect_from_queue (real_to, 1);
   from = protect_from_queue (from, 0);

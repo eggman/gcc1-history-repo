@@ -29,12 +29,13 @@ union flt_or_int { int i; float f; };
 #include <stdio.h>
 /* This is used by the `assert' macro.  */
 void
-__eprintf (string, line, filename)
+__eprintf (string, expression, line, filename)
      char *string;
+     char *expression;
      int line;
      char *filename;
 {
-  fprintf (stderr, string, line, filename);
+  fprintf (stderr, string, expression, line, filename);
 }
 #endif
 
@@ -187,11 +188,19 @@ __cmpdf2 (a, b)
 #endif
 
 #ifdef L_fixunsdfsi
+#define HIGH_BIT_INT_COEFF  (1 << (BITS_PER_WORD - 1))
+#define HIGH_BIT_COEFF  (2 * (double) (1 << (BITS_PER_WORD - 2)))
+
 SItype
 __fixunsdfsi (a)
      double a;
 {
-  return (unsigned SItype) a;
+  if (a < HIGH_BIT_COEFF)
+    return (SItype)a;
+  /* Convert large positive numbers to smaller ones,
+     then increase again after you have a fixed point number.  */
+  else
+    return ((SItype) (a - HIGH_BIT_COEFF)) + HIGH_BIT_INT_COEFF;
 }
 #endif
 
@@ -294,25 +303,6 @@ __extendsfdf2 (a)
   union flt_or_int intify;
   return a.f;
 }
-#endif
-
-#ifdef L_varargs
-#ifdef sparc
-	asm (".global ___builtin_saveregs");
-	asm ("___builtin_saveregs:");
-	asm ("st %i0,[%fp+68]");
-	asm ("st %i1,[%fp+72]");
-	asm ("st %i2,[%fp+76]");
-	asm ("st %i3,[%fp+80]");
-	asm ("st %i4,[%fp+84]");
-	asm ("retl");
-	asm ("st %i5,[%fp+88]");
-#else
-__builtin_saveregs ()
-{
-  abort ();
-}
-#endif
 #endif
 
 #ifdef L_bb_init_func

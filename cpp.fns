@@ -1,56 +1,56 @@
 \initial {#}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #elif}\hbox {}}{30}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #else}\hbox {}}{29}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #error}\hbox {}}{32}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #ident}\hbox {}}{34}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #if}\hbox {}}{28}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #ifdef}\hbox {}}{31}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #ifndef}\hbox {}}{31}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #include}\hbox {}}{4}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #line}\hbox {}}{33}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing #pragma}\hbox {}}{34}
+\entry {\code {#elif}}{30}
+\entry {\code {#else}}{29}
+\entry {\code {#error}}{32}
+\entry {\code {#ident}}{34}
+\entry {\code {#if}}{28}
+\entry {\code {#ifdef}}{32}
+\entry {\code {#ifndef}}{32}
+\entry {\code {#include}}{4}
+\entry {\code {#line}}{33}
+\entry {\code {#pragma}}{34}
 \initial {-}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -C}\hbox {}}{35}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -d}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -D}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -i}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -I}\hbox {}}{35}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -M}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -MM}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -P}\hbox {}}{35}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -pedantic}\hbox {}}{35}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -trigraphs}\hbox {}}{35}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -U}\hbox {}}{36}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing -undef}\hbox {}}{36}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}BASE{\fam \ttfam \tentt \char '137}FILE{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{12}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}DATE{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{12}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}FILE{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{11}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}LINE{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{12}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}STDC{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{12}
-\initial {{\fam \ttfam \tentt \char '137}}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing {\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}TIME{\fam \ttfam \tentt \char '137}{\fam \ttfam \tentt \char '137}}\hbox {}}{12}
+\entry {\code {-C}}{36}
+\entry {\code {-d}}{37}
+\entry {\code {-D}}{36}
+\entry {\code {-i}}{37}
+\entry {\code {-I}}{36}
+\entry {\code {-M}}{37}
+\entry {\code {-MM}}{37}
+\entry {\code {-P}}{35}
+\entry {\code {-pedantic}}{36}
+\entry {\code {-trigraphs}}{36}
+\entry {\code {-U}}{37}
+\entry {\code {-undef}}{37}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}BASE{@fam @ttfam @tentt @char '137}FILE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}DATE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}FILE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}LINE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}STDC{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
+\initial {{@fam @ttfam @tentt @char '137}}
+\entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}TIME{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
 \initial {B}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing BSD}\hbox {}}{13}
+\entry {\code {BSD}}{13}
 \initial {D}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing defined}\hbox {}}{31}
+\entry {\code {defined}}{31}
 \initial {M}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing M68020}\hbox {}}{13}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing m68k}\hbox {}}{13}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing mc68000}\hbox {}}{13}
+\entry {\code {M68020}}{14}
+\entry {\code {m68k}}{13}
+\entry {\code {mc68000}}{13}
 \initial {N}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing ns32000}\hbox {}}{14}
+\entry {\code {ns32000}}{14}
 \initial {P}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing pyr}\hbox {}}{14}
+\entry {\code {pyr}}{14}
 \initial {S}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing sequent}\hbox {}}{14}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing sun}\hbox {}}{14}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing system header files}\hbox {}}{4}
+\entry {\code {sequent}}{14}
+\entry {\code {sun}}{14}
+\entry {\code {system header files}}{4}
 \initial {U}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing unix}\hbox {}}{13}
+\entry {\code {unix}}{13}
 \initial {V}
-\entry {{\fam \ttfam \tentt \rawbackslash \frenchspacing vax}\hbox {}}{13}
+\entry {\code {vax}}{13}

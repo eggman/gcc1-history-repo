@@ -668,6 +668,7 @@ find_dummy_reload (in, out, inloc, outloc, class, for_real)
      Also, the result can't go in IN if IN is used within OUT.  */
   if (hard_regs_live_known
       && GET_CODE (in) == REG
+      && ! find_reg_note (this_insn, REG_UNSET, in)
       && (value == 0
 	  || find_regno_note (this_insn, REG_DEAD, REGNO (value))))
     {
@@ -989,12 +990,35 @@ decompose (x)
       val.base = base;
       return val;
     }
-  else
+  else if (GET_CODE (x) == REG)
     {
-      val.start = true_regnum (x); 
-      val.end = val.start + HARD_REGNO_NREGS (val.start, GET_MODE (x));
       val.reg_flag = 1;
+      val.start = true_regnum (x); 
+      if (val.start < 0)
+	{
+	  /* A pseudo with no hard reg.  */
+	  val.start = REGNO (x);
+	  val.end = val.start + 1;
+	}
+      else
+	/* A hard reg.  */
+	val.end = val.start + HARD_REGNO_NREGS (val.start, GET_MODE (x));
     }
+  else if (GET_CODE (x) == SUBREG)
+    {
+      if (GET_CODE (SUBREG_REG (x)) != REG)
+	/* This could be more precise, but it's good enough.  */
+	return decompose (SUBREG_REG (x));
+      val.reg_flag = 1;
+      val.start = true_regnum (x); 
+      if (val.start < 0)
+	return decompose (SUBREG_REG (x));
+      else
+	/* A hard reg.  */
+	val.end = val.start + HARD_REGNO_NREGS (val.start, GET_MODE (x));
+    }
+  else
+    abort ();
   return val;
 }
 
@@ -2955,7 +2979,8 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
      because they don't behave the way ordinary registers do.  */
   
 #ifdef OVERLAPPING_REGNO_P
-   if (regno >= 0 && OVERLAPPING_REGNO_P (regno))
+   if (regno >= 0 && regno < FIRST_PSEUDO_REGISTER
+       && OVERLAPPING_REGNO_P (regno))
      return 0;
 #endif      
 
@@ -3124,7 +3149,11 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 	      if (GET_CODE (dest) == REG)
 		{
 		  register int xregno = REGNO (dest);
-		  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
+		  int xnregs;
+		  if (REGNO (dest) < FIRST_PSEUDO_REGISTER)
+		    xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
+		  else
+		    xnregs = 1;
 		  if (xregno < regno + nregs && xregno + xnregs > regno)
 		    return 0;
 		  if (xregno < valueno + valuenregs
@@ -3154,7 +3183,11 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 		      if (GET_CODE (dest) == REG)
 			{
 			  register int xregno = REGNO (dest);
-			  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
+			  int xnregs;
+			  if (REGNO (dest) < FIRST_PSEUDO_REGISTER)
+			    xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
+			  else
+			    xnregs = 1;
 			  if (xregno < regno + nregs
 			      && xregno + xnregs > regno)
 			    return 0;
