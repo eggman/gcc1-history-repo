@@ -37,16 +37,21 @@ Therefore, it is not applicable to `for (i = 10; i >= 0; i--)'
 unless the compiler can know that I will never be negative
 before it is decremented.
 
-* Special local optimizations.
+* Using constraints on values.
 
-The instruction combiner finds only certain classes of local optimizations.
-For example, it cannot use the 68020 instruction `cmp2' because it would
-not think to combine the instructions that would be equivalent to a `cmp2'.
+Many operations could be simplified based on knowledge of the
+minimum and maximum possible values of a register at any particular time.
+These limits could come from the data types in the tree, via rtl generation,
+or they can be deduced from operations that are performed.  For example,
+the result of an `and' operation one of whose operands is 7 must be in
+the range 0 to 7.  Compare instructions also tell something about the
+possible values of the operand, in the code beyond the test.
 
-In order to take advantage of such instructions, the combiner would need
-special hints as to which instructions to consider combining.  To be
-generally useful, this feature would have to be controlled somehow
-by new information in the machine description.
+Value constraints can be used to determine the results of a further
+comparison.  They can also indicate that certain `and' operations are
+redundant.  Constraints might permit a decrement and branch
+instruction that checks zeroness to be used when the user has
+specified to exit if negative.
 
 * Smarter reload pass.
 
@@ -82,10 +87,34 @@ be better to output a binary tree of branches.
 
 * Distributive law.
 
-*(X + 4 * (Y + C)) compiles better as *(X + 4*C + 4*Y)
-on some machines because of known addressing modes.
-It may be tricky to determine when, and for which machines,
-to use each alternative.
+The C expression *(X + 4 * (Y + C)) compiles better on certain
+machines if rewritten as *(X + 4*C + 4*Y) because of known addressing
+modes.  It may be tricky to determine when, and for which machines, to
+use each alternative.
+
+* Jump-execute-next.
+
+Many recent machines have jumps which optionally execute the following
+instruction before the instruction jumped to, either conditionally or
+unconditionally.  To take advantage of this capability requires a new
+compiler pass that would reorder instructions when possible.  After
+reload may be a good place for it.
+
+On some machines, the result of a load from memory is not available
+until after the following instruction.  The easiest way to support
+these machines is to output each RTL load instruction as two assembler
+instructions, the second being a no-op.  Putting useful instructions
+after the load instructions may be a similar task to putting them
+after jump instructions.
+
+* Pipeline scheduling.
+
+On many machines, code gets faster if instructions are reordered
+so that pipelines are kept full.  Doing the best possible job of this
+requires knowing which functional units each kind of instruction executes
+in and how long the functional unit stays busy with it.  Then the
+goal is to reorder the instructions to keep many functional units
+busy but never feed them so fast they must wait.
 
 2. Simpler porting.
 
@@ -110,36 +139,17 @@ kind of addressing, and this pattern would have:
 
 3. Other languages.
 
-Front ends for Pascal, Fortran, Algol, Cobol and Ada are desirable.
+Front ends for Pascal, Fortran, Algol, Cobol, Modula-2 and Ada are
+desirable.
 
-Pascal requires the implementation of functions within functions.
-Some of the mechanisms for this already exist.
+Pascal, Modula-2 and Ada require the implementation of functions
+within functions.  Some of the mechanisms for this already exist.
 
 4. Generalize the machine model.
 
-4.A. Parameters in registers.
+Some new compiler features may be needed to do a good job on machines
+where static data needs to be addressed using base registers.
 
-One some machines, conventions are that some parameters are passed
-in general registers.  The compiler currently cannot handle this.
-
-This requires changes in the code in expr.c for function calls.
-For function entry, changes are required in stmt.c, and in
-layout_parms, and perhaps also in final and in register allocation,
-but the last should be minor.
-
-Where stmt.c now copies the stack slot into a pseudo register,
-instead copy the special argument register into a pseudo register.
-Use the pseudo register throughout the body of the function to
-represent the parameter.  That way, parameters can still be spilled
-to the stack.
-
-4.B. Jump-execute-next.
-
-Many recent machines have jumps which execute the following instruction
-before the instruction jumped to.  To take advantage of this capability
-requires a new compiler pass that would reorder instructions when possible.
-After reload is a good place for it.
-
-5. Add a profiling feature like Berkeley's -pg,
-or other debugging and measurement features.
-
+Some machines have two stacks in different areas of memory, one used
+for scalars and another for large objects.  The compiler does not
+now have a way to understand this.

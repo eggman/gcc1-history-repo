@@ -1,5 +1,5 @@
 /* Language-indepednent node constructors for parse phase of GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -37,6 +37,7 @@ and this notice must be preserved on all copies.  */
 #include <stdio.h>
 #include "tree.h"
 #include "obstack.h"
+#include "varargs.h"
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -50,14 +51,60 @@ extern void free ();
 
 struct obstack permanent_obstack;
 
+/* The initial RTL, and all ..._TYPE nodes, in a function
+   are allocated in this obstack.  Usually they are freed at the
+   end of the function, but if the function is inline they are saved.  */
+
+struct obstack maybepermanent_obstack;
+
 /* The contents of the current function definition are allocated
    in this obstack, and all are freed at the end of the function.  */
 
 struct obstack temporary_obstack;
 
+/* The tree nodes of an expression are allocated
+   in this obstack, and all are freed at the end of the expression.  */
+
+struct obstack momentary_obstack;
+
+/* This points at either permanent_obstack or maybepermanent_obstack.  */
+
+struct obstack *saveable_obstack;
+
+/* This is same as saveable_obstack during parse and expansion phase;
+   it points to temporary_obstack during optimization.
+   This is the obstack to be used for creating rtl objects.  */
+
+struct obstack *rtl_obstack;
+
 /* This points at either permanent_obstack or temporary_obstack.  */
 
 struct obstack *current_obstack;
+
+/* This points at either permanent_obstack or temporary_obstack
+   or momentary_obstack.  */
+
+struct obstack *expression_obstack;
+
+/* Addresses of first objects in some obstacks.
+   This is for freeing their entire contents.  */
+char *maybepermanent_firstobj;
+char *temporary_firstobj;
+char *momentary_firstobj;
+
+/* Stack of places to restore the momentary obstack back to.  */
+   
+struct momentary_level
+{
+  /* Pointer back to previous such level.  */
+  struct momentary_level *prev;
+  /* First object allocated within this level.  */
+  char *base;
+  /* Value of expression_obstack saved at entry to this level.  */
+  struct obstack *obstack;
+};
+
+struct momentary_level *momentary_stack;
 
 /* Table indexed by tree code giving a string containing a character
    classifying the tree code.  Possibilities are
@@ -87,7 +134,7 @@ int tree_node_counter = 0;
 
 /* Hash table for uniquizing IDENTIFIER_NODEs by name.  */
 
-#define MAX_HASH_TABLE 1008
+#define MAX_HASH_TABLE 1009
 static tree hash_table[MAX_HASH_TABLE];	/* id hash buckets */
 
 /* Init data for node creation, at the beginning of compilation.  */
@@ -96,34 +143,74 @@ void
 init_tree ()
 {
   obstack_init (&permanent_obstack);
+
+  obstack_init (&temporary_obstack);
+  temporary_firstobj = (char *) obstack_alloc (&temporary_obstack, 0);
+  obstack_init (&momentary_obstack);
+  momentary_firstobj = (char *) obstack_alloc (&momentary_obstack, 0);
+  obstack_init (&maybepermanent_obstack);
+  maybepermanent_firstobj
+    = (char *) obstack_alloc (&maybepermanent_obstack, 0);
+
   current_obstack = &permanent_obstack;
+  expression_obstack = &permanent_obstack;
+  rtl_obstack = saveable_obstack = &permanent_obstack;
   tree_node_counter = 1;
   bzero (hash_table, sizeof hash_table);
 }
 
 /* Start allocating on the temporary (per function) obstack.
-   This is done in start_function before parsing the function body.  */
+   This is done in start_function before parsing the function body,
+   and before each initialization at top level, and to go back
+   to temporary allocation after doing end_temporary_allocation.  */
 
+void
 temporary_allocation ()
 {
-  /* Set up the obstack: */
-  obstack_init (&temporary_obstack);
-
   current_obstack = &temporary_obstack;
+  expression_obstack = &temporary_obstack;
+  rtl_obstack = saveable_obstack = &maybepermanent_obstack;
+  momentary_stack = 0;
+}
+
+/* Start allocating on the permanent obstack but don't
+   free the temporary data.  After calling this, call
+   `permanent_allocation' to fully resume permanent allocation status.  */
+
+void
+end_temporary_allocation ()
+{
+  current_obstack = &permanent_obstack;
+  expression_obstack = &permanent_obstack;
+  rtl_obstack = saveable_obstack = &permanent_obstack;
 }
 
 /* Go back to allocating on the permanent obstack
    and free everything in the temporary obstack.
    This is done in finish_function after fully compiling a function.  */
 
+void
 permanent_allocation ()
 {
   /* Free up previous temporary obstack data */
-  obstack_free (&temporary_obstack, NULL);
+  obstack_free (&temporary_obstack, temporary_firstobj);
+  obstack_free (&momentary_obstack, momentary_firstobj);
+  obstack_free (&maybepermanent_obstack, maybepermanent_firstobj);
 
   current_obstack = &permanent_obstack;
+  expression_obstack = &permanent_obstack;
+  rtl_obstack = saveable_obstack = &permanent_obstack;
 }
 
+/* Save permanently everything on the maybepermanent_obstack.  */
+
+void
+preserve_data ()
+{
+  maybepermanent_firstobj
+    = (char *) obstack_alloc (&maybepermanent_obstack, 0);
+}
+
 /* Allocate SIZE bytes in the current obstack
    and return a pointer to them.
    In practice the current obstack is always the temporary one.  */
@@ -153,9 +240,73 @@ char *
 permalloc (size)
      long size;
 {
-  char *object;
-
   return (char *) obstack_alloc (&permanent_obstack, size);
+}
+
+/* Start a level of momentary allocation.
+   In C, each compound statement has its own level
+   and that level is freed at the end of each statement.
+   All expression nodes are allocated in the momentary allocation level.  */
+
+void
+push_momentary ()
+{
+  struct momentary_level *tem
+    = (struct momentary_level *) obstack_alloc (&momentary_obstack,
+						sizeof (struct momentary_level));
+  tem->prev = momentary_stack;
+  tem->base = (char *) obstack_base (&momentary_obstack);
+  tem->obstack = expression_obstack;
+  momentary_stack = tem;
+  expression_obstack = &momentary_obstack;
+}
+
+/* Free all the storage in the current momentary-allocation level.
+   In C, this happens at the end of each statement.  */
+
+void
+clear_momentary ()
+{
+  obstack_free (&momentary_obstack, momentary_stack->base);
+}
+
+/* Discard a level of momentary allocation.
+   In C, this happens at the end of each compound statement.
+   Restore the status of expression node allocation
+   that was in effect before this level was created.  */
+
+void
+pop_momentary ()
+{
+  struct momentary_level *tem = momentary_stack;
+  momentary_stack = tem->prev;
+  obstack_free (&momentary_obstack, tem);
+  expression_obstack = tem->obstack;
+}
+
+/* Call when starting to parse a declaration:
+   make expressions in the declaration last the length of the function.
+   Returns an argument that should be passed to resume_momentary later.  */
+
+int
+suspend_momentary ()
+{
+  register int tem = expression_obstack == &momentary_obstack;
+  expression_obstack = current_obstack;
+  return tem;
+}
+
+/* Call when finished parsing a declaration:
+   restore the treatment of node-allocation that was
+   in effect before the suspension.
+   YES should be the value previously returned by suspend_momentary.  */
+
+void
+resume_momentary (yes)
+     int yes;
+{
+  if (yes)
+    expression_obstack = &momentary_obstack;
 }
 
 /* Return a newly allocated node of code CODE.
@@ -172,31 +323,58 @@ make_node (code)
   register tree t;
   register int type = *tree_code_type[(int) code];
   register int length;
-  register struct obstack *obstack;
+  register struct obstack *obstack = current_obstack;
   register int i;
 
   switch (type)
     {
     case 'd':  /* A decl node */
       length = sizeof (struct tree_decl);
+      /* All decls in an inline function need to be saved.  */
+      if (obstack != &permanent_obstack)
+	obstack = saveable_obstack;
       break;
 
     case 't':  /* a type node */
       length = sizeof (struct tree_type);
+      /* All data types are put where we can preserve them if nec.  */
+      if (obstack != &permanent_obstack)
+	obstack = saveable_obstack;
       break;
 
     case 's':  /* a stmt node */
-      length = sizeof (struct tree_shared)
+      length = sizeof (struct tree_common)
 	+ 2 * sizeof (int)
 	  + tree_code_length[(int) code] * sizeof (char *);
+      /* All stmts are put where we can preserve them if nec.  */
+      if (obstack != &permanent_obstack)
+	obstack = saveable_obstack;
       break;
 
-    default:   /* an expression or constant.  */
-      length = sizeof (struct tree_shared)
-	+ tree_code_length[(int) code] * sizeof (char *);
-    }
+    case 'r':  /* a reference */
+    case 'e':  /* an expression */
+      obstack = expression_obstack;
+      length = sizeof (struct tree_exp)
+	+ (tree_code_length[(int) code] - 1) * sizeof (char *);
+      break;
 
-  obstack = (code != IDENTIFIER_NODE) ? current_obstack : &permanent_obstack;
+    case 'c':  /* a constant */
+      obstack = expression_obstack;
+      /* We can't use tree_code_length for this, since the number of words
+	 is machine-dependent due to varying alignment of `double'.  */
+      if (code == REAL_CST)
+	{
+	  length = sizeof (struct tree_real_cst);
+	  break;
+	}
+
+    case 'x':  /* something random, like an identifier.  */
+      length = sizeof (struct tree_common)
+	+ tree_code_length[(int) code] * sizeof (char *);
+      /* Identifier nodes are always permanent since they are
+	 unique in a compiler run.  */
+      if (code == IDENTIFIER_NODE) obstack = &permanent_obstack;
+    }
 
   t = (tree) obstack_alloc (obstack, length);
 
@@ -204,7 +382,7 @@ make_node (code)
   TREE_TYPE (t) = 0;
   TREE_CHAIN (t) = 0;
   for (i = (length / sizeof (int)) - 1;
-       i >= sizeof (struct tree_shared) / sizeof (int) - 1;
+       i >= sizeof (struct tree_common) / sizeof (int) - 1;
        i--)
     ((int *) t)[i] = 0;
 
@@ -227,7 +405,6 @@ make_node (code)
     {
       TYPE_ALIGN (t) = 1;
       TYPE_SIZE_UNIT (t) = 1;
-      TYPE_SEP_UNIT (t) = 1;
       TYPE_MAIN_VARIANT (t) = t;
     }
 
@@ -262,13 +439,28 @@ copy_node (node)
       break;
 
     case 's':
-      length = sizeof (struct tree_shared)
+      length = sizeof (struct tree_common)
 	+ 2 * sizeof (int)
 	  + tree_code_length[(int) code] * sizeof (char *);
       break;
 
-    default:   /* a statement, expression or constant.  */
-      length = sizeof (struct tree_shared)
+    case 'r':  /* a reference */
+    case 'e':  /* a expression */
+      length = sizeof (struct tree_exp)
+	+ (tree_code_length[(int) code] - 1) * sizeof (char *);
+      break;
+
+    case 'c':  /* a constant */
+      /* We can't use tree_code_length for this, since the number of words
+	 is machine-dependent due to varying alignment of `double'.  */
+      if (code == REAL_CST)
+	{
+	  length = sizeof (struct tree_real_cst);
+	  break;
+	}
+
+    case 'x':  /* something random, like an identifier.  */
+      length = sizeof (struct tree_common)
 	+ tree_code_length[(int) code] * sizeof (char *);
     }
 
@@ -332,7 +524,7 @@ get_identifier (text)
 
 /* Return a newly constructed INTEGER_CST node whose constant value
    is specified by the two ints LOW and HI.
-   The TREE_TYPE is not initialized.  */
+   The TREE_TYPE is set to `int'.  */
 
 tree
 build_int_2 (low, hi)
@@ -343,33 +535,6 @@ build_int_2 (low, hi)
   TREE_INT_CST_HIGH (t) = hi;
   TREE_TYPE (t) = integer_type_node;
   return t;
-}
-
-/* Return a REAL_CST node containing a value atoi (STR) * 10**EX.
-   The TREE_TYPE is not initialized.  */
-
-tree
-build_real_from_string (str, ex)
-     char *str;
-     int ex;
-{
-  double r;
-  int i;
-  tree t;
-
-  t = make_node (REAL_CST);
-/* ??? This conversion code is not good.
-   Use the new atof once it is done.  */
-  sscanf (str, "%lf", &r);
-  if (0 < ex) 
-    for (i = 0; i < ex; i++)
-      r = r * 10;
-  else
-    for (i = 0; i < -ex; i++)
-      r = r / 10;
-
-  TREE_REAL_CST (t) = r;
-  return (t);
 }
 
 /* Return a newly constructed REAL_CST node whose value is D.
@@ -395,13 +560,27 @@ build_real_from_int_cst (i)
      tree i;
 {
   tree v;
+  double d;
 
   v = make_node (REAL_CST);
-  TREE_REAL_CST (v)
-    = (double) TREE_INT_CST_LOW (i)
-      + ((double) (1 << (HOST_BITS_PER_INT / 2))
-	 * (double) (1 << (HOST_BITS_PER_INT / 2))
-	 * (double) TREE_INT_CST_HIGH (i));
+
+  if (TREE_INT_CST_HIGH (i) < 0)
+    {
+      d = (double) (~ TREE_INT_CST_HIGH (i));
+      d *= ((double) (1 << (HOST_BITS_PER_INT / 2))
+	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
+      d += (double) (unsigned) (~ TREE_INT_CST_LOW (i));
+      d = (- d - 1.0);
+    }
+  else
+    {
+      d = (double) TREE_INT_CST_HIGH (i);
+      d *= ((double) (1 << (HOST_BITS_PER_INT / 2))
+	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
+      d += (double) (unsigned) TREE_INT_CST_LOW (i);
+    }
+
+  TREE_REAL_CST (v) = d;
   return v;
 }
 
@@ -416,7 +595,7 @@ build_string (len, str)
 {
   register tree s = make_node (STRING_CST);
   TREE_STRING_LENGTH (s) = len;
-  TREE_STRING_POINTER (s) = obstack_copy0 (current_obstack, str, len);
+  TREE_STRING_POINTER (s) = obstack_copy0 (saveable_obstack, str, len);
   return s;
 }
 
@@ -435,45 +614,15 @@ build_complex (real, imag)
   return t;
 }
 
-/* Return nonzero if the type FTYPE is unsigned (all possible values >= 0).
-   Nonscalar types are considered unsigned; real types considered signed.  */
-
-int
-type_unsigned_p (ftype)
-     tree ftype;
-{
-  register tree type = ftype;
-  register tree t;
-
-  if (TREE_CODE (ftype) == POINTER_TYPE)
-    return 1;
-  if (TREE_CODE (ftype) == REAL_TYPE)
-    return 0;
-  if (TREE_CODE (ftype) != INTEGER_TYPE
-      && TREE_CODE (ftype) != ENUMERAL_TYPE)
-    return 1;
-
-  while (1)
-    {
-      t = TYPE_MIN_VALUE (type);
-      if (TREE_CODE (t) == INTEGER_CST)
-	return TREE_INT_CST_HIGH (t) >= 0;
-
-      type = TREE_TYPE (type);
-      if (type == 0)
-	return 0;
-    }
-}
-
 /* Return 1 if EXPR is the integer constant zero.  */
 
 int
 integer_zerop (expr)
      tree expr;
 {
-  return TREE_CODE (expr) == INTEGER_CST
-    && TREE_INT_CST_LOW (expr) == 0
-    && TREE_INT_CST_HIGH (expr) == 0;
+  return (TREE_CODE (expr) == INTEGER_CST
+	  && TREE_INT_CST_LOW (expr) == 0
+	  && TREE_INT_CST_HIGH (expr) == 0);
 }
 
 /* Return 1 if EXPR is the integer constant one.  */
@@ -482,9 +631,9 @@ int
 integer_onep (expr)
      tree expr;
 {
-  return TREE_CODE (expr) == INTEGER_CST
-    && TREE_INT_CST_LOW (expr) == 1
-    && TREE_INT_CST_HIGH (expr) == 0;
+  return (TREE_CODE (expr) == INTEGER_CST
+	  && TREE_INT_CST_LOW (expr) == 1
+	  && TREE_INT_CST_HIGH (expr) == 0);
 }
 
 /* Return 1 if EXPR is an integer containing all 1's
@@ -500,7 +649,7 @@ integer_all_onesp (expr)
   if (TREE_CODE (expr) != INTEGER_CST)
     return 0;
 
-  uns = type_unsigned_p (TREE_TYPE (expr));
+  uns = TREE_UNSIGNED (TREE_TYPE (expr));
   if (!uns)
     return TREE_INT_CST_LOW (expr) == -1 && TREE_INT_CST_HIGH (expr) == -1;
 
@@ -577,6 +726,25 @@ tree_cons (purpose, value, chain)
   return node;
 }
 
+/* Same as `tree_cons' but make a permanent object.  */
+
+tree
+perm_tree_cons (purpose, value, chain)
+     tree purpose, value, chain;
+{
+  register tree node;
+  register struct obstack *ambient_obstack = current_obstack;
+  current_obstack = &permanent_obstack;
+
+  node = make_node (TREE_LIST);
+  TREE_CHAIN (node) = chain;
+  TREE_PURPOSE (node) = purpose;
+  TREE_VALUE (node) = value;
+
+  current_obstack = ambient_obstack;
+  return node;
+}
+
 /* Return the last node in a chain of nodes (chained through TREE_CHAIN).  */
 
 tree
@@ -619,8 +787,31 @@ size_in_bytes (type)
 {
   if (type == error_mark_node)
     return integer_zero_node;
+  if (TYPE_SIZE (type) == 0)
+    {
+      incomplete_type_error (0, type);
+      return integer_zero_node;
+    }
   return convert_units (TYPE_SIZE (type), TYPE_SIZE_UNIT (type),
 			BITS_PER_UNIT);
+}
+
+/* Return the size of TYPE (in bytes) as an integer,
+   or return -1 if the size can vary.  */
+
+int
+int_size_in_bytes (type)
+     tree type;
+{
+  int size;
+  if (type == error_mark_node)
+    return 0;
+  if (TYPE_SIZE (type) == 0)
+    return -1;
+  if (TREE_CODE (TYPE_SIZE (type)) != INTEGER_CST)
+    return -1;
+  size = TREE_INT_CST_LOW (TYPE_SIZE (type)) * TYPE_SIZE_UNIT (type);
+  return (size + BITS_PER_UNIT - 1) / BITS_PER_UNIT;
 }
 
 /* Return nonzero if arg is static -- a reference to an object in
@@ -632,39 +823,69 @@ staticp (arg)
 {
   register enum tree_code code = TREE_CODE (arg);
 
-  if ((code == VAR_DECL || code == FUNCTION_DECL)
+  if ((code == VAR_DECL || code == FUNCTION_DECL || code == CONSTRUCTOR)
       && (TREE_STATIC (arg) || TREE_EXTERNAL (arg)))
+    return 1;
+
+  if (code == STRING_CST)
     return 1;
 
   if (code == COMPONENT_REF)
     return staticp (TREE_OPERAND (arg, 0));
 
+  if (code == ARRAY_REF)
+    {
+      if (TREE_CODE (TYPE_SIZE (TREE_TYPE (arg))) == INTEGER_CST
+	  && TREE_CODE (TREE_OPERAND (arg, 1)) == INTEGER_CST)
+	return staticp (TREE_OPERAND (arg, 0));
+    }
+
   return 0;
 }
 
-/* Verify that an expression, REF, is a reference to data that makes sense
-   to modify or take the address of
-   (i.e., for processing the argument to unary & or the left arg to =).
- Error if REF is some other kind of expression.
-
- We can safely ignore the difference between "makes sense to modify"
- and "makes sense to take the address of", because attempting to
- take the address of a variable will force it into memory anyway.  */
+/* Return nonzero if REF is an lvalue valid for this language.
+   Lvalues can be assigned, unless they have TREE_READONLY.
+   Lvalues can have their address taken, unless they have TREE_REGDECL.  */
 
 int
-lvalue_or_else (ref)
+lvalue_p (ref)
      tree ref;
 {
   register enum tree_code code = TREE_CODE (ref);
 
-  if (code == COMPONENT_REF)
-    return lvalue_or_else (TREE_OPERAND (ref, 0));
-  else if (code == INDIRECT_REF || code == ARRAY_REF || code == VAR_DECL
-           || code == FUNCTION_DECL || code == PARM_DECL || code == RESULT_DECL
-	   || code == ERROR_MARK)
-    return 1;
-  yyerror ("invalid lvalue (not a reference to data in memory)");
+  if (language_lvalue_valid (ref))
+    switch (code)
+      {
+      case COMPONENT_REF:
+	return lvalue_p (TREE_OPERAND (ref, 0));
+
+      case STRING_CST:
+	return 1;
+
+      case INDIRECT_REF:
+      case ARRAY_REF:
+      case VAR_DECL:
+      case PARM_DECL:
+      case RESULT_DECL:
+      case ERROR_MARK:
+	if (TREE_CODE (TREE_TYPE (ref)) != FUNCTION_TYPE)
+	  return 1;
+      }
   return 0;
+}
+
+/* Return nonzero if REF is an lvalue valid for this language;
+   otherwise, print an error message and return zero.  */
+
+int
+lvalue_or_else (ref, string)
+     tree ref;
+     char *string;
+{
+  int win = lvalue_p (ref);
+  if (! win)
+    error ("invalid lvalue in %s", string);
+  return win;
 }
 
 /* This should be applied to any node which may be used in more than one place,
@@ -678,7 +899,7 @@ save_expr (expr)
 {
   register tree t = fold (expr);
 
-  /* If the tree evaluates to a constant, then we don't what to hide that
+  /* If the tree evaluates to a constant, then we don't want to hide that
      fact (i.e. this allows further folding, and direct checks for constants).
      Since it is no problem to reevaluate literals, we just return the 
      literal node. */
@@ -686,15 +907,15 @@ save_expr (expr)
   if (TREE_LITERAL (t) || TREE_READONLY (t) || TREE_CODE (t) == SAVE_EXPR)
     return t;
 
-  t = build2 (SAVE_EXPR, t, NULL);
-  TREE_TYPE (t) = TREE_TYPE (expr);
-  TREE_VOLATILE (t) = TREE_VOLATILE (expr);
-  return t;
+  return build (SAVE_EXPR, TREE_TYPE (expr), t, NULL);
 }
 
 /* Stabilize a reference so that we can use it any number of times
    without causing its operands to be evaluated more than once.
-   Returns the stabilized reference.  */
+   Returns the stabilized reference.
+
+   Also allows conversion expressions whose operands are references.
+   Any other kind of expression is returned unchanged.  */
 
 tree
 stabilize_reference (ref)
@@ -703,87 +924,162 @@ stabilize_reference (ref)
   register tree result;
   register enum tree_code code = TREE_CODE (ref);
 
-  if (code == INDIRECT_REF)
+  switch (code)
     {
-      result = build1 (INDIRECT_REF, save_expr (TREE_OPERAND (ref, 0)));
-    }
-  else if (code == COMPONENT_REF)
-    {
-      result = build2 (COMPONENT_REF,
-		       stabilize_reference (TREE_OPERAND (ref, 0)),
-		       TREE_OPERAND (ref, 1));
-    }
-  else if (code == ARRAY_REF)
-    {
-      result = build2 (ARRAY_REF, save_expr (TREE_OPERAND (ref, 0)),
-		       save_expr (TREE_OPERAND (ref, 1)));
-    }
-  else if (code == VAR_DECL || code == PARM_DECL || code == RESULT_DECL)
-    {
+    case VAR_DECL:
+    case PARM_DECL:
+    case RESULT_DECL:
       result = ref;
-    }
-  else
-    {
-      if (code != ERROR_MARK)
-	yyerror ("invalid lvalue (not a reference to data in memory)");
+      break;
+
+    case NOP_EXPR:
+    case CONVERT_EXPR:
+    case FLOAT_EXPR:
+    case FIX_TRUNC_EXPR:
+    case FIX_FLOOR_EXPR:
+    case FIX_ROUND_EXPR:
+    case FIX_CEIL_EXPR:
+      result = build_nt (code, stabilize_reference (TREE_OPERAND (ref, 0)));
+      break;
+
+    case INDIRECT_REF:
+      result = build_nt (INDIRECT_REF, save_expr (TREE_OPERAND (ref, 0)));
+      break;
+
+    case COMPONENT_REF:
+      result = build_nt (COMPONENT_REF,
+			 stabilize_reference (TREE_OPERAND (ref, 0)),
+			 TREE_OPERAND (ref, 1));
+      break;
+
+    case ARRAY_REF:
+      result = build_nt (ARRAY_REF, stabilize_reference (TREE_OPERAND (ref, 0)),
+			 save_expr (TREE_OPERAND (ref, 1)));
+      break;
+
+      /* If arg isn't a kind of lvalue we recognize, make no change.
+	 Caller should recognize the error for an invalid lvalue.  */
+    default:
+      return ref;
+
+    case ERROR_MARK:
       return error_mark_node;
     }
 
   TREE_TYPE (result) = TREE_TYPE (ref);
+  TREE_READONLY (result) = TREE_READONLY (ref);
   TREE_VOLATILE (result) = TREE_VOLATILE (ref);
+  TREE_THIS_VOLATILE (result) = TREE_THIS_VOLATILE (ref);
 
   return result;
 }
 
 /* Low-level constructors for expressions.  */
 
-/* Return a newly created expression-node of code SC and operand ARG1.
-   Used for codes that want one operand.
-   The TREE_TYPE is not initialized.  */
+/* Build an expression of code CODE, data type TYPE,
+   and operands as specified by the arguments ARG1 and following arguments.
+   Expressions and reference nodes can be created this way.
+   Constants, decls, types and misc nodes cannot be.  */
 
 tree
-build1 (sc, arg1)
-     enum tree_code sc;
-     tree arg1;
+build (va_alist)
+     va_dcl
 {
-  register tree t = make_node (sc);
+  register va_list p;
+  enum tree_code code;
+  register tree t;
+  register int length;
+  register int i;
 
-  TREE_OPERAND (t, 0) = arg1;
+  va_start (p);
+
+  code = va_arg (p, enum tree_code);
+  t = make_node (code);
+  length = tree_code_length[(int) code];
+  TREE_TYPE (t) = va_arg (p, tree);
+
+  if (length == 2)
+    {
+      /* This is equivalent to the loop below, but faster.  */
+      register tree arg0 = va_arg (p, tree);
+      register tree arg1 = va_arg (p, tree);
+      TREE_OPERAND (t, 0) = arg0;
+      TREE_OPERAND (t, 1) = arg1;
+      TREE_VOLATILE (t)
+	= (arg0 && TREE_VOLATILE (arg0)) || (arg1 && TREE_VOLATILE (arg1));
+    }
+  else
+    {
+      for (i = 0; i < length; i++)
+	{
+	  register tree operand = va_arg (p, tree);
+	  TREE_OPERAND (t, i) = operand;
+	  if (operand && TREE_VOLATILE (operand))
+	    TREE_VOLATILE (t) = 1;
+	}
+    }
+  va_end (p);
   return t;
 }
 
-/* Return a newly created expression-node of code SC
-   and operands ARG1 and ARG2.
-   Used for codes that want two operands.
-   The TREE_TYPE is not initialized.  */
+/* Similar except don't specify the TREE_TYPE
+   and leave the TREE_VOLATILE as 0.
+   It is permissible for arguments to be null,
+   or even garbage if their values do not matter.  */
 
 tree
-build2 (sc, arg1, arg2)
-     enum tree_code sc;
-     tree arg1, arg2;
+build_nt (va_alist)
+     va_dcl
 {
-  register tree t = make_node (sc);
+  register va_list p;
+  register enum tree_code code;
+  register tree t;
+  register int length;
+  register int i;
 
-  TREE_OPERAND (t, 0) = arg1;
-  TREE_OPERAND (t, 1) = arg2;
+  va_start (p);
+
+  code = va_arg (p, enum tree_code);
+  t = make_node (code);
+  length = tree_code_length[(int) code];
+
+  for (i = 0; i < length; i++)
+    TREE_OPERAND (t, i) = va_arg (p, tree);
+
+  va_end (p);
   return t;
 }
+
+/* Create a DECL_... node of code CODE, name NAME and data type TYPE.
+   We do NOT enter this node in any sort of symbol table.
 
-/* Return a newly created expression-node of code SC
-   and operands ARG1, ARG2 and ARG3.
-   Used for codes that want three operands.
-   The TREE_TYPE is not initialized.  */
+   layout_decl is used to set up the decl's storage layout.
+   Other slots are initialized to 0 or null pointers.  */
 
 tree
-build3 (sc, arg1, arg2, arg3)
-     int sc;
-     tree arg1, arg2, arg3;
+build_decl (code, name, type)
+     enum tree_code code;
+     tree name, type;
 {
-  register tree t = make_node (sc);
+  register tree t;
 
-  TREE_OPERAND (t, 0) = arg1;
-  TREE_OPERAND (t, 1) = arg2;
-  TREE_OPERAND (t, 2) = arg3;
+  t = make_node (code);
+
+/*  if (type == error_mark_node)
+    type = integer_type_node; */
+/* That is not done, deliberately, so that having error_mark_node
+   as the type can suppress useless errors in the use of this variable.  */
+
+  DECL_NAME (t) = name;
+  TREE_TYPE (t) = type;
+  DECL_ARGUMENTS (t) = NULL_TREE;
+  DECL_INITIAL (t) = NULL_TREE;
+
+  if (code == VAR_DECL || code == PARM_DECL || code == RESULT_DECL)
+    layout_decl (t, 0);
+  else if (code == FUNCTION_DECL)
+    DECL_MODE (t) = FUNCTION_MODE;
+
   return t;
 }
 
@@ -965,7 +1261,8 @@ build_type_variant (type, constp, volatilep)
       return t;
 
   /* We need a new one.  */
-  current_obstack = TREE_PERMANENT (type) ? &permanent_obstack : &temporary_obstack;
+  current_obstack
+    = TREE_PERMANENT (type) ? &permanent_obstack : saveable_obstack;
 
   t = copy_node (type);
   TREE_READONLY (t) = constp;
@@ -980,9 +1277,188 @@ build_type_variant (type, constp, volatilep)
   return t;
 }
 
+/* Hashing of types so that we don't make duplicates.
+   The entry point is `type_hash_canon'.  */
+
+/* Each hash table slot is a bucket containing a chain
+   of these structures.  */
+
+struct type_hash
+{
+  struct type_hash *next;	/* Next structure in the bucket.  */
+  int hashcode;			/* Hash code of this type.  */
+  tree type;			/* The type recorded here.  */
+};
+
+/* Now here is the hash table.  When recording a type, it is added
+   to the slot whose index is the hash code mod the table size.
+   Note that the hash table is used for several kinds of types
+   (function types, array types and array index range types, for now).
+   While all these live in the same table, they are completely independent,
+   and the hash code is computed differently for each of these.  */
+
+#define TYPE_HASH_SIZE 29
+struct type_hash *type_hash_table[TYPE_HASH_SIZE];
+
+/* Here is how primitive or already-canonicalized types' hash
+   codes are made.  */
+#define TYPE_HASH(TYPE) TREE_UID (TYPE)
+
+/* Compute a hash code for a list of types (chain of TREE_LIST nodes
+   with types in the TREE_VALUE slots), by adding the hash codes
+   of the individual types.  */
+
+int
+type_hash_list (list)
+     tree list;
+{
+  register int hashcode;
+  register tree tail;
+  for (hashcode = 0, tail = list; tail; tail = TREE_CHAIN (tail))
+    hashcode += TYPE_HASH (TREE_VALUE (tail));
+  return hashcode;
+}
+
+/* Look in the type hash table for a type isomorphic to TYPE.
+   If one is found, return it.  Otherwise return 0.  */
+
+tree
+type_hash_lookup (hashcode, type)
+     int hashcode;
+     tree type;
+{
+  register struct type_hash *h;
+  for (h = type_hash_table[hashcode % TYPE_HASH_SIZE]; h; h = h->next)
+    if (h->hashcode == hashcode
+	&& TREE_CODE (h->type) == TREE_CODE (type)
+	&& TREE_TYPE (h->type) == TREE_TYPE (type)
+	&& (TYPE_MAX_VALUE (h->type) == TYPE_MAX_VALUE (type)
+	    || tree_int_cst_equal (TYPE_MAX_VALUE (h->type),
+				   TYPE_MAX_VALUE (type)))
+	&& (TYPE_MIN_VALUE (h->type) == TYPE_MIN_VALUE (type)
+	    || tree_int_cst_equal (TYPE_MIN_VALUE (h->type),
+				   TYPE_MIN_VALUE (type)))
+	&& (TYPE_DOMAIN (h->type) == TYPE_DOMAIN (type)
+	    || (TREE_CODE (TYPE_DOMAIN (h->type)) == TREE_LIST
+		&& TREE_CODE (TYPE_DOMAIN (type)) == TREE_LIST
+		&& type_list_equal (TYPE_DOMAIN (h->type), TYPE_DOMAIN (type)))))
+      return h->type;
+  return 0;
+}
+
+/* Add an entry to the type-hash-table
+   for a type TYPE whose hash code is HASHCODE.  */
+
+void
+type_hash_add (hashcode, type)
+     int hashcode;
+     tree type;
+{
+  register struct type_hash *h;
+
+  h = (struct type_hash *) oballoc (sizeof (struct type_hash));
+  h->hashcode = hashcode;
+  h->type = type;
+  h->next = type_hash_table[hashcode % TYPE_HASH_SIZE];
+  type_hash_table[hashcode % TYPE_HASH_SIZE] = h;
+}
+
+/* Given TYPE, and HASHCODE its hash code, return the canonical
+   object for an identical type if one already exists.
+   Otherwise, return TYPE, and record it as the canonical object
+   if it is a permanent object.
+
+   To use this function, first create a type of the sort you want.
+   Then compute its hash code from the fields of the type that
+   make it different from other similar types.
+   Then call this function and use the value.
+   This function frees the type you pass in if it is a duplicate.  */
+
+/* Set to 1 to debug without canonicalization.  Never set by program.  */
+int debug_no_type_hash = 0;
+
+tree
+type_hash_canon (hashcode, type)
+     int hashcode;
+     tree type;
+{
+  tree t1;
+
+  if (debug_no_type_hash)
+    return type;
+
+  t1 = type_hash_lookup (hashcode, type);
+  if (t1 != 0)
+    {
+      struct obstack *o
+	= TREE_PERMANENT (type) ? &permanent_obstack : saveable_obstack;
+      obstack_free (o, type);
+      return t1;
+    }
+
+  /* If this is a new type, record it for later reuse.  */
+  if (current_obstack == &permanent_obstack)
+    type_hash_add (hashcode, type);
+
+  return type;
+}
+
+/* Given two lists of types
+   (chains of TREE_LIST nodes with types in the TREE_VALUE slots)
+   return 1 if the lists contain the same types in the same order.  */
+
+int
+type_list_equal (l1, l2)
+     tree l1, l2;
+{
+  register tree t1, t2;
+  for (t1 = l1, t2 = l2; t1 && t2; t1 = TREE_CHAIN (t1), t2 = TREE_CHAIN (t2))
+    if (TREE_VALUE (t1) != TREE_VALUE (t2))
+      return 0;
+
+  return t1 == t2;
+}
+
+/* Nonzero if integer constants T1 and T2
+   represent the same constant value.  */
+
+int
+tree_int_cst_equal (t1, t2)
+     tree t1, t2;
+{
+  if (t1 == t2)
+    return 1;
+  if (t1 == 0 || t2 == 0)
+    return 0;
+  if (TREE_CODE (t1) == INTEGER_CST
+      && TREE_CODE (t2) == INTEGER_CST
+      && TREE_INT_CST_LOW (t1) == TREE_INT_CST_LOW (t2)
+      && TREE_INT_CST_HIGH (t1) == TREE_INT_CST_HIGH (t2))
+    return 1;
+  return 0;
+}
+
+/* Nonzero if integer constants T1 and T2 represent values that satisfy <.
+   The precise way of comparison depends on their data type.  */
+
+int
+tree_int_cst_lt (t1, t2)
+     tree t1, t2;
+{
+  if (t1 == t2)
+    return 0;
+
+  if (!TREE_UNSIGNED (TREE_TYPE (t1)))
+    return INT_CST_LT (t1, t2);
+  return INT_CST_LT_UNSIGNED (t1, t2);
+}
+
 /* Constructors for pointer, array and function types.
    (RECORD_TYPE, UNION_TYPE and ENUMERAL_TYPE nodes are
    constructed by language-dependent code, not here.)  */
+
+/* Construct, lay out and return the type of pointers to TO_TYPE.
+   If such a type has already been constructed, reuse it.  */
 
 tree
 build_pointer_type (to_type)
@@ -999,7 +1475,7 @@ build_pointer_type (to_type)
   /* We need a new one.  If TO_TYPE is permanent, make this permanent too.  */
   current_obstack = (TREE_PERMANENT (to_type)
 		     ? &permanent_obstack
-		     : &temporary_obstack);
+		     : saveable_obstack);
 
   t = make_node (POINTER_TYPE);
   TREE_TYPE (t) = to_type;
@@ -1007,57 +1483,81 @@ build_pointer_type (to_type)
   /* Record this type as the pointer to TO_TYPE.  */
   TYPE_POINTER_TO (to_type) = t;
 
-  /* If this type is permanent but we are really inside a function,
-     lay it out now, so that the size, etc. are permanent too.  */
-  if (current_obstack != ambient_obstack)
-    layout_type (t);
+  /* Lay out the type.  This function has many callers that are concerned
+     with expression-construction, and this simplifies them all.
+     Also, it guarantees the TYPE_SIZE is permanent if the type is.  */
+  layout_type (t);
 
   current_obstack = ambient_obstack;
   return t;
 }
+
+/* Construct, lay out and return the type of arrays of elements with ELT_TYPE
+   and number of elements specified by the range of values of INDEX_TYPE.
+   If such a type has already been constructed, reuse it.  */
 
 tree
 build_array_type (elt_type, index_type)
      tree elt_type, index_type;
 {
   register tree t = make_node (ARRAY_TYPE);
+  int hashcode;
 
   if (TREE_CODE (elt_type) == FUNCTION_TYPE)
     {
-      yyerror ("arrays of functions are not meaningful");
+      error ("arrays of functions are not meaningful");
       elt_type = integer_type_node;
     }
 
   TREE_TYPE (t) = elt_type;
   TYPE_DOMAIN (t) = index_type;
+
   /* Make sure TYPE_POINTER_TO (elt_type) is filled in.  */
   build_pointer_type (elt_type);
+
+  if (index_type == 0)
+    return t;
+
+  hashcode = TYPE_HASH (elt_type) + TYPE_HASH (index_type);
+  t = type_hash_canon (hashcode, t);
+
+  if (TYPE_SIZE (t) == 0)
+    layout_type (t);
   return t;
 }
 
-/* Build a function type, which is a FUNCTION_TYPE node.
-  The TREE_TYPE of this node is the type of the value returned.
-  If no value is returned, the TREE_TYPE may be 0 or it
-  may be a node for a void type.
-  ARG_TYPES is a chain of TREE_LIST nodes whose TREE_VALUEs
-  are data type nodes for the arguments of the function.  */
+/* Construct, lay out and return
+   the type of functions returning type VALUE_TYPE
+   given arguments of types ARG_TYPES.
+   ARG_TYPES is a chain of TREE_LIST nodes whose TREE_VALUEs
+   are data type nodes for the arguments of the function.
+   If such a type has already been constructed, reuse it.  */
 
 tree
 build_function_type (value_type, arg_types)
      tree value_type, arg_types;
 {
   register tree t;
+  int hashcode;
 
-  if (TREE_CODE (value_type) == FUNCTION_DECL
+  if (TREE_CODE (value_type) == FUNCTION_TYPE
       || TREE_CODE (value_type) == ARRAY_TYPE)
     {
-      yyerror ("function return type cannot be function or array");
+      error ("function return type cannot be function or array");
       value_type = integer_type_node;
     }
 
+  /* Make a node of the sort we want.  */
   t = make_node (FUNCTION_TYPE);
   TREE_TYPE (t) = value_type;
   TYPE_ARG_TYPES (t) = arg_types;
+
+  /* If we already have such a type, use the old one and free this one.  */
+  hashcode = TYPE_HASH (value_type) + type_hash_list (arg_types);
+  t = type_hash_canon (hashcode, t);
+
+  if (TYPE_SIZE (t) == 0)
+    layout_type (t);
   return t;
 }
 
@@ -1066,6 +1566,11 @@ build_function_type (value_type, arg_types)
 
    If FOR_TYPE is nonzero, we return a value which, if converted to
    type FOR_TYPE, would be equivalent to converting OP to type FOR_TYPE.
+
+   If FOR_TYPE is nonzero, unaligned bit-field references may be changed to the
+   narrowest type that can hold the value, even if they don't exactly fit.
+   Otherwise, bit-field references are changed to a narrower type
+   only if they can be fetched directly from memory in that type.
 
    OP must have integer, real or enumeral type.  Pointers are not allowed!
 
@@ -1092,7 +1597,7 @@ get_unwidened (op, for_type)
   register int uns
     = (for_type != 0 && for_type != type
        && final_prec > TYPE_PRECISION (type)
-       && type_unsigned_p (type));
+       && TREE_UNSIGNED (type));
   register tree win = op;
 
   while (TREE_CODE (op) == NOP_EXPR)
@@ -1122,11 +1627,11 @@ get_unwidened (op, for_type)
 	{
 	  if (! uns || final_prec <= TYPE_PRECISION (TREE_TYPE (op)))
 	    win = op;
-	  /* type_unsigned_p says whether this is a zero-extension.
+	  /* TREE_UNSIGNED says whether this is a zero-extension.
 	     Let's avoid computing it if it does not affect WIN
 	     and if UNS will not be needed again.  */
 	  if ((uns || TREE_CODE (op) == NOP_EXPR)
-	      && type_unsigned_p (TREE_TYPE (op)))
+	      && TREE_UNSIGNED (TREE_TYPE (op)))
 	    {
 	      uns = 1;
 	      win = op;
@@ -1134,28 +1639,32 @@ get_unwidened (op, for_type)
 	}
     }
 
-  if (TREE_CODE (op) == COMPONENT_REF)
-      {
-	int innerprec = (TREE_INT_CST_LOW (DECL_SIZE (TREE_OPERAND (op, 1)))
-			 * DECL_SIZE_UNIT (TREE_OPERAND (op, 1)));
-	type = type_for_size (innerprec, type_unsigned_p (TREE_TYPE (op)));
+  if (TREE_CODE (op) == COMPONENT_REF
+      /* Since type_for_size always gives an integer type.  */
+      && TREE_CODE (type) != REAL_TYPE)
+    {
+      int innerprec = (TREE_INT_CST_LOW (DECL_SIZE (TREE_OPERAND (op, 1)))
+		       * DECL_SIZE_UNIT (TREE_OPERAND (op, 1)));
+      type = type_for_size (innerprec, TREE_UNSIGNED (TREE_OPERAND (op, 1)));
 
-	/* We can get this structure field in the narrowest type it fits in
-	   but the resulting extension to its nominal type (a fullword type)
-	   must fit the same conditions as for other extensions.  */
+      /* We can get this structure field in the narrowest type it fits in.
+	 If FOR_TYPE is 0, do this only for a field that matches the
+	 narrower type exactly and is aligned for it (i.e. mode isn't BI).
+	 The resulting extension to its nominal type (a fullword type)
+	 must fit the same conditions as for other extensions.  */
 
-	if (innerprec < TYPE_PRECISION (TREE_TYPE (op))
-	    && (! uns || final_prec <= innerprec
-		|| type_unsigned_p (TREE_TYPE (op))))
-	  {
-	    if (type != 0)
-	      {
-		win = build2 (COMPONENT_REF, TREE_OPERAND (op, 0),
-			      TREE_OPERAND (op, 1));
-		TREE_TYPE (win) = type;
-	      }
-	  }
-      }
+      if (innerprec <= TYPE_PRECISION (TREE_TYPE (op))
+	  && (for_type || DECL_MODE (TREE_OPERAND (op, 1)) != BImode)
+	  && (! uns || final_prec <= innerprec
+	      || TREE_UNSIGNED (TREE_OPERAND (op, 1)))
+	  && type != 0)
+	{
+	  win = build (COMPONENT_REF, type, TREE_OPERAND (op, 0),
+		       TREE_OPERAND (op, 1));
+	  TREE_VOLATILE (win) = TREE_VOLATILE (op);
+	  TREE_THIS_VOLATILE (win) = TREE_THIS_VOLATILE (op);
+	}
+    }
   return win;
 }
 
@@ -1192,11 +1701,11 @@ get_narrower (op, unsignedp_ptr)
 	  /* An extension: the outermost one can be stripped,
 	     but remember whether it is zero or sign extension.  */
 	  if (first)
-	    uns = type_unsigned_p (TREE_TYPE (op));
+	    uns = TREE_UNSIGNED (TREE_TYPE (op));
 	  /* Otherwise, if a sign extension has been stripped,
 	     only sign extensions can now be stripped;
 	     if a zero extension has been stripped, only zero-extensions.  */
-	  else if (uns != type_unsigned_p (TREE_TYPE (op)))
+	  else if (uns != TREE_UNSIGNED (TREE_TYPE (op)))
 	    break;
 	  first = 0;
 	}
@@ -1205,23 +1714,33 @@ get_narrower (op, unsignedp_ptr)
       win = op;
     }
 
-  if (TREE_CODE (op) == COMPONENT_REF)
+  if (TREE_CODE (op) == COMPONENT_REF
+      /* Since type_for_size always gives an integer type.  */
+      && TREE_CODE (TREE_TYPE (op)) != REAL_TYPE)
     {
       int innerprec = (TREE_INT_CST_LOW (DECL_SIZE (TREE_OPERAND (op, 1)))
 		       * DECL_SIZE_UNIT (TREE_OPERAND (op, 1)));
-      tree type = type_for_size (innerprec, type_unsigned_p (TREE_TYPE (op)));
+      tree type = type_for_size (innerprec, TREE_UNSIGNED (op));
 
       /* We can get this structure field in a narrower type that fits it,
 	 but the resulting extension to its nominal type (a fullword type)
-	 must satisfy the same conditions as for other extensions.  */
+	 must satisfy the same conditions as for other extensions.
+
+	 Do this only for fields that are aligned (not BImode),
+	 because when bit-field insns will be used there is no
+	 advantage in doing this.  */
 
       if (innerprec < TYPE_PRECISION (TREE_TYPE (op))
-	  && (first || uns == type_unsigned_p (TREE_TYPE (op)))
+	  && DECL_MODE (TREE_OPERAND (op, 1)) != BImode
+	  && (first || uns == TREE_UNSIGNED (TREE_OPERAND (op, 1)))
 	  && type != 0)
 	{
-	  win = build2 (COMPONENT_REF, TREE_OPERAND (op, 0),
-			TREE_OPERAND (op, 1));
-	  TREE_TYPE (win) = type;
+	  if (first)
+	    uns = TREE_UNSIGNED (TREE_OPERAND (op, 1));
+	  win = build (COMPONENT_REF, type, TREE_OPERAND (op, 0),
+		       TREE_OPERAND (op, 1));
+	  TREE_VOLATILE (win) = TREE_VOLATILE (op);
+	  TREE_THIS_VOLATILE (win) = TREE_THIS_VOLATILE (op);
 	}
     }
   *unsignedp_ptr = uns;
@@ -1240,7 +1759,7 @@ type_precision (type)
   return ((TREE_CODE (type) == INTEGER_TYPE
 	   || TREE_CODE (type) == ENUMERAL_TYPE
 	   || TREE_CODE (type) == REAL_TYPE)
-	  ? TYPE_PRECISION (type) : BITS_PER_WORD);
+	  ? TYPE_PRECISION (type) : POINTER_SIZE);
 }
 
 /* Nonzero if integer constant C has a value that is permissible
@@ -1250,7 +1769,7 @@ int
 int_fits_type_p (c, type)
      tree c, type;
 {
-  if (type_unsigned_p (type))
+  if (TREE_UNSIGNED (type))
     return (!INT_CST_LT_UNSIGNED (TYPE_MAX_VALUE (type), c)
 	    && !INT_CST_LT_UNSIGNED (c, TYPE_MIN_VALUE (type)));
   else
@@ -1267,21 +1786,6 @@ int_fits_type_p (c, type)
    Conversion between integer and pointer is represented with CONVERT_EXPR.
    Converting integer to real uses FLOAT_EXPR
    and real to integer uses FIX_TRUNC_EXPR.  */
-
-/* Generate an expression for a conversion using expression code CODE.
-   It will convert EXPR to type TYPE.  */
-
-static tree
-build_convert (code, type, expr)
-     enum tree_code code;
-     tree type, expr;
-{
-  register tree tem = build1 (code, expr);
-
-  TREE_TYPE (tem) = type;
-  TREE_VOLATILE (tem) = TREE_VOLATILE (expr);
-  return tem;
-}
 
 static tree
 convert_to_pointer (type, expr)
@@ -1300,15 +1804,19 @@ convert_to_pointer (type, expr)
     }
 
   if (form == POINTER_TYPE)
-    return build_convert (NOP_EXPR, type, expr);
+    return build (NOP_EXPR, type, expr);
 
-  if (intype == integer_type_node)
-    return build_convert (CONVERT_EXPR, type, expr);
 
   if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    return convert_to_pointer (type, convert (integer_type_node, expr));
+    {
+      if (type_precision (intype) == POINTER_SIZE)
+	return build (CONVERT_EXPR, type, expr);
+      return convert_to_pointer (type,
+				 convert (type_for_size (POINTER_SIZE, 0),
+					  expr));
+    }
 
-  yyerror ("cannot convert to a pointer type");
+  error ("cannot convert to a pointer type");
 
   return null_pointer_node;
 }
@@ -1330,9 +1838,12 @@ convert_to_integer (type, expr)
       if (integer_zerop (expr))
 	expr = integer_zero_node;
       else
-	expr = fold (build_convert (CONVERT_EXPR, integer_type_node, expr));
+	expr = fold (build (CONVERT_EXPR,
+			    type_for_size (POINTER_SIZE, 0), expr));
       intype = TREE_TYPE (expr);
       form = TREE_CODE (intype);
+      if (intype == type)
+	return expr;
     }
 
   if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
@@ -1342,7 +1853,7 @@ convert_to_integer (type, expr)
       register enum tree_code ex_form = TREE_CODE (expr);
 
       if (outprec >= inprec)
-	return build_convert (NOP_EXPR, type, expr);
+	return build (NOP_EXPR, type, expr);
 
 /* Here detect when we can distribute the truncation down past some arithmetic.
    For example, if adding two longs and converting to an int,
@@ -1408,7 +1919,8 @@ convert_to_integer (type, expr)
 		/* Can't do arithmetic in enumeral types
 		   so use an integer type that will hold the values.  */
 		if (TREE_CODE (typex) == ENUMERAL_TYPE)
-		  typex = type_for_size (TYPE_PRECISION (typex));
+		  typex = type_for_size (TYPE_PRECISION (typex),
+					 TREE_UNSIGNED (typex));
 
 		/* But now perhaps TYPEX is as wide as INPREC.
 		   In that case, do nothing special here.
@@ -1417,7 +1929,7 @@ convert_to_integer (type, expr)
 		  {
 		    /* Don't do unsigned arithmetic where signed was wanted,
 		       or vice versa.  */
-		    typex = (type_unsigned_p (TREE_TYPE (expr))
+		    typex = (TREE_UNSIGNED (TREE_TYPE (expr))
 			     ? unsigned_type (typex) : signed_type (typex));
 		    return convert (type,
 				    build_binary_op_nodefault (ex_form,
@@ -1451,7 +1963,8 @@ convert_to_integer (type, expr)
 	    /* Can't do arithmetic in enumeral types
 	       so use an integer type that will hold the values.  */
 	    if (TREE_CODE (typex) == ENUMERAL_TYPE)
-	      typex = type_for_size (TYPE_PRECISION (typex));
+	      typex = type_for_size (TYPE_PRECISION (typex),
+				     TREE_UNSIGNED (typex));
 
 	    /* But now perhaps TYPEX is as wide as INPREC.
 	       In that case, do nothing special here.
@@ -1460,7 +1973,7 @@ convert_to_integer (type, expr)
 	      {
 		/* Don't do unsigned arithmetic where signed was wanted,
 		   or vice versa.  */
-		typex = (type_unsigned_p (TREE_TYPE (expr))
+		typex = (TREE_UNSIGNED (TREE_TYPE (expr))
 			 ? unsigned_type (typex) : signed_type (typex));
 		return convert (type,
 				build_unary_op (ex_form,
@@ -1475,13 +1988,13 @@ convert_to_integer (type, expr)
 	  return convert (type, get_unwidened (TREE_OPERAND (expr, 0), type));
 	}
 
-      return build_convert (NOP_EXPR, type, expr);
+      return build (NOP_EXPR, type, expr);
     }
 
   if (form == REAL_TYPE)
-    return build_convert (FIX_TRUNC_EXPR, type, expr);
+    return build (FIX_TRUNC_EXPR, type, expr);
 
-  yyerror ("aggregate value used where an integer was expected");
+  error ("aggregate value used where an integer was expected");
 
   {
     register tree tem = build_int_2 (0, 0);
@@ -1495,17 +2008,19 @@ convert_to_real (type, expr)
      tree type, expr;
 {
   register enum tree_code form = TREE_CODE (TREE_TYPE (expr));
+  extern int flag_float_store;
 
   if (form == REAL_TYPE)
-    return build_convert (NOP_EXPR, type, expr);
+    return build (flag_float_store ? CONVERT_EXPR : NOP_EXPR,
+		  type, expr);
 
   if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    return build_convert (FLOAT_EXPR, type, expr);
+    return build (FLOAT_EXPR, type, expr);
 
   if (form == POINTER_TYPE)
-    yyerror ("pointer value used where a float was expected");
+    error ("pointer value used where a float was expected");
   else
-    yyerror ("aggregate value used where a float was expected");
+    error ("aggregate value used where a float was expected");
 
   {
     register tree tem = make_node (REAL_CST);
@@ -1530,13 +2045,15 @@ convert (type, expr)
 
   if (type == TREE_TYPE (expr) || TREE_CODE (expr) == ERROR_MARK)
     return expr;
+  if (TREE_CODE (TREE_TYPE (expr)) == ERROR_MARK)
+    return error_mark_node;
   if (TREE_CODE (TREE_TYPE (expr)) == VOID_TYPE)
     {
-      yyerror ("void value not ignored as it ought to be");
+      error ("void value not ignored as it ought to be");
       return error_mark_node;
     }
   if (code == VOID_TYPE)
-    return build_convert (CONVERT_EXPR, type, e);
+    return build (CONVERT_EXPR, type, e);
 #if 0
   /* This is incorrect.  A truncation can't be stripped this way.
      Extensions will be stripped by the use of get_unwidened.  */
@@ -1550,6 +2067,6 @@ convert (type, expr)
   if (code == REAL_TYPE)
     return fold (convert_to_real (type, e));
 
-  yyerror ("conversion to non-scalar type requested");
+  error ("conversion to non-scalar type requested");
   return error_mark_node;
 }

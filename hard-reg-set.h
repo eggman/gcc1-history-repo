@@ -40,7 +40,7 @@ and this notice must be preserved on all copies.  */
 #else
 #define HARD_REG_SET_LONGS \
  ((FIRST_PSEUDO_REGISTER + HOST_BITS_PER_LONG - 1) / HOST_BITS_PER_LONG)
-typedef long[HARD_REG_SET_LONGS] HARD_REG_SET;
+typedef long HARD_REG_SET[HARD_REG_SET_LONGS];
 #endif
 #endif
 #endif
@@ -104,58 +104,100 @@ typedef long[HARD_REG_SET_LONGS] HARD_REG_SET;
  ((SET)[(BIT) / HOST_BITS_PER_LONG] & (1 << ((BIT) % HOST_BITS_PER_LONG)))
 
 #define CLEAR_HARD_REG_SET(TO)  \
-{ register int i;						\
-  register long *tp = (TO);					\
+{ register long *scan_tp_ = (TO);				\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ = 0 }
+    *scan_tp_++ = 0; }
 
 #define SET_HARD_REG_SET(TO)  \
-{ register int i;						\
-  register long *tp = (TO);					\
+{ register long *scan_tp_ = (TO);				\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ = -1 }
+    *scan_tp_++ = -1; }
 
 #define COPY_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ = *fp++; }
+    *scan_tp_++ = *scan_fp_++; }
 
 #define COMPL_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ = ~ *fp++; }
+    *scan_tp_++ = ~ *scan_fp_++; }
 
 #define AND_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ &= *fp++; }
+    *scan_tp_++ &= *scan_fp_++; }
 
 #define AND_COMPL_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ &= ~ *fp++; }
+    *scan_tp_++ &= ~ *scan_fp_++; }
 
 #define IOR_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ |= *fp++; }
+    *scan_tp_++ |= *scan_fp_++; }
 
 #define IOR_COMPL_HARD_REG_SET(TO, FROM)  \
-{ register int i;						\
-  register long *tp = (TO), *fp = (FROM);			\
+{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *tp++ |= ~ *fp++; }
+    *scan_tp_++ |= ~ *scan_fp_++; }
 
 #define GO_IF_HARD_REG_SUBSET(X,Y,TO)  \
-{ register int i;						\
-  register long *xp = (X), *yp = (Y);				\
+{ register long *scan_xp_ = (X), *scan_yp_ = (Y);		\
+  register int i;						\
   for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    if (0 != (*xp++ & ~yp++)) break;				\
+    if (0 != (*scan_xp_++ & ~*scan_yp_++)) break;		\
   if (i == HARD_REG_SET_LONGS) goto TO; }
 
 #endif
+
+/* Define some standard sets of registers.  */
+
+/* Indexed by hard register number, contains 1 for registers
+   that are fixed use (stack pointer, pc, frame pointer, etc.).
+   These are the registers that cannot be used to allocate
+   a pseudo reg whose life does not cross calls.  */
+
+extern char fixed_regs[FIRST_PSEUDO_REGISTER];
+
+/* The same info as a HARD_REG_SET.  */
+
+extern HARD_REG_SET fixed_reg_set;
+
+/* Indexed by hard register number, contains 1 for registers
+   that are fixed use or are clobbered by function calls.
+   These are the registers that cannot be used to allocate
+   a pseudo reg whose life crosses calls.  */
+
+extern char call_used_regs[FIRST_PSEUDO_REGISTER];
+
+/* The same info as a HARD_REG_SET.  */
+
+extern HARD_REG_SET call_used_reg_set;
+
+/* For each reg class, a HARD_REG_SET saying which registers are in it.  */
+
+extern HARD_REG_SET reg_class_contents[];
+
+/* For each reg class, table listing all the containing classes.  */
+
+extern enum reg_class reg_class_superclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+/* For each reg class, table listing all the classes contained in it.  */
+
+extern enum reg_class reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+/* For each pair of reg classes,
+   a largest reg class contained in their union.  */
+
+extern enum reg_class reg_class_subunion[N_REG_CLASSES][N_REG_CLASSES];
+

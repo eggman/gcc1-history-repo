@@ -49,7 +49,8 @@ tree permanent_type_chain;
 tree temporary_type_chain;
 
 /* When the chains is not null, these point at the last
-   types on the two chains.  */
+   types on the two chains.  These help us tell whether a type
+   is already on a chain.  */
 tree permanent_type_end;
 tree temporary_type_end;
 
@@ -71,10 +72,12 @@ chain_type (t)
     return;
   if (TREE_PERMANENT (t))
     {
+      /* If T is on the chain at the end, don't chain it to itself!  */
       if (t == permanent_type_end)
 	return;
       if (permanent_type_chain == 0)
 	permanent_type_end = t;
+      /* Add T to the front of the chain.  */
       TREE_CHAIN (t) = permanent_type_chain;
       permanent_type_chain = t;
     }
@@ -113,25 +116,6 @@ get_temporary_types ()
   return tem;
 }
 
-/* Return the greatest common divisor of M and N.  */
-
-static
-unsigned
-gcd (m, n)
-     register unsigned int m, n;
-{
-  register unsigned int r;
-
-  while (1)
-    {
-      r = m % n;
-      if (0 == r) break;
-      m = n;
-      n = r;
-    }
-  return n;
-}
-
 /* Return the machine mode to use for an aggregate of SIZE bits.
 
    Note!!!  We only use a non-BLKmode mode if the size matches exactly.
@@ -160,7 +144,7 @@ agg_mode (size)
 
 /* Return an INTEGER_CST with value V and type from `sizetype'.  */
 
-static tree
+tree
 build_int (v)
      int v;
 {
@@ -175,21 +159,18 @@ build_int (v)
    OPC is a tree code.  Data type is taken from `sizetype',
    If the operands are constant, so is the result.  */
 
-static tree
+tree
 genop (opc, op1, op2)
      enum tree_code opc;
      tree op1, op2;
 {
-  register tree t;
-
   if (TREE_LITERAL (op1) && TREE_LITERAL (op2))
     return combine (opc, op1, op2);
 
-  t = build2 (opc, op1, op2);
-  TREE_TYPE (t) = sizetype;
-  t = fold (t);
+  if (op1 == error_mark_node || op2 == error_mark_node)
+    return error_mark_node;
 
-  return t;
+  return fold (build (opc, sizetype, op1, op2));
 }
 
 /* Convert a size which is SIZE when expressed in unit INUNITS
@@ -211,7 +192,18 @@ convert_units (size, inunits, outunits)
     return genop (MULT_EXPR, size, build_int (inunits / outunits));
   /* The inverse case.  */
   if (0 == (outunits % inunits))
-    return genop (CEIL_DIV_EXPR, size, build_int (outunits / inunits));
+    {
+      /* Discard anything in SIZE to round it up to a multiple
+	 of a number N that divides our current divisor.  */
+      if (TREE_CODE (size) == MULT_EXPR
+	  && TREE_CODE (TREE_OPERAND (size, 1)) == INTEGER_CST
+	  && 0 == (outunits / inunits) % TREE_INT_CST_LOW (TREE_OPERAND (size, 1))
+	  && TREE_CODE (TREE_OPERAND (size, 0)) == CEIL_DIV_EXPR
+	  && tree_int_cst_equal (TREE_OPERAND (size, 1),
+				 TREE_OPERAND (TREE_OPERAND (size, 0), 1)))
+	size = TREE_OPERAND (TREE_OPERAND (size, 0), 0);
+      return genop (CEIL_DIV_EXPR, size, build_int (outunits / inunits));
+    }
   /* The general case.  */
   t = genop (MULT_EXPR, size,
 	     build_int (inunits)); /* convert to bits */
@@ -231,7 +223,7 @@ add_vc_sizes (constant, var, coeff)
      tree var;
      int coeff;
 {
-  register tree tmp1, tmp2;
+  register tree tmp1;
 
   if (var == 0)
     return build_int (CEIL (constant, BITS_PER_UNIT));
@@ -269,7 +261,10 @@ layout_decl (decl, known_align)
     abort ();
 
   if (type == error_mark_node)
-    type = void_type_node;
+    {
+      type = void_type_node;
+      spec_size = 0;
+    }
   if (TYPE_SIZE_UNIT (type) == 0)
     abort ();
 
@@ -278,14 +273,9 @@ layout_decl (decl, known_align)
   DECL_MODE (decl) = TYPE_MODE (type);
   DECL_SIZE (decl) = TYPE_SIZE (type);
   DECL_SIZE_UNIT (decl) = TYPE_SIZE_UNIT (type);
+  TREE_UNSIGNED (decl) = TREE_UNSIGNED (type);
 
-  /* Force alignment required for the data type.
-     But if the decl itself wants greater alignment, don't override that.  */
-
-  if (TYPE_ALIGN (type) > DECL_ALIGN (decl))
-    DECL_ALIGN (decl) = TYPE_ALIGN (type);
-
-  if (code == FIELD_DECL && spec_size != 0)
+  if (code == FIELD_DECL && TREE_PACKED (decl))
     {
       /* This is a bit-field.  We don't know how to handle
 	 them except for integers and enums, and front end should
@@ -295,23 +285,19 @@ layout_decl (decl, known_align)
 	     || TREE_CODE (type) == ENUMERAL_TYPE))
 	abort ();
 
+      if (spec_size == 0)
+	abort ();
+
       /* Mode is "integer bit field".  */
       DECL_MODE (decl) = BImode;
       /* Size is specified number of bits.  */
       DECL_SIZE (decl) = integer_one_node;
       DECL_SIZE_UNIT (decl) = spec_size;
-      /* No alignment requirement.  */
-      DECL_ALIGN (decl) = 1;
-
-      TREE_UNSIGNED (decl) = type_unsigned_p (type);
-
-      /* Promote the field's type to int or unsigned int
-	 if it is narrower than that.  */
-      if (TREE_CODE (type) == INTEGER_TYPE
-	  && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node))
-	TREE_TYPE (decl) = type
-	  = (TREE_UNSIGNED (decl) ? unsigned_type_node : integer_type_node);
     }
+  /* Force alignment required for the data type.
+     But if the decl itself wants greater alignment, don't override that.  */
+  else if (TYPE_ALIGN (type) > DECL_ALIGN (decl))
+    DECL_ALIGN (decl) = TYPE_ALIGN (type);
 
   /* See if we can use a scalar mode such as QImode or SImode
      in place of BLKmode or a packed byte mode.  */
@@ -319,9 +305,10 @@ layout_decl (decl, known_align)
      and occupying a complete byte or bytes on proper boundary.  */
   if ((DECL_MODE (decl) == BLKmode
        || DECL_MODE (decl) == BImode)
+      && TYPE_SIZE (type) != 0
       && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
     {
-      register int packed_size 
+      register unsigned packed_size 
 	= TREE_INT_CST_LOW (DECL_SIZE (decl)) * DECL_SIZE_UNIT (decl);
       register enum machine_mode xmode = agg_mode (packed_size);
 
@@ -339,14 +326,20 @@ layout_decl (decl, known_align)
 
 /* Lay out a RECORD_TYPE type (a C struct).
    This means laying out the fields, determining their offsets,
-   and computing the overall size and required alignment of the record.  */
+   and computing the overall size and required alignment of the record.
+   Note that if you set the TYPE_ALIGN before calling this
+   then the union align is aligned to at least that boundary.  */
 
-static tree
+static void
 layout_record (rec)
      tree rec;
 {
   register tree field;
-  int record_align = BITS_PER_UNIT;
+#ifdef STRUCTURE_SIZE_BOUNDARY
+  int record_align = MIN (STRUCTURE_SIZE_BOUNDARY, TYPE_ALIGN (rec));
+#else
+  int record_align = MIN (BITS_PER_UNIT, TYPE_ALIGN (rec));
+#endif
   /* Record size so far is CONST_SIZE + VAR_SIZE * SIZE_UNIT bits,
      where CONST_SIZE is an integer
      and VAR_SIZE is a tree expression.
@@ -354,7 +347,7 @@ layout_record (rec)
      Naturally we try to avoid using VAR_SIZE.  */
   register int const_size = 0;
   register tree var_size = 0;
-  register int size_unit = 8;
+  register int size_unit = BITS_PER_UNIT;
 
   for (field = TYPE_FIELDS (rec); field; field = TREE_CHAIN (field))
     {
@@ -454,18 +447,23 @@ layout_record (rec)
   TYPE_SIZE_UNIT (rec) = BITS_PER_UNIT;
   TYPE_ALIGN (rec) = MIN (BIGGEST_ALIGNMENT, record_align);
 }
-
 
 /* Lay out a UNION_TYPE type.
    Lay out all the fields, set their offsets to zero,
-   and compute the size and alignment of the union (maximum of any field).  */
+   and compute the size and alignment of the union (maximum of any field).
+   Note that if you set the TYPE_ALIGN before calling this
+   then the union align is aligned to at least that boundary.  */
 
-static tree
+static void
 layout_union (rec)
      tree rec;
 {
   register tree field;
+#ifdef STRUCTURE_SIZE_BOUNDARY
+  int union_align = STRUCTURE_SIZE_BOUNDARY;
+#else
   int union_align = BITS_PER_UNIT;
+#endif
 
   /* The size of the union, based on the fields scanned so far,
      is max (CONST_SIZE, VAR_SIZE).
@@ -504,7 +502,7 @@ layout_union (rec)
 			  var_size);
     }
 
-  /* Determine the ultimate size of the union.  */
+  /* Determine the ultimate size of the union (in bytes).  */
   if (NULL == var_size)
     TYPE_SIZE (rec) = build_int (CEIL (const_size, BITS_PER_UNIT));
   else if (const_size == 0)
@@ -513,25 +511,42 @@ layout_union (rec)
     TYPE_SIZE (rec) = genop (MAX_EXPR, var_size,
 			     build_int (CEIL (const_size, BITS_PER_UNIT)));
 
-  TYPE_SIZE_UNIT (rec) = BITS_PER_UNIT;
-  TYPE_ALIGN (rec) = MIN (BIGGEST_ALIGNMENT, union_align);
+  /* Determine the desired alignment.  */
+  union_align = MIN (BIGGEST_ALIGNMENT, union_align);
+  TYPE_ALIGN (rec) = MAX (TYPE_ALIGN (rec), union_align);
+
+  /* Round the size up to be a multiple of the required alignment */
+  TYPE_SIZE (rec)
+    = convert_units (TYPE_SIZE (rec), BITS_PER_UNIT, TYPE_ALIGN (rec));
+  TYPE_SIZE_UNIT (rec) = TYPE_ALIGN (rec);
 }
 
 /* Calculate the mode, size, and alignment for TYPE.
    For an array type, calculate the element separation as well.
    Record TYPE on the chain of permanent or temporary types
-   so that dbxout will find out about it.  */
+   so that dbxout will find out about it.
+
+   TYPE_SIZE of a type is nonzero if the type has been laid out already.
+   layout_type does nothing on such a type.
+
+   If the type is incomplete, its TYPE_SIZE remains zero.  */
 
 void
 layout_type (type)
      tree type;
 {
+  int old;
+
   if (type == 0)
     abort ();
 
   /* Do nothing if type has been laid out before.  */
   if (TYPE_SIZE (type))
     return;
+
+  /* Make sure all nodes we allocate are not momentary;
+     they must last past the current statement.  */
+  old  = suspend_momentary ();
 
   chain_type (type);
 
@@ -546,12 +561,13 @@ layout_type (type)
 
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
+      if (TREE_INT_CST_HIGH (TYPE_MIN_VALUE (type)) >= 0)
+	TREE_UNSIGNED (type) = 1;
+
       TYPE_MODE (type) = agg_mode (TYPE_PRECISION (type));
       TYPE_SIZE (type) = build_int (GET_MODE_SIZE (TYPE_MODE (type)));
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
       TYPE_ALIGN (type) = GET_MODE_ALIGNMENT (TYPE_MODE (type));
-      if (TREE_INT_CST_HIGH (TYPE_MIN_VALUE (type)) >= 0)
-	TREE_UNSIGNED (type) = 1;
       break;
 
     case REAL_TYPE:
@@ -574,6 +590,7 @@ layout_type (type)
       TYPE_SIZE (type) = build_int (POINTER_SIZE / BITS_PER_UNIT);
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
       TYPE_ALIGN (type) = POINTER_BOUNDARY;
+      TREE_UNSIGNED (type) = 1;
       break;
 
     case ARRAY_TYPE:
@@ -582,8 +599,11 @@ layout_type (type)
 	register tree length;
 	register tree element = TREE_TYPE (type);
 
+/* 	layout_type (element);  */
+	build_pointer_type (element);
+
 	if (index == 0)
-	  length = integer_zero_node;
+	  length = 0;
 	else
 	  length = genop (PLUS_EXPR, integer_one_node,
 			  genop (MINUS_EXPR, TYPE_MAX_VALUE (index),
@@ -593,12 +613,14 @@ layout_type (type)
 	  abort ();  /* ??? Not written yet since not needed for C.  */
 
 	TYPE_SIZE_UNIT (type) = TYPE_SIZE_UNIT (element);
-	TYPE_SIZE (type) = genop (MULT_EXPR, TYPE_SIZE (element), length);
+	if (length && TYPE_SIZE (element))
+	  TYPE_SIZE (type) = genop (MULT_EXPR, TYPE_SIZE (element), length);
 	TYPE_SEP (type) = TYPE_SIZE (element);
 	TYPE_SEP_UNIT (type) = TYPE_SIZE_UNIT (element);
 	TYPE_ALIGN (type) = MAX (TYPE_ALIGN (element), BITS_PER_UNIT);
 	TYPE_MODE (type) = BLKmode;
-	if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
+	if (TYPE_SIZE (type) != 0
+	    && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
 	  {
 	    TYPE_MODE (type) 
 	      = agg_mode (TREE_INT_CST_LOW (TYPE_SIZE (type))
@@ -639,91 +661,8 @@ layout_type (type)
     default:
       abort ();
     } /* end switch */
-}
-
-/* Set the offsets of the parameters of a FUNCTION_DECL node.
-   Assumes layout_decl has been done already on the PARM_DECLs themselves.  */
 
-void
-layout_parms (fndecl)
-     tree fndecl;
-{
-  register tree parm;
-  /* Constant term in the offset so far, measured in bits.  */
-  register int const_offset = FIRST_PARM_OFFSET * BITS_PER_UNIT;
-  /* Variable term in the offset so far; null if offset so far is constant.  */
-  register tree var_offset = 0;
-  /* Unit of measurement for VAR_OFFSET.  */
-  register int offset_unit = 8;
-
-  for (parm = DECL_ARGUMENTS (fndecl); parm; parm = TREE_CHAIN (parm))
-    {
-      /* The offset of the next parm is, in general,
-	 CONST_OFFSET + VAR_OFFSET * OFFSET_UNITS.
-	 If VAR_OFFSET is null, then CONST_OFFSET alone says everything.  */
-
-      register int desired_align
-	= MAX (PARM_BOUNDARY, TYPE_ALIGN (DECL_ARG_TYPE (parm)));
-
-      if (const_offset % desired_align != 0
-	  || (offset_unit % desired_align != 0
-	      && var_offset))
-	{
-	  /* We need some padding to align this parm.
-	     Round up the variable and constant parts of the offset
-	     separately or together, whichever is best, to a multiple
-	     of DESIRED_ALIGN.  */
-	  if (var_offset == 0
-	      || offset_unit % desired_align == 0)
-	    const_offset
-	      = CEIL (const_offset, desired_align) * desired_align;
-	  else
-	    {
-	      var_offset
-		= genop (PLUS_EXPR, var_offset,
-			 build_int (CEIL (const_offset, offset_unit)));
-	      const_offset = 0;
-	      var_offset = convert_units (var_offset, offset_unit,
-					  desired_align);
-	      offset_unit = desired_align;
-	    }
-	}
-
-      /* Set the parm's offset, constant and variable parts,
-	 according to where we have reached.  */
-
-      DECL_OFFSET (parm) = const_offset;
-      DECL_VOFFSET (parm) = var_offset;
-      DECL_VOFFSET_UNIT (parm) = offset_unit;
-
-      /* Now add size of this parm to the offset-so-far.  */
-
-      {
-        register tree dsize = TYPE_SIZE (DECL_ARG_TYPE (parm));
-	register int sizeunit = TYPE_SIZE_UNIT (DECL_ARG_TYPE (parm));
-
-	/* Parm size is constant => add to constant part of offset.  */
-	if (TREE_LITERAL (dsize))
-	  const_offset += TREE_INT_CST_LOW (dsize) * sizeunit;
-	else if (var_offset == 0)
-	  {
-	    /* Offset-so-far is constant but parm size is variable
-	       => parm size becomes variable part of offset-so-far.  */
-	    var_offset = dsize;
-	    offset_unit = sizeunit;
-	  }
-	else
-	  {
-	    /* Add parm size into offset so far
-	       after converting them to common units.  */
-	    register int tunits = MIN (offset_unit, sizeunit);
-	    var_offset
-	      = genop (PLUS_EXPR,
-		       convert_units (var_offset, offset_unit, tunits),
-		       convert_units (dsize, sizeunit, tunits));
-	  }
-      }
-    }
+  resume_momentary (old);
 }
 
 /* Create and return a type for signed integers of PRECISION bits.  */
@@ -733,7 +672,6 @@ make_signed_type (precision)
      int precision;
 {
   register tree type = make_node (INTEGER_TYPE);
-  register tree low, high;
 
   TYPE_PRECISION (type) = precision;
 

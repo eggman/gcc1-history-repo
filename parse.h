@@ -41,6 +41,8 @@ enum rid
   RID_SIGNED,
   RID_CONST,
   RID_VOLATILE,
+  RID_INLINE,
+  RID_NOALIAS,
 
   RID_MAX,
 };

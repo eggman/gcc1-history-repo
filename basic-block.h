@@ -22,7 +22,7 @@ and this notice must be preserved on all copies.  */
 /* Define the type for a pointer to a set with a bit for each
    (hard or pseudo) register.  */
 
-typedef int *regset;
+typedef long *regset;
 
 /* Size of a regset for the current function,
    in (1) bytes and (2) elements.  */

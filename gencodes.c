@@ -23,11 +23,12 @@ and this notice must be preserved on all copies.  */
 
 
 #include <stdio.h>
+#include "config.h"
 #include "rtl.h"
-#include <obstack.h>
+#include "obstack.h"
 
 struct obstack obstack;
-struct obstack *current_obstack = &obstack;
+struct obstack *rtl_obstack = &obstack;
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -47,17 +48,15 @@ gen_insn (insn)
   if (strlen (XSTR (insn, 0)) != 0)
     printf ("  CODE_FOR_%s = %d,\n", XSTR (insn, 0),
 	    insn_code_number);
-
-  insn_code_number++;
 }
 
+int
 xmalloc (size)
 {
   register int val = malloc (size);
 
   if (val == 0)
-    abort ();
-
+    fatal ("virtual memory exhausted");
   return val;
 }
 
@@ -68,19 +67,20 @@ xrealloc (ptr, size)
 {
   int result = realloc (ptr, size);
   if (!result)
-    abort ();
+    fatal ("virtual memory exhausted");
   return result;
 }
 
 void
 fatal (s, a1, a2)
 {
-  fprintf (stderr, "genflags: ");
+  fprintf (stderr, "gencodes: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
-  exit (1);
+  exit (FATAL_EXIT_CODE);
 }
 
+int
 main (argc, argv)
      int argc;
      char **argv;
@@ -90,7 +90,7 @@ main (argc, argv)
   extern rtx read_rtx ();
   register int c;
 
-  obstack_begin (current_obstack, 4060);
+  obstack_init (rtl_obstack);
 
   if (argc <= 1)
     fatal ("No input file name.");
@@ -99,7 +99,7 @@ main (argc, argv)
   if (infile == 0)
     {
       perror (argv[1]);
-      exit (1);
+      exit (FATAL_EXIT_CODE);
     }
 
   init_rtl ();
@@ -122,7 +122,15 @@ from the machine description file `md'.  */\n\n");
       ungetc (c, infile);
 
       desc = read_rtx (infile);
-      gen_insn (desc);
+      if (GET_CODE (desc) == DEFINE_INSN || GET_CODE (desc) == DEFINE_EXPAND)
+	{
+	  gen_insn (desc);
+	  insn_code_number++;
+	}
+      if (GET_CODE (desc) == DEFINE_PEEPHOLE)
+	{
+	  insn_code_number++;
+	}
     }
 
   printf ("  CODE_FOR_nothing };\n");
@@ -131,5 +139,6 @@ from the machine description file `md'.  */\n\n");
 
   printf ("#endif /* MAX_INSN_CODE */\n");
 
-  return 0;
+  fflush (stdout);
+  exit (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
 }

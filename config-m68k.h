@@ -1,4 +1,4 @@
-/* Communication with stupid.c.
+/* Configuration for GNU C-compiler for Motorola 68000 family.
    Copyright (C) 1987 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -19,26 +19,20 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
-/* Nonzero means use stupid register allocation
-   and force into memory all user variables not declared `register'.  */
+/* #defines that need visibility everywhere.  */
+#define FALSE 0
+#define TRUE 1
 
-extern int obey_regdecls;
+/* This describes the machine the compiler is hosted on.  */
+#define HOST_BITS_PER_CHAR 8
+#define HOST_BITS_PER_SHORT 16
+#define HOST_BITS_PER_INT 32
+#define HOST_BITS_PER_LONG 32
 
-/* For the case of stupid register allocation,
-   user register variables should have a life span
-   equal to the extent of the block in which they are declared.
-   stmt.c uses these variables to pass the information to stupid.c.
+/* target machine dependencies.
+   tm.h is a symbolic link to the actual target specific file.   */
+#include "tm.h"
 
-   `reg_birth_insn[N]' is the last insn before the beginning of
-   the scope of pseudo-register N.  `reg_death_insn[N]' is the
-   last insn in the scope.
-
-   Both of these vectors are of length `first_temp_register',
-   which is one plus the number of the last pseudo-register
-   that corresponds to a user variable.  */
-
-extern int first_temp_reg_num;
-
-extern rtx *reg_birth_insn;
-
-extern rtx *reg_death_insn;
+/* Arguments to use with `exit'.  */
+#define SUCCESS_EXIT_CODE 0
+#define FATAL_EXIT_CODE 33

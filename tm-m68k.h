@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler.  Sun 68000/68020 version.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -19,9 +19,20 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
+/* Note that some other tm- files include this one and then override
+   many of the definitions that relate to assembler syntax.  */
+
+
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Dmc68000 -Dsun"
+/* See tm-sun3.h, tm-sun2.h, tm-isi68.h for different CPP_PREDEFINES.  */
+
+/* Print subsidiary information on the compiler version in use.  */
+#ifdef MOTOROLA
+#define TARGET_VERSION printf (" (68k, Motorola syntax)");
+#else
+#define TARGET_VERSION printf (" (68k, MIT syntax)");
+#endif
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
@@ -29,10 +40,23 @@ extern int target_flags;
 
 /* Macros used in the machine description to test the flags.  */
 
+/* Compile for a 68020 (not a 68000 or 68010).  */
 #define TARGET_68020 (target_flags & 1)
+/* Compile 68881 insns for floating point (not library calls).  */
 #define TARGET_68881 (target_flags & 2)
+/* Compile using 68020 bitfield insns.  */
 #define TARGET_BITFIELD (target_flags & 4)
-#define TARGET_DEFER_POP (target_flags & 040)
+/* Compile using rtd insn calling sequence.
+   This will not work unless you use prototypes at least
+   for all functions that can take varying numbers of args.  */
+#define TARGET_RTD (target_flags & 8)
+/* Compile passing first two args in regs 0 and 1.
+   This exists only to test compiler features that will
+   be needed for RISC chips.  It is not usable
+   and is not intended to be usable on this cpu.  */
+#define TARGET_REGPARM (target_flags & 020)
+/* Compile with 16-bit `int'.  */
+#define TARGET_SHORT (target_flags & 040)
 
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
@@ -47,8 +71,12 @@ extern int target_flags;
     { "68000", -5},				\
     { "soft-float", -2},			\
     { "nobitfield", -4},			\
-    { "defer-pop", 040},			\
-    { "", 067}}
+    { "rtd", 8},				\
+    { "nortd", -8},				\
+    { "short", 040},				\
+    { "noshort", -040},				\
+    { "", TARGET_DEFAULT}}
+/* TARGET_DEFAULT is defined in tm-sun*.h and tm-isi68.h, etc.  */
 
 /* target machine storage layout */
 
@@ -88,17 +116,28 @@ extern int target_flags;
 #define POINTER_BOUNDARY 16
 
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
-#define PARM_BOUNDARY 32
+#define PARM_BOUNDARY (TARGET_SHORT ? 16 : 32)
+
+/* Boundary (in *bits*) on which stack pointer should be aligned.  */
+#define STACK_BOUNDARY 16
 
 /* Allocation boundary (in *bits*) for the code of a function.  */
 #define FUNCTION_BOUNDARY 16
 
-/* There is no point aligning anything to a rounder boundary than this.  */
+/* Alignment of field after `int : 0' in a structure.  */
+#define EMPTY_FIELD_BOUNDARY (TARGET_SHORT ? 16 : 32)
+
+/* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT 16
 
 /* Define this if move instructions will actually fail to work
    when given unaligned data.  */
 #define STRICT_ALIGNMENT
+
+/* Define number of bits in most basic integer type.
+   (If undefined, default is BITS_PER_WORD).  */
+
+#define INT_TYPE_SIZE (TARGET_SHORT ? 16 : 32)
 
 /* Standard register usage.  */
 
@@ -114,10 +153,10 @@ extern int target_flags;
 
 /* 1 for registers that have pervasive standard uses
    and are not available for the register allocator.
-   On the 68000, these are the stack pointer and frame pointer.  */
+   On the 68000, only the stack pointer is such.  */
 #define FIXED_REGISTERS  \
  {0, 0, 0, 0, 0, 0, 0, 0, \
-  0, 0, 0, 0, 0, 0, 1, 1, \
+  0, 0, 0, 0, 0, 0, 0, 1, \
   0, 0, 0, 0, 0, 0, 0, 0}
 
 /* 1 for registers not available across function calls.
@@ -128,7 +167,7 @@ extern int target_flags;
    Aside from that, you can include as many other registers as you like.  */
 #define CALL_USED_REGISTERS \
  {1, 1, 0, 0, 0, 0, 0, 0, \
-  1, 1, 0, 0, 0, 0, 1, 1, \
+  1, 1, 0, 0, 0, 0, 0, 1, \
   1, 1, 0, 0, 0, 0, 0, 0}
 
 /* Return number of consecutive hard regs needed starting at reg REGNO
@@ -170,16 +209,17 @@ extern int target_flags;
 /* Base register for access to local variables of the function.  */
 #define FRAME_POINTER_REGNUM 14
 
+/* Value should be nonzero if functions must have frame pointers.
+   Zero means the frame pointer need not be set up (and parms
+   may be accessed via the stack pointer) in functions that seem suitable.
+   This is computed in `reload', in reload1.c.  */
+#define FRAME_POINTER_REQUIRED 0
+
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM 14
 
 /* Register in which static-chain is passed to a function.  */
 #define STATIC_CHAIN_REGNUM 8
-
-/* Register in which function's value is returned.
-   Actually, multiple registers starting with this one may be used
-   depending on the machine mode of the value.  */
-#define FUNCTION_VALUE_REGNUM 0
 
 /* Register in which address to store a structure value
    is passed to a function.  */
@@ -232,56 +272,6 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 #define REGNO_REG_CLASS(REGNO) \
  ((REGNO) >= 16 ? FP_REGS : (REGNO) < 8 ? DATA_REGS : ADDR_REGS)
 
-/* Define a table that lets us find quickly all the reg classes
-   containing a given one.  This is the initializer for an
-   N_REG_CLASSES x N_REG_CLASSES array of reg class codes.
-   Row N is a sequence containing all the class codes for
-   classes that contain all the regs in class N.  Each row
-   contains no duplicates, and is terminated by LIM_REG_CLASSES.  */
-
-/* We give just a dummy for the first element, which is for NO_REGS.  */
-#define REG_CLASS_SUPERCLASSES \
- {{LIM_REG_CLASSES}, \
-  {GENERAL_REGS, FP_OR_DATA_REGS, ALL_REGS, LIM_REG_CLASSES}, \
-  {GENERAL_REGS, ALL_REGS, LIM_REG_CLASSES}, \
-  {ALL_REGS, LIM_REG_CLASSES}, \
-  {FP_OR_DATA_REGS, ALL_REGS, LIM_REG_CLASSES}, \
-  {ALL_REGS, LIM_REG_CLASSES}, \
-  {LIM_REG_CLASSES}}
-
-/* The inverse relationship:
-   for each class, a list of all reg classes contained in it.  */
-#define REG_CLASS_SUBCLASSES \
- {{LIM_REG_CLASSES}, \
-  {LIM_REG_CLASSES}, \
-  {LIM_REG_CLASSES}, \
-  {DATA_REGS, ADDR_REGS, LIM_REG_CLASSES}, \
-  {LIM_REG_CLASSES}, \
-  {DATA_REGS, FP_REGS, LIM_REG_CLASSES}, \
-  {DATA_REGS, ADDR_REGS, FP_REGS, GENERAL_REGS, FP_OR_DATA_REGS, LIM_REG_CLASSES}}
-
-/* Define a table that lets us find quickly the class
-   for the subunion of any two classes.
-
-   We say "subunion" because the result need not be exactly
-   the union; it may instead be a subclass of the union
-   (though the closer to the union, the better).
-   But if it contains anything beyond union of the two classes,
-   you will lose!
-
-   This is an initializer for an N_REG_CLASSES x N_REG_CLASSES
-   array of reg class codes.  The subunion of classes C1 and C2
-   is just element [C1, C2].  */
-
-#define REG_CLASS_SUBUNION  \
-{{NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DATA_REGS, ALL_REGS}, \
- {DATA_REGS, DATA_REGS, GENERAL_REGS, GENERAL_REGS, FP_OR_DATA_REGS, FP_OR_DATA_REGS, ALL_REGS}, \
- {ADDR_REGS, GENERAL_REGS, ADDR_REGS, GENERAL_REGS, ADDR_REGS, ADDR_REGS, ALL_REGS}, \
- {GENERAL_REGS, GENERAL_REGS, GENERAL_REGS, GENERAL_REGS, ALL_REGS, ALL_REGS, ALL_REGS},\
- {FP_REGS, FP_OR_DATA_REGS, FP_REGS, FP_OR_DATA_REGS, FP_REGS, FP_OR_DATA_REGS, ALL_REGS}, \
- {FP_OR_DATA_REGS, FP_OR_DATA_REGS, FP_OR_DATA_REGS, ALL_REGS, FP_OR_DATA_REGS, FP_OR_DATA_REGS, ALL_REGS}, \
- {ALL_REGS, ALL_REGS, ALL_REGS, ALL_REGS, ALL_REGS, ALL_REGS, ALL_REGS}}
-
 /* The class value for index registers, and the one for base regs.  */
 
 #define INDEX_REG_CLASS GENERAL_REGS
@@ -327,6 +317,14 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
     && (unsigned) (INTVAL (X) + 0x80) < 0x100	\
     && (CLASS) != ADDR_REGS)				\
    ? DATA_REGS : (CLASS))
+
+/* Return the maximum number of consecutive registers
+   needed to represent mode MODE in a register of class CLASS.  */
+/* On the 68000, this is the size of MODE in words,
+   except in the FP regs, where a single reg is always enough.  */
+#define CLASS_MAX_NREGS(CLASS, MODE)	\
+ ((CLASS) == FP_REGS ? 1			\
+  : ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
 
 /* Stack layout; function entry, exit and calling.  */
 
@@ -354,10 +352,112 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* Offset of first parameter from the argument pointer register value.  */
 #define FIRST_PARM_OFFSET 8
 
-/* Define if returning from a function call automatically
-   pops the arguments described by the number-of-args field in the call.  */
+/* Value is 1 if returning from a function call automatically
+   pops the arguments described by the number-of-args field in the call.
+   FUNTYPE is the data type of the function (as a tree),
+   or for a library call it is an identifier node for the subroutine name.
 
-/* #define RETURN_POPS_ARGS   On the 68000, the caller must pop them.  */
+   On the 68000, the RTS insn cannot pop anything.
+   On the 68010, the RTD insn may be used to pop them if the number
+     of args is fixed, but if the number is variable then the caller
+     must pop them all.  RTD can't be used for library calls now
+     because the library is compiled with the Unix compiler.
+   Use of RTD is a selectable option, since it is incompatible with
+   standard Unix calling sequences.  If the option is not selected,
+   the caller must always pop the args.  */
+
+#define RETURN_POPS_ARGS(FUNTYPE)   \
+  (TARGET_RTD && TREE_CODE (FUNTYPE) != IDENTIFIER_NODE		\
+   && (TYPE_ARG_TYPES (FUNTYPE) == 0				\
+       || TREE_VALUE (tree_last (TYPE_ARG_TYPES (FUNTYPE))) == void_type_node))
+
+/* Define how to find the value returned by a function.
+   VALTYPE is the data type of the value (as a tree).
+   If the precise function being called is known, FUNC is its FUNCTION_DECL;
+   otherwise, FUNC is 0.  */
+
+/* On the 68000 the return value is in D0 regardless.  */   
+
+#define FUNCTION_VALUE(VALTYPE, FUNC)  \
+  gen_rtx (REG, TYPE_MODE (VALTYPE), 0)
+
+/* Define how to find the value returned by a library function
+   assuming the value has mode MODE.  */
+
+/* On the 68000 the return value is in D0 regardless.  */   
+
+#define LIBCALL_VALUE(MODE)  gen_rtx (REG, MODE, 0)
+
+/* 1 if N is a possible register number for a function value.
+   On the 68000, d0 is the only register thus used.  */
+
+#define FUNCTION_VALUE_REGNO_P(N) ((N) == 0)
+
+/* 1 if N is a possible register number for function argument passing.
+   On the 68000, no registers are used in this way.  */
+
+#define FUNCTION_ARG_REGNO_P(N) 0
+
+/* Define a data type for recording info about an argument list
+   during the scan of that argument list.  This data type should
+   hold all necessary information about the function itself
+   and about the args processed so far, enough to enable macros
+   such as FUNCTION_ARG to determine where the next arg should go.
+
+   On the m68k, this is a single integer, which is a number of bytes
+   of arguments scanned so far.  */
+
+#define CUMULATIVE_ARGS int
+
+/* Initialize a variable CUM of type CUMULATIVE_ARGS
+   for a call to a function whose data type is FNTYPE.
+   For a library call, FNTYPE is 0.
+
+   On the m68k, the offset starts at 0.  */
+
+#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE)	\
+ ((CUM) = 0)
+
+/* Update the data in CUM to advance over an argument
+   of mode MODE and data type TYPE.
+   (TYPE is null for libcalls where that information may not be available.)  */
+
+#define FUNCTION_ARG_ADVANCE(CUM, MODE, TYPE, NAMED)	\
+ ((CUM) += ((MODE) != BLKmode			\
+	    ? (GET_MODE_SIZE (MODE) + 3) & ~3	\
+	    : (int_size_in_bytes (TYPE) + 3) & ~3))
+
+/* Define where to put the arguments to a function.
+   Value is zero to push the argument on the stack,
+   or a hard register in which to store the argument.
+
+   MODE is the argument's machine mode.
+   TYPE is the data type of the argument (as a tree).
+    This is null for libcalls where that information may
+    not be available.
+   CUM is a variable of type CUMULATIVE_ARGS which gives info about
+    the preceding args and about the function being called.
+   NAMED is nonzero if this argument is a named parameter
+    (otherwise it is an extra parameter matching an ellipsis).  */
+
+/* On the 68000 all args are pushed, except if -mregparm is specified
+   then the first two words of arguments are passed in d0, d1.
+   *NOTE* -mregparm does not work.
+   It exists only to test register calling conventions.  */
+
+#define FUNCTION_ARG(CUM, MODE, TYPE, NAMED) \
+((TARGET_REGPARM && (CUM) < 8) ? gen_rtx (REG, (MODE), (CUM) / 4) : 0)
+
+/* For an arg passed partly in registers and partly in memory,
+   this is the number of registers used.
+   For args passed entirely in registers or entirely in memory, zero.  */
+
+#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) \
+((TARGET_REGPARM && (CUM) < 8					\
+  && 8 < ((CUM) + ((MODE) == BLKmode				\
+		      ? int_size_in_bytes (TYPE)		\
+		      : GET_MODE_SIZE (MODE))))  		\
+ ? 2 - (CUM) / 4 : 0)
 
 /* This macro generates the assembly code for function entry.
    FILE is a stdio stream to output the code to.
@@ -367,21 +467,47 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
    is ever used in the function.  This macro is responsible for
    knowing which registers should not be saved even if used.  */
 
+/* Note that the order of the bit mask for fmovem is the opposite
+   of the order for movem!  */
+
 #define FUNCTION_PROLOGUE(FILE, SIZE)     \
 { register int regno;						\
   register int mask = 0;					\
-  static char dont_save_regs[] = CALL_USED_REGISTERS;		\
   static char *reg_names[] = REGISTER_NAMES;			\
-  fprintf (FILE, "\tlink a6,#%d\n", (SIZE));			\
-  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)	\
-    if (regs_ever_live[regno] && ! dont_save_regs[regno])	\
-       mask |= 1 << (23 - regno);				\
-  if (mask & 0xff)						\
+  extern char call_used_regs[];					\
+  int fsize = (SIZE);						\
+  if (frame_pointer_needed)					\
+    { if (TARGET_68020 || fsize < 0x8000)			\
+        fprintf (FILE, "\tlink a6,#%d\n", -fsize);		\
+      else							\
+	fprintf (FILE, "\tlink a6,#0\n\tsubl #%d,sp\n", fsize); }  \
+  for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+       mask |= 1 << (regno - 16);				\
+  if (mask != 0)						\
     fprintf (FILE, "\tfmovem #0x%x,sp@-\n", mask & 0xff);       \
-  mask >>= 8;							\
+  mask = 0;							\
+  for (regno = 0; regno < 16; regno++)				\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+       mask |= 1 << (15 - regno);				\
+  if (frame_pointer_needed)					\
+    mask &= ~ (1 << (15-FRAME_POINTER_REGNUM));			\
   if (exact_log2 (mask) >= 0)					\
-    fprintf (FILE, "\tmovl %s,sp@-\n", reg_names[15 - exact_log2 (mask)]);  \
+    fprintf (FILE, "\tmovel %s,sp@-\n", reg_names[15 - exact_log2 (mask)]);  \
   else if (mask) fprintf (FILE, "\tmoveml #0x%x,sp@-\n", mask); }
+
+/* Output assembler code to FILE to increment profiler label # LABELNO
+   for profiling a function entry.  */
+
+#define FUNCTION_PROFILER(FILE, LABELNO)  \
+   fprintf (FILE, "\tlea LP%d,a0\n\tjsr mcount\n", (LABELNO));
+
+/* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
+   the stack pointer does not matter.  The value is tested only in
+   functions that have frame pointers.
+   No definition is equivalent to always zero.  */
+
+#define EXIT_IGNORE_STACK 1
 
 /* This macro generates the assembly code for function exit,
    on machines that need it.  If FUNCTION_EPILOGUE is not defined
@@ -395,31 +521,86 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 
 #define FUNCTION_EPILOGUE(FILE, SIZE) \
 { register int regno;						\
-  register int mask;						\
+  register int mask, fmask;					\
   register int nregs;						\
-  int offset;							\
-  static char dont_save_regs[] = CALL_USED_REGISTERS;		\
+  int offset, foffset;						\
+  extern char call_used_regs[];					\
   static char *reg_names[] = REGISTER_NAMES;			\
-  nregs = 0;  mask = 0;						\
+  extern int current_function_pops_args;			\
+  extern int current_function_args_size;			\
+  int fsize = (SIZE);						\
+  int big = 0;							\
+  nregs = 0;  fmask = 0;					\
   for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\
-    if (regs_ever_live[regno] && ! dont_save_regs[regno])	\
-      { nregs++; mask |= 1 << (regno - 16); }			\
-  offset = nregs * 12;						\
-  if (mask)							\
-    fprintf (FILE, "\tfmovem a6@(-%d),#0x%x\n",			\
-	     offset - (SIZE), mask);				\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+      { nregs++; fmask |= 1 << (23 - regno); }			\
+  foffset = nregs * 12;						\
   nregs = 0;  mask = 0;						\
+  if (frame_pointer_needed) regs_ever_live[FRAME_POINTER_REGNUM] = 0; \
   for (regno = 0; regno < 16; regno++)				\
-    if (regs_ever_live[regno] && ! dont_save_regs[regno])	\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
       { nregs++; mask |= 1 << regno; }				\
-  offset += nregs * 4;						\
-  if (exact_log2 (mask) >= 0)					\
-    fprintf (FILE, "\tmovl a6@(-%d),%s\n",			\
-             offset - (SIZE), reg_names[exact_log2 (mask)]);	\
-  else if (mask)						\
-    fprintf (FILE, "\tmoveml a6@(-%d),#0x%x\n",			\
-	     offset - (SIZE), mask);				\
-  fprintf (FILE, "\tunlk a6\n\trts\n"); }
+  offset = foffset + nregs * 4;					\
+  if (offset + fsize >= 0x8000 && frame_pointer_needed && (mask || fmask)) \
+    { fprintf (FILE, "\tmovel #%d,a0\n", -fsize);		\
+      fsize = 0, big = 1; }					\
+  if (exact_log2 (mask) >= 0) {					\
+    if (big)							\
+      fprintf (FILE, "\tmovel a6@(-%d,a0:l),%s\n",		\
+	       offset + fsize, reg_names[exact_log2 (mask)]);	\
+    else if (! frame_pointer_needed)				\
+      fprintf (FILE, "\tmovel sp@+,%s\n",			\
+	       reg_names[exact_log2 (mask)]);			\
+    else							\
+      fprintf (FILE, "\tmovel a6@(-%d),%s\n",			\
+	       offset + fsize, reg_names[exact_log2 (mask)]); }	\
+  else if (mask) {						\
+    if (big)							\
+      fprintf (FILE, "\tmoveml a6@(-%d,a0:l),#0x%x\n",		\
+	       offset + fsize, mask);				\
+    else if (! frame_pointer_needed)				\
+      fprintf (FILE, "\tmoveml sp@+,#0x%x\n", mask);		\
+    else							\
+      fprintf (FILE, "\tmoveml a6@(-%d),#0x%x\n",		\
+	       offset + fsize, mask); }				\
+  if (fmask) {							\
+    if (big)							\
+      fprintf (FILE, "\tfmovem a6@(-%d,a0:l),#0x%x\n",		\
+	       foffset + fsize, fmask);				\
+    else if (! frame_pointer_needed)				\
+      fprintf (FILE, "\tfmovem sp@+,#0x%x\n", fmask);		\
+    else							\
+      fprintf (FILE, "\tfmovem a6@(-%d),#0x%x\n",		\
+	       foffset + fsize, fmask); }			\
+  if (frame_pointer_needed)					\
+    fprintf (FILE, "\tunlk a6\n");				\
+  if (current_function_pops_args && current_function_args_size)	\
+    fprintf (FILE, "\trtd #%d\n", current_function_args_size);	\
+  else fprintf (FILE, "\trts\n"); }
+
+/* If the memory address ADDR is relative to the frame pointer,
+   correct it to be relative to the stack pointer instead.
+   This is for when we don't use a frame pointer.
+   ADDR should be a variable name.  */
+
+#define FIX_FRAME_POINTER_ADDRESS(ADDR,DEPTH)  \
+{ int offset = -1;							\
+  if (ADDR == frame_pointer_rtx)					\
+    offset = 0;								\
+  else if (GET_CODE (ADDR) == PLUS && XEXP (ADDR, 0) == frame_pointer_rtx \
+	   && GET_CODE (XEXP (ADDR, 1)) == CONST_INT)			\
+    offset = INTVAL (XEXP (ADDR, 1));					\
+  if (offset >= 0)							\
+    { int regno;							\
+      extern char call_used_regs[];					\
+      for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)		\
+        if (regs_ever_live[regno] && ! call_used_regs[regno])		\
+          offset += 12;							\
+      for (regno = 0; regno < 16; regno++)				\
+	if (regs_ever_live[regno] && ! call_used_regs[regno])		\
+	  offset += 4;							\
+      offset -= 4;							\
+      ADDR = plus_constant (stack_pointer_rtx, offset + (DEPTH)); } }
 
 /* Addressing modes, and classification of registers for them.  */
 
@@ -429,52 +610,76 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 #define HAVE_PRE_DECREMENT
 /* #define HAVE_PRE_INCREMENT */
 
+/* Macros to check register numbers against specific register classes.  */
+
 /* These assume that REGNO is a hard or pseudo reg number.
    They give nonzero only if REGNO is a hard reg of the suitable class
    or a pseudo reg currently allocated to a suitable hard reg.
-   These definitions are NOT overridden anywhere.  */
+   Since they use reg_renumber, they are safe only once reg_renumber
+   has been allocated, which happens in local-alloc.c.  */
+
 #define REGNO_OK_FOR_INDEX_P(REGNO) \
 ((REGNO) < 16 || (unsigned) reg_renumber[REGNO] < 16)
 #define REGNO_OK_FOR_BASE_P(REGNO) \
-(((REGNO) ^ 010) < 8 || ((unsigned) reg_renumber[REGNO] ^ 010) < 8)
+(((REGNO) ^ 010) < 8 || (unsigned) (reg_renumber[REGNO] ^ 010) < 8)
 #define REGNO_OK_FOR_DATA_P(REGNO) \
 ((REGNO) < 8 || (unsigned) reg_renumber[REGNO] < 8)
 #define REGNO_OK_FOR_FP_P(REGNO) \
-(((REGNO) ^ 020) < 8 || ((unsigned) reg_renumber[REGNO] ^ 020) < 8)
+(((REGNO) ^ 020) < 8 || (unsigned) (reg_renumber[REGNO] ^ 020) < 8)
 
-/* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression
-   that is a valid memory address for an instruction.
-   The MODE argument is the machine mode for the MEM expression
-   that wants to use this address.
+/* Now macros that check whether X is a register and also,
+   strictly, whether it is in a specified class.
 
-   The other macros defined here are used only in GO_IF_LEGITIMATE_ADDRESS,
-   except for CONSTANT_ADDRESS_P which is actually machine-independent.  */
+   These macros are specific to the 68000, and may be used only
+   in code for printing assembler insns and in conditions for
+   define_optimization.  */
+
+/* 1 if X is a data register.  */
+
+#define DATA_REG_P(X) (REG_P (X) && REGNO_OK_FOR_DATA_P (REGNO (X)))
+
+/* 1 if X is an fp register.  */
+
+#define FP_REG_P(X) (REG_P (X) && REGNO_OK_FOR_FP_P (REGNO (X)))
+
+/* 1 if X is an address register  */
+
+#define ADDRESS_REG_P(X) (REG_P (X) && REGNO_OK_FOR_BASE_P (REGNO (X)))
+
+/* Maximum number of registers that can appear in a valid memory address.  */
 
 #define MAX_REGS_PER_ADDRESS 2
+
+/* Recognize any constant value that is a valid address.  */
+
+#define CONSTANT_ADDRESS_P(X)  CONSTANT_P (X)
+
+/* Nonzero if the constant value X is a legitimate general operand.
+   It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
+
+#define LEGITIMATE_CONSTANT_P(X) 1
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
    We have two alternate definitions for each of them.
-   The usual definition accepts all pseudo regs; the other rejects them all.
+   The usual definition accepts all pseudo regs; the other rejects
+   them unless they have been allocated suitable hard regs.
    The symbol REG_OK_STRICT causes the latter definition to be used.
 
    Most source files want to accept pseudo regs in the hope that
    they will get allocated to the class that the insn wants them to be in.
-   Some source files that are used after register allocation
-   need to be strict.  */
+   Source files for reload pass need to be strict.
+   After reload, it makes no difference, since pseudo regs have
+   been eliminated by then.  */
 
 #ifndef REG_OK_STRICT
 
-/* Nonzero if X is a hard reg that can be used as an index or if
-   it is a pseudo reg.  */
+/* Nonzero if X is a hard reg that can be used as an index
+   or if it is a pseudo reg.  */
 #define REG_OK_FOR_INDEX_P(X) ((REGNO (X) ^ 020) >= 8)
 /* Nonzero if X is a hard reg that can be used as a base reg
-   of if it is a pseudo reg.  */
+   or if it is a pseudo reg.  */
 #define REG_OK_FOR_BASE_P(X) ((REGNO (X) & ~027) != 0)
-/* Nonzero if X is a data reg or a pseudo reg.  */
-#define REG_OK_FOR_DATA_P(X) ((unsigned) (REGNO (X) - 8) >= 16)
-/* Nonzero if X is a floating point reg or a pseudo reg.  */
-#define REG_OK_FOR_FP_P(X) (REGNO (X) >= 16)
 
 #else
 
@@ -482,39 +687,15 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 #define REG_OK_FOR_INDEX_P(X) REGNO_OK_FOR_INDEX_P (REGNO (X))
 /* Nonzero if X is a hard reg that can be used as a base reg.  */
 #define REG_OK_FOR_BASE_P(X) REGNO_OK_FOR_BASE_P (REGNO (X))
-/* Nonzero if X is a data reg.  */
-#define REG_OK_FOR_DATA_P(X) REGNO_OK_FOR_DATA_P (REGNO (X))
-/* Nonzero if X is a floating point reg.  */
-#define REG_OK_FOR_FP_P(X) REGNO_OK_FOR_FP_P (REGNO (X))
 
 #endif
+
+/* GO_IF_LEGITIMATE_ADDRESS recognizes an RTL expression
+   that is a valid memory address for an instruction.
+   The MODE argument is the machine mode for the MEM expression
+   that wants to use this address.
 
-#define REG_OK_FOR_CLASS_P(X, C)  \
- (((C) == 'd' && REG_OK_FOR_DATA_P(X))		\
-  || (C) == 'a' && REG_OK_FOR_BASE_P(X)		\
-  || (C) == 'f' && REG_OK_FOR_FP_P(X))
-
-#define REGNO_OK_FOR_CLASS_P(X, C)  \
- (((C) == 'd' && REGNO_OK_FOR_DATA_P(X))	\
-  || (C) == 'a' && REGNO_OK_FOR_BASE_P(X)	\
-  || (C) == 'f' && REGNO_OK_FOR_FP_P(X))
-
-#define CONSTANT_ADDRESS_P(X)   \
-  (GET_CODE (X) == LABEL_REF || GET_CODE (X) == SYMBOL_REF		\
-   || GET_CODE (X) == CONST_INT						\
-   || GET_CODE (X) == CONST)
-
-#define REG_P(X)	\
-  (GET_CODE (X) == REG)
-
-#define DATA_REG_P(X)	\
-  (GET_CODE (X) == REG && REGNO_OK_FOR_DATA_P (REGNO (X)))
-
-#define FP_REG_P(X)	\
-  (GET_CODE (X) == REG && REGNO_OK_FOR_FP_P (REGNO (X)))
-
-#define ADDRESS_REG_P(X)	\
-  (GET_CODE (X) == REG && REGNO_OK_FOR_BASE_P (REGNO (X)))
+   The other macros defined here are used only in GO_IF_LEGITIMATE_ADDRESS.  */
 
 #define INDIRECTABLE_1_ADDRESS_P(X)  \
   (CONSTANT_ADDRESS_P (X)						\
@@ -554,47 +735,10 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
   if (GET_CODE (X) == PLUS)						\
     { if (GET_CODE (XEXP (X, 1)) == CONST_INT				\
 	  && (unsigned) INTVAL (XEXP (X, 1)) + 0x80 < 0x100)		\
-	GO_IF_INDEXING (XEXP (X, 0), ADDR);				\
+	{ rtx go_temp = XEXP (X, 0); GO_IF_INDEXING (go_temp, ADDR); }	\
       if (GET_CODE (XEXP (X, 0)) == CONST_INT				\
 	  && (unsigned) INTVAL (XEXP (X, 0)) + 0x80 < 0x100)		\
-	GO_IF_INDEXING (XEXP (X, 1), ADDR); } }
-
-
-#if 0
-/* Note we allow a constant address here if it is a LABEL_REF.
-   That is not strictly correct, since the CODE_LABEL has to be less than
-   2**7 bytes away from this insn.  But that is true in the only cases
-   that matter, which occur in switch statements.  */
-
-#define GO_IF_INDEXABLE_ADDRESS(X, ADDR)   \
-{ if (GET_CODE (X) == LABEL_REF) goto ADDR;				\
-  if (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X)) goto ADDR;		\
-  if (GET_CODE (X) == PLUS &&						\
-      ((REG_P (XEXP (X, 0)) && REG_OK_FOR_BASE_P (XEXP (X, 0))		\
-	&& GET_CODE (XEXP (X, 1)) == CONST_INT				\
-	&& (unsigned) INTVAL (XEXP (X, 1)) + 0x80 < 0x100)		\
-       ||								\
-       (REG_P (XEXP (X, 1)) && REG_OK_FOR_BASE_P (XEXP (X, 1))		\
-	&& GET_CODE (XEXP (X, 0)) == CONST_INT				\
-	&& (unsigned) INTVAL (XEXP (X, 0)) + 0x80 < 0x100)))		\
-     goto ADDR; }
-
-
-#define GO_IF_INDEXABLE_ADDRESS(X, ADDR)   \
-{ if (GET_CODE (X) == LABEL_REF) goto ADDR;				\
-  if (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X)) goto ADDR;		\
-  if (GET_CODE (X) == PLUS &&						\
-      ((REG_P (XEXP (X, 0)) && REG_OK_FOR_BASE_P (XEXP (X, 0))		\
-	&& (TARGET_68020 ? CONSTANT_ADDRESS_P (XEXP (X, 1))		\
-	    : (GET_CODE (XEXP (X, 1)) == CONST_INT			\
-	       && (unsigned) INTVAL (XEXP (X, 1)) + 0x80 < 0x100)))	\
-       ||								\
-       (REG_P (XEXP (X, 1)) && REG_OK_FOR_BASE_P (XEXP (X, 1))		\
-	&& (TARGET_68020 ? CONSTANT_ADDRESS_P (XEXP (X, 0))		\
-	    : (GET_CODE (XEXP (X, 0)) == CONST_INT			\
-	       && (unsigned) INTVAL (XEXP (X, 0)) + 0x80 < 0x100)))))	\
-     goto ADDR; }
-#endif
+	{ rtx go_temp = XEXP (X, 1); GO_IF_INDEXING (go_temp, ADDR); } } }
 
 #define LEGITIMATE_INDEX_REG_P(X)   \
   ((GET_CODE (X) == REG && REG_OK_FOR_INDEX_P (X))	\
@@ -615,14 +759,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)  \
 { GO_IF_NONINDEXED_ADDRESS (X, ADDR);			\
   GO_IF_INDEXED_ADDRESS (X, ADDR); }
-
-#if 0
-  if (GET_CODE (X) == PLUS && LEGITIMATE_INDEX_P (XEXP (X, 0)))		\
-    { GO_IF_INDEXABLE_ADDRESS (XEXP (X, 1), ADDR); }			\
-  if (GET_CODE (X) == PLUS && LEGITIMATE_INDEX_P (XEXP (X, 1)))		\
-    { GO_IF_INDEXABLE_ADDRESS (XEXP (X, 0), ADDR); } }
-#endif
-
+
 /* Try machine-dependent ways of modifying an illegitimate address
    to be legitimate.  If we find one, return the new, valid address.
    This macro is used in only one place: `memory_address' in explow.c.
@@ -658,7 +795,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 		   && GET_MODE (XEXP (XEXP (X, 0), 0)) == HImode))	\
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
 	  register rtx val = force_operand (XEXP (X, 1), temp);		\
-	  if (val != temp) emit_move_insn (temp, val, 0);		\
+	  if (val != temp) emit_move_insn (temp, val);			\
 	  XEXP (X, 1) = temp;						\
 	  return X; }							\
       else if (GET_CODE (XEXP (X, 1)) == REG				\
@@ -667,9 +804,17 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 		   && GET_MODE (XEXP (XEXP (X, 1), 0)) == HImode))	\
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
 	  register rtx val = force_operand (XEXP (X, 0), temp);		\
-	  if (val != temp) emit_move_insn (temp, val, 0);		\
+	  if (val != temp) emit_move_insn (temp, val);			\
 	  XEXP (X, 0) = temp;						\
 	  return X; }}}
+
+/* Go to LABEL if ADDR (a legitimate address expression)
+   has an effect that depends on the machine mode it is used for.
+   On the 68000, only predecrement and postincrement address depend thus
+   (the amount of decrement or increment being the length of the operand).  */
+
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)	\
+ if (GET_CODE (ADDR) == POST_INC || GET_CODE (ADDR) == PRE_DEC) goto LABEL
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
@@ -686,12 +831,18 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* This is the kind of divide that is easiest to do in the general case.  */
 #define EASY_DIV_EXPR TRUNC_DIV_EXPR
 
+/* Define this as 1 if `char' should by default be signed; else as 0.  */
+#define DEFAULT_SIGNED_CHAR 1
+
 /* Max number of bytes we can move from memory to memory
    in one reasonably fast instruction.  */
 #define MOVE_MAX 4
 
 /* Define this if zero-extension is slow (more than one real instruction).  */
 #define SLOW_ZERO_EXTEND
+
+/* Nonzero if access to memory by bytes is slow and undesirable.  */
+#define SLOW_BYTE_ACCESS 0
 
 /* Define if shifts truncate the shift count
    which implies one can omit a sign-extension or zero-extension
@@ -701,6 +852,11 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* Value is 1 if truncating an integer of INPREC bits to OUTPREC bits
    is done just by pretending it is already truncated.  */
 #define TRULY_NOOP_TRUNCATION(OUTPREC, INPREC) 1
+
+/* We assume that the store-condition-codes instructions store 0 for false
+   and some other value for true.  This is the value stored for true.  */
+
+#define STORE_FLAG_VALUE -1
 
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction
@@ -757,6 +913,15 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 	  if (cc_status.value2					\
 	      && reg_mentioned_p (XEXP (EXP, 0), cc_status.value2)) \
 	    cc_status.value2 = 0; }				\
+      else if (!FP_REG_P (XEXP (EXP, 0))			\
+	       && XEXP (EXP, 0) != cc0_rtx			\
+	       && (FP_REG_P (XEXP (EXP, 1))			\
+		   || GET_CODE (XEXP (EXP, 1)) == FIX		\
+		   || GET_CODE (XEXP (EXP, 1)) == FLOAT_TRUNCATE \
+		   || GET_CODE (XEXP (EXP, 1)) == FLOAT_EXTEND)) \
+	{ CC_STATUS_INIT; }					\
+      else if (GET_CODE (SET_SRC (EXP)) == CALL)		\
+	{ CC_STATUS_INIT; }					\
       else if (XEXP (EXP, 0) != pc_rtx)				\
 	{ cc_status.flags = 0;					\
 	  cc_status.value1 = XEXP (EXP, 0);			\
@@ -774,31 +939,57 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
       && ADDRESS_REG_P (cc_status.value2)			\
       && GET_MODE (cc_status.value2) == QImode)			\
     CC_STATUS_INIT;						\
+  if (cc_status.value2 != 0)					\
+    switch (GET_CODE (cc_status.value2))			\
+      { case PLUS: case MINUS: case MULT: case UMULT:		\
+	case DIV: case UDIV: case MOD: case UMOD: case NEG:	\
+	case ASHIFT: case LSHIFT: case ASHIFTRT: case LSHIFTRT:	\
+	case ROTATE: case ROTATERT:				\
+	  if (GET_MODE (cc_status.value2) != VOIDmode)		\
+	    cc_status.flags |= CC_NO_OVERFLOW;			\
+	  break;						\
+	case ZERO_EXTEND:					\
+	  /* (SET r1 (ZERO_EXTEND r2)) on this machine
+	     ends with a move insn moving r2 in r2's mode.
+	     Thus, the cc's are set for r2.
+	     This can set N bit spuriously. */			\
+	  cc_status.flags |= CC_NOT_NEGATIVE; }			\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
       && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
     cc_status.value2 = 0;					\
   if ((cc_status.value1 && FP_REG_P (cc_status.value1))		\
       || (cc_status.value2 && FP_REG_P (cc_status.value2)))	\
-    cc_status.flags = CC_IN_68881;				\
-  if (cc_status.value2 != 0)					\
-    switch (GET_CODE (cc_status.value2))			\
-      { case PLUS: case MINUS: case MULT: case UMULT:		\
-	case DIV: case UDIV: case ASHIFT: case LSHIFT:		\
-	case NEG:						\
-	  if (GET_MODE (cc_status.value2) != VOIDmode)		\
-	    cc_status.flags |= CC_NO_OVERFLOW; }}
+    cc_status.flags = CC_IN_68881; }
 
 #define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)  \
-{ if (cc_status.flags & CC_IN_68881)				\
+{ if (cc_prev_status.flags & CC_IN_68881)			\
     return FLOAT;						\
-  if (cc_status.flags & CC_NO_OVERFLOW)				\
+  if (cc_prev_status.flags & CC_NO_OVERFLOW)			\
     return NO_OV;						\
   return NORMAL; }
 
 /* Control the assembler format that we output.  */
 
+/* Output at beginning of assembler file.  */
+
+#define ASM_FILE_START "#NO_APP\n"
+
+/* Output to assembler file text saying following lines
+   may contain character constants, extra white space, comments, etc.  */
+
+#define ASM_APP_ON "#APP\n"
+
+/* Output to assembler file text saying following lines
+   no longer contain unusual constructs.  */
+
+#define ASM_APP_OFF "#NO_APP\n"
+
+/* Output before read-only data.  */
+
 #define TEXT_SECTION_ASM_OP ".text"
+
+/* Output before writable data.  */
 
 #define DATA_SECTION_ASM_OP ".data"
 
@@ -816,10 +1007,42 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 
 #define DBX_REGISTER_NUMBER(REGNO) ((REGNO) < 16 ? (REGNO) : (REGNO) + 2)
 
+/* This is how to output the definition of a user-level label named NAME,
+   such as the label on a static function or variable NAME.  */
+
+#define ASM_OUTPUT_LABEL(FILE,NAME)	\
+  do { assemble_name (FILE, NAME); fputs (":\n", FILE); } while (0)
+
+/* This is how to output a command to make the user-level label named NAME
+   defined for reference from other files.  */
+
+#define ASM_GLOBALIZE_LABEL(FILE,NAME)	\
+  do { fputs (".globl ", FILE); assemble_name (FILE, NAME); fputs ("\n", FILE);} while (0)
+
+/* This is how to output a reference to a user-level label named NAME.
+   `assemble_name' uses this.  */
+
+#define ASM_OUTPUT_LABELREF(FILE,NAME)	\
+  fprintf (FILE, "_%s", NAME)
+
+/* This is how to output an internal numbered label where
+   PREFIX is the class of label and NUM is the number within the class.  */
+
+#define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)	\
+  fprintf (FILE, "%s%d:\n", PREFIX, NUM)
+
+/* This is how to store into the string LABEL
+   the symbol_ref name of an internal numbered label where
+   PREFIX is the class of label and NUM is the number within the class.
+   This is suitable for output with `assemble_name'.  */
+
+#define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
+  sprintf (LABEL, "*%s%d", PREFIX, NUM)
+
 /* This is how to output an assembler line defining a `double' constant.  */
 
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-  fprintf (FILE, "\t.double 0r%e\n", (VALUE))
+  fprintf (FILE, "\t.double 0r%.20g\n", (VALUE))
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
@@ -828,6 +1051,42 @@ do { union { float f; long l;} tem;			\
      tem.f = (VALUE);					\
      fprintf (FILE, "\t.long 0x%x\n", tem.l);	\
    } while (0)
+
+/* This is how to output an assembler line defining an `int' constant.  */
+
+#define ASM_OUTPUT_INT(FILE,VALUE)  \
+( fprintf (FILE, "\t.long "),			\
+  output_addr_const (FILE, (VALUE)),		\
+  fprintf (FILE, "\n"))
+
+/* Likewise for `char' and `short' constants.  */
+
+#define ASM_OUTPUT_SHORT(FILE,VALUE)  \
+( fprintf (FILE, "\t.word "),			\
+  output_addr_const (FILE, (VALUE)),		\
+  fprintf (FILE, "\n"))
+
+#define ASM_OUTPUT_CHAR(FILE,VALUE)  \
+( fprintf (FILE, "\t.byte "),			\
+  output_addr_const (FILE, (VALUE)),		\
+  fprintf (FILE, "\n"))
+
+/* This is how to output an assembler line for a numeric constant byte.  */
+
+#define ASM_OUTPUT_BYTE(FILE,VALUE)  \
+  fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
+
+/* This is how to output an element of a case-vector that is absolute.
+   (The 68000 does not use such vectors,
+   but we must define this macro anyway.)  */
+
+#define ASM_OUTPUT_ADDR_VEC_ELT(FILE, VALUE)  \
+  fprintf (FILE, "\t.long L%d\n", VALUE)
+
+/* This is how to output an element of a case-vector that is relative.  */
+
+#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, VALUE, REL)  \
+  fprintf (FILE, "\t.word L%d-L%d\n", VALUE, REL)
 
 /* This is how to output an assembler line
    that says to advance the location counter
@@ -842,18 +1101,35 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
   fprintf (FILE, "\t.skip %d\n", (SIZE))
 
+/* This says how to output an assembler line
+   to define a global common symbol.  */
+
+#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE)  \
+( fputs (".comm ", (FILE)),			\
+  assemble_name ((FILE), (NAME)),		\
+  fprintf ((FILE), ",%d\n", (SIZE)))
+
+/* This says how to output an assembler line
+   to define a local common symbol.  */
+
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)  \
+( fputs (".lcomm ", (FILE)),			\
+  assemble_name ((FILE), (NAME)),		\
+  fprintf ((FILE), ",%d\n", (SIZE)))
+
+/* Store in OUTPUT a string (made with alloca) containing
+   an assembler-name for a local static variable named NAME.
+   LABELNO is an integer which is different for each call.  */
+
+#define ASM_FORMAT_PRIVATE_NAME(OUTPUT, NAME, LABELNO)	\
+( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 10),	\
+  sprintf ((OUTPUT), "%s.%d", (NAME), (LABELNO)))
+
 /* Define the parentheses used to group arithmetic operations
    in assembler code.  */
 
 #define ASM_OPEN_PAREN "("
 #define ASM_CLOSE_PAREN ")"
-
-/* Specify what to precede various sizes of constant with
-   in the output file.  */
-
-#define ASM_INT_OP ".long "
-#define ASM_SHORT_OP ".word "
-#define ASM_CHAR_OP ".byte "
 
 /* Define results of standard character escape sequences.  */
 #define TARGET_BELL 007
@@ -864,8 +1140,32 @@ do { union { float f; long l;} tem;			\
 #define TARGET_FF 014
 #define TARGET_CR 015
 
-#define PRINT_OPERAND(FILE, X)  \
-{ if (GET_CODE (X) == REG)						\
+/* Print operand X (an rtx) in assembler syntax to file FILE.
+   CODE is a letter or dot (`z' in `%z0') or 0 if no letter was specified.
+   For `%' followed by punctuation, CODE is the punctuation and X is null.
+
+   On the 68000, we use several CODE characters:
+   'f' for float insn (print a CONST_DOUBLE as a float rather than in hex)
+   'b' for byte insn (no effect, on the Sun; this is for the ISI).
+   '.' for dot needed in Motorola-style opcode names.
+   '-' for an operand pushing on the stack:
+       sp@-, -(sp) or -(%sp) depending on the style of syntax.
+   '+' for an operand pushing on the stack:
+       sp@+, (sp)+ or (%sp)+ depending on the style of syntax.
+   's' for a reference to the top word on the stack:
+       sp@, (sp) or (%sp) depending on the style of syntax.
+   '#' for an immediate operand prefix (# in MIT and Motorola syntax
+       but & in SGS syntax).
+   '!' for the cc register (used in an `and to cc' insn).  */
+
+#define PRINT_OPERAND(FILE, X, CODE)  \
+{ if (CODE == '.') ;							\
+  else if (CODE == '#') fprintf (FILE, "#");				\
+  else if (CODE == '-') fprintf (FILE, "sp@-");				\
+  else if (CODE == '+') fprintf (FILE, "sp@+");				\
+  else if (CODE == 's') fprintf (FILE, "sp@");				\
+  else if (CODE == '!') fprintf (FILE, "cc");				\
+  else if (GET_CODE (X) == REG)						\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
@@ -874,16 +1174,20 @@ do { union { float f; long l;} tem;			\
       union { float f; int i; } u1;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       u1.f = u.d;							\
-      fprintf (FILE, "#0x%x", u1.i); }					\
+      if (CODE == 'f')							\
+        fprintf (FILE, "#0r%.9g", u1.f);				\
+      else								\
+        fprintf (FILE, "#0x%x", u1.i); }				\
   else if (GET_CODE (X) == CONST_DOUBLE)				\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
-      fprintf (FILE, "#0r%g", u.d); }					\
+      fprintf (FILE, "#0r%.20g", u.d); }				\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
-
+
 /* Note that this contains a kludge that knows that the only reason
    we have an address (plus (label_ref...) (reg...))
-   is in the insn before a tablejump, and the displacement must be 6.  */
+   is in the insn before a tablejump, and we know that m68k.md
+   generates a label LInnn: on such an insn.  */
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  \
 { register rtx reg1, reg2, breg, ireg;					\
   register rtx addr = ADDR;						\
@@ -975,9 +1279,15 @@ do { union { float f; long l;} tem;			\
 	    { scale = INTVAL (XEXP (ireg, 1));				\
 	      ireg = XEXP (ireg, 0); }					\
 	  if (GET_CODE (ireg) == SIGN_EXTEND)				\
-	    fprintf (FILE, "pc@(6,%s:w", reg_name[REGNO (XEXP (ireg, 0))]); \
+	    fprintf (FILE, "pc@(L%d-LI%d-2:b,%s:w",			\
+		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+		     reg_name[REGNO (XEXP (ireg, 0))]); 		\
 	  else								\
-	    fprintf (FILE, "pc@(6,%s:l", reg_name[REGNO (ireg)]);	\
+	    fprintf (FILE, "pc@(L%d-LI%d-2:b,%s:l",			\
+		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+		     reg_name[REGNO (ireg)]);				\
 	  if (scale != 1) fprintf (FILE, ":%d", scale);			\
 	  putc (')', FILE);						\
 	  break; }							\
@@ -1002,7 +1312,10 @@ do { union { float f; long l;} tem;			\
 	  break;							\
 	}								\
       else if (reg1 != 0 && GET_CODE (addr) == LABEL_REF)		\
-        { fprintf (FILE, "pc@(6,%s:w)", reg_name[REGNO (reg1)]);	\
+	{ fprintf (FILE, "pc@(L%d-LI%d-2:b,%s:l)",			\
+		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+		   reg_name[REGNO (reg1)]);				\
 	  break; }							\
     default:								\
       if (GET_CODE (addr) == CONST_INT					\

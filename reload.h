@@ -19,10 +19,14 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
+/* See reload.c and reload1.c for comments on these variables.  */
+
 extern rtx reload_in[FIRST_PSEUDO_REGISTER];
 extern rtx reload_out[FIRST_PSEUDO_REGISTER];
 extern enum reg_class reload_reg_class[FIRST_PSEUDO_REGISTER];
-extern enum machine_mode reload_mode[FIRST_PSEUDO_REGISTER];
+extern enum machine_mode reload_inmode[FIRST_PSEUDO_REGISTER];
+extern enum machine_mode reload_outmode[FIRST_PSEUDO_REGISTER];
+extern char reload_strict_low[FIRST_PSEUDO_REGISTER];
 extern char reload_optional[FIRST_PSEUDO_REGISTER];
 extern int reload_inc[FIRST_PSEUDO_REGISTER];
 extern int n_reloads;
@@ -30,6 +34,7 @@ extern int n_reloads;
 extern rtx reload_reg_rtx[FIRST_PSEUDO_REGISTER];
 
 extern rtx *reg_equiv_constant;
+extern rtx *reg_equiv_address;
 
 void init_reload ();
 void find_reloads ();

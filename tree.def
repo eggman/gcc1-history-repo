@@ -41,7 +41,7 @@ DEFTREECODE (ERROR_MARK, "error_mark", "x", 0)
    Internally it looks like a STRING_CST node.
    There is only one IDENTIFIER_NODE ever made for any particular name.
    Use `get_identifier' to get it (or create it, the first time).  */
-DEFTREECODE (IDENTIFIER_NODE, "identifier_node", "x", 5)
+DEFTREECODE (IDENTIFIER_NODE, "identifier_node", "x", 6)
 
 /* Has the TREE_VALUE and TREE_PURPOSE fields.  */
 /* These nodes are made into lists by chaining through the
@@ -118,11 +118,12 @@ DEFTREECODE (POINTER_TYPE, "pointer_type", "t", 0)
 DEFTREECODE (FILE_TYPE, "file_type", "t", 0)
 
 /* Types of arrays.  Special fields:
-   TREE_TYPE		  type of an array element.
-   TYPE_DOMAIN		  type to index by.
-   TYPE_SEP		  expression for units from one elt to the next.
-   TYPE_SEP_UNIT	  number of bits in a unit for previous.
-   TYPE_POINTER_TO	  it is safe to assume, for an array type,
+   TREE_TYPE		  Type of an array element.
+   TYPE_DOMAIN		  Type to index by.
+			    Its range of values specifies the array length.
+   TYPE_SEP		  Expression for units from one elt to the next.
+   TYPE_SEP_UNIT	  Number of bits in a unit for previous.
+   TYPE_POINTER_TO	  It is safe to assume, for an array type,
  that TYPE_POINTER_TO (TREE_TYPE (array_type)) is always nonzero
  and holds the type to coerce a value of that array type to in C.  */
 /* Array types in C or Pascal */
@@ -238,16 +239,16 @@ DEFTREECODE (ASM_STMT, "asm_stmt", "s", 1)
    `(int *) 1' in C also results in an INTEGER_CST.  */
 DEFTREECODE (INTEGER_CST, "integer_cst", "c", 2)
 
-/* Contents are in TREE_REAL_CST field.  Also there is TREE_REAL_CST_RTL.  */
+/* Contents are in TREE_REAL_CST field.  Also there is TREE_CST_RTL.  */
 DEFTREECODE (REAL_CST, "real_cst", "c", 3)
 
 /* Contents are in TREE_REALPART and TREE_IMAGPART fields,
    whose contents are other constant nodes.
-   Also there is TREE_COMPLEX_CST_RTL.  */
+   Also there is TREE_CST_RTL.  */
 DEFTREECODE (COMPLEX_CST, "complex_cst", "c", 3)
 
 /* Contents are TREE_STRING_LENGTH and TREE_STRING_POINTER fields.
-   Also there is TREE_COMPLEX_CST_RTL.  */
+   Also there is TREE_CST_RTL.  */
 DEFTREECODE (STRING_CST, "string_cst", "c", 3)
 
 /* Declarations.  All references to names are represented as ..._DECL nodes.
@@ -291,6 +292,8 @@ DEFTREECODE (STRING_CST, "string_cst", "c", 3)
     body has been output) the address in the symtab file of the
     `struct block' for the function's top-level binding context.
     This must be stored in the symtab structure for the function name.
+   Also, TREE_UNSIGNED (function_decl) is nonzero if the ({...})
+    construct is used in the function.
 
    DECL_SOURCE_FILE holds a filename string and DECL_SOURCE_LINE
    holds a line number.  */
@@ -324,9 +327,11 @@ DEFTREECODE (ARRAY_REF, "array_ref", "r", 2)
 
 /* Constructor: return an aggregate value made from specified components.
    In C, this is used only for structure and array initializers.
-   One operand, a list of component values made out of a chain
-   of TREE_LIST nodes.  */
-DEFTREECODE (CONSTRUCTOR, "constructor", "e", 1)
+   The first "operand" is really a pointer to the RTL,
+   for constant constructors only.
+   The second operand is a list of component values
+   made out of a chain of TREE_LIST nodes.  */
+DEFTREECODE (CONSTRUCTOR, "constructor", "e", 2)
 
 /* The expression types are mostly straightforward,
    with the fourth argument of DEFTREECODE saying
@@ -410,6 +415,7 @@ DEFTREECODE (NEGATE_EXPR, "negate_expr", "e", 1)
 DEFTREECODE (MIN_EXPR, "min_expr", "e", 2)
 DEFTREECODE (MAX_EXPR, "max_expr", "e", 2)
 DEFTREECODE (ABS_EXPR, "abs_expr", "e", 1)
+DEFTREECODE (FFS_EXPR, "ffs_expr", "e", 1)
 
 /* Shift operations for shift and rotate.
    Shift is supposed to mean logical shift if done on an
@@ -469,8 +475,16 @@ DEFTREECODE (NOP_EXPR, "nop_expr", "e", 1)
 
 /* Represents something we computed once and will use multiple times.
    First operand is that expression.  Second is the RTL,
-   nonzero only after the expression has been computed.  */
+   nonzero only after the expression has been computed.
+   TREE_UNSIGNED in a SAVE_EXPR is nonzero if that SAVE_EXPR
+   has been seen already in assign_vars_1.  */
 DEFTREECODE (SAVE_EXPR, "save_expr", "e", 2)
+
+/* Represents something whose RTL has already been expanded
+   as a sequence which should be emitted when this expression is expanded.
+   The first operand is the-the RTL to emit (which is a SEQUENCE).
+   The second is the RTL expression for the result.  */
+DEFTREECODE (RTL_EXPR, "rtl_expr", "e", 2)
 
 /* & in C.  Value is the address at which the operand's value resides.
    Operand may have any mode.  Result mode is Pmode.  */

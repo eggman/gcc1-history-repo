@@ -1,5 +1,5 @@
 /* YACC parser for C syntax.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -22,38 +22,64 @@ and this notice must be preserved on all copies.  */
 /*  To whomever it may concern: I have heard that such a thing was once
  written by AT&T, but I have never seen it.  */
 
+%expect 19
+
+/* These are the 19 conflicts you should get in parse.output;
+   the state numbers may vary if minor changes in the grammar are made.
+
+State 41 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 96 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 100 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 116 contains 1 shift/reduce conflict.  (See comment at component_decl.)
+State 166 contains 2 shift/reduce conflicts.  (make notype_declarator longer.)
+State 241 contains 2 shift/reduce conflicts.  (make absdcl1 longer if poss.)
+State 275 contains 2 shift/reduce conflicts.  (same for after_type_declarator).
+State 306 contains 2 shift/reduce conflicts.  (similar for absdcl1 again.)
+State 314 contains 2 shift/reduce conflicts.  (like 241, other context.)
+State 318 contains 2 shift/reduce conflicts.  (like 241, other context.)
+State 362 contains 1 shift/reduce conflict.  (dangling else.)
+State 369 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator).
+*/
+
 %{
 #include "config.h"
 #include "tree.h"
 #include "parse.h"
 #include "c-tree.h"
+#include "flags.h"
+
+#include <stdio.h>
+
+/* Cause the `yydebug' variable to be defined.  */
+#define YYDEBUG
 %}
 
 %start program
 
-%union {long itype; tree ttype; enum tree_code code}
+%union {long itype; tree ttype; enum tree_code code; char *cptr; }
 
-/* all identifiers that are not reserved words
+/* All identifiers that are not reserved words
    and are not declared typedefs in the current block */
 %token IDENTIFIER
-/* all identifiers that are declared typedefs in the current block.
+
+/* All identifiers that are declared typedefs in the current block.
    In some contexts, they are treated just like IDENTIFIER,
    but they can also serve as typespecs in declarations.  */
 %token TYPENAME
 
-/* reserved words that specify storage class.
-   yylval contains an IDENTIFER_NODE which indicates which one.  */
+/* Reserved words that specify storage class.
+   yylval contains an IDENTIFIER_NODE which indicates which one.  */
 %token SCSPEC
 
-/* reserved words that specify type.
-   yylval contains an IDENTIFER_NODE which indicates which one.  */
+/* Reserved words that specify type.
+   yylval contains an IDENTIFIER_NODE which indicates which one.  */
 %token TYPESPEC
 
-/* reserved words that modify type: "const" or "volatile".
-   yylval contains an IDENTIFER_NODE which indicates which one.  */
-%token TYPEMOD
+/* Reserved words that qualify type: "const" or "volatile".
+   yylval contains an IDENTIFIER_NODE which indicates which one.  */
+%token TYPE_QUAL
 
-/* character or numeric constants.
+/* Character or numeric constants.
    yylval is the node for the constant.  */
 %token CONSTANT
 
@@ -66,7 +92,7 @@ and this notice must be preserved on all copies.  */
 
 /* the reserved words */
 %token SIZEOF ENUM STRUCT UNION IF ELSE WHILE DO FOR SWITCH CASE DEFAULT
-%token BREAK CONTINUE RETURN GOTO ASM
+%token BREAK CONTINUE RETURN GOTO ASM TYPEOF ALIGNOF
 
 /* Define the operator tokens and their precedences.
    The value is an integer because, if used, it is the tree code
@@ -92,18 +118,27 @@ and this notice must be preserved on all copies.  */
 
 %type <ttype> identifier IDENTIFIER TYPENAME CONSTANT expr nonnull_exprlist exprlist
 %type <ttype> expr_no_commas primary string STRING
-%type <ttype> typed_declspecs scspecs typespecs typespec SCSPEC TYPESPEC TYPEMOD
+%type <ttype> typed_declspecs reserved_declspecs
+%type <ttype> typed_typespecs reserved_typespecquals
+%type <ttype> declmods typespec typespecqual_reserved
+%type <ttype> SCSPEC TYPESPEC TYPE_QUAL nonempty_type_quals maybe_type_qual
 %type <ttype> initdecls notype_initdecls initdcl notype_initdcl
-%type <ttype> init initlist
+%type <ttype> init initlist maybeasm
+%type <ttype> asm_operands asm_operand
 
 %type <ttype> declarator
 %type <ttype> notype_declarator after_type_declarator
+%type <ttype> parm_declarator
 
 %type <ttype> structsp component_decl_list component_decl components component_declarator
 %type <ttype> enumlist enumerator
-%type <ttype> typename absdcl absdcl1 typemods
-%type <ttype> stmts
-%type <ttype> pushlevel compstmt stmt xexpr parmlist parms parm identifiers
+%type <ttype> typename absdcl absdcl1 type_quals
+%type <ttype> xexpr parms parm identifiers
+
+%type <ttype> parmlist parmlist_1 parmlist_2
+%type <ttype> parmlist_or_identifiers parmlist_or_identifiers_1
+
+%type <itype> setspecs
 
 %{
 /* the declaration found for the last IDENTIFIER token read in.
@@ -112,24 +147,22 @@ and this notice must be preserved on all copies.  */
    used in a context which makes it a reference to a variable.  */
 static tree lastiddecl;
 
-tree current_function_decl, current_switch_stmt, current_block;
-tree current_continue_label, current_break_label;
-tree continue_label_stack, break_label_stack;
-
-static void pushbreak(), popbreak();
-static tree finish_compound_stmt();
 static tree make_pointer_declarator ();
 static tree combine_strings ();
+static void reinit_parse_for_function ();
 
-/* list of types and structure classes of the current declaration */
+extern double atof ();
+
+/* List of types and structure classes of the current declaration */
 tree current_declspecs;
 
-char *input_filename;		/* file being read */
+char *input_filename;		/* source file current line is coming from */
+char *main_input_filename;	/* top-level source file */
 %}
 
 %%
-program:
-	extdefs
+program: /* empty */
+	| extdefs
 	;
 
 /* the reason for the strange actions in this rule
@@ -137,25 +170,32 @@ program:
  can find a valid list of type and sc specs in $0. */
 
 extdefs:
-	{$<ttype>$ = NULL_TREE} extdef
-	| extdefs {$<ttype>$ = NULL_TREE} extdef
+	{$<ttype>$ = NULL_TREE; } extdef
+	| extdefs {$<ttype>$ = NULL_TREE; } extdef
 	;
 
 extdef:
 	fndef
 	| datadef
-	| ASM '(' STRING ')' ';'
-		{ assemble_asm ($3); }
+	| ASM '(' string ')' ';'
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  if (TREE_CHAIN ($3)) $3 = combine_strings ($3);
+		  assemble_asm ($3); }
 	;
 
 datadef:
 	  setspecs notype_initdecls ';'
-        | scspecs setspecs notype_initdecls ';'
+		{ if (pedantic)
+		    error ("ANSI C forbids data definition lacking type or storage class");
+		  else
+		    warning ("data definition lacks type or storage class"); }
+        | declmods setspecs notype_initdecls ';'
 	  {}
 	| typed_declspecs setspecs initdecls ';'
 	  {}
-        | scspecs ';'
-	  { yyerror ("empty declaration"); }
+        | declmods ';'
+	  { error ("empty declaration"); }
 	| typed_declspecs ';'
 	  { shadow_tag ($1); }
 	| error ';'
@@ -166,30 +206,34 @@ datadef:
 fndef:
 	  typed_declspecs setspecs declarator
 		{ if (! start_function ($1, $3))
-		    YYFAIL; }
+		    YYFAIL;
+		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @7.first_line, $7); }
+		{ finish_function (input_filename, @7.first_line); }
 	| typed_declspecs setspecs declarator error
 		{ }
-	| scspecs setspecs notype_declarator
+	| declmods setspecs notype_declarator
 		{ if (! start_function ($1, $3))
-		    YYFAIL; }
+		    YYFAIL;
+		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @7.first_line, $7); }
-	| scspecs setspecs notype_declarator error
+		{ finish_function (input_filename, @7.first_line); }
+	| declmods setspecs notype_declarator error
 		{ }
 	| setspecs notype_declarator
 		{ if (! start_function (0, $2))
-		    YYFAIL; }
+		    YYFAIL;
+		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
 	  compstmt
-		{ finish_function (input_filename, @6.first_line, $6); }
+		{ finish_function (input_filename, @6.first_line); }
 	| setspecs notype_declarator error
+		{ }
 	;
 
 identifier:
@@ -214,7 +258,7 @@ unop:     '&'
 	;
 
 expr:	nonnull_exprlist
-		{ $$ = build_compound_expr($1); }
+		{ $$ = build_compound_expr ($1); }
 	;
 
 exprlist:
@@ -233,15 +277,38 @@ nonnull_exprlist:
 expr_no_commas:
 	primary
 	| '*' expr_no_commas   %prec UNARY
-		{ $$ = build_indirect_ref ($2); }
+		{ $$ = build_indirect_ref ($2, "unary *"); }
 	| unop expr_no_commas  %prec UNARY
 		{ $$ = build_unary_op ($1, $2, 0); }
 	| '(' typename ')' expr_no_commas  %prec UNARY
-		{ $$ = build_c_cast (groktypename($2), $4); }
+		{ tree type = groktypename ($2);
+		  $$ = build_c_cast (type, $4); }
+	| '(' typename ')' '{' initlist maybecomma '}'  %prec UNARY
+		{ tree type = groktypename ($2);
+		  if (pedantic)
+		    warning ("ANSI C forbids constructor-expressions");
+		  $$ = digest_init (type, build_nt (CONSTRUCTOR, NULL_TREE, nreverse ($5)), 0);
+		  if (TREE_CODE (type) == ARRAY_TYPE && TYPE_SIZE (type) == 0)
+		    {
+		      int failure = complete_array_type (type, $$, 1);
+		      if (failure)
+			abort ();
+		    }
+		}
 	| SIZEOF expr_no_commas  %prec UNARY
-		{ $$ = c_sizeof (TREE_TYPE ($2)); }
+		{ if (TREE_CODE ($2) == COMPONENT_REF
+		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
+		    error ("sizeof applied to a bit-field");
+		  $$ = c_sizeof (TREE_TYPE ($2)); }
 	| SIZEOF '(' typename ')'  %prec HYPERUNARY
-		{ $$ = c_sizeof (groktypename($3)); }
+		{ $$ = c_sizeof (groktypename ($3)); }
+	| ALIGNOF expr_no_commas  %prec UNARY
+		{ if (TREE_CODE ($2) == COMPONENT_REF
+		      && TREE_PACKED (TREE_OPERAND ($2, 1)))
+		    error ("__alignof applied to a bit-field");
+		  $$ = c_alignof (TREE_TYPE ($2)); }
+	| ALIGNOF '(' typename ')'  %prec HYPERUNARY
+		{ $$ = c_alignof (groktypename ($3)); }
 	| expr_no_commas '+' expr_no_commas
 		{ $$ = build_binary_op ($2, $1, $3); }
 	| expr_no_commas '-' expr_no_commas
@@ -270,14 +337,12 @@ expr_no_commas:
 		{ $$ = build_binary_op (TRUTH_ANDIF_EXPR, $1, $3); }
 	| expr_no_commas OROR expr_no_commas
 		{ $$ = build_binary_op (TRUTH_ORIF_EXPR, $1, $3); }
-	| expr_no_commas '?' expr ':' expr_no_commas
-		{ $$ = build_conditional_expr($1, $3, $5); }
+	| expr_no_commas '?' xexpr ':' expr_no_commas
+		{ $$ = build_conditional_expr ($1, $3, $5); }
 	| expr_no_commas '=' expr_no_commas
-		{ $$ = build_modify_expr($1, $3); }
+		{ $$ = build_modify_expr ($1, NOP_EXPR, $3); }
 	| expr_no_commas ASSIGN expr_no_commas
-		{ register tree tem 
-		    = duplicate_reference ($1);
-		  $$ = build_modify_expr(tem, build_binary_op ($2, tem, $3)); }
+		{ $$ = build_modify_expr ($1, $2, $3); }
 	;
 
 primary:
@@ -288,12 +353,15 @@ primary:
 		      if (yychar == YYEMPTY)
 			yychar = YYLEX;
 		      if (yychar == '(')
-			$$ = implicitly_declare($1);
+			$$ = implicitly_declare ($1);
 		      else
 			{
-			  yyerror("variable %s used but not declared",
-				  IDENTIFIER_POINTER ($1));
+			  if (IDENTIFIER_GLOBAL_VALUE ($1) != error_mark_node)
+			    error ("undeclared variable `%s' (first use here)",
+				   IDENTIFIER_POINTER ($1));
 			  $$ = error_mark_node;
+			  /* Prevent repeated error messages.  */
+			  IDENTIFIER_GLOBAL_VALUE ($1) = error_mark_node;
 			}
 		    }
 		  if (TREE_CODE ($$) == CONST_DECL)
@@ -306,14 +374,26 @@ primary:
 		{ $$ = $2; }
 	| '(' error ')'
 		{ $$ = error_mark_node; }
+	| '(' 
+		{ if (current_function_decl == 0)
+		    {
+		      error ("braced-group within expression allowed only inside a function");
+		      YYFAIL;
+		    }
+		  expand_start_stmt_expr (); }
+	  compstmt ')'
+		{ if (pedantic)
+		    warning ("ANSI C forbids braced-groups within expressions");
+		  $$ = get_last_expr ();
+		  expand_end_stmt_expr (); }
 	| primary '(' exprlist ')'   %prec '.'
 		{ $$ = build_function_call ($1, $3); }
 	| primary '[' expr ']'   %prec '.'
 		{ $$ = build_array_ref ($1, $3); }
 	| primary '.' identifier
-		{ $$ = build_component_ref($1, $3); }
+		{ $$ = build_component_ref ($1, $3); }
 	| primary POINTSAT identifier
-		{ $$ = build_component_ref(build_indirect_ref ($1), $3); }
+		{ $$ = build_component_ref (build_indirect_ref ($1, "->"), $3); }
 	| primary PLUSPLUS
 		{ $$ = build_unary_op (POSTINCREMENT_EXPR, $1, 0); }
 	| primary MINUSMINUS
@@ -342,62 +422,95 @@ decls:
 /* records the type and storage class specs to use for processing
    the declarators that follow */
 setspecs: /* empty */
-		{ current_declspecs = $<ttype>0; }
+		{ current_declspecs = $<ttype>0;
+		  $$ = suspend_momentary (); }
 	;
 
 decl:
 	typed_declspecs setspecs initdecls ';'
-		{}
-	| scspecs setspecs notype_initdecls ';'
-		{}
+		{ resume_momentary ($2); }
+	| declmods setspecs notype_initdecls ';'
+		{ resume_momentary ($2); }
 	| typed_declspecs ';'
 		{ shadow_tag ($1); }
-	| scspecs ';'
+	| declmods ';'
 		{ warning ("empty declaration"); }
 	;
 
-/* declspecs which contain at least one type specifier.
+/* Declspecs which contain at least one type specifier or typedef name.
+   (Just `const' or `volatile' is not enough.)
    A typedef'd name following these is taken as a name to be declared.  */
+
 typed_declspecs:
-	  typespec
-		{ $$ = build_tree_list (NULL_TREE, $1); }
-	| scspecs typespec
+	  typespec reserved_declspecs
+		{ $$ = tree_cons (NULL_TREE, $1, $2); }
+	| declmods typespec reserved_declspecs
+		{ $$ = chainon ($3, tree_cons (NULL_TREE, $2, $1)); }
+	;
+
+reserved_declspecs:  /* empty */
+		{ $$ = NULL_TREE; }
+	| reserved_declspecs typespecqual_reserved
 		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typed_declspecs TYPESPEC
-		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typed_declspecs TYPEMOD
-		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typed_declspecs structsp
-		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typed_declspecs SCSPEC
+	| reserved_declspecs SCSPEC
 		{ $$ = tree_cons (NULL_TREE, $2, $1); }
 	;
 
-/* declspecs which contain no type specifiers.
-The identifier to which they apply must not be a typedef'd name.  */
-scspecs:  SCSPEC
-		{ $$ = build_tree_list (NULL_TREE, $1); }
-	| scspecs SCSPEC
+/* List of just storage classes and type modifiers.
+   A declaration can start with just this, but then it cannot be used
+   to redeclare a typedef-name.  */
+
+declmods:
+	  TYPE_QUAL
+		{ $$ = tree_cons (NULL_TREE, $1, NULL_TREE); }
+	| SCSPEC
+		{ $$ = tree_cons (NULL_TREE, $1, NULL_TREE); }
+	| declmods TYPE_QUAL
+		{ $$ = tree_cons (NULL_TREE, $2, $1); }
+	| declmods SCSPEC
 		{ $$ = tree_cons (NULL_TREE, $2, $1); }
 	;
 
-/* used instead of declspecs where storage classes are not allowed
-   (typenames, structure components, and parameters) */
-typespecs:
-	  typespec
-		{ $$ = build_tree_list (NULL_TREE, $1); }
-	| typespecs TYPESPEC
-		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typespecs TYPEMOD
-		{ $$ = tree_cons (NULL_TREE, $2, $1); }
-	| typespecs structsp
+
+/* Used instead of declspecs where storage classes are not allowed
+   (that is, for typenames and structure components).
+   Don't accept a typedef-name if anything but a modifier precedes it.  */
+
+typed_typespecs:
+	  typespec reserved_typespecquals
+		{ $$ = tree_cons (NULL_TREE, $1, $2); }
+	| nonempty_type_quals typespec reserved_typespecquals
+		{ $$ = chainon ($3, tree_cons (NULL_TREE, $2, $1)); }
+	;
+
+reserved_typespecquals:  /* empty */
+		{ $$ = NULL_TREE; }
+	| reserved_typespecquals typespecqual_reserved
 		{ $$ = tree_cons (NULL_TREE, $2, $1); }
 	;
+
+/* A typespec (but not a type qualifier).
+   Once we have seen one of these in a declaration,
+   if a typedef name appears then it is being redeclared.  */
 
 typespec: TYPESPEC
-	| TYPEMOD
 	| structsp
 	| TYPENAME
+	| TYPEOF '(' expr ')'
+		{ $$ = TREE_TYPE ($3);
+		  if (pedantic)
+		    warning ("ANSI C forbids `typeof'") }
+	| TYPEOF '(' typename ')'
+		{ $$ = groktypename ($3);
+		  if (pedantic)
+		    warning ("ANSI C forbids `typeof'") }
+	;
+
+/* A typespec that is a reserved word, or a type qualifier.  */
+
+typespecqual_reserved: TYPESPEC
+	| TYPE_QUAL
+	| structsp
 	;
 
 initdecls:
@@ -410,34 +523,47 @@ notype_initdecls:
 	| notype_initdecls ',' initdcl
 	;
 
+maybeasm:
+	  /* empty */
+		{ $$ = NULL_TREE; }
+	| ASM '(' string ')'
+		{ if (TREE_CHAIN ($3)) $3 = combine_strings ($3);
+		  $$ = $3;
+		  if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		}
+	;
+
 initdcl:
-	  declarator '='
+	  declarator maybeasm '='
 		{ $<ttype>$ = start_decl ($1, current_declspecs, 1); }
 	  init
 /* Note how the declaration of the variable is in effect while its init is parsed! */
-		{ finish_decl (input_filename, @1.first_line, $<ttype>3, $4); }
-	| declarator
+		{ finish_decl ($<ttype>4, $5, $2); }
+	| declarator maybeasm
 		{ tree d = start_decl ($1, current_declspecs, 0);
-		  finish_decl (input_filename, @1.first_line, d, NULL_TREE); }
+		  finish_decl (d, NULL_TREE, $2); }
 	;
 
 notype_initdcl:
-	  notype_declarator '='
+	  notype_declarator maybeasm '='
 		{ $<ttype>$ = start_decl ($1, current_declspecs, 1); }
 	  init
 /* Note how the declaration of the variable is in effect while its init is parsed! */
-		{ finish_decl (input_filename, @1.first_line, $<ttype>3, $4); }
-	| notype_declarator
+		{ finish_decl ($<ttype>4, $5, $2); }
+	| notype_declarator maybeasm
 		{ tree d = start_decl ($1, current_declspecs, 0);
-		  finish_decl (input_filename, @1.first_line, d, NULL_TREE); }
+		  finish_decl (d, NULL_TREE, $2); }
 	;
 
 init:
 	expr_no_commas
 	| '{' initlist '}'
-		{ $$ = build1 (CONSTRUCTOR, nreverse ($2)); }
+		{ $$ = build_nt (CONSTRUCTOR, NULL_TREE, nreverse ($2)); }
 	| '{' initlist ',' '}'
-		{ $$ = build1 (CONSTRUCTOR, nreverse ($2)); }
+		{ $$ = build_nt (CONSTRUCTOR, NULL_TREE, nreverse ($2)); }
+	| error
+		{ $$ = NULL_TREE; }
 	;
 
 /* This chain is built in reverse order,
@@ -446,7 +572,7 @@ initlist:
 	init
 		{ $$ = build_tree_list (NULL_TREE, $1); }
 	| initlist ',' init
-		{ $$ = tree_cons (NULL, $3, $1); }
+		{ $$ = tree_cons (NULL_TREE, $3, $1); }
 	;
 
 /* Any kind of declarator (thus, all declarators allowed
@@ -460,16 +586,39 @@ declarator:
 /* A declarator that is allowed only after an explicit typespec.  */
 
 after_type_declarator:
-	  after_type_declarator '(' parmlist ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, $3); }
-	| after_type_declarator '(' identifiers ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, $3); }
-	| after_type_declarator '(' error ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, NULL_TREE); }
+	  '(' after_type_declarator ')'
+		{ $$ = $2; }
+	| after_type_declarator '(' parmlist_or_identifiers  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, $3, NULL_TREE); }
+/*	| after_type_declarator '(' error ')'  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, NULL_TREE, NULL_TREE);
+		  poplevel (0, 0, 0); }  */
 	| after_type_declarator '[' expr ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, $3); }
+		{ $$ = build_nt (ARRAY_REF, $1, $3); }
 	| after_type_declarator '[' ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, NULL_TREE); }
+		{ $$ = build_nt (ARRAY_REF, $1, NULL_TREE); }
+	| '*' type_quals after_type_declarator  %prec UNARY
+		{ $$ = make_pointer_declarator ($2, $3); }
+	| TYPENAME
+	;
+
+/* Kinds of declarator that can appear in a parameter list
+   in addition to notype_declarator.  This is like after_type_declarator
+   but does not allow a typedef name in parentheses as an identifier
+   (because it would conflict with a function with that typedef as arg).  */
+
+parm_declarator:
+	  parm_declarator '(' parmlist_or_identifiers  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, $3, NULL_TREE); }
+/*	| parm_declarator '(' error ')'  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, NULL_TREE, NULL_TREE);
+		  poplevel (0, 0, 0); }  */
+	| parm_declarator '[' expr ']'  %prec '.'
+		{ $$ = build_nt (ARRAY_REF, $1, $3); }
+	| parm_declarator '[' ']'  %prec '.'
+		{ $$ = build_nt (ARRAY_REF, $1, NULL_TREE); }
+	| '*' type_quals parm_declarator  %prec UNARY
+		{ $$ = make_pointer_declarator ($2, $3); }
 	| TYPENAME
 	;
 
@@ -477,61 +626,93 @@ after_type_declarator:
    an explicit typespec.  These cannot redeclare a typedef-name.  */
 
 notype_declarator:
-	  notype_declarator '(' parmlist ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, $3); }
-	| notype_declarator '(' identifiers ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, $3); }
-	| notype_declarator '(' error ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, NULL_TREE); }
+	  notype_declarator '(' parmlist_or_identifiers  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, $3, NULL_TREE); }
+/*	| notype_declarator '(' error ')'  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, NULL_TREE, NULL_TREE);
+		  poplevel (0, 0, 0); }  */
 	| '(' notype_declarator ')'
 		{ $$ = $2; }
-	| '*' typemods notype_declarator  %prec UNARY
+	| '*' type_quals notype_declarator  %prec UNARY
 		{ $$ = make_pointer_declarator ($2, $3); }
 	| notype_declarator '[' expr ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, $3); }
+		{ $$ = build_nt (ARRAY_REF, $1, $3); }
 	| notype_declarator '[' ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, NULL_TREE); }
+		{ $$ = build_nt (ARRAY_REF, $1, NULL_TREE); }
 	| IDENTIFIER
 	;
 
 structsp:
-	  STRUCT identifier '{' component_decl_list '}'
-		{ $$ = build_struct (RECORD_TYPE, input_filename, @1.first_line, $2, $4, 0); }
+	  STRUCT identifier '{'
+		{ $$ = start_struct (RECORD_TYPE, $2);
+		  /* Start scope of tag before parsing components.  */
+		}
+	  component_decl_list '}'
+		{ $$ = finish_struct ($<ttype>4, $5);
+		  /* Really define the structure.  */
+		}
 	| STRUCT '{' component_decl_list '}'
-		{ $$ = build_struct (RECORD_TYPE, input_filename, @1.first_line, NULL_TREE, $3, 0); }
+		{ $$ = finish_struct (start_struct (RECORD_TYPE, NULL_TREE),
+				      $3); }
 	| STRUCT identifier
-		{ $$ = build_struct (RECORD_TYPE, input_filename, @1.first_line, $2, NULL_TREE, 1); }
-	| UNION identifier '{' component_decl_list '}'
-		{ $$ = build_struct (UNION_TYPE, input_filename, @1.first_line, $2, $4, 0); }
+		{ $$ = xref_tag (RECORD_TYPE, $2); }
+	| UNION identifier '{'
+		{ $$ = start_struct (UNION_TYPE, $2); }
+	  component_decl_list '}'
+		{ $$ = finish_struct ($<ttype>4, $5); }
 	| UNION '{' component_decl_list '}'
-		{ $$ = build_struct (UNION_TYPE, input_filename, @1.first_line, NULL_TREE, $3, 0); }
+		{ $$ = finish_struct (start_struct (UNION_TYPE, NULL_TREE),
+				      $3); }
 	| UNION identifier
-		{ $$ = build_struct (UNION_TYPE, input_filename, @1.first_line, $2, NULL_TREE, 1); }
+		{ $$ = xref_tag (UNION_TYPE, $2); }
 	| ENUM identifier '{'
-		{ $$ = start_enum ($2); }
-	  enumlist '}'
-		{ $$ = finish_enum ($<ttype>4, nreverse ($5)); }
+		{ $<itype>3 = suspend_momentary ();
+		  $$ = start_enum ($2); }
+	  enumlist maybecomma '}'
+		{ $$ = finish_enum ($<ttype>4, nreverse ($5));
+		  resume_momentary ($<itype>3); }
 	| ENUM '{'
-		{ $$ = start_enum (NULL_TREE); }
-	  enumlist '}'
-		{ $$ = finish_enum ($<ttype>3, nreverse ($4)); }
+		{ $<itype>2 = suspend_momentary ();
+		  $$ = start_enum (NULL_TREE); }
+	  enumlist maybecomma '}'
+		{ $$ = finish_enum ($<ttype>3, nreverse ($4));
+		  resume_momentary ($<itype>2); }
 	| ENUM identifier
-		{ $$ = xref_enum ($2); }
+		{ $$ = xref_tag (ENUMERAL_TYPE, $2); }
+	;
+
+maybecomma:
+	  /* empty */
+	| ','
 	;
 
 component_decl_list:   /* empty */
 		{ $$ = NULL_TREE; }
-	| component_decl
-	| component_decl_list ';' component_decl
-		{ $$ = chainon ($1, $3); }
+	| component_decl_list component_decl ';'
+		{ $$ = chainon ($1, $2); }
 	| component_decl_list ';'
+		{ if (pedantic) 
+		    warning ("extra semicolon in struct or union specified"); }
 	;
 
+/* There is a shift-reduce conflict here, because `components' may
+   start with a `typename'.  It happens that shifting (the default resolution)
+   does the right thing, because it treats the `typename' as part of
+   a `typed_typespecs'.
+
+   It is possible that this same technique would allow the distinction
+   between `notype_initdecls' and `initdecls' to be eliminated.
+   But I am being cautious and not trying it.  */
+
 component_decl:
-	typespecs setspecs components
-		{ $$ = $3; }
+	typed_typespecs setspecs components
+		{ $$ = $3;
+		  resume_momentary ($2); }
+	| nonempty_type_quals setspecs components
+		{ $$ = $3;
+		  resume_momentary ($2); }
 	| error
-		{ $$ == NULL_TREE; }
+		{ $$ = NULL_TREE; }
 	;
 
 components:
@@ -560,7 +741,6 @@ enumlist:
 	  enumerator
 	| enumlist ',' enumerator
 		{ $$ = chainon ($3, $1); }
-	| enumlist ','
 	;
 
 
@@ -572,7 +752,9 @@ enumerator:
 	;
 
 typename:
-	typespecs absdcl
+	typed_typespecs absdcl
+		{ $$ = build_tree_list ($1, $2); }
+	| nonempty_type_quals absdcl
 		{ $$ = build_tree_list ($1, $2); }
 	;
 	
@@ -582,179 +764,238 @@ absdcl:   /* an absolute declarator */
 	| absdcl1
 	;
 
-typemods:
+nonempty_type_quals:
+	  TYPE_QUAL
+		{ $$ = tree_cons (NULL_TREE, $1, NULL_TREE); }
+	| nonempty_type_quals TYPE_QUAL
+		{ $$ = tree_cons (NULL_TREE, $2, $1); }
+	;
+
+type_quals:
 	  /* empty */
 		{ $$ = NULL_TREE; }
-	| typemods TYPEMOD
+	| type_quals TYPE_QUAL
 		{ $$ = tree_cons (NULL_TREE, $2, $1); }
 	;
 
 absdcl1:  /* a nonempty absolute declarator */
 	  '(' absdcl1 ')'
 		{ $$ = $2; }
-	| '*' typemods absdcl1  %prec UNARY
+	  /* `(typedef)1' is `int'.  */
+	| '*' type_quals absdcl1  %prec UNARY
 		{ $$ = make_pointer_declarator ($2, $3); }
-	| '*' typemods  %prec UNARY
+	| '*' type_quals  %prec UNARY
 		{ $$ = make_pointer_declarator ($2, NULL_TREE); }
-	| absdcl1 '(' parmlist ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, $1, $3); }
+	| absdcl1 '(' parmlist  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, $1, $3, NULL_TREE); }
 	| absdcl1 '[' expr ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, $3); }
+		{ $$ = build_nt (ARRAY_REF, $1, $3); }
 	| absdcl1 '[' ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, $1, NULL_TREE); }
-	| '(' parmlist ')'  %prec '.'
-		{ $$ = build2 (CALL_EXPR, NULL_TREE, $2); }
+		{ $$ = build_nt (ARRAY_REF, $1, NULL_TREE); }
+	| '(' parmlist  %prec '.'
+		{ $$ = build_nt (CALL_EXPR, NULL_TREE, $2, NULL_TREE); }
 	| '[' expr ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, NULL_TREE, $2); }
+		{ $$ = build_nt (ARRAY_REF, NULL_TREE, $2); }
 	| '[' ']'  %prec '.'
-		{ $$ = build2 (ARRAY_REF, NULL_TREE, NULL_TREE); }
+		{ $$ = build_nt (ARRAY_REF, NULL_TREE, NULL_TREE); }
 	;
 
 /* at least one statement, the first of which parses without error.  */
 /* stmts is used only after decls, so an invalid first statement
    is actually regarded as an invalid decl and part of the decls.  */
 
-/* To speed things up, we actually chain the statements in
-   reverse order and return them that way.
-   They are put into forward order where stmts is used.  */
 stmts:
 	stmt
 	| stmts stmt
-		{ $$ = chainon ($2, $1); }
 	| stmts errstmt
+	;
+
+xstmts:
+	/* empty */
+	| stmts
 	;
 
 errstmt:  error ';'
 	;
 
-/* build the LET_STMT node before parsing its contents,
-  so that any LET_STMTs within the context can have their display pointers
-  set up to point at this one.  */
-
 pushlevel:  /* empty */
-		{ pushlevel();
-		  $$ = current_block;
-		  current_block
-		    = build_let (input_filename, 0, 0, 0, $$, 0);
-		}
+		{ pushlevel (0);
+		  clear_last_expr ();
+		  push_momentary ();
+		  expand_start_bindings (0); }
 	;
 
 compstmt: '{' '}'
-		{ $$ = build_compound (input_filename, @1.first_line, 0); }
-	| '{' pushlevel decls stmts '}'
-		{ $$ = finish_compound_stmt (current_block, nreverse ($4),
-					     $2, @1.first_line); }
-	| '{' pushlevel decls '}'
-		{ $$ = finish_compound_stmt (current_block, NULL_TREE,
-					     $2, @1.first_line); }
+	| '{' pushlevel decls xstmts '}'
+		{ expand_end_bindings (getdecls (), 1);
+		  poplevel (1, 1, 0);
+		  pop_momentary (); }
 	| '{' pushlevel error '}'
-		{ $$ = error_mark_node;
-		  current_block = $2;
-		  poplevel(); }
+		{ expand_end_bindings (getdecls (), 0);
+		  poplevel (0, 0, 0);
+		  pop_momentary (); }
 	| '{' pushlevel stmts '}'
-		{ $$ = finish_compound_stmt (current_block, nreverse ($3), $2,
-					     @1.first_line); }
+		{ expand_end_bindings (getdecls (), 0);
+		  poplevel (0, 0, 0);
+		  pop_momentary (); }
 	;
 
-stmt:	  compstmt
-	| expr ';'
-		{ $$ = build_expr_stmt (input_filename, @1.first_line, $1); }
-	| IF '(' expr ')' stmt
-		{ $$ = build_if (input_filename, @1.first_line, default_conversion ($3), $5, 0); } 
-	| IF '(' expr ')' stmt ELSE stmt
-		{ $$ = build_if (input_filename, @1.first_line, default_conversion ($3), $5, $7); }
-	| WHILE
-		{ pushbreak(1); }
-	  '(' expr ')' stmt
-		{ $$ = build_loop (input_filename, @1.first_line,
-			 chainon (build_exit (input_filename, @4.first_line,
-					      default_conversion ($4)),
-				  chainon ($6, current_continue_label)));
-		  $$ = build_compound (input_filename, @1.first_line, chainon ($$, current_break_label));
-		  popbreak(1); }
-	| DO
-		{ pushbreak(1); }
-	  stmt WHILE '(' expr ')' ';'
-		{ $$ = build_loop (input_filename, @1.first_line,
-			 chainon ($3, chainon(current_continue_label,
-					      build_exit (input_filename, @6.first_line,
-							  default_conversion ($6)))));
-		  $$ = build_compound (input_filename, @1.first_line, chainon ($$, current_break_label));
-		  popbreak(1); }
-	| FOR 
-		{ pushbreak(1); }
-	  '(' xexpr ';' xexpr ';' xexpr ')' stmt
-		{ $$ = build_compound (input_filename, @1.first_line,
-			 chainon ($4 ? build_expr_stmt (input_filename, @4.first_line, $4) : NULL_TREE,
-			   build_loop (input_filename, @1.first_line,
-			     chainon ($6 ? build_exit (input_filename, @6.first_line,
-						       default_conversion ($6))
-					 : NULL_TREE,
-			       chainon (chainon ($10, current_continue_label),
-				        $8 ? build_expr_stmt (input_filename, @8.first_line, $8) : NULL_TREE)))));
-		  $$ = build_compound (input_filename, @1.first_line, chainon ($$, current_break_label));
-		  popbreak(1); }
-	| SWITCH '(' expr ')'
-		{ $<ttype>$ = current_switch_stmt;
-		  pushbreak(0);
-		  current_switch_stmt
-		    = build_switch_stmt (input_filename, @1.first_line,
-					 default_conversion ($3)); }
+simple_if:
+	  IF '(' expr ')'
+		{ emit_note (input_filename, @1.first_line);
+		  expand_start_cond (truthvalue_conversion ($3), 0); }
 	  stmt
-		{ $$ = build_compound (input_filename, @1.first_line, 
-				chainon(current_switch_stmt,
-					chainon($6, current_break_label)));
-		  finish_switch_stmt (current_switch_stmt, current_break_label);
-		  popbreak (0);
-		  current_switch_stmt = $<ttype>5; }
-	| CASE expr ':' stmt
-		{ register tree value = fold($2);
-		  tree l = build_label (input_filename, @1.first_line, NULL_TREE, current_block);
+	;
 
-		  if (TREE_CODE (value) != INTEGER_CST)
+stmt:
+	  compstmt
+	| expr ';'
+		{ emit_note (input_filename, @1.first_line);
+		  expand_expr_stmt ($1);
+		  clear_momentary (); }
+	| simple_if ELSE
+		{ expand_start_else (); }
+	  stmt
+		{ expand_end_else (); }
+	| simple_if
+		{ expand_end_cond (); }
+	| WHILE
+		{ emit_note (input_filename, @1.first_line);
+		  expand_start_loop (1); }
+	  '(' expr ')'
+		{ expand_exit_loop_if_false (truthvalue_conversion ($4)); }
+	  stmt
+		{ expand_end_loop (); }
+	| DO
+		{ emit_note (input_filename, @1.first_line);
+		  expand_start_loop_continue_elsewhere (1); }
+	  stmt WHILE
+		{ expand_loop_continue_here (); }
+	  '(' expr ')' ';'
+		{ emit_note (input_filename, @7.first_line);
+		  expand_exit_loop_if_false (truthvalue_conversion ($7));
+		  expand_end_loop ();
+		  clear_momentary (); }
+	| FOR 
+	  '(' xexpr ';'
+		{ emit_note (input_filename, @1.first_line);
+		  if ($3) expand_expr_stmt ($3);
+		  expand_start_loop_continue_elsewhere (1); }
+	  xexpr ';'
+		{ emit_note (input_filename, @6.first_line);
+		  if ($6)
+		    expand_exit_loop_if_false (truthvalue_conversion ($6)); }
+	  xexpr ')'
+		/* Don't let the tree nodes for $9 be discarded
+		   by clear_momentary during the parsing of the next stmt.  */
+		{ push_momentary (); }
+	  stmt
+		{ emit_note (input_filename, @9.first_line);
+		  expand_loop_continue_here ();
+		  if ($9)
 		    {
-		      yyerror("case label does not reduce to an integer constant");
+		      expand_expr_stmt ($9);
+		    }
+		  pop_momentary ();
+		  expand_end_loop (); }
+	| SWITCH '(' expr ')'
+		{ emit_note (input_filename, @1.first_line);
+		  c_expand_start_case ($3);
+		  /* Don't let the tree nodes for $3 be discarded by
+		     clear_momentary during the parsing of the next stmt.  */
+		  push_momentary (); }
+	  stmt
+		{ expand_end_case ();
+		  pop_momentary (); }
+	| CASE expr ':'
+		{ register tree value = fold ($2);
+		  register tree label
+		    = build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
+
+		  if (TREE_CODE (value) != INTEGER_CST
+		      && value != error_mark_node)
+		    {
+		      error ("case label does not reduce to an integer constant");
 		      value = error_mark_node;
 		    }
-		  pushcase(value, l);
-		  $$ = build_compound (input_filename, @1.first_line, chainon(l, $4));
+		  else
+		    /* Promote char or short to int.  */
+		    value = default_conversion (value);
+		  if (value != error_mark_node)
+		    {
+		      int success = pushcase (value, label);
+		      if (success == 1)
+			error ("case label not within a switch statement");
+		      else if (success == 2)
+			error ("duplicate case value");
+		      else if (success == 3)
+			warning ("case value out of range");
+		    }
 		}
-	| DEFAULT ':' stmt
+	  stmt
+	| DEFAULT ':'
 		{
-		  tree l = build_label (input_filename, @1.first_line, 0, current_block);
-		  pushcase(NULL_TREE, l);
-		  $$ = build_compound (input_filename, @1.first_line, chainon(l, $3));
+		  register tree label
+		    = build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
+		  int success = pushcase (NULL_TREE, label);
+		  if (success == 1)
+		    error ("default label not within a switch statement");
+		  else if (success == 2)
+		    error ("multiple default labels in one switch");
 		}
+	  stmt
 	| BREAK ';'
-		{ if (current_break_label)
-		    $$ = build_goto (input_filename, @1.first_line, STMT_BODY (current_break_label));
-		  else
-		    {
-		      yyerror("break statement not within a do, for, while or switch statement");
-		      $$ = error_mark_node;
-		    }
-		}
+		{ emit_note (input_filename, @1.first_line);
+		  if ( ! expand_exit_something ())
+		    error ("break statement not within loop or switch"); }
 	| CONTINUE ';'	
-		{ if (current_continue_label)
-		    $$ = build_goto (input_filename, @1.first_line, STMT_BODY (current_continue_label));
-		  else
-		    {
-		      yyerror("continue statement not within a do, for or while statement");
-		      $$ = error_mark_node;
-		    }
-		}
+		{ emit_note (input_filename, @1.first_line);
+		  if (! expand_continue_loop ())
+		    error ("continue statement not within a loop"); }
 	| RETURN ';'
-	        { $$ = build_return (input_filename, @1.first_line, NULL_TREE); }
+		{ emit_note (input_filename, @1.first_line);
+		  c_expand_return (NULL_TREE); }
 	| RETURN expr ';'
-	        { $$ = build_return_stmt (input_filename, @1.first_line, $2); }
+		{ emit_note (input_filename, @1.first_line);
+		  c_expand_return ($2); }
+	| ASM maybe_type_qual '(' string ')' ';'
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  emit_note (input_filename, @1.first_line);
+		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  expand_asm ($4); }
+	/* This is the case with just output operands.  */
+	| ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  emit_note (input_filename, @1.first_line);
+		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  c_expand_asm_operands ($4, $6, NULL_TREE,
+					 $2 == ridpointers[(int)RID_VOLATILE]); }
+	/* This is the case with input operands as well.  */
+	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  emit_note (input_filename, @1.first_line);
+		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		  c_expand_asm_operands ($4, $6, $8,
+					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	| GOTO identifier ';'
-		{ pushgoto($$ = build_goto (input_filename, @1.first_line, $2)); }
-	| ASM '(' STRING ')' ';'
-		{ $$ = build_asm_stmt (input_filename, @1.first_line, $3); }
-	| identifier ':' stmt
-		{ $$ = build_compound (input_filename, @1.first_line, chainon (build_label (input_filename, @1.first_line, $1, current_block), $3)); }
+		{ tree decl;
+		  emit_note (input_filename, @1.first_line);
+		  decl = lookup_label ($2);
+		  expand_goto (decl); }
+	| identifier ':'
+		{ tree label = define_label (input_filename, @1.first_line, $1);
+		  if (label)
+		    expand_label (label); }
+	  stmt
 	| ';'
-		{ $$ = build_compound (input_filename, @1.first_line, 0); }
+	;
+
+maybe_type_qual:
+	/* empty */
+	| TYPE_QUAL
 	;
 
 xexpr:
@@ -763,28 +1004,80 @@ xexpr:
 	| expr
 	;
 
+/* These are the operands other than the first string and comma
+   in  asm ("addextend %2,%1", "=dm" (x), "0" (y), "g" (*x))  */
+asm_operands: asm_operand
+	| asm_operands ',' asm_operand
+		{ $$ = chainon ($1, $3); }
+	;
+
+asm_operand:
+	| STRING '(' expr ')'
+		{ $$ = build_tree_list ($1, $3); }
+	;
+
+/* This is what appears inside the parens in a function declarator.
+   Its value is a list of ..._TYPE nodes.
+   The caller must do `poplevel (0, 0, 0);' after return from this.
+   (The caller does it so that error recovery to the closeparen
+   can also do it.)  */
+parmlist:
+		{ pushlevel (0); }
+	  parmlist_1
+		{ $$ = $2; poplevel (0); }
+	;
+
+/* This is referred to where either a parmlist or an identifier list is ok.
+   Its value is a list of ..._TYPE nodes or a list of identifiers.
+   The caller must do `poplevel (0, 0, 0);' after return from this.  */
+parmlist_or_identifiers:
+		{ pushlevel (0); }
+	  parmlist_or_identifiers_1
+		{ $$ = $2; poplevel (0, 0, 0); }
+	;
+
+parmlist_or_identifiers_1:
+	  parmlist_2 ')'
+	| identifiers ')'
+	| error ')'
+		{ $$ = NULL_TREE; }
+	;
+
+parmlist_1:
+	  parmlist_2 ')'
+	| error ')'
+		{ $$ = NULL_TREE; }
+	;
+
 /* This is what appears inside the parens in a function declarator.
    Is value is represented in the format that grokdeclarator expects.  */
-parmlist:  /* empty */
-		{ $$ = NULL_TREE; }
+parmlist_2:  /* empty */
+		{ $$ = get_parm_types (0); }
 	| parms
-  		{ $$ = chainon ($1, build_tree_list (NULL_TREE,
-						     void_type_node)); }
+		{ $$ = get_parm_types (1); }
 	| parms ',' ELLIPSIS
+		{ $$ = get_parm_types (0); }
 	;
 
-/* A nonempty list of parameter declarations or type names.  */
 parms:	
 	parm
-		{ $$ = build_tree_list (NULL_TREE, $1); }
+		{ push_parm_decl ($1); }
 	| parms ',' parm
-		{ $$ = chainon ($1, build_tree_list (NULL_TREE, $3)); }
+		{ push_parm_decl ($3); }
 	;
 
+/* A single parameter declaration or parameter type name,
+   as found in a parmlist.  */
 parm:
-	  typespecs declarator
+	  typed_declspecs parm_declarator
 		{ $$ = build_tree_list ($1, $2)	; }
-	| typespecs absdcl
+	| typed_declspecs notype_declarator
+		{ $$ = build_tree_list ($1, $2)	; }
+	| typed_declspecs absdcl
+		{ $$ = build_tree_list ($1, $2); }
+	| declmods notype_declarator
+		{ $$ = build_tree_list ($1, $2)	; }
+	| declmods absdcl
 		{ $$ = build_tree_list ($1, $2); }
 	;
 
@@ -797,131 +1090,101 @@ identifiers:
 	;
 %%
 
-static tree
-finish_compound_stmt(block, stmts, outer_block, line)
-     tree block, stmts, outer_block;
-     int line;
-{
-  register tree decls = getdecls();
-  register tree tags = gettags ();
-
-  if (decls || tags)
-    {
-      finish_block (block, decls, tags, stmts);
-      poplevel();
-      current_block = outer_block;
-      STMT_SOURCE_LINE (block) = line;
-      return block;
-    }
-  else
-    {
-      current_block = outer_block;
-      poplevel();
-      return build_compound (input_filename, line, stmts);  
-    }
-}
-
-
-
-static void
-pushbreak(a)
-int a;
-{
-  if (current_break_label)
-    TREE_CHAIN (current_break_label) = break_label_stack;
-  break_label_stack = current_break_label;
-  current_break_label = build_label (0, 0, NULL_TREE, current_block);
-
-  if (a)
-    {
-      if (current_continue_label)
-	TREE_CHAIN (current_continue_label) = continue_label_stack;
-      continue_label_stack = current_continue_label;
-      current_continue_label = build_label (0, 0, NULL_TREE, current_block);
-    }
-}
-
-static void
-popbreak(a)
-int a;
-{
-  current_break_label = break_label_stack;
-  if (current_break_label)
-    break_label_stack = TREE_CHAIN (break_label_stack);
-
-  if (a)
-    {
-      current_continue_label = continue_label_stack;
-      if (current_continue_label)
-	continue_label_stack = TREE_CHAIN (continue_label_stack);
-    }
-
-  if (current_break_label)
-    TREE_CHAIN (current_break_label) = NULL;
-  if (current_continue_label)
-    TREE_CHAIN (current_continue_label) = NULL;
-}
-
 /* Return something to represent absolute declarators containing a *.
    TARGET is the absolute declarator that the * contains.
-   TYPEMODS is a list of modifiers such as const or volatile
+   TYPE_QUALS is a list of modifiers such as const or volatile
    to apply to the pointer type, represented as identifiers.
 
    We return an INDIRECT_REF whose "contents" are TARGET
    and whose type is the modifier list.  */
    
 static tree
-make_pointer_declarator (typemods, target)
-     tree typemods, target;
+make_pointer_declarator (type_quals, target)
+     tree type_quals, target;
 {
-  register tree t = build1 (INDIRECT_REF, target);
-  TREE_TYPE (t) = typemods;
-  return t;
+  return build (INDIRECT_REF, type_quals, target);
 }
 
 /* Given a chain of STRING_CST nodes,
    concatenate them into one STRING_CST
-   and then return an ADDR_EXPR for it.  */
+   and give it a suitable array-of-chars data type.  */
 
 static tree
 combine_strings (strings)
      tree strings;
 {
   register tree value, t;
+  register int length = 1;
+  int wide_length = 0;
+  int wide_flag = 0;
 
   if (TREE_CHAIN (strings))
     {
       /* More than one in the chain, so concatenate.  */
       register char *p, *q;
-      register int length = 1;
 
       /* Don't include the \0 at the end of each substring,
-	 except for the last one.  */
+	 except for the last one.
+	 Count wide strings and ordinary strings separately.  */
       for (t = strings; t; t = TREE_CHAIN (t))
-	length += TREE_STRING_LENGTH (t) - 1;
+	{
+	  if (TREE_TYPE (t) == int_array_type_node)
+	    {
+	      wide_length += (TREE_STRING_LENGTH (t) - 1);
+	      wide_flag = 1;
+	    }
+	  else
+	    length += (TREE_STRING_LENGTH (t) - 1);
+	}
+
+      /* If anything is wide, the non-wides will be converted,
+	 which makes them take more space.  */
+      if (wide_flag)
+	length = length * UNITS_PER_WORD + wide_length;
 
       p = (char *) oballoc (length);
+
+      /* Copy the individual strings into the new combined string.
+	 If the combined string is wide, convert the chars to ints
+	 for any individual strings that are not wide.  */
 
       q = p;
       for (t = strings; t; t = TREE_CHAIN (t))
 	{
-	  bcopy (TREE_STRING_POINTER (t), q, TREE_STRING_LENGTH (t) - 1);
-	  q += TREE_STRING_LENGTH (t) - 1;
+	  int len = TREE_STRING_LENGTH (t) - 1;
+	  if ((TREE_TYPE (t) == int_array_type_node) == wide_flag)
+	    {
+	      bcopy (TREE_STRING_POINTER (t), q, len);
+	      q += len;
+	    }
+	  else
+	    {
+	      int i;
+	      for (i = 0; i < len; i++)
+		((int *) q)[i] = TREE_STRING_POINTER (t)[i];
+	      q += len * UNITS_PER_WORD;
+	    }
 	}
       *q = 0;
 
       value = make_node (STRING_CST);
-      TREE_TYPE (value) = TREE_TYPE (strings);
       TREE_STRING_POINTER (value) = p;
       TREE_STRING_LENGTH (value) = length;
       TREE_LITERAL (value) = 1;
     }
   else
-    value = strings;	  
+    {
+      value = strings;
+      length = TREE_STRING_LENGTH (value);
+      if (TREE_TYPE (value) == int_array_type_node)
+	wide_flag = 1;
+    }
 
-  value = build1 (ADDR_EXPR, value);
-  TREE_TYPE (value) = string_type_node;
+  TREE_TYPE (value)
+    = build_array_type (wide_flag ? integer_type_node : char_type_node,
+			make_index_type (build_int_2 (length - 1, 0)));
   TREE_LITERAL (value) = 1;
+  TREE_STATIC (value) = 1;
   return value;
 }
 
@@ -932,112 +1195,133 @@ FILE *finput;			/* input file.
 
 /* lexical analyzer */
 
-static int maxtoken;		/* Current length of token buffer */
-static char *token_buffer;	/* Pointer to token buffer */
-
-/* frw[i] is index in rw of the first word whose length is i. */
+static int maxtoken;		/* Current nominal length of token buffer */
+static char *token_buffer;	/* Pointer to token buffer.
+				   Actual allocated length is maxtoken + 2.  */
+static dollar_seen = 0;		/* Nonzero if have warned about `$'.  */
 
 #define MAXRESERVED 9
 
-static char frw[10] =
-  { 0, 0, 0, 2, 5, 13, 19, 27, 29, 33 };
+/* frw[I] is index in `reswords' of the first word whose length is I;
+   frw[I+1] is one plus the index of the last word whose length is I.
+   The length of frw must be MAXRESERVED + 2 so there is an element
+   at MAXRESERVED+1 for the case I == MAXRESERVED.  */
 
-static char *rw[] =
-  { "if", "do", "int", "for", "asm",
-    "case", "char", "auto", "goto", "else", "long", "void", "enum",
-    "float", "short", "union", "break", "while", "const",
-    "double", "static", "extern", "struct", "return", "sizeof", "switch", "signed",
-    "typedef", "default",
-    "unsigned", "continue", "register", "volatile" };
+static char frw[MAXRESERVED+2] =
+  { 0, 0, 0, 2, 5, 13, 19, 29, 32, 36, 37 };
 
-static short rtoken[] =
-  { IF, DO, TYPESPEC, FOR, ASM,
-    CASE, TYPESPEC, SCSPEC, GOTO, ELSE, TYPESPEC, TYPESPEC, ENUM,
-    TYPESPEC, TYPESPEC, UNION, BREAK, WHILE, TYPEMOD,
-    TYPESPEC, SCSPEC, SCSPEC, STRUCT, RETURN, SIZEOF, SWITCH, TYPESPEC,
-    SCSPEC, DEFAULT,
-    TYPESPEC, CONTINUE, SCSPEC, TYPEMOD };
+/* Table of reserved words.  */
 
-/* This table corresponds to rw and rtoken.
-   Its element is an index in ridpointers  */
+struct resword { char *name; short token; enum rid rid;};
 
-#define NORID (enum rid) 0
+#define NORID RID_UNUSED
 
-static enum rid rid[] =
-  { NORID, NORID, RID_INT, NORID, NORID,
-    NORID, RID_CHAR, RID_AUTO, NORID, NORID, RID_LONG, RID_VOID, NORID,
-    RID_FLOAT, RID_SHORT, NORID, NORID, NORID, RID_CONST,
-    RID_DOUBLE, RID_STATIC, RID_EXTERN, NORID, NORID, NORID, NORID, RID_SIGNED,
-    RID_TYPEDEF, NORID,
-    RID_UNSIGNED, NORID, RID_REGISTER, RID_VOLATILE };
+static struct resword reswords[]
+  = {{"if", IF, NORID},
+     {"do", DO, NORID},
+     {"int", TYPESPEC, RID_INT},
+     {"for", FOR, NORID},
+     {"asm", ASM, NORID},
+     {"case", CASE, NORID},
+     {"char", TYPESPEC, RID_CHAR},
+     {"auto", SCSPEC, RID_AUTO},
+     {"goto", GOTO, NORID},
+     {"else", ELSE, NORID},
+     {"long", TYPESPEC, RID_LONG},
+     {"void", TYPESPEC, RID_VOID},
+     {"enum", ENUM, NORID},
+     {"float", TYPESPEC, RID_FLOAT},
+     {"short", TYPESPEC, RID_SHORT},
+     {"union", UNION, NORID},
+     {"break", BREAK, NORID},
+     {"while", WHILE, NORID},
+     {"const", TYPE_QUAL, RID_CONST},
+     {"double", TYPESPEC, RID_DOUBLE},
+     {"static", SCSPEC, RID_STATIC},
+     {"extern", SCSPEC, RID_EXTERN},
+     {"struct", STRUCT, NORID},
+     {"return", RETURN, NORID},
+     {"sizeof", SIZEOF, NORID},
+     {"typeof", TYPEOF, NORID},
+     {"switch", SWITCH, NORID},
+     {"signed", TYPESPEC, RID_SIGNED},
+     {"inline", SCSPEC, RID_INLINE},
+     {"typedef", SCSPEC, RID_TYPEDEF},
+     {"default", DEFAULT, NORID},
+     {"noalias", TYPE_QUAL, RID_NOALIAS},
+     {"unsigned", TYPESPEC, RID_UNSIGNED},
+     {"continue", CONTINUE, NORID},
+     {"register", SCSPEC, RID_REGISTER},
+     {"volatile", TYPE_QUAL, RID_VOLATILE},
+     {"__alignof", ALIGNOF, NORID}};
 
 /* The elements of `ridpointers' are identifier nodes
-   for the reserved type names and storage classes.  */
+   for the reserved type names and storage classes.
+   It is indexed by a RID_... value.  */
 
 tree ridpointers[(int) RID_MAX];
 
 static tree line_identifier;   /* The identifier node named "line" */
 
-void check_newline();
+void check_newline ();
 
 void
-init_lex()
+init_lex ()
 {
-  extern char *malloc();
+  extern char *malloc ();
 
-  /* Start it at 0, because check_newline is called atthe very beginning
+  /* Start it at 0, because check_newline is called at the very beginning
      and will increment it to 1.  */
   lineno = 0;
-  current_function_decl = NULL;
-  current_switch_stmt = NULL;
-  current_block = NULL;
-  current_break_label = NULL;
-  current_continue_label = NULL;
-  break_label_stack = NULL;
-  continue_label_stack = NULL;
-  line_identifier = get_identifier("line");
+  line_identifier = get_identifier ("line");
 
   maxtoken = 40;
-  token_buffer = malloc((unsigned)(maxtoken+1));
-  ridpointers[(int) RID_INT] = get_identifier("int");
-  ridpointers[(int) RID_CHAR] = get_identifier("char");
-  ridpointers[(int) RID_VOID] = get_identifier("void");
-  ridpointers[(int) RID_FLOAT] = get_identifier("float");
-  ridpointers[(int) RID_DOUBLE] = get_identifier("double");
-  ridpointers[(int) RID_SHORT] = get_identifier("short");
-  ridpointers[(int) RID_LONG] = get_identifier("long");
-  ridpointers[(int) RID_UNSIGNED] = get_identifier("unsigned");
-  ridpointers[(int) RID_SIGNED] = get_identifier("signed");
-  ridpointers[(int) RID_CONST] = get_identifier("const");
-  ridpointers[(int) RID_VOLATILE] = get_identifier("volatile");
-  ridpointers[(int) RID_AUTO] = get_identifier("auto");
-  ridpointers[(int) RID_STATIC] = get_identifier("static");
-  ridpointers[(int) RID_EXTERN] = get_identifier("extern");
-  ridpointers[(int) RID_TYPEDEF] = get_identifier("typedef");
-  ridpointers[(int) RID_REGISTER] = get_identifier("register");
+  token_buffer = malloc (maxtoken + 2);
+  ridpointers[(int) RID_INT] = get_identifier ("int");
+  ridpointers[(int) RID_CHAR] = get_identifier ("char");
+  ridpointers[(int) RID_VOID] = get_identifier ("void");
+  ridpointers[(int) RID_FLOAT] = get_identifier ("float");
+  ridpointers[(int) RID_DOUBLE] = get_identifier ("double");
+  ridpointers[(int) RID_SHORT] = get_identifier ("short");
+  ridpointers[(int) RID_LONG] = get_identifier ("long");
+  ridpointers[(int) RID_UNSIGNED] = get_identifier ("unsigned");
+  ridpointers[(int) RID_SIGNED] = get_identifier ("signed");
+  ridpointers[(int) RID_INLINE] = get_identifier ("inline");
+  ridpointers[(int) RID_CONST] = get_identifier ("const");
+  ridpointers[(int) RID_VOLATILE] = get_identifier ("volatile");
+  ridpointers[(int) RID_AUTO] = get_identifier ("auto");
+  ridpointers[(int) RID_STATIC] = get_identifier ("static");
+  ridpointers[(int) RID_EXTERN] = get_identifier ("extern");
+  ridpointers[(int) RID_TYPEDEF] = get_identifier ("typedef");
+  ridpointers[(int) RID_REGISTER] = get_identifier ("register");
+}
+
+static void
+reinit_parse_for_function ()
+{
 }
 
 static int
-skip_white_space()
+skip_white_space ()
 {
   register int c;
   register int inside;
 
-  c = getc(finput);
+  c = getc (finput);
 
   for (;;)
     {
       switch (c)
 	{
 	case '/':
-	  c = getc(finput);
+	  c = getc (finput);
 	  if (c != '*')
 	    {
-	      ungetc(c, finput);
+	      ungetc (c, finput);
 	      return '/';
 	    }
 
-	  c = getc(finput);
+	  c = getc (finput);
 
 	  inside = 1;
 	  while (inside)
@@ -1045,45 +1329,48 @@ skip_white_space()
 	      if (c == '*')
 		{
 		  while (c == '*')
-		    c = getc(finput);
+		    c = getc (finput);
 
 		  if (c == '/')
 		    {
 		      inside = 0;
-		      c = getc(finput);
+		      c = getc (finput);
 		    }
 		}
 	      else if (c == '\n')
 		{
 		  lineno++;
-		  c = getc(finput);
+		  c = getc (finput);
 		}
 	      else if (c == EOF)
-		yyerror("unterminated comment");
+		{
+		  error ("unterminated comment");
+		  break;
+		}
 	      else
-		c = getc(finput);
+		c = getc (finput);
 	    }
 
 	  break;
 
 	case '\n':
-	  check_newline();
+	  check_newline ();
 
 	case ' ':
 	case '\t':
 	case '\f':
 	case '\r':
 	case '\b':
-	  c = getc(finput);
+	  c = getc (finput);
 	  break;
 
 	case '\\':
-	  c = getc(finput);
+	  c = getc (finput);
 	  if (c == '\n')
 	    lineno++;
 	  else
-	    yyerror("stray '\\' in program");
-	  c = getc(finput);
+	    error ("stray '\\' in program");
+	  c = getc (finput);
 	  break;
 
 	default:
@@ -1094,42 +1381,26 @@ skip_white_space()
 
 
 
-/* make the token buffer longer, preserving the data in it.
-p should point to just beyond the last valid character in the old buffer
-and the value points to the corresponding place in the new one.  */
+/* Make the token buffer longer, preserving the data in it.
+   P should point to just beyond the last valid character in the old buffer.
+   The value we return is a pointer to the new buffer
+   at a place corresponding to P.  */
 
 static char *
-extend_token_buffer(p)
-char *p;
+extend_token_buffer (p)
+     char *p;
 {
-  register char *newbuf;
-  register char *value;
-  int newlength = maxtoken * 2 + 10;
-  register char *p2, *p1;
-  extern char *malloc();
+  int offset = p - token_buffer;
 
-  newbuf = malloc((unsigned)(newlength+1));
+  maxtoken = maxtoken * 2 + 10;
+  token_buffer = (char *) realloc (token_buffer, maxtoken + 2);
+  if (token_buffer == 0)
+    fatal ("virtual memory exceeded");
 
-  p2 = newbuf;
-  p1 = newbuf + newlength + 1;
-  while (p1 != p2) *p2++ = 0;
-
-  value = newbuf;
-  p2 = token_buffer;
-  while (p2 != p)
-   *value++ = *p2++;
-
-  token_buffer = newbuf;
-
-  maxtoken = newlength;
-
-  return (value);
+  return token_buffer + offset;
 }
 
-
-
-/* At the beginning of a line,
-   increment the line number
+/* At the beginning of a line, increment the line number
    and handle a #line directive immediately following  */
 
 void
@@ -1140,27 +1411,67 @@ check_newline ()
 
   while (1)
     {
-      c = getc (finput);
       lineno++;
+
+      /* Read first nonwhite char on the line.  */
+
+      c = getc (finput);
+      while (c == ' ' || c == '\t')
+	c = getc (finput);
 
       if (c != '#')
 	{
-	  /* If no #, unread the character,
-	     except don't bother if it is whitespace.  */
-	  if (c == ' ' || c == '\t')
-	    return;
+	  /* If not #, unread it.  */
 	  ungetc (c, finput);
 	  return;
 	}
 
-      /* Skip whitespace after the #.  */
+      /* Read first nonwhite char after the `#'.  */
 
-      while (1)
+      c = getc (finput);
+      while (c == ' ' || c == '\t')
+	c = getc (finput);
+
+      /* If a letter follows, then if the word here is `line', skip
+	 it and ignore it; otherwise, ignore the line, with an error
+	 if the word isn't `pragma'.  */
+
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
 	{
-	  c = getc (finput);
-	  if (! (c == ' ' || c == '\t'))
-	    break;
+	  if (c == 'p')
+	    {
+	      if (getc (finput) == 'r'
+		  && getc (finput) == 'a'
+		  && getc (finput) == 'g'
+		  && getc (finput) == 'm'
+		  && getc (finput) == 'a'
+		  && ((c = getc (finput)) == ' ' || c == '\t'))
+		goto noerror;
+	    }
+
+	  else if (c == 'l')
+	    {
+	      if (getc (finput) == 'i'
+		  && getc (finput) == 'n'
+		  && getc (finput) == 'e'
+		  && ((c = getc (finput)) == ' ' || c == '\t'))
+		goto linenum;
+	    }
+
+	  error ("undefined or invalid # directive");
+	noerror:
+
+	  while ((c = getc (finput)) && c != '\n');
+
+	  continue;
 	}
+
+    linenum:
+      /* Here we have either `#line' or `# <nonletter>'.
+	 In either case, it should be a line number; a digit should follow.
+
+      while (c == ' ' || c == '\t')
+	c = getc (finput);
 
       /* If the # is the only nonwhite char on the line,
 	 just ignore it.  Check the new newline.  */
@@ -1180,17 +1491,37 @@ check_newline ()
 
 	  int l = TREE_INT_CST_LOW (yylval.ttype) - 1;
 
+	  /* Is this the last nonwhite stuff on the line?  */
+	  c = getc (finput);
+	  while (c == ' ' || c == '\t')
+	    c = getc (finput);
+	  if (c == '\n')
+	    {
+	      /* No more: store the line number and check following line.  */
+	      lineno = l;
+	      continue;
+	    }
+	  ungetc (c, finput);
+
+	  /* More follows: it must be a string constant (filename).  */
+
 	  token = yylex ();
 	  if (token != STRING || TREE_CODE (yylval.ttype) != STRING_CST)
-	    yyerror ("invalid #line");
+	    {
+	      error ("invalid #line");
+	      return;
+	    }
 
 	  input_filename
 	    = (char *) permalloc (TREE_STRING_LENGTH (yylval.ttype) + 1);
 	  strcpy (input_filename, TREE_STRING_POINTER (yylval.ttype));
 	  lineno = l;
+
+	  if (main_input_filename == 0)
+	    main_input_filename = input_filename;
 	}
       else
-	yyerror ("undefined or invalid # directive");
+	error ("invalid #line");
 
       /* skip the rest of this line.  */
       while ((c = getc (finput)) != '\n');
@@ -1225,8 +1556,6 @@ readescape ()
 	      ungetc (c, finput);
 	      break;
 	    }
-	  if (c >= 'a' && c <= 'z')
-	    c -= 'a' - 'A';
 	  code *= 16;
 	  if (c >= 'a' && c <= 'f')
 	    code += c - 'a' + 10;
@@ -1235,11 +1564,9 @@ readescape ()
 	  if (c >= '0' && c <= '9')
 	    code += c - '0';
 	  count++;
-	  if (count == 3)
-	    break;
 	}
       if (count == 0)
-	yyerror ("\\x used with no following hex digits");
+	error ("\\x used with no following hex digits");
       return code;
 
     case '0':  case '1':  case '2':  case '3':  case '4':
@@ -1281,30 +1608,75 @@ readescape ()
 
     case 'v':
       return TARGET_VT;
+
+    case 'E':
+      return 033;
+
+    case '?':
+      return c;
     }
+  if (c >= 040 && c <= 0177)
+    warning ("unknown escape sequence `\\%c'", c);
+  else
+    warning ("unknown escape sequence: `\\' followed by char code 0x%x", c);
   return c;
 }
 
+void
+yyerror ()
+{
+  /* We can't print string and character constants well
+     because the token_buffer contains the result of processing escapes.  */
+  if (token_buffer[0] == 0)
+    error ("parse error at end of input");
+  else if (token_buffer[0] == '"')
+    error ("parse error at string constant");
+  else if (token_buffer[0] == '\'')
+    error ("parse error at character constant");
+  else
+    error ("parse error at `%s'", token_buffer);
+}
 
 static int
-yylex()
+yylex ()
 {
   register int c;
   register char *p;
   register int value;
+  int wide_flag = 0;
 
-  c = skip_white_space();
+  token_buffer[0] = c = skip_white_space ();
+  token_buffer[1] = 0;
 
   yylloc.first_line = lineno;
 
   switch (c)
     {
     case EOF:
-      value = ENDFILE; break;
+      token_buffer[0] = 0;
+      value = ENDFILE;
+      break;
+
+    case 'L':
+      /* Capital L may start a wide-string or wide-character constant.  */
+      {
+	register int c = getc (finput);
+	if (c == '\'')
+	  {
+	    wide_flag = 1;
+	    goto char_constant;
+	  }
+	if (c == '"')
+	  {
+	    wide_flag = 1;
+	    goto string_constant;
+	  }
+	ungetc (c, finput);
+      }
 
     case 'A':  case 'B':  case 'C':  case 'D':  case 'E':
     case 'F':  case 'G':  case 'H':  case 'I':  case 'J':
-    case 'K':  case 'L':  case 'M':  case 'N':  case 'O':
+    case 'K':		  case 'M':  case 'N':  case 'O':
     case 'P':  case 'Q':  case 'R':  case 'S':  case 'T':
     case 'U':  case 'V':  case 'W':  case 'X':  case 'Y':
     case 'Z':
@@ -1315,39 +1687,68 @@ yylex()
     case 'u':  case 'v':  case 'w':  case 'x':  case 'y':
     case 'z':
     case '_':
+    case '$':
       p = token_buffer;
-      while (isalnum(c) || (c == '_'))
+      while (isalnum (c) || c == '_' || c == '$')
 	{
 	  if (p >= token_buffer + maxtoken)
-	    p = extend_token_buffer(p);
+	    p = extend_token_buffer (p);
+	  if (c == '$')
+	    {
+	      if (pedantic)
+		{
+		  if (! dollar_seen)
+		    warning ("ANSI C forbids `$' (first use here)");
+		  dollar_seen = 1;
+		}
+	    }
+
 	  *p++ = c;
-	  c = getc(finput);
+	  c = getc (finput);
 	}
 
       *p = 0;
-      ungetc(c, finput);
+      ungetc (c, finput);
 
       value = IDENTIFIER;
       yylval.itype = 0;
 
+      /* Try to recognize a keyword.  */
+
       if (p - token_buffer <= MAXRESERVED)
 	{
 	  register int lim = frw [p - token_buffer + 1];
-	  register int i;
+	  register int i = frw[p - token_buffer];
+	  register struct resword *p = &reswords[i];
 
-	  for (i = frw[p - token_buffer]; i < lim; i++)
-	    if (rw[i][0] == token_buffer[0] && !strcmp(rw[i], token_buffer))
+	  for (; i < lim; i++, p++)
+	    if (p->name[0] == token_buffer[0]
+		&& !strcmp (p->name, token_buffer))
 	      {
-		if (rid[i])
-		  yylval.ttype = ridpointers[(int) rid[i]];
-		value = (int) rtoken[i];
+		if (p->rid)
+		  yylval.ttype = ridpointers[(int) p->rid];
+		if ((! flag_no_asm
+		     || ((int) p->token != ASM
+			 && (int) p->token != TYPEOF
+			 && strcmp (p->name, "inline")))
+		    /* -ftraditional means don't recognize
+		       typeof, const, volatile, noalias, signed or inline.  */
+		    && (! flag_traditional
+			|| ((int) p->token != TYPE_QUAL
+			    && (int) p->token != TYPEOF
+			    && strcmp (p->name, "signed")
+			    && strcmp (p->name, "inline"))))
+		  value = (int) p->token;
 		break;
 	      }
 	}
 
+      /* If we did not find a keyword, look for an identifier
+	 (or a typename).  */
+
       if (value == IDENTIFIER)
 	{
-          yylval.ttype = get_identifier(token_buffer);
+          yylval.ttype = get_identifier (token_buffer);
 	  lastiddecl = lookup_name (yylval.ttype);
 
 	  if (lastiddecl != 0 && TREE_CODE (lastiddecl) == TYPE_DECL)
@@ -1362,11 +1763,13 @@ yylex()
       {
 	int base = 10;
 	int count = 0;
-	/* for multi-precision arithmetic, we store only 8 live bits in each short,
+	int largest_digit = 0;
+	int numdigits = 0;
+	/* for multi-precision arithmetic,
+	   we store only 8 live bits in each short,
 	   giving us 64 bits of reliable precision */
 	short shorts[8];
-	char *floatflag = NULL;  /* set nonzero if we learn this is a floating constant */
-				 /* in fact, it points to the first fractional digit.  */
+	int floatflag = 0;  /* Set 1 if we learn this is a floating constant */
 
 	for (count = 0; count < 8; count++)
 	  shorts[count] = 0;
@@ -1376,47 +1779,62 @@ yylex()
 
 	if (c == '0')
 	  {
-	    *p++ = (c = getc(finput));
+	    *p++ = (c = getc (finput));
 	    if ((c == 'x') || (c == 'X'))
 	      {
 		base = 16;
-		*p++ = (c = getc(finput));
+		*p++ = (c = getc (finput));
 	      }
 	    else
 	      {
 		base = 8;
+		numdigits++;
 	      }
 	  }
 
+	/* Read all the digits-and-decimal-points.  */
+
 	while (c == '.'
 	       || (isalnum (c) && (c != 'l') && (c != 'L')
-		   && (c != 'u') && (c != 'U')))
+		   && (c != 'u') && (c != 'U')
+		   && (!floatflag || ((c != 'f') && (c != 'F')))))
 	  {
 	    if (c == '.')
 	      {
-		floatflag = p - 1;
-		p[-1] = c = getc(finput); /* omit the decimal point from
-				     the token buffer.  */
+		if (base == 16)
+		  error ("floating constant may not be in radix 16");
+		floatflag = 1;
+		base = 10;
+		*p++ = c = getc (finput);
 		/* Accept '.' as the start of a floating-point number
 		   only when it is followed by a digit.
 		   Otherwise, unread the following non-digit
 		   and use the '.' as a structural token.  */
-		if (floatflag == token_buffer && !isdigit (c))
+		if (p == token_buffer + 2 && !isdigit (c))
 		  {
 		    if (c == '.')
 		      {
 			c = getc (finput);
 			if (c == '.')
-			  return ELLIPSIS;
-			yyerror ("syntax error");
+			  {
+			    *p++ = c;
+			    *p = 0;
+			    return ELLIPSIS;
+			  }
+			error ("parse error at `..'");
 		      }
 		    ungetc (c, finput);
-		    return '.';
+		    token_buffer[1] = 0;
+		    value = '.';
+		    goto done;
 		  }
 	      }
 	    else
 	      {
-		if (isdigit(c))
+		/* It is not a decimal point.
+		   It should be a digit (perhaps a hex digit).  */
+
+		if (isdigit (c))
 		  {
 		    c = c - '0';
 		  }
@@ -1424,11 +1842,11 @@ yylex()
 		  {
 		    if ((c&~040) == 'E')
 		      {
-			if (floatflag == 0)
-			  floatflag = p - 1;
+			base = 10;
+			floatflag = 1;
 			break;   /* start of exponent */
 		      }
-		    yyerror("nondigits in number and not hexadecimal");
+		    error ("nondigits in number and not hexadecimal");
 		    c = 0;
 		  }
 		else if (c >= 'a')
@@ -1439,8 +1857,9 @@ yylex()
 		  {
 		    c = c - 'A' + 10;
 		  }
-		if (c >= base)
-		  yyerror("numeric constant contains digits beyond the radix");
+		if (c >= largest_digit)
+		  largest_digit = c;
+		numdigits++;
 	    
 		for (count = 0; count < 8; count++)
 		  {
@@ -1453,54 +1872,94 @@ yylex()
 		    else shorts[0] += c;
 		  }
     
-		*p++ = (c = getc(finput));
+		if (p >= token_buffer + maxtoken - 3)
+		  p = extend_token_buffer (p);
+		*p++ = (c = getc (finput));
 	      }
 	  }
+
+	if (numdigits == 0)
+	  error ("numeric constant with no digits");
+
+	if (largest_digit >= base)
+	  error ("numeric constant contains digits beyond the radix");
 
 	/* Remove terminating char from the token buffer and delimit the string */
 	*--p = 0;
 
 	if (floatflag)
 	  {
-	    register ex = -(p - floatflag);  /* exponent is minus # digits after decimal pt */
-
 	    tree type = double_type_node;
+	    char f_seen = 0;
+	    char l_seen = 0;
 
-	    /* read explicit exponent if any, and add into ex. */
+	    /* Read explicit exponent if any, and put it in tokenbuf.  */
 
 	    if ((c == 'e') || (c == 'E'))
 	      {
-		register int exval = 0;
-		register int exsign = 1;
-
-		c = getc(finput);
+		if (p >= token_buffer + maxtoken - 3)
+		  p = extend_token_buffer (p);
+		*p++ = c;
+		c = getc (finput);
 		if ((c == '+') || (c == '-'))
 		  {
-		    if (c == '-') exsign = -1;
-		    c = getc(finput);
+		    *p++ = c;
+		    c = getc (finput);
 		  }
-	        while (isdigit(c))
+		if (! isdigit (c))
+		  error ("floating constant exponent has no digits");
+	        while (isdigit (c))
 		  {
-		    exval *= 10;
-		    exval += c - '0';
-		    c = getc(finput);
+		    if (p >= token_buffer + maxtoken - 3)
+		      p = extend_token_buffer (p);
+		    *p++ = c;
+		    c = getc (finput);
 		  }
-		ex += exsign*exval;
 	      }
+
+	    *p = 0;
+	    yylval.ttype = build_real (atof (token_buffer));
 
 	    while (1)
 	      {
 		if (c == 'f' || c == 'F')
-		  type = float_type_node;
+		  {
+		    if (f_seen)
+		      error ("two `f's in floating constant");
+		    f_seen = 1;
+		    type = float_type_node;
+		  }
 		else if (c == 'l' || c == 'L')
-		  type = long_double_type_node;
-		else break;
+		  {
+		    if (l_seen)
+		      error ("two `l's in floating constant");
+		    l_seen = 1;
+		    type = long_double_type_node;
+		  }
+		else
+		  {
+		    if (isalnum (c))
+		      {
+			error ("garbage at end of number");
+			while (isalnum (c))
+			  {
+			    if (p >= token_buffer + maxtoken - 3)
+			      p = extend_token_buffer (p);
+			    *p++ = c;
+			    c = getc (finput);
+			  }
+		      }
+		    break;
+		  }
+		if (p >= token_buffer + maxtoken - 3)
+		  p = extend_token_buffer (p);
+		*p++ = c;
 		c = getc (finput);
 	      }
 
-	    ungetc(c, finput);
+	    ungetc (c, finput);
+	    *p = 0;
 
-	    yylval.ttype = build_real_from_string (token_buffer, ex);
 	    TREE_TYPE (yylval.ttype) = type;
 	  }
 	else
@@ -1513,24 +1972,47 @@ yylex()
 	      {
 		if (c == 'u' || c == 'U')
 		  {
+		    if (spec_unsigned)
+		      error ("two `u's in integer constant");
 		    spec_unsigned = 1;
-		    c = getc (finput);
 		  }
 		else if (c == 'l' || c == 'L')
 		  {
+		    if (spec_long)
+		      error ("two `l's in integer constant");
 		    spec_long = 1;
-		    c = getc (finput);
 		  }
-		else break;
+		else
+		  {
+		    if (isalnum (c))
+		      {
+			error ("garbage at end of number");
+			while (isalnum (c))
+			  {
+			    if (p >= token_buffer + maxtoken - 3)
+			      p = extend_token_buffer (p);
+			    *p++ = c;
+			    c = getc (finput);
+			  }
+		      }
+		    break;
+		  }
+		if (p >= token_buffer + maxtoken - 3)
+		  p = extend_token_buffer (p);
+		*p++ = c;
+		c = getc (finput);
 	      }
 
 	    ungetc (c, finput);
+
+	    if (shorts[7] | shorts[6] | shorts[5] | shorts[4])
+	      warning ("integer constant out of range");
 
 	    /* This is simplified by the fact that our constant
 	       is always positive.  */
 	    yylval.ttype
 	      = build_int_2 ((shorts[3]<<24) + (shorts[2]<<16) + (shorts[1]<<8) + shorts[0],
-			     (shorts[7]<<24) + (shorts[6]<<16) + (shorts[5]<<8) + shorts[4]);
+			     0);
     
 	    if (!spec_long && !spec_unsigned
 		&& int_fits_type_p (yylval.ttype, integer_type_node))
@@ -1545,8 +2027,11 @@ yylex()
 	      type = long_integer_type_node;
 
 	    else
-	      type = long_unsigned_type_node;
-
+	      {
+		type = long_unsigned_type_node;
+		if (! int_fits_type_p (yylval.ttype, long_unsigned_type_node))
+		  warning ("integer constant out of range");
+	      }
 	    TREE_TYPE (yylval.ttype) = type;
 	  }
 
@@ -1554,7 +2039,8 @@ yylex()
       }
 
     case '\'':
-      c = getc(finput);
+    char_constant:
+      c = getc (finput);
       {
 	register int code = 0;
 
@@ -1566,25 +2052,38 @@ yylex()
 	    if (c < 0)
 	      goto tryagain;
 	  }
+	else if (c == '\n')
+	  {
+	    if (pedantic)
+	      warning ("ANSI C forbids newline in character constant");
+	    lineno++;
+	  }
+
 	code = c;
+	token_buffer[1] = c;
+	token_buffer[2] = '\'';
+	token_buffer[3] = 0;
+
 	c = getc (finput);
 	if (c != '\'')
-	  yyerror("malformatted character constant");
+	  error ("malformatted character constant");
 
-	if (char_type_node == unsigned_char_type_node
-	    || (c >> (BITS_PER_UNIT - 1)) == 0)
-	  yylval.ttype = build_int_2 (code, 0);
+	/* If char type is signed, sign-extend the constant.  */
+	if (TREE_UNSIGNED (char_type_node)
+	    || ((code >> (BITS_PER_UNIT - 1)) & 1) == 0)
+	  yylval.ttype = build_int_2 (code & ((1 << BITS_PER_UNIT) - 1), 0);
 	else
-	  yylval.ttype = build_int_2 (code | (1 << BITS_PER_UNIT), -1);
+	  yylval.ttype = build_int_2 (code | ((-1) << BITS_PER_UNIT), -1);
 
-	TREE_TYPE (yylval.ttype) = char_type_node;
+	TREE_TYPE (yylval.ttype) = integer_type_node;
 	value = CONSTANT; break;
       }
 
     case '"':
+    string_constant:
       {
-	c = getc(finput);
-	p = token_buffer;
+	c = getc (finput);
+	p = token_buffer + 1;
 
 	while (c != '"')
 	  {
@@ -1596,21 +2095,41 @@ yylex()
 	      }
 	    else if (c == '\n')
 	      {
+		if (pedantic)
+		  warning ("ANSI C forbids newline in string constant");
 		lineno++;
 	      }
 
 	    if (p == token_buffer + maxtoken)
-	      p = extend_token_buffer(p);
+	      p = extend_token_buffer (p);
 	    *p++ = c;
 
 	  skipnewline:
 	    c = getc (finput);
 	  }
 
-	*p++ = 0;
+	*p = 0;
 
-	yylval.ttype = build_string (p - token_buffer, token_buffer);
-	TREE_TYPE (yylval.ttype) = char_array_type_node;
+	if (wide_flag)
+	  {
+	    /* If this is a L"..." wide-string, convert each char
+	       to an int, making a vector of ints.  */
+	    int *widebuf = (int *) alloca (p - token_buffer);
+	    char *p1 = token_buffer + 1;
+	    for (; p1 == p; p1++)
+	      widebuf[p1 - token_buffer - 1] = *p1;
+	    yylval.ttype = build_string ((p - token_buffer) * sizeof (int),
+					 widebuf);
+	    TREE_TYPE (yylval.ttype) = int_array_type_node;
+	  }
+	else
+	  {
+	    yylval.ttype = build_string (p - token_buffer, token_buffer + 1);
+	    TREE_TYPE (yylval.ttype) = char_array_type_node;
+	  }
+
+	*p++ = '"';
+	*p = 0;
 
 	value = STRING; break;
       }
@@ -1660,7 +2179,8 @@ yylex()
 	    yylval.code = GT_EXPR; break;
 	  }	
 
-	c1 = getc(finput);
+	token_buffer[1] = c1 = getc (finput);
+	token_buffer[2] = 0;
 
 	if (c1 == '=')
 	  {
@@ -1698,6 +2218,7 @@ yylex()
 	else if ((c == '-') && (c1 == '>'))
 	  { value = POINTSAT; goto done; }
 	ungetc (c1, finput);
+	token_buffer[1] = 0;
 
 	if ((c == '<') || (c == '>'))
 	  value = ARITHCOMPARE;
@@ -1712,5 +2233,5 @@ yylex()
 done:
   yylloc.last_line = lineno;
 
-  return (value);
+  return value;
 }

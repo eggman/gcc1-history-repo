@@ -1,5 +1,5 @@
 /* Data flow analysis for GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -92,6 +92,8 @@ and this notice must be preserved on all copies.  */
 #include "rtl.h"
 #include "basic-block.h"
 #include "regs.h"
+#include "hard-reg-set.h"
+#include "flags.h"
 
 /* Get the basic block number of an insn.
    This info should not be expected to remain available
@@ -104,6 +106,11 @@ and this notice must be preserved on all copies.  */
    and then freed.  */
 
 static short *uid_block_number;
+
+/* INSN_VOLATILE (insn) is 1 if the insn refers to anything volatile.  */
+
+#define INSN_VOLATILE(INSN) uid_volatile[INSN_UID (INSN)]
+static char *uid_volatile;
 
 /* Number of basic blocks in the current function.  */
 
@@ -150,7 +157,16 @@ char *reg_crosses_call;
    The larger this is, the less priority (REG n) gets for
    allocation in a real register.
    This information remains valid for the rest of the compilation
-   of the current function; it is used to control register allocation.  */
+   of the current function; it is used to control register allocation.
+
+   local-alloc.c may alter this number to change the priority.
+
+   Negative values are special.
+   -1 is used to mark a pseudo reg which has a constant or memory equivalent
+   and is used infrequently enough that it should not get a hard register.
+   -2 is used to mark a pseudo reg for a parameter, when a frame pointer
+   is not required.  global-alloc.c makes an allocno for this but does
+   not try to assign a hard register to it.  */
 
 int *reg_live_length;
 
@@ -182,25 +198,48 @@ rtx *basic_block_end;
 
 regset *basic_block_live_at_start;
 
+/* Regset of regs live when calls to `setjmp'-like functions happen.  */
+
+regset regs_live_at_setjmp;
+
 /* Element N is nonzero if control can drop into basic block N
    from the preceding basic block.  Freed after life_analysis.  */
 
-char *basic_block_drops_in;
+static char *basic_block_drops_in;
 
 /* Element N is depth within loops of basic block number N.
    Freed after life_analysis.  */
 
-short *basic_block_loop_depth;
+static short *basic_block_loop_depth;
 
 /* Element N nonzero if basic block N can actually be reached.
    Vector exists only during find_basic_blocks.  */
 
-char *block_live_static;
+static char *block_live_static;
 
 /* Depth within loops of basic block being scanned for lifetime analysis,
    plus one.  This is the weight attached to references to registers.  */
 
-int loop_depth;
+static int loop_depth;
+
+/* Define AUTO_INC_DEC if machine has any kind of incrementing
+   or decrementing addressing.  */
+
+#ifdef HAVE_PRE_DECREMENT
+#define AUTO_INC_DEC
+#endif
+
+#ifdef HAVE_PRE_INCREMENT
+#define AUTO_INC_DEC
+#endif
+
+#ifdef HAVE_POST_DECREMENT
+#define AUTO_INC_DEC
+#endif
+
+#ifdef HAVE_POST_INCREMENT
+#define AUTO_INC_DEC
+#endif
 
 /* Forward declarations */
 static void find_basic_blocks ();
@@ -215,6 +254,8 @@ static int insn_dead_p ();
 static int try_pre_increment ();
 static int try_pre_increment_1 ();
 static rtx find_use_as_address ();
+static int volatile_refs_p ();
+void dump_flow_info ();
 
 /* Find basic blocks of the current function and perform data flow analysis.
    F is the first insn of the function and NREGS the number of register numbers
@@ -260,6 +301,8 @@ flow_analysis (f, nregs, file)
   basic_block_drops_in = (char *) alloca (n_basic_blocks);
   basic_block_loop_depth = (short *) alloca (n_basic_blocks * sizeof (short));
   uid_block_number = (short *) alloca ((max_uid + 1) * sizeof (short));
+  uid_volatile = (char *) alloca (max_uid + 1);
+  bzero (uid_volatile, max_uid + 1);
 
   find_basic_blocks (f);
   life_analysis (f, nregs);
@@ -328,10 +371,12 @@ find_basic_blocks (f)
     for (i = 0; i < n_basic_blocks; i++)
       {
 	register rtx insn = PREV_INSN (basic_block_head[i]);
+	/* TEMP1 is used to avoid a bug in Sequent's compiler.  */
+	register int temp1;
 	while (insn && GET_CODE (insn) == NOTE)
 	  insn = PREV_INSN (insn);
-	basic_block_drops_in[i]
-	  = insn && GET_CODE (insn) != BARRIER;
+	temp1 = insn && GET_CODE (insn) != BARRIER;
+	basic_block_drops_in[i] = temp1;
       }
   }
 
@@ -384,6 +429,8 @@ find_basic_blocks (f)
 	    insn = basic_block_head[i];
 	    while (1)
 	      {
+		if (GET_CODE (insn) == BARRIER)
+		  abort ();
 		if (GET_CODE (insn) != NOTE)
 		  {
 		    PUT_CODE (insn, NOTE);
@@ -391,7 +438,17 @@ find_basic_blocks (f)
 		    NOTE_SOURCE_FILE (insn) = 0;
 		  }
 		if (insn == basic_block_end[i])
-		  break;
+		  {
+		    /* BARRIERs are between basic blocks, not part of one.
+		       Delete a BARRIER if the preceding jump is deleted.
+		       We cannot alter a BARRIER into a NOTE
+		       because it is too short; but we can really delete
+		       it because it is not part of a basic block.  */
+		    if (NEXT_INSN (insn) != 0
+			&& GET_CODE (NEXT_INSN (insn)) == BARRIER)
+		      delete_insn (NEXT_INSN (insn));
+		    break;
+		  }
 		insn = NEXT_INSN (insn);
 	      }
 	    /* Each time we delete some basic blocks,
@@ -407,11 +464,15 @@ find_basic_blocks (f)
 		      insn = basic_block_end[i - 1];
 		      if (GET_CODE (insn) == JUMP_INSN
 			  && JUMP_LABEL (insn) != 0
+			  && INSN_UID (JUMP_LABEL (insn)) != 0
 			  && BLOCK_NUM (JUMP_LABEL (insn)) == j)
 			{
 			  PUT_CODE (insn, NOTE);
 			  NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
 			  NOTE_SOURCE_FILE (insn) = 0;
+			  if (GET_CODE (NEXT_INSN (insn)) != BARRIER)
+			    abort ();
+			  delete_insn (NEXT_INSN (insn));
 			}
 		      break;
 		    }
@@ -442,6 +503,12 @@ mark_label_ref (x, insn, checkdup)
       register rtx label = XEXP (x, 0);
       register rtx y;
       if (GET_CODE (label) != CODE_LABEL)
+	return;
+      /* If the label was never emitted, this insn is junk,
+	 but avoid a crash trying to refer to BLOCK_NUM (label).
+	 This can happen as a result of a syntax error
+	 and a diagnostic has already been printed.  */
+      if (INSN_UID (label) == 0)
 	return;
       CONTAINING_INSN (x) = insn;
       /* if CHECKDUP is set, check for duplicate ref from same insn
@@ -500,6 +567,7 @@ life_analysis (f, nregs)
      possibly excluding those that are used after they are set.  */
   regset *basic_block_significant;
   register int i;
+  rtx insn;
 
   max_regno = nregs;
 
@@ -530,6 +598,28 @@ life_analysis (f, nregs)
   tem = (regset) alloca (n_basic_blocks * regset_bytes);
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_significant, tem, n_basic_blocks, regset_bytes);
+
+  /* Record which insns refer to any volatile memory.  */
+
+  for (insn = f; insn; insn = NEXT_INSN (insn))
+    if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
+	|| GET_CODE (insn) == CALL_INSN)
+      INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
+
+  if (n_basic_blocks > 0)
+#ifdef EXIT_IGNORE_STACK
+    if (! (EXIT_IGNORE_STACK) || ! frame_pointer_needed)
+#endif
+      {
+	/* If exiting needs the right stack value,
+	   consider the stack pointer live at the end of the function.  */
+	basic_block_live_at_end[n_basic_blocks - 1]
+	  [STACK_POINTER_REGNUM / REGSET_ELT_BITS]
+	    |= 1 << (STACK_POINTER_REGNUM % REGSET_ELT_BITS);
+	basic_block_new_live_at_end[n_basic_blocks - 1]
+	  [STACK_POINTER_REGNUM / REGSET_ELT_BITS]
+	    |= 1 << (STACK_POINTER_REGNUM % REGSET_ELT_BITS);
+      }
 
   /* Propagate life info through the basic blocks
      around the graph of basic blocks.
@@ -641,6 +731,15 @@ life_analysis (f, nregs)
       first_pass = 0;
     }
 
+  /* Process the regs live at the beginning of the function.
+     Mark them as not local to any one basic block.  */
+
+  if (n_basic_blocks > 0)
+    for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
+      if (basic_block_live_at_start[0][i / REGSET_ELT_BITS]
+	  & (1 << (i % REGSET_ELT_BITS)))
+	reg_basic_block[i] = -2;
+
   /* Now the life information is accurate.
      Make one more pass over each basic block
      to delete dead stores, create autoincrement addressing
@@ -695,6 +794,9 @@ allocate_for_life_analysis ()
   tem = (regset) oballoc (n_basic_blocks * regset_bytes);
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_live_at_start, tem, n_basic_blocks, regset_bytes);
+
+  regs_live_at_setjmp = (regset) oballoc (regset_bytes);
+  bzero (regs_live_at_setjmp, regset_bytes);
 }
 
 /* Make each element of VECTOR point at a regset,
@@ -803,21 +905,16 @@ propagate_block (old, first, last, final, significant, bnum)
   for (insn = last; ; insn = prev)
     {
       prev = PREV_INSN (insn);
-      if (final && GET_CODE (insn) == CALL_INSN)
-	{
-	  /* Any regs live at the time of a call instruction
-	     must not go in a register clobbered by calls.
-	     Find all regs now live and record this for them.  */
-	     
-	  register int i;
-	  register struct foo *p = regs_sometimes_live;
 
-	  for (i = 0; i < sometimes_max; i++, p++)
-	    {
-	      if (old[p->offset]
-		  & (1 << p->bit))
-		reg_crosses_call[p->offset * REGSET_ELT_BITS + p->bit] = 1;
-	    }
+      /* If this is a call to `setjmp' et al,
+	 warn if any non-volatile datum is live.  */
+
+      if (final && GET_CODE (insn) == NOTE
+	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
+	{
+	  int i;
+	  for (i = 0; i < regset_size; i++)
+	    regs_live_at_setjmp[i] |= old[i];
 	}
 
       /* Update the life-status of regs for this insn.
@@ -832,51 +929,77 @@ propagate_block (old, first, last, final, significant, bnum)
 	  || GET_CODE (insn) == CALL_INSN)
 	{
 	  register int i;
+	  rtx note = find_reg_note (insn, REG_RETVAL, 0);
+
+	  /* If an instruction consists of just dead store(s) on final pass,
+	     "delete" it by turning it into a NOTE of type NOTE_INSN_DELETED.
+	     We could really delete it with delete_insn, but that
+	     can cause trouble for first or last insn in a basic block.  */
+	  if (final && insn_dead_p (PATTERN (insn), old, 1)
+	      /* Don't delete something that refers to volatile storage!  */
+	      && ! INSN_VOLATILE (insn))
+	    {
+	      PUT_CODE (insn, NOTE);
+	      NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
+	      NOTE_SOURCE_FILE (insn) = 0;
+	      /* If this insn is copying the return value from a library call,
+		 delete the entire library call.  */
+	      if (note)
+		{
+		  rtx first = XEXP (note, 0);
+		  rtx prev = insn;
+		  while (first->volatil)
+		    first = NEXT_INSN (first);
+		  while (prev != first)
+		    {
+		      prev = PREV_INSN (prev);
+		      PUT_CODE (prev, NOTE);
+		      NOTE_LINE_NUMBER (prev) = NOTE_INSN_DELETED;
+		      NOTE_SOURCE_FILE (prev) = 0;
+		    }
+		}
+	      goto flushed;
+	    }
+
 	  for (i = 0; i < regset_size; i++)
 	    {
 	      dead[i] = 0;	/* Faster than bzero here */
 	      live[i] = 0;	/* since regset_size is usually small */
 	    }
-	  /* If an instruction consists of just dead store(s) on final pass,
-	     "delete" it by turning it into a NOTE of type NOTE_INSN_DELETED.
-	     We could really delete it with delete_insn, but that
-	     can cause trouble for first or last insn in a basic block.  */
-	  if (final && insn_dead_p (PATTERN (insn), old))
-	    {
-	      PUT_CODE (insn, NOTE);
-	      NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
-	      NOTE_SOURCE_FILE (insn) = 0;
+
+	  /* See if this is an increment or decrement that can be
+	     merged into a following memory address.  */
+#ifdef AUTO_INC_DEC
+	  {
+	    register rtx x = PATTERN (insn);
+	    /* Does this instruction increment or decrement a register?  */
+	    if (final && GET_CODE (x) == SET
+		&& GET_CODE (SET_DEST (x)) == REG
+		&& (GET_CODE (SET_SRC (x)) == PLUS
+		    || GET_CODE (SET_SRC (x)) == MINUS)
+		&& XEXP (SET_SRC (x), 0) == SET_DEST (x)
+		&& GET_CODE (XEXP (SET_SRC (x), 1)) == CONST_INT
+		/* Ok, look for a following memory ref we can combine with.
+		   If one is found, change the memory ref to a PRE_INC
+		   or PRE_DEC, cancel this insn, and return 1.
+		   Return 0 if nothing has been done.  */
+		&& try_pre_increment_1 (insn))
 	      goto flushed;
-	    }
+	  }
+#endif /* AUTO_INC_DEC */
+
+	  /* If this is not the final pass, and this insn is copying the
+	     value of a library call and it's dead, don't scan the
+	     insns that perform the library call, so that the call's
+	     arguments are not marked live.  */
+	  if (note && insn_dead_p (PATTERN (insn), old, 1))
+	    insn = XEXP (note, 0);
 	  else
 	    {
-/* Check for an opportunity to do predecrement or preincrement addressing.  */
-#if defined (HAVE_PRE_INCREMENT) || defined (HAVE_PRE_DECREMENT)
-	      register rtx x = PATTERN (insn);
-	      /* Does this instruction increment or decrement a register?  */
-	      if (final && GET_CODE (x) == SET
-		  && GET_CODE (SET_DEST (x)) == REG
-		  && (GET_CODE (SET_SRC (x)) == PLUS
-		      || GET_CODE (SET_SRC (x)) == MINUS)
-		  && XEXP (SET_SRC (x), 0) == SET_DEST (x)
-		  && GET_CODE (XEXP (SET_SRC (x), 1)) == CONST_INT
-		  /* Ok, look for a following memory ref we can combine with.
-		     If one is found, change the memory ref to a PRE_INC
-		     or PRE_DEC, cancel this insn, and return 1.
-		     Return 0 if nothing has been done.  */
-		  && try_pre_increment_1 (insn))
-		goto flushed;
-#endif /* HAVE_PRE_INCREMENT or HAVE_PRE_DECREMENT */
-
-	      /* LIVE gets the registers used in INSN; DEAD gets those set by it.  */
-
-	      /* A function call implicitly sets the function-value register */
-	      if (GET_CODE (insn) == CALL_INSN)
-		dead[FUNCTION_VALUE_REGNUM / REGSET_ELT_BITS]
-		  |= 1 << (FUNCTION_VALUE_REGNUM % REGSET_ELT_BITS);
+	      /* LIVE gets the regs used in INSN; DEAD gets those set by it.  */
 	      mark_set_regs (old, dead, PATTERN (insn), final ? insn : 0,
 			     significant);
-	      mark_used_regs (old, live, PATTERN (insn), final ? insn : 0);
+	      mark_used_regs (old, live, PATTERN (insn), final, insn);
 
 	      /* Update OLD for the registers used or set.  */
 	      for (i = 0; i < regset_size; i++)
@@ -885,45 +1008,76 @@ propagate_block (old, first, last, final, significant, bnum)
 		  old[i] |= live[i];
 		}
 
-	      /* On final pass, add any additional sometimes-live regs
-		 into MAXLIVE and REGS_SOMETIMES_LIVE.
-		 Also update counts of how many insns each reg is live at.  */
-
-	      if (final)
+	      if (GET_CODE (insn) == CALL_INSN)
 		{
-		  register int diff;
+		  register int i;
 
-		  for (i = 0; i < regset_size; i++)
-		    if (diff = live[i] & ~maxlive[i])
-		      {
-			register int regno;
-			maxlive[i] |= diff;
-			for (regno = 0; diff && regno < REGSET_ELT_BITS; regno++)
-			  if (diff & (1 << regno))
-			    {
-			      regs_sometimes_live[sometimes_max].offset = i;
-			      regs_sometimes_live[sometimes_max].bit = regno;
-			      diff &= ~ (1 << regno);
-			      sometimes_max++;
-			    }
-		      }
+		  /* Each call clobbers all call-clobbered regs.
+		     Note that the function-value reg is one of these, and
+		     mark_set_regs has already had a chance to handle it.  */
+		  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+		    if (call_used_regs[i])
+		      old[i / REGSET_ELT_BITS]
+			&= ~(1 << (i % REGSET_ELT_BITS));
 
-		  {
-		    register struct foo *p = regs_sometimes_live;
-		    for (i = 0; i < sometimes_max; i++, p++)
-		      {
-			if (old[p->offset]
-			    & (1 << p->bit))
-			  reg_live_length[p->offset * REGSET_ELT_BITS + p->bit]++;
-		      }
-		  }
-		  /* This probably gets set to 1 in various places;
-		     make sure it is 0.  */
-		  reg_crosses_call[FUNCTION_VALUE_REGNUM] = 0;
+		  /* The stack ptr is used (honorarily) by a CALL insn.  */
+		  old[STACK_POINTER_REGNUM / REGSET_ELT_BITS]
+		    |= (1 << (STACK_POINTER_REGNUM % REGSET_ELT_BITS));
+
+		  if (final)
+		    {
+		      /* Any regs live at the time of a call instruction
+			 must not go in a register clobbered by calls.
+			 Find all regs now live and record this for them.  */
+
+		      register struct foo *p = regs_sometimes_live;
+
+		      for (i = 0; i < sometimes_max; i++, p++)
+			{
+			  if (old[p->offset]
+			      & (1 << p->bit))
+			    reg_crosses_call[p->offset * REGSET_ELT_BITS + p->bit] = 1;
+			}
+		    }
 		}
 	    }
-	flushed: ;
+
+	  /* On final pass, add any additional sometimes-live regs
+	     into MAXLIVE and REGS_SOMETIMES_LIVE.
+	     Also update counts of how many insns each reg is live at.  */
+
+	  if (final)
+	    {
+	      for (i = 0; i < regset_size; i++)
+		{
+		  register int diff = live[i] & ~maxlive[i];
+
+		  if (diff)
+		    {
+		      register int regno;
+		      maxlive[i] |= diff;
+		      for (regno = 0; diff && regno < REGSET_ELT_BITS; regno++)
+			if (diff & (1 << regno))
+			  {
+			    regs_sometimes_live[sometimes_max].offset = i;
+			    regs_sometimes_live[sometimes_max].bit = regno;
+			    diff &= ~ (1 << regno);
+			    sometimes_max++;
+			  }
+		    }
+		}
+
+	      {
+		register struct foo *p = regs_sometimes_live;
+		for (i = 0; i < sometimes_max; i++, p++)
+		  {
+		    if (old[p->offset] & (1 << p->bit))
+		      reg_live_length[p->offset * REGSET_ELT_BITS + p->bit]++;
+		  }
+	      }
+	    }
 	}
+    flushed: ;
       if (insn == first)
 	break;
     }
@@ -934,47 +1088,84 @@ propagate_block (old, first, last, final, significant, bnum)
    NEEDED is the regset that says which regs are alive after the insn.  */
 
 static int
-insn_dead_p (x, needed)
+insn_dead_p (x, needed, strict_low_ok)
      rtx x;
      regset needed;
+     int strict_low_ok;
 {
   register RTX_CODE code = GET_CODE (x);
+#if 0
   /* Make sure insns to set the stack pointer are never deleted.  */
   needed[STACK_POINTER_REGNUM / REGSET_ELT_BITS]
     |= 1 << (STACK_POINTER_REGNUM % REGSET_ELT_BITS);
-  if (code == SET && GET_CODE (SET_DEST (x)) == REG)
+#endif
+
+  /* If setting something that's a reg or part of one,
+     see if that register's altered value will be live.  */
+
+  if (code == SET)
     {
-      register int regno = REGNO (SET_DEST (x));
-      register int offset = regno / REGSET_ELT_BITS;
-      register int bit = 1 << (regno % REGSET_ELT_BITS);
-      return (needed[offset] & bit) == 0;
+      register rtx r = SET_DEST (x);
+      /* A SET that is a subroutine call cannot be dead.  */
+      if (GET_CODE (SET_SRC (x)) == CALL)
+	return 0;
+      while (GET_CODE (r) == SUBREG
+	     || (strict_low_ok && GET_CODE (r) == STRICT_LOW_PART)
+	     || GET_CODE (r) == ZERO_EXTRACT
+	     || GET_CODE (r) == SIGN_EXTRACT)
+	r = SUBREG_REG (r);
+      if (GET_CODE (r) == REG)
+	{
+	  register int regno = REGNO (r);
+	  register int offset = regno / REGSET_ELT_BITS;
+	  register int bit = 1 << (regno % REGSET_ELT_BITS);
+	  return (needed[offset] & bit) == 0;
+	}
     }
-  if (code == PARALLEL)
+  /* If performing several activities,
+     insn is dead if each activity is individually dead.
+     Also, CLOBBERs and USEs can be ignored; a CLOBBER or USE
+     that's inside a PARALLEL doesn't make the insn worth keeping.  */
+  else if (code == PARALLEL)
     {
       register int i = XVECLEN (x, 0);
       for (i--; i >= 0; i--)
-	if (!insn_dead_p (XVECEXP (x, 0, i), needed))
-	  return 0;
+	{
+	  rtx elt = XVECEXP (x, 0, i);
+	  if (!insn_dead_p (elt, needed, strict_low_ok)
+	      && GET_CODE (elt) != CLOBBER
+	      && GET_CODE (elt) != USE)
+	    return 0;
+	}
       return 1;
     }
+  /* We do not check CLOBBER or USE here.
+     An insn consisting of just a CLOBBER or just a USE
+     should not be deleted.  */
   return 0;
 }
 
-/* Return nonzero if register number REGNO is marked as "dying" in INSN's
-   REG_NOTES list.  */
+/* Return 1 if register REGNO was used before it was set.
+   In other words, if it is live at function entry.  */
 
-static int
-flow_deadp (regno, insn)
+int
+regno_uninitialized (regno)
      int regno;
-     rtx insn;
 {
-  register rtx link;
-  for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
-    if (XEXP (link, 0)
-	&& (enum reg_note) GET_MODE (link) == REG_DEAD
-	&& regno == REGNO (XEXP (link, 0)))
-      return 1;
-  return 0;
+  return (basic_block_live_at_start[0][regno / REGSET_ELT_BITS]
+	  & (1 << (regno % REGSET_ELT_BITS)));
+}
+
+/* 1 if register REGNO was alive at a place where `setjmp' was called
+   and was set more than once.  Such regs may be clobbered by `longjmp'.  */
+
+int
+regno_clobbered_at_setjmp (regno)
+     int regno;
+{
+  return (reg_n_sets[regno] > 1
+	  && (regs_live_at_setjmp[regno / REGSET_ELT_BITS]
+	      & (1 << (regno % REGSET_ELT_BITS))));
 }
 
 /* Process the registers that are set within X.
@@ -1025,6 +1216,9 @@ mark_set_1 (needed, dead, x, insn, significant)
   register int regno;
   register rtx reg = SET_DEST (x);
 
+  if (reg == 0)
+    return;
+
   if (GET_CODE (reg) == SUBREG)
     {
       /* Modifying just one hardware register
@@ -1039,15 +1233,34 @@ mark_set_1 (needed, dead, x, insn, significant)
 
   if (GET_CODE (reg) == REG
       && (regno = REGNO (reg), regno != FRAME_POINTER_REGNUM)
-      && regno != ARG_POINTER_REGNUM && regno != STACK_POINTER_REGNUM)
+      && regno != ARG_POINTER_REGNUM)
+    /* && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
     {
       register int offset = regno / REGSET_ELT_BITS;
       register int bit = 1 << (regno % REGSET_ELT_BITS);
+      int is_needed = 0;
+
       /* Mark the reg being set as dead before this insn.  */
       dead[offset] |= bit;
       /* Mark it as a significant register for this basic block.  */
       if (significant)
 	significant[offset] |= bit;
+      /* A hard reg in a wide mode may really be multiple registers.
+	 If so, mark all of them just like the first.  */
+      if (regno < FIRST_PSEUDO_REGISTER)
+	{
+	  int n = HARD_REGNO_NREGS (regno, GET_MODE (reg));
+	  while (--n > 0)
+	    {
+	      dead[(regno + n) / REGSET_ELT_BITS]
+		|= 1 << ((regno + n) % REGSET_ELT_BITS);
+	      if (significant)
+		significant[(regno + n) / REGSET_ELT_BITS]
+		  |= 1 << ((regno + n) % REGSET_ELT_BITS);
+	      is_needed |= (needed[(regno + n) / REGSET_ELT_BITS]
+			    & 1 << ((regno + n) % REGSET_ELT_BITS));
+	    }
+	}
       /* Additional data to record if this is the final pass.  */
       if (insn)
 	{
@@ -1075,11 +1288,13 @@ mark_set_1 (needed, dead, x, insn, significant)
 	  /* Count (weighted) references, stores, etc.  */
 	  reg_n_refs[regno] += loop_depth;
 	  reg_n_sets[regno]++;
+	  /* The next use is no longer "next", since a store intervenes.  */
+	  reg_next_use[regno] = 0;
 	  /* The insns where a reg is live are normally counted elsewhere,
 	     but we want the count to include the insn where the reg is set,
 	     and the normal counting mechanism would not count it.  */
 	  reg_live_length[regno]++;
-	  if (needed[offset] & bit)
+	  if ((needed[offset] & bit) || is_needed)
 	    {
 	      /* Make a logical link from the next following insn
 		 that uses this register, back to this insn.
@@ -1106,14 +1321,18 @@ mark_set_1 (needed, dead, x, insn, significant)
    This is done assuming the registers needed from X
    are those that have 1-bits in NEEDED.
 
-   On the final pass, INSN is the containing instruction.  */
+   On the final pass, FINAL is 1.  This means try for autoincrement
+   and count the uses and deaths of each pseudo-reg.
+
+   INSN is the containing instruction.  */
 
 static void
-mark_used_regs (needed, live, x, insn)
+mark_used_regs (needed, live, x, final, insn)
      regset needed;
      regset live;
      rtx x;
      rtx insn;
+     int final;
 {
   register RTX_CODE code;
   register int regno;
@@ -1135,7 +1354,7 @@ mark_used_regs (needed, live, x, insn)
     case MEM:
       /* Here we detect use of an index register which might
 	 be good for postincrement or postdecrement.  */
-      if (insn)
+      if (final)
 	{
 	  rtx addr = XEXP (x, 0);
 	  register int size = GET_MODE_SIZE (GET_MODE (x));
@@ -1148,7 +1367,6 @@ mark_used_regs (needed, live, x, insn)
 	      y = reg_next_use[regno];
 	      if (y && GET_CODE (PATTERN (y)) == SET
 		  && BLOCK_NUM (y) == BLOCK_NUM (insn)
-		  && SET_DEST (PATTERN (y)) == addr
 		  /* Can't add side effects to jumps; if reg is spilled and
 		     reloaded, there's no way to store back the altered value.  */
 		  && GET_CODE (insn) != JUMP_INSN
@@ -1163,9 +1381,10 @@ mark_used_regs (needed, live, x, insn)
 		       )
 		      && XEXP (y, 0) == addr
 		      && GET_CODE (XEXP (y, 1)) == CONST_INT
-		      && INTVAL (XEXP (y, 1)) == size))
+		      && INTVAL (XEXP (y, 1)) == size)
+		  && dead_or_set_p (reg_next_use[regno], addr))
 		{
-		  rtx use = find_use_as_address (PATTERN (insn), addr);
+		  rtx use = find_use_as_address (PATTERN (insn), addr, 0);
 
 		  /* Make sure this register appears only once in this insn.  */
 		  if (use != 0 && use != (rtx) 1)
@@ -1180,15 +1399,26 @@ mark_used_regs (needed, live, x, insn)
 		      REG_NOTES (insn)
 			= gen_rtx (EXPR_LIST, REG_INC, addr, REG_NOTES (insn));
 
+		      /* Modify the old increment-insn to simply copy
+			 the already-incremented value of our register.  */
 		      y = reg_next_use[regno];
-		      PUT_CODE (y, NOTE);
-		      NOTE_LINE_NUMBER (y) = NOTE_INSN_DELETED;
-		      NOTE_SOURCE_FILE (y) = 0;
-		      /* Count a reference to this reg for the increment
-			 insn we are deleting.  When a reg is incremented.
+		      SET_SRC (PATTERN (y)) = addr;
+
+		      /* If that makes it a no-op (copying the register
+			 into itself) then change it to a simpler no-op
+			 so it won't appear to be a "use" and a "set"
+			 of this register.  */
+		      if (SET_DEST (PATTERN (y)) == addr)
+			PATTERN (y) = gen_rtx (USE, VOIDmode, const0_rtx);
+
+		      /* Count an extra reference to the reg for the increment.
+			 When a reg is incremented.
 			 spilling it is worse, so we want to make that
 			 less likely.  */
 		      reg_n_refs[regno] += loop_depth;
+		      /* Count the increment as a setting of the register,
+			 even though it isn't a SET in rtl.  */
+		      reg_n_sets[regno]++;
 		    }
 		}
 	    }
@@ -1202,12 +1432,28 @@ mark_used_regs (needed, live, x, insn)
 
       regno = REGNO (x);
       if (regno != FRAME_POINTER_REGNUM
-	  && regno != ARG_POINTER_REGNUM && regno != STACK_POINTER_REGNUM)
+	  && regno != ARG_POINTER_REGNUM)
+	/* && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
 	{
 	  register int offset = regno / REGSET_ELT_BITS;
 	  register int bit = 1 << (regno % REGSET_ELT_BITS);
+	  int is_needed = 0;
+
 	  live[offset] |= bit;
-	  if (insn)
+	  /* A hard reg in a wide mode may really be multiple registers.
+	     If so, mark all of them just like the first.  */
+	  if (regno < FIRST_PSEUDO_REGISTER)
+	    {
+	      int n = HARD_REGNO_NREGS (regno, GET_MODE (x));
+	      while (--n > 0)
+		{
+		  live[(regno + n) / REGSET_ELT_BITS]
+		    |= 1 << ((regno + n) % REGSET_ELT_BITS);
+		  is_needed |= (needed[(regno + n) / REGSET_ELT_BITS]
+				& 1 << ((regno + n) % REGSET_ELT_BITS));
+		}
+	    }
+	  if (final)
 	    {
 	      register int blocknum = BLOCK_NUM (insn);
 
@@ -1243,7 +1489,8 @@ mark_used_regs (needed, live, x, insn)
 		 If it is used in this insn and was dead below the insn
 		 then it dies in this insn.  */
 
-	      if (!(needed[offset] & bit) && !flow_deadp (regno, insn))
+	      if (!(needed[offset] & bit) && !is_needed
+		  && ! find_regno_note (insn, REG_DEAD, regno))
 		{
 		  REG_NOTES (insn)
 		    = gen_rtx (EXPR_LIST, REG_DEAD, x, REG_NOTES (insn));
@@ -1255,16 +1502,31 @@ mark_used_regs (needed, live, x, insn)
 
     case SET:
       {
-	register rtx reg = SET_DEST (x);
+	register rtx testreg = SET_DEST (x);
+	int mark_dest = 0;
 
-	/* Modifying just one hardware register
-	   of a multi-register value does not count as "setting"
-	   for live-dead analysis.  It is more like a reference.
-	   But storing in a single register with an alternate mode
-	   is storing in the register.  */
-	if (GET_CODE (reg) == SUBREG
-	    && !(REG_SIZE (SUBREG_REG (reg)) > REG_SIZE (reg)))
-	  reg = SUBREG_REG (reg);
+	/* Storing in STRICT_LOW_PART is like storing in a reg
+	   in that this SET might be dead, so ignore it in TESTREG.
+	   but in some other ways it is like using the reg.  */
+	/* Storing in a SUBREG or a bit field is like storing the entire
+	   register in that if the register's value is not used
+	   then this SET is not needed.  */
+	while (GET_CODE (testreg) == STRICT_LOW_PART
+	       || GET_CODE (testreg) == ZERO_EXTRACT
+	       || GET_CODE (testreg) == SIGN_EXTRACT
+	       || GET_CODE (testreg) == SUBREG)
+	  {
+	    /* Modifying a single register in an alternate mode
+	       does not use any of the old value.  But these other
+	       ways of storing in a register do use the old value.  */
+	    if (GET_CODE (testreg) == SUBREG
+		&& !(REG_SIZE (SUBREG_REG (testreg)) > REG_SIZE (testreg)))
+	      ;
+	    else
+	      mark_dest = 1;
+
+	    testreg = XEXP (testreg, 0);
+	  }
 
 	/* If this is a store into a register,
 	   recursively scan the only value being stored,
@@ -1272,14 +1534,22 @@ mark_used_regs (needed, live, x, insn)
 	   If the value being computed here would never be used
 	   then the values it uses don't need to be computed either.  */
 
-	if (GET_CODE (reg) == REG
-	    && (regno = REGNO (reg), regno != FRAME_POINTER_REGNUM)
-	    && regno != ARG_POINTER_REGNUM && regno != STACK_POINTER_REGNUM)
+	if (GET_CODE (testreg) == REG
+	    && (regno = REGNO (testreg), regno != FRAME_POINTER_REGNUM)
+	    && regno != ARG_POINTER_REGNUM)
+	  /*  && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
 	  {
 	    register int offset = regno / REGSET_ELT_BITS;
 	    register int bit = 1 << (regno % REGSET_ELT_BITS);
-	    if (needed[offset] & bit)
-	      mark_used_regs (needed, live, XEXP (x, 1), insn);
+	    if ((needed[offset] & bit)
+		/* If insn refers to volatile, we mustn't delete it,
+		   so its inputs are all needed.  */
+		|| INSN_VOLATILE (insn))
+	      {
+		mark_used_regs (needed, live, SET_SRC (x), final, insn);
+		if (mark_dest)
+		  mark_used_regs (needed, live, SET_DEST (x), final, insn);
+	      }
 	    return;
 	  }
       }
@@ -1302,19 +1572,75 @@ mark_used_regs (needed, live, x, insn)
 		x = XEXP (x, 0);
 		goto retry;
 	      }
-	    mark_used_regs (needed, live, XEXP (x, i), insn);
+	    mark_used_regs (needed, live, XEXP (x, i), final, insn);
 	  }
 	if (fmt[i] == 'E')
 	  {
 	    register int j;
 	    for (j = 0; j < XVECLEN (x, i); j++)
-	      mark_used_regs (needed, live, XVECEXP (x, i, j), insn);
+	      mark_used_regs (needed, live, XVECEXP (x, i, j), final, insn);
 	  }
       }
   }
 }
 
-#if defined (HAVE_PRE_INCREMENT) || defined (HAVE_PRE_DECREMENT)
+/* Nonzero if X contains any volatile memory references
+   or volatile ASM_OPERANDS expressions.  */
+
+static int
+volatile_refs_p (x)
+     rtx x;
+{
+  register RTX_CODE code;
+
+  code = GET_CODE (x);
+  switch (code)
+    {
+    case LABEL_REF:
+    case SYMBOL_REF:
+    case CONST_INT:
+    case CONST:
+    case CC0:
+    case PC:
+    case CLOBBER:
+    case REG:
+      return 0;
+
+    case CALL:
+      return 1;
+
+    case MEM:
+    case ASM_OPERANDS:
+      if (x->volatil)
+	return 1;
+    }
+
+  /* Recursively scan the operands of this expression.  */
+
+  {
+    register char *fmt = GET_RTX_FORMAT (code);
+    register int i;
+    
+    for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+      {
+	if (fmt[i] == 'e')
+	  {
+	    if (volatile_refs_p (XEXP (x, i)))
+	      return 1;
+	  }
+	if (fmt[i] == 'E')
+	  {
+	    register int j;
+	    for (j = 0; j < XVECLEN (x, i); j++)
+	      if (volatile_refs_p (XVECEXP (x, i, j)))
+		return 1;
+	  }
+      }
+  }
+  return 0;
+}
+
+#ifdef AUTO_INC_DEC
 
 static int
 try_pre_increment_1 (insn)
@@ -1343,6 +1669,7 @@ try_pre_increment_1 (insn)
 	 spilling it is worse, so we want to make that
 	 less likely.  */
       reg_n_refs[regno] += loop_depth;
+      reg_n_sets[regno]++;
       return 1;
     }
   return 0;
@@ -1361,19 +1688,40 @@ try_pre_increment (insn, reg, amount)
 {
   register rtx use;
 
-#ifndef HAVE_PRE_INCREMENT
-#ifndef HAVE_PRE_DECREMENT
-  return 0;
-#else
+  /* Nonzero if we can try to make a pre-increment or pre-decrement.
+     For example, addl $4,r1; movl (r1),... can become movl +(r1),...  */
+  int pre_ok = 0;
+  /* Nonzero if we can try to make a post-increment or post-decrement.
+     For example, addl $4,r1; movl -4(r1),... can become movl (r1)+,...
+     It is possible for both PRE_OK and POST_OK to be nonzero if the machine
+     supports both pre-inc and post-inc, or both pre-dec and post-dec.  */
+  int post_ok = 0;
+
+  /* Nonzero if the opportunity actually requires post-inc or post-dec.  */
+  int do_post = 0;
+
+  /* From the sign of increment, see which possibilities are conceivable
+     on this target machine.  */
+#ifdef HAVE_PRE_INCREMENT
   if (amount > 0)
-    return 0;
+    pre_ok = 1;
 #endif
+#ifdef HAVE_POST_INCREMENT
+  if (amount > 0)
+    post_ok = 1;
 #endif
 
-#ifndef HAVE_PRE_DECREMENT
+#ifdef HAVE_PRE_DECREMENT
   if (amount < 0)
-    return 0;
+    pre_ok = 1;
 #endif
+#ifdef HAVE_POST_DECREMENT
+  if (amount < 0)
+    post_ok = 1;
+#endif
+
+  if (! (pre_ok || post_ok))
+    return 0;
 
   /* It is not safe to add a side effect to a jump insn
      because if the incremented register is spilled and must be reloaded
@@ -1382,7 +1730,14 @@ try_pre_increment (insn, reg, amount)
   if (GET_CODE (insn) == JUMP_INSN)
     return 0;
 
-  use = find_use_as_address (PATTERN (insn), reg);
+  use = 0;
+  if (pre_ok)
+    use = find_use_as_address (PATTERN (insn), reg, 0);
+  if (post_ok && (use == 0 || use == (rtx) 1))
+    {
+      use = find_use_as_address (PATTERN (insn), reg, -amount);
+      do_post = 1;
+    }
 
   if (use == 0 || use == (rtx) 1)
     return 0;
@@ -1390,7 +1745,9 @@ try_pre_increment (insn, reg, amount)
   if (GET_MODE_SIZE (GET_MODE (use)) != (amount > 0 ? amount : - amount))
     return 0;
 
-  XEXP (use, 0) = gen_rtx (amount > 0 ? PRE_INC : PRE_DEC,
+  XEXP (use, 0) = gen_rtx (amount > 0
+			   ? (do_post ? POST_INC : PRE_INC)
+			   : (do_post ? POST_DEC : PRE_DEC),
 			   Pmode, reg);
 
   /* Record that this insn now has an implicit side effect on X.  */
@@ -1398,16 +1755,22 @@ try_pre_increment (insn, reg, amount)
   return 1;
 }
 
+#endif /* AUTO_INC_DEC */
+
 /* Find the place in the rtx X where REG is used as a memory address.
    Return the MEM rtx that so uses it.
-   If REG does not appear, return 0.
-   If REG appears more than once, or is used other than as a memory address,
+   If PLUSCONST is nonzero, search instead for a memory address equivalent to
+   (plus REG (const_int PLUSCONST)).
+
+   If such an address does not appear, return 0.
+   If REG appears more than once, or is used other than in such an address,
    return (rtx)1.  */
 
 static rtx
-find_use_as_address (x, reg)
+find_use_as_address (x, reg, plusconst)
      register rtx x;
      rtx reg;
+     int plusconst;
 {
   enum rtx_code code = GET_CODE (x);
   char *fmt = GET_RTX_FORMAT (code);
@@ -1415,8 +1778,22 @@ find_use_as_address (x, reg)
   register rtx value = 0;
   register rtx tem;
 
-  if (code == MEM && XEXP (x, 0) == reg)
+  if (code == MEM && XEXP (x, 0) == reg && plusconst == 0)
     return x;
+
+  if (code == MEM && GET_CODE (XEXP (x, 0)) == PLUS
+      && XEXP (XEXP (x, 0), 0) == reg
+      && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT
+      && INTVAL (XEXP (XEXP (x, 0), 1)) == plusconst)
+    return x;
+
+  if (code == SIGN_EXTRACT || code == ZERO_EXTRACT)
+    {
+      /* If REG occurs inside a MEM used in a bit-field reference,
+	 that is unacceptable.  */
+      if (find_use_as_address (XEXP (x, 0), reg, 0) != 0)
+	return (rtx) 1;
+    }
 
   if (x == reg)
     return (rtx) 1;
@@ -1425,7 +1802,7 @@ find_use_as_address (x, reg)
     {
       if (fmt[i] == 'e')
 	{
-	  tem = find_use_as_address (XEXP (x, i), reg);
+	  tem = find_use_as_address (XEXP (x, i), reg, plusconst);
 	  if (value == 0)
 	    value = tem;
 	  else if (tem != 0)
@@ -1436,7 +1813,7 @@ find_use_as_address (x, reg)
 	  register int j;
 	  for (j = XVECLEN (x, i) - 1; j >= 0; j--)
 	    {
-	      tem = find_use_as_address (XVECEXP (x, i, j), reg);
+	      tem = find_use_as_address (XVECEXP (x, i, j), reg, plusconst);
 	      if (value == 0)
 		value = tem;
 	      else if (tem != 0)
@@ -1447,12 +1824,11 @@ find_use_as_address (x, reg)
 
   return value;
 }
-
-#endif /* HAVE_PRE_INCREMENT or HAVE_PRE_DECREMENT */
 
 /* Write information about registers and basic blocks into FILE.
    This is part of making a debugging dump.  */
 
+void
 dump_flow_info (file)
      FILE *file;
 {
@@ -1464,7 +1840,6 @@ dump_flow_info (file)
   for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
     if (reg_n_refs[i])
       {
-	register rtx chain;
 	enum reg_class class;
 	fprintf (file, "\nRegister %d used %d times across %d insns",
 		 i, reg_n_refs[i], reg_live_length[i]);
@@ -1478,7 +1853,12 @@ dump_flow_info (file)
 	  fprintf (file, "; %d bytes", PSEUDO_REGNO_BYTES (i));
 	class = reg_preferred_class (i);
 	if (class != GENERAL_REGS)
-	  fprintf (file, "; pref %s", reg_class_names[(int) class]);
+	  {
+	    if (reg_preferred_or_nothing (i))
+	      fprintf (file, "; %s or none", reg_class_names[(int) class]);
+	    else
+	      fprintf (file, "; pref %s", reg_class_names[(int) class]);
+	  }
 	if (REGNO_POINTER_FLAG (i))
 	  fprintf (file, "; pointer");
 	fprintf (file, ".\n");

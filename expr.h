@@ -24,18 +24,24 @@ and this notice must be preserved on all copies.  */
    should ever encounter a QUEUED.  */
 
 /* The variable for which an increment is queued.  */
-#define QUEUED_VAR(P) FORMAT_e (P, 0)
+#define QUEUED_VAR(P) XEXP (P, 0)
 /* If the increment has been emitted, this is the insn
    that does the increment.  It is zero before the increment is emitted.  */
-#define QUEUED_INSN(P) FORMAT_e (P, 1)
+#define QUEUED_INSN(P) XEXP (P, 1)
 /* If a pre-increment copy has been generated, this is the copy
    (it is a temporary reg).  Zero if no copy made yet.  */
-#define QUEUED_COPY(P) FORMAT_e (P, 2)
+#define QUEUED_COPY(P) XEXP (P, 2)
 /* This is the body to use for the insn to do the increment.
    It is used to emit the increment.  */
-#define QUEUED_BODY(P) FORMAT_e (P, 3)
+#define QUEUED_BODY(P) XEXP (P, 3)
 /* Next QUEUED in the queue.  */
-#define QUEUED_NEXT(P) FORMAT_e (P, 4)
+#define QUEUED_NEXT(P) XEXP (P, 4)
+
+/* This is the 4th arg to `expand_expr'.
+   EXPAND_SUM means it is ok to return a PLUS rtx or MULT rtx.
+   EXPND_CONST_ADDRESS means it is ok to return a MEM whose address
+    is a constant that is not a legitimate address.  */
+enum expand_modifier {EXPAND_NORMAL, EXPAND_SUM, EXPAND_CONST_ADDRESS};
 
 /* If this is nonzero, we do not bother generating VOLATILE
    around volatile memory references, and we are willing to
@@ -45,6 +51,34 @@ and this notice must be preserved on all copies.  */
    the same indirect address eventually.  */
 extern int cse_not_expected;
 
+#ifdef TREE_CODE /* Don't lose if tree.h not included.  */
+/* Structure to record the size of a sequence of arguments
+   as the sum of a tree-expression and a constant.  */
+
+struct args_size
+{
+  int constant;
+  tree var;
+};
+#endif
+
+/* Add the value of the tree INC to the `struct args_size' TO.  */
+
+#define ADD_PARM_SIZE(TO, INC)	\
+{ tree inc = (INC);				\
+  if (TREE_CODE (inc) == INTEGER_CST)		\
+    (TO).constant += TREE_INT_CST_LOW (inc);	\
+  else if ((TO).var == 0)			\
+    (TO).var = inc;				\
+  else						\
+    (TO).var = genop (PLUS_EXPR, (TO).var, inc); }
+
+/* Convert the implicit sum in a `struct args_size' into an rtx.  */
+#define ARGS_SIZE_RTX(SIZE)						\
+((SIZE).var == 0 ? gen_rtx (CONST_INT, VOIDmode, (SIZE).constant)	\
+ : plus_constant (expand_expr ((SIZE).var, 0, VOIDmode, 0),		\
+		  (SIZE).constant))
+
 /* Optabs are tables saying how to generate insn bodies
    for various machine modes and numbers of operands.
    Each optab applies to one operation.
@@ -66,9 +100,12 @@ extern int cse_not_expected;
 
 typedef struct optab
 {
-  enum insn_code insn_code;
-  char *lib_call;
-} optab [NUM_MACHINE_MODES];
+  enum rtx_code code;
+  struct {
+    enum insn_code insn_code;
+    char *lib_call;
+  } handlers [NUM_MACHINE_MODES];
+} * optab;
 
 /* Given an enum insn_code, access the function to construct
    the body of that kind of insn.  */
@@ -89,6 +126,7 @@ extern optab udivmod_optab;
 extern optab smod_optab;	/* Signed remainder */
 extern optab umod_optab;
 extern optab flodiv_optab;	/* Optab for floating divide. */
+extern optab ftrunc_optab;	/* Convert float to integer in float fmt */
 extern optab and_optab;		/* Logical and */
 extern optab andcb_optab;	/* Logical and with complement of 2nd arg */
 extern optab ior_optab;		/* Logical or */
@@ -110,6 +148,7 @@ extern optab tst_optab;		/* tst insn; compare one operand against 0 */
 extern optab neg_optab;		/* Negation */
 extern optab abs_optab;		/* Abs value */
 extern optab one_cmpl_optab;	/* Bitwise not */
+extern optab ffs_optab;		/* Find first bit set */
 
 /* Passed to expand_binop and expand_unop to say which options to try to use
    if the requested operation can't be open-coded on the requisite mode.
@@ -123,16 +162,6 @@ enum optab_methods
   OPTAB_WIDEN,
   OPTAB_LIB_WIDEN,
 };
-
-/* Nonzero means load memory operands into registers before doing
-   arithmetic on them.  Gives better cse but slower compilation.  */
-
-extern int force_mem;
-
-/* Nonzero for -optforceaddr: load memory address into a register
-   before reference to it.  This makes better cse but slower compilation.  */
-
-extern int force_addr;
 
 typedef rtx (*rtxfun) ();
 
@@ -210,8 +239,11 @@ rtx eliminate_constant_term ();
    by emitting insns to perform arithmetic if nec.  */
 rtx memory_address ();
 
-rtx low_half ();
-rtx high_half ();
+/* Return a memory reference like MEMREF, but with its mode changed
+   to MODE and its address changed to ADDR.
+   (VOIDmode means don't change the mode.
+   NULL for ADDR means don't change the address.)  */
+rtx change_address ();
 
 /* Return 1 if two rtx's are equivalent in structure and elements.  */
 int rtx_equal_p ();
@@ -227,8 +259,18 @@ rtx copy_all_regs ();
 /* Copy given rtx to a new temp reg and return that.  */
 rtx copy_to_reg ();
 
+/* Like copy_to_reg but always make the reg Pmode.  */
+rtx copy_addr_to_reg ();
+
+/* Like copy_to_reg but always make the reg the specified mode MODE.  */
+rtx copy_to_mode_reg ();
+
 /* Copy given rtx to given temp reg and return that.  */
 rtx copy_to_suggested_reg ();
+
+/* Copy a value to a register if it isn't already a register.
+   Args are mode (in case value is a constant) and the value.  */
+rtx force_reg ();
 
 /* Return given rtx, copied into a new temp reg if it was in memory.  */
 rtx force_not_mem ();
@@ -246,15 +288,26 @@ rtx function_value ();
    in its original home.  This becomes invalid if any more code is emitted.  */
 rtx hard_function_value ();
 
+/* Return an rtx that refers to the value returned by a library call
+   in its original home.  This becomes invalid if any more code is emitted.  */
+rtx hard_libcall_value ();
+
 /* Emit code to copy function value to a specified place.  */
 void copy_function_value ();
 
+/* Given an rtx, return an rtx for a value rounded up to a multiple
+   of STACK_BOUNDARY / BITS_PER_UNIT.  */
+rtx round_push ();
+
 rtx store_bit_field ();
-rtx store_fixed_bit_field ();
 rtx extract_bit_field ();
-rtx extract_fixed_bit_field ();
 rtx expand_shift ();
 rtx expand_bit_and ();
 rtx expand_mult ();
 rtx expand_divmod ();
 rtx get_structure_value_addr ();
+rtx expand_stmt_expr ();
+
+void jumpifnot ();
+void jumpif ();
+void do_jump ();

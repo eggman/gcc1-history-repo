@@ -1,5 +1,5 @@
 /* Move constant computations out of loops.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -40,6 +40,7 @@ and this notice must be preserved on all copies.  */
 #include "insn-config.h"
 #include "regs.h"
 #include "recog.h"
+#include <stdio.h>
 
 /* Vector mapping INSN_UIDs to luids.
    The luids are like uids but increase monononically always.
@@ -111,18 +112,26 @@ static int loop_store_addrs_idx;
 struct movable
 {
   rtx insn;			/* A movable insn */
+  int consec;			/* Number of consecutive following insns 
+				   that must be moved with this one.  */
   int regno;			/* The register it sets */
   short lifetime;		/* lifetime of that register;
 				   may be adjusted when matching movables
 				   that load the same value are found.  */
+  short times_used;		/* Number of times the register is used,
+				   plus uses of related insns that could
+				   be moved if this one is.  */
   unsigned int cond : 1;	/* 1 if only conditionally movable */
   unsigned int force : 1;	/* 1 means MUST move this insn */
   unsigned int global : 1;	/* 1 means reg is live outside this loop */
-  unsigned int dont : 1;	/* 1 inhibits further processing of this */
+  unsigned int done : 1;	/* 1 inhibits further processing of this */
+  unsigned int partial : 1;	/* Moving this doesn't make it invariant.  */
   struct movable *match;	/* First entry for same value */
   struct movable *forces;	/* An insn that must be moved if this is */
   struct movable *next;
 };
+
+static FILE *loop_dump_stream;
 
 static rtx verify_loop ();
 static int invariant_p ();
@@ -133,22 +142,27 @@ static int loop_reg_used_before_p ();
 static void constant_high_bytes ();
 static void scan_loop ();
 static rtx replace_regs ();
+static void move_movables ();
+static int may_trap_p ();
 
 /* Entry point of this file.  Perform loop optimization
    on the current function.  F is the first insn of the function
    and NREGS is the number of register numbers used.  */
 
-int
-loop_optimize (f, nregs)
+void
+loop_optimize (f, nregs, dumpfile)
      /* f is the first instruction of a chain of insns for one function */
      rtx f;
      /* nregs is the total number of registers used in it */
      int nregs;
+     FILE *dumpfile;
 {
   register rtx insn;
   register int i;
   rtx end;
   rtx last_insn;
+
+  loop_dump_stream = dumpfile;
 
   init_recog ();
 
@@ -181,6 +195,12 @@ loop_optimize (f, nregs)
      Make sure that uid_luid for that former insn's uid
      points to the general area where that insn used to be.  */
   for (i = 0; i < max_uid; i++)
+    {
+      uid_luid[0] = uid_luid[i];
+      if (uid_luid[0] != 0)
+	break;
+    }
+  for (i = 0; i < max_uid; i++)
     if (uid_luid[i] == 0)
       uid_luid[i] = uid_luid[i - 1];
 
@@ -212,6 +232,9 @@ scan_loop (loop_start, end, nregs)
   /* For a rotated loop that is entered near the bottom,
      this is the label at the top.  Otherwise it is zero.  */
   rtx loop_top = 0;
+  /* This is the insn (whatever kind) before the NOTE that starts the loop.
+     Any insns moved out of the loop will follow it.  */
+  rtx before_start = PREV_INSN (loop_start);
   /* Jump insn that enters the loop, or 0 if control drops in.  */
   rtx loop_entry_jump = 0;
   /* Place in the loop where control enters.  */
@@ -239,7 +262,7 @@ scan_loop (loop_start, end, nregs)
      for saving an instruction.  More if loop doesn't call subroutines
      since in that case saving an insn makes more difference
      and more registers are available.  */
-  int threshold = loop_has_call ? 15 : 30;
+  int threshold = loop_has_call ? 17 : 34;
 
   n_times_set = (short *) alloca (nregs * sizeof (short));
   n_times_used = (short *) alloca (nregs * sizeof (short));
@@ -256,6 +279,8 @@ scan_loop (loop_start, end, nregs)
   if (p == end)
     return;
 
+  scan_start = p;
+
   /* If loop has a jump before the first label,
      the true entry is the target of that jump.
      Start scan from there.
@@ -269,16 +294,39 @@ scan_loop (loop_start, end, nregs)
 	 If we see one, this must not be a real loop.  */
       if (GET_CODE (loop_top) != BARRIER)
 	return;
-      while (GET_CODE (loop_top) != CODE_LABEL)
-	loop_top = NEXT_INSN (loop_top);
       p = JUMP_LABEL (p);
       /* Check to see whether the jump actually
 	 jumps out of the loop (meaning it's no loop).
 	 This case can happen for things like
 	 do {..} while (0).  */
-      if (INSN_LUID (p) < INSN_LUID (loop_start)
+      if (p == 0
+	  || INSN_LUID (p) < INSN_LUID (loop_start)
 	  || INSN_LUID (p) >= INSN_LUID (end))
-	return;
+	{
+	  if (loop_dump_stream)
+	    fprintf (loop_dump_stream, "\nLoop from %d to %d is phony.\n\n",
+		     INSN_UID (loop_start), INSN_UID (end));
+	  return;
+	}
+
+      /* Find the first label after the entry-jump.  */
+      while (GET_CODE (loop_top) != CODE_LABEL)
+	{
+	  loop_top = NEXT_INSN (loop_top);
+	  if (loop_top == 0)
+	    abort ();
+	}
+
+      /* Maybe rearrange the loop to drop straight in
+	 with a new test to jump around it entirely.
+	 (The latter is considered outside the loop.)
+	 If this is done, we no longer enter with a jump.  */
+      if (loop_skip_over (loop_start, end, loop_entry_jump))
+	loop_top = 0;
+      else
+	/* We really do enter with a jump;
+	   scan the loop from the place where the jump jumps to.  */
+	scan_start = p;
     }
 
   /* Count number of times each reg is set during this loop.
@@ -287,11 +335,16 @@ scan_loop (loop_start, end, nregs)
 
   bzero (n_times_set, nregs * sizeof (short));
   bzero (may_not_move, nregs);
-  count_loop_regs_set (loop_start, end, n_times_set, may_not_move, 
+  count_loop_regs_set (loop_top ? loop_top : loop_start, end,
+		       n_times_set, may_not_move, 
 		       &insn_count, nregs);
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     may_not_move[i] = 1, n_times_set[i] = 1;
   bcopy (n_times_set, n_times_used, nregs * sizeof (short));
+
+  if (loop_dump_stream)
+    fprintf (loop_dump_stream, "\nLoop from %d to %d: %d real insns\n\n",
+	     INSN_UID (loop_start), INSN_UID (end), insn_count);
 
   /* Scan through the loop finding insns that are safe to move.
      In each such insn, store QImode as the mode, to mark it.
@@ -307,7 +360,7 @@ scan_loop (loop_start, end, nregs)
      When MAYBE_NEVER is 0, all insns will be executed at least once
      so that is not a problem.  */
 
-  scan_start = p;
+  p = scan_start;
   while (1)
     {
       p = NEXT_INSN (p);
@@ -340,19 +393,26 @@ scan_loop (loop_start, end, nregs)
 	      && (maybe_never
 		  || loop_reg_used_before_p (p, loop_start, scan_start, end)))
 	    ;
+	  /* If this can cause a trap (such as divide by zero), can't move it
+	     unless it's guaranteed to be executed once loop is entered.  */
+	  else if (maybe_never && may_trap_p (SET_SRC (PATTERN (p))))
+	    ;
 	  else if ((tem = invariant_p (SET_SRC (PATTERN (p)), n_times_set))
 		   && (n_times_set[REGNO (SET_DEST (PATTERN (p)))] == 1
-		       || all_sets_invariant_p (SET_DEST (PATTERN (p)),
-						p, n_times_set)))
+		       || consec_sets_invariant_p (SET_DEST (PATTERN (p)),
+						   p, n_times_set)))
 	    {
 	      register struct movable *m;
 	      register int regno = REGNO (SET_DEST (PATTERN (p)));
+	      int count;
 	      m = (struct movable *) alloca (sizeof (struct movable));
 	      m->next = 0;
 	      m->insn = p;
 	      m->force = 0;
-	      m->dont = 0;
+	      m->consec = n_times_set[REGNO (SET_DEST (PATTERN (p)))] - 1;
+	      m->done = 0;
 	      m->forces = 0;
+	      m->partial = 0;
 	      m->regno = regno;
 	      m->cond = (tem > 1);
 	      m->global = (uid_luid[regno_last_uid[regno]] > INSN_LUID (end)
@@ -360,6 +420,7 @@ scan_loop (loop_start, end, nregs)
 	      m->match = 0;
 	      m->lifetime = (uid_luid[regno_last_uid[regno]]
 			     - uid_luid[regno_first_uid[regno]]);
+	      m->times_used = n_times_used[regno];
 	      n_times_set[regno] = -1;
 	      /* Add M to the end of the chain MOVABLES.  */
 	      if (movables == 0)
@@ -367,28 +428,71 @@ scan_loop (loop_start, end, nregs)
 	      else
 		last_movable->next = m;
 	      last_movable = m;
+	      /* Skip the consecutive insns, if there are any.  */
+	      for (count = m->consec - 1; count >= 0; count--)
+		{
+		  do p = NEXT_INSN (p);
+		  while (GET_CODE (p) == NOTE);
+		}
 	    }
-#ifdef SLOW_ZERO_EXTEND
-	  /* If this register is set only once, and by zero-extending,
-	     that means its high bytes are constant.
+	  /* If this register is always set within a STRICT_LOW_PART
+	     or set to zero, then its high bytes are constant.
 	     So clear them outside the loop and within the loop
 	     just load the low bytes.
 	     We must check that the machine has an instruction to do so.
 	     Also, if the value loaded into the register
 	     depends on the same register, this cannot be done.  */
-
-	  else if (GET_CODE (SET_SRC (PATTERN (p))) == ZERO_EXTEND
+	  else if (SET_SRC (PATTERN (p)) == const0_rtx
+		   && GET_CODE (NEXT_INSN (p)) == INSN
+		   && GET_CODE (PATTERN (NEXT_INSN (p))) == SET
+		   && (GET_CODE (SET_DEST (PATTERN (NEXT_INSN (p))))
+		       == STRICT_LOW_PART)
+		   && (GET_CODE (XEXP (SET_DEST (PATTERN (NEXT_INSN (p))), 0))
+		       == SUBREG)
+		   && (SUBREG_REG (XEXP (SET_DEST (PATTERN (NEXT_INSN (p))), 0))
+		       == SET_DEST (PATTERN (p)))
 		   && !reg_mentioned_p (SET_DEST (PATTERN (p)),
-					SET_SRC (PATTERN (p))))
+					SET_SRC (PATTERN (NEXT_INSN (p)))))
 	    {
 	      register int regno = REGNO (SET_DEST (PATTERN (p)));
-	      if ((threshold
-		   * (uid_luid[regno_last_uid[regno]]
-		      - uid_luid[regno_first_uid[regno]]))
-		  >= insn_count)
-		constant_high_bytes (p, loop_start);
+	      if (n_times_set[regno] == 2)
+		{
+		  register struct movable *m;
+		  int count;
+		  m = (struct movable *) alloca (sizeof (struct movable));
+		  m->next = 0;
+		  m->insn = p;
+		  m->force = 0;
+		  m->consec = 0;
+		  m->done = 0;
+		  m->forces = 0;
+		  m->partial = 1;
+		  m->regno = regno;
+		  m->cond = 0;
+		  /* Say "global" so this register is not combined
+		     with any other.  In fact, it is sometimes possible
+		     to combine two of these registers, but the criteria
+		     are special and have not been programmed in.  */
+		  m->global = 1;
+		  m->match = 0;
+		  m->lifetime = (uid_luid[regno_last_uid[regno]]
+				 - uid_luid[regno_first_uid[regno]]);
+		  m->times_used = n_times_used[regno];
+		  n_times_set[regno] = -1;
+		  /* Add M to the end of the chain MOVABLES.  */
+		  if (movables == 0)
+		    movables = m;
+		  else
+		    last_movable->next = m;
+		  last_movable = m;
+		  /* Skip the consecutive insns, if there are any.  */
+		  for (count = m->consec - 1; count >= 0; count--)
+		    {
+		      do p = NEXT_INSN (p);
+		      while (GET_CODE (p) == NOTE);
+		    }
+		}
 	    }
-#endif /* SLOW_ZERO_EXTEND */
 	}
       /* Past a label or a jump, we get to insns for which we
 	 can't count on whether or how many times they will be
@@ -400,7 +504,10 @@ scan_loop (loop_start, end, nregs)
     }
 
   /* For each movable insn, see if the reg that it loads
-     leads when it dies right into another conditionally movable insn.  */
+     leads when it dies right into another conditionally movable insn.
+     If so, record that the second insn "forces" the first one,
+     since the second can be moved only if the first is.  */
+
   {
     register struct movable *m, *m1;
     for (m1 = movables; m1; m1 = m1->next)
@@ -411,7 +518,15 @@ scan_loop (loop_start, end, nregs)
 	    break;
 	if (m != 0 && SET_SRC (PATTERN (m->insn)) == SET_DEST (PATTERN (m1->insn)))
 	  m = 0;
-	m1->forces = m;
+
+	/* Increase the priority of the moving the first insn
+	   since it permits the second to be moved as well.  */
+	if (m != 0)
+	  {
+	    m->forces = m1;
+	    m1->lifetime += m->lifetime;
+	    m1->times_used += m1->times_used;
+	  }
       }
   }
 
@@ -419,61 +534,194 @@ scan_loop (loop_start, end, nregs)
      If there are, make all but the first point at the first one
      through the `match' field, and add the priorities of them
      all together as the priority of the first.  */
+
   {
     register struct movable *m;
-    rtx *reg_map = (rtx *) alloca (nregs * sizeof (rtx));
     char *matched_regs = (char *) alloca (nregs);
 
-    bzero (reg_map, nregs * sizeof (rtx));
+    /* Regs that are used more than once are not allowed to match
+       or be matched.  I'm no longer sure why not.  */
 
     for (m = movables; m; m = m->next)
-      if (m->match == 0 && n_times_used[m->regno] == 1 && !m->global
-	  && (! movables->cond
-	      || 1 == invariant_p (SET_SRC (PATTERN (movables->insn)), n_times_set)))
+      if (m->match == 0 && n_times_used[m->regno] == 1)
 	{
 	  register struct movable *m1;
-	  int matched = 0;
-	  int lifetime = m->lifetime;
-	  int times_used = n_times_used[m->regno];
-
-	  if (m->forces != 0) times_used++;
+	  int regno = m->regno;
 
 	  bzero (matched_regs, nregs);
-	  matched_regs[m->regno] = 1;
+	  matched_regs[regno] = 1;
 
 	  for (m1 = m->next; m1; m1 = m1->next)
+	    if (m1->match == 0 && n_times_used[m1->regno] == 1
+		/* A reg used outside the loop mustn't be eliminated.  */
+		&& !m1->global
+		&& (matched_regs[m1->regno]
+		    ||
+		    (
+		     /* Can't combine regs with different modes
+			even if loaded from the same constant.  */
+		     (GET_MODE (SET_DEST (PATTERN (m->insn)))
+		      == GET_MODE (SET_DEST (PATTERN (m1->insn))))
+		     /* See if the source of M1 says it matches M.  */
+		     && ((GET_CODE (SET_SRC (PATTERN (m1->insn))) == REG
+			  && matched_regs[REGNO (SET_SRC (PATTERN (m1->insn)))])
+			 || rtx_equal_p (SET_SRC (PATTERN (m->insn)),
+					 SET_SRC (PATTERN (m1->insn)))
+			 || (REG_NOTES (m->insn) && REG_NOTES (m1->insn)
+			     && REG_NOTE_KIND (REG_NOTES (m->insn)) == REG_EQUIV
+			     && REG_NOTE_KIND (REG_NOTES (m1->insn)) == REG_EQUIV
+			     && rtx_equal_p (XEXP (REG_NOTES (m->insn), 0),
+					     XEXP (REG_NOTES (m1->insn), 0)))))))
+	      {
+		m->lifetime += m1->lifetime;
+		m->times_used += m1->times_used;
+		m1->match = m;
+		matched_regs[m1->regno] = 1;
+	      }
+	}
+  }
+	
+  /* Now consider each movable insn to decide whether it is worth moving.  */
+
+  move_movables (movables, n_times_set, n_times_used, threshold,
+		 insn_count, loop_start, end, nregs);
+}
+
+/* Scan MOVABLES, and move the insns that deserve to be moved.
+   If two matching movables are combined, replace one reg with the
+   other throughout.  */
+
+static void
+move_movables (movables, n_times_set, n_times_used, threshold,
+	       insn_count, loop_start, end, nregs)
+     struct movable *movables;
+     short *n_times_set;
+     short *n_times_used;
+     int threshold;
+     int insn_count;
+     rtx loop_start;
+     rtx end;
+     int nregs;
+{
+  rtx new_start = 0;
+  register struct movable *m;
+  register rtx p;
+  /* Map of pseudo-register replacements to handle combining
+     when we move several insns that load the same value
+     into different pseudo-registers.  */
+  rtx *reg_map = (rtx *) alloca (nregs * sizeof (rtx));
+  char *already_moved = (char *) alloca (nregs);
+
+  bzero (already_moved, nregs);
+  bzero (reg_map, nregs * sizeof (rtx));
+
+  for (m = movables; m; m = m->next)
+    {
+      /* Describe this movable insn.  */
+
+      if (loop_dump_stream)
+	{
+	  fprintf (loop_dump_stream, "Insn %d: regno %d (life %d), ",
+		   INSN_UID (m->insn), m->regno, m->lifetime);
+	  if (m->consec > 0)
+	    fprintf (loop_dump_stream, "consec %d, ", m->consec);
+	  if (m->cond)
+	    fprintf (loop_dump_stream, "cond ");
+	  if (m->force)
+	    fprintf (loop_dump_stream, "force ");
+	  if (m->global)
+	    fprintf (loop_dump_stream, "global ");
+	  if (m->done)
+	    fprintf (loop_dump_stream, "done ");
+	  if (m->match)
+	    fprintf (loop_dump_stream, "matches %d ",
+		     INSN_UID (m->match->insn));
+	  if (m->forces)
+	    fprintf (loop_dump_stream, "forces %d ",
+		     INSN_UID (m->forces->insn));
+	}
+
+      /* Ignore the insn if it's already done (it matched something else).
+	 Otherwise, see if it is now safe to move.  */
+
+      if (!m->done
+	  && (! m->cond
+	      || 1 == invariant_p (SET_SRC (PATTERN (m->insn)), n_times_set))
+	  && (! m->forces || m->forces->done))
+	{
+	  register int regno;
+	  register rtx p;
+	  int times_used = m->times_used + m->consec;
+
+	  /* We have an insn that is safe to move.
+	     Compute its desirability.  */
+
+	  p = m->insn;
+	  regno = m->regno;
+
+	  if (loop_dump_stream)
+	    fprintf (loop_dump_stream, "reg uses %d ", times_used);
+
+	  /* An insn MUST be moved if we already moved something else
+	     which is safe only if this one is moved too: that is,
+	     if already_moved[REGNO] is nonzero.  */
+
+	  /* An insn is desirable to move if the new lifetime of the
+	     register is no more than THRESHOLD times the old lifetime.
+	     If it's not desirable, it means the loop is so big
+	     that moving won't speed things up much,
+	     and it is liable to make register usage worse.  */
+
+	  /* It is also desirable to move if it can be moved at no
+	     extra cost because something else was already moved.  */
+
+	  if (already_moved[regno]
+	      || (threshold * times_used * m->lifetime) >= insn_count
+	      || (m->forces && m->forces->done
+		  && n_times_used[m->forces->regno] == 1))
 	    {
-	      if (m1->match == 0 && n_times_used[m1->regno] == 1
-		  && !m1->global
-		  /* Perform already-scheduled replacements
-		     on M1's insn before comparing them!  */
-		  && (replace_regs (PATTERN (m1->insn), reg_map),
-		      ((GET_CODE (SET_SRC (PATTERN (m1->insn))) == REG
-			&& matched_regs[REGNO (SET_SRC (PATTERN (m1->insn)))])
-		       || rtx_equal_p (SET_SRC (PATTERN (m->insn)),
-				       SET_SRC (PATTERN (m1->insn))))))
+	      int count;
+	      register struct movable *m1;
+
+	      for (count = m->consec; count >= 0; count--)
 		{
-		  lifetime += m1->lifetime;
-		  times_used += n_times_used[m1->regno];
-		  if (m1->forces != 0) times_used++;
-		  m1->match = m;
-		  matched_regs[m1->regno] = 1;
-		  matched = 1;
+		  rtx i1 = emit_insn_before (PATTERN (p), loop_start);
+		  if (new_start == 0)
+		    new_start = i1;
+
+		  if (loop_dump_stream)
+		    fprintf (loop_dump_stream, "moved to %d", INSN_UID (i1));
+
+		  /* Mark the moved, invariant reg as being equivalent to
+		     its constant value.  */
+		  REG_NOTES (i1) = REG_NOTES (p);
+		  if (REG_NOTES (i1) == 0
+		      && ! m->partial /* But not if its a zero-extend clr. */
+		      && ! m->global /* and not if used outside the loop
+					(since it might get set outside).  */
+		      && CONSTANT_P (SET_SRC (PATTERN (p))))
+		    REG_NOTES (i1)
+		      = gen_rtx (EXPR_LIST, REG_EQUIV,
+				 SET_SRC (PATTERN (p)), REG_NOTES (i1));
+		  delete_insn (p);
+		  do p = NEXT_INSN (p);
+		  while (GET_CODE (p) == NOTE);
+
+		  /* The more insns we move, the less we like moving them.  */
+		  threshold -= 2;
 		}
-	    }
-	  
-	  /* If the movable insn M has others that match it
-	     and all together they merit being moved,
-	     go through the others now and replace their registers
-	     with M's register.  Mark the others with the `dont' field
-	     and do all processing on them now.  */
-	  if (matched
-	      && ((threshold * times_used * lifetime) >= insn_count
-		  || m->force
-		  || n_times_set[m->regno] == 0))
-	    {
-	      m->force = 1;
-	      m->lifetime = lifetime;
+
+	      /* Any other movable that loads the same register
+		 MUST be moved.  */
+	      already_moved[regno] = 1;
+
+	      /* The reg set here is now invariant.  */
+	      if (! m->partial)
+		n_times_set[regno] = 0;
+
+	      m->done = 1;
+
+	      /* Combine with this moved insn any other matching movables.  */
 
 	      for (m1 = m->next; m1; m1 = m1->next)
 		if (m1->match == m)
@@ -481,99 +729,92 @@ scan_loop (loop_start, end, nregs)
 		    /* Schedule the reg loaded by M1
 		       for replacement so that shares the reg of M.  */
 		    reg_map[m1->regno] = SET_DEST (PATTERN (m->insn));
-		    /* Get rid of the replaced reg
+		    /* Get rid of the matching insn
 		       and prevent further processing of it.  */
-		    m1->dont = 1;
+		    m1->done = 1;
 		    delete_insn (m1->insn);
+
+		    /* Any other movable that loads the same register
+		       MUST be moved.  */
+		    already_moved[m1->regno] = 1;
+
+		    /* The reg merged here is now invariant.  */
+		    if (m->partial)
+		      n_times_set[m1->regno] = 0;
 		  }
 	    }
+	  else if (loop_dump_stream)
+	    fprintf (loop_dump_stream, "not desirable");
 	}
-    /* Go through all the instructions in the loop, making
-       all the register substitutions scheduled above.  */
-    for (p = loop_start; p != end; p = NEXT_INSN (p))
-      if (GET_CODE (p) == INSN || GET_CODE (p) == JUMP_INSN
-	  || GET_CODE (p) == CALL_INSN)
-	replace_regs (PATTERN (p), reg_map);
-  }
-	
-  /* Now consider each movable insn to decide whether it is worth moving.  */
+      else if (loop_dump_stream && !m->match)
+	fprintf (loop_dump_stream, "not safe");
 
-  {
-    register struct movable *m;
-    for (m = movables; m; m = m->next)
-      if (!m->dont
-	  && (! m->cond
-	      || 1 == invariant_p (SET_SRC (PATTERN (m->insn)), n_times_set)))
-	/* We have an insn that is safe to move.  */
-	{
-	  register int regno;
-
-	  p = m->insn;
-	  regno = m->regno;
-	  if (m->forces != 0)
-	    n_times_used[regno]++;
-
-	  /* Don't move something out of the loop
-	     if that would cause it to be live over a range
-	     THRESHOLD times as long.  That means the loop is so big
-	     that moving won't speed things up much,
-	     and it is liable to make register usage worse.  */
-	  if (m->force
-	      || (threshold * n_times_used[regno] * m->lifetime) >= insn_count
-	      || n_times_set[regno] == 0)
-	    {
-	      rtx i1 = emit_insn_before (PATTERN (p), loop_start);
-	      if (CONSTANT_ADDRESS_P (SET_SRC (PATTERN (p))))
-		REG_NOTES (i1)
-		  = gen_rtx (EXPR_LIST, REG_CONST,
-			     SET_DEST (PATTERN (p)), REG_NOTES (i1));
-	      delete_insn (p);
-	      n_times_set[regno] = 0;
-	      /* Signal any other movables that match this one
-		 that they should be moved too.  */
-	      m->force = 1;
-	      /* Signal any conditionally movable computation 
-		 that uses this one that it should be moved too.  */
-	      if (m->forces != 0)
-		m->forces->force = 1;
-	    }
-	}
-  }
-
-  /* Now maybe duplicate the end-test before the loop.  */
-  if (loop_entry_jump != 0)
-    {
-      rtx endtestjump;
-      p = scan_start;
-      while (GET_CODE (p) != INSN && GET_CODE (p) != JUMP_INSN
-	     && GET_CODE (p) != CALL_INSN)
-	p = NEXT_INSN (p);
-      endtestjump = next_real_insn (p);
-      /* Check that we (1) enter at a compare insn and (2)
-	 the insn (presumably a jump) following that compare
-	 is the last in the loop and jumps back to the loop beginning.  */
-      if (GET_CODE (PATTERN (p)) == SET
-	  && SET_DEST (PATTERN (p)) == cc0_rtx
-	  && endtestjump == prev_real_insn (end)
-	  && prev_real_insn (JUMP_LABEL (endtestjump)) == loop_entry_jump)
-	{
-	  rtx newlab;
-
-	  /* Ok, duplicate that test before loop entry.  */
-	  emit_insn_before (copy_rtx (PATTERN (p)), loop_entry_jump);
-	  /* Make a new entry-jump (before the original)
-	     that uses the opposite condition and jumps in
-	     after this conitional jump.  */
-	  newlab = gen_label_rtx ();
-	  emit_label_after (newlab, endtestjump);
-	  emit_jump_insn_before (copy_rtx (PATTERN (endtestjump)), loop_entry_jump);
-	  JUMP_LABEL (PREV_INSN (loop_entry_jump)) = JUMP_LABEL (endtestjump);
-	  LABEL_NUSES (JUMP_LABEL (endtestjump))++;
-	  invert_jump (PREV_INSN (loop_entry_jump), newlab);
-	  /* Delete the original entry-jump.  */
-	  delete_insn (loop_entry_jump);
-	}
+      if (loop_dump_stream)
+	fprintf (loop_dump_stream, "\n");
     }
+
+  if (new_start == 0)
+    new_start = loop_start;
+
+  /* Go through all the instructions in the loop, making
+     all the register substitutions scheduled in REG_MAP.  */
+  for (p = new_start; p != end; p = NEXT_INSN (p))
+    if (GET_CODE (p) == INSN || GET_CODE (p) == JUMP_INSN
+	|| GET_CODE (p) == CALL_INSN)
+      replace_regs (PATTERN (p), reg_map);
+}
+
+/* Optionally change a loop which enters just before the endtest
+   to one which falls straight in
+   after skipping around the entire loop if the endtest would drop out.
+   Returns 1 if the change was made, 0 if the loop was not really suitable.  */
+
+int
+loop_skip_over (start, end, loop_entry_jump)
+     rtx start;
+     rtx end;
+     rtx loop_entry_jump;
+{
+  rtx endtestjump;
+  register rtx p = JUMP_LABEL (loop_entry_jump);
+
+  while (GET_CODE (p) != INSN && GET_CODE (p) != JUMP_INSN
+	 && GET_CODE (p) != CALL_INSN)
+    p = NEXT_INSN (p);
+  endtestjump = next_real_insn (p);
+
+  /* Check that we (1) enter at a compare insn and (2)
+     the insn (presumably a jump) following that compare
+     is the last in the loop and jumps back to the loop beginning.  */
+
+  if (GET_CODE (PATTERN (p)) == SET
+      && SET_DEST (PATTERN (p)) == cc0_rtx
+      && endtestjump == prev_real_insn (end)
+      && prev_real_insn (JUMP_LABEL (endtestjump)) == loop_entry_jump)
+    {
+      rtx newlab;
+      /* This is the jump that we insert.  */
+      rtx new_jump;
+
+      /* Ok, duplicate that test before start of loop.  */
+      emit_insn_before (copy_rtx (PATTERN (p)), start);
+      /* Make a new entry-jump (before the original one)
+	 whose condition is opposite to the loop-around endtest
+	 and which jumps around the loop (to just after the endtest).  */
+      newlab = gen_label_rtx ();
+      emit_label_after (newlab, endtestjump);
+      emit_jump_insn_before (copy_rtx (PATTERN (endtestjump)), start);
+      new_jump = PREV_INSN (start);
+      JUMP_LABEL (new_jump) = JUMP_LABEL (endtestjump);
+      LABEL_NUSES (JUMP_LABEL (endtestjump))++;
+      invert_jump (new_jump, newlab);
+      /* Delete the original entry-jump.  */
+      delete_insn (loop_entry_jump);
+
+      return 1;
+    }
+
+  return 0;
 }
 
 /* Throughout the rtx X, replace many registers according to REG_MAP.
@@ -685,13 +926,21 @@ verify_loop (f, start)
   for (insn = NEXT_INSN (start); level > 0; insn = NEXT_INSN (insn))
     {
       if (insn == 0)
-	abort ();
+	/* Parse errors can cause a loop-beg with no loop-end.  */
+	return 0;
       if (GET_CODE (insn) == NOTE)
 	{
 	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_BEG)
 	    ++level;
 	  else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
-	    --level;
+	    {
+	      --level;
+	      if (level == 0)
+		{
+		  end = insn;
+		  break;
+		}
+	    }
 	}
       else if (GET_CODE (insn) == CALL_INSN)
 	{
@@ -704,8 +953,6 @@ verify_loop (f, start)
 	    note_stores (PATTERN (insn), note_addr_stored);
 	}
     }
-
-  end = insn;
 
   /* Now scan all jumps in the function and see if any of them can
      reach a label within the range of the loop.  */
@@ -790,15 +1037,15 @@ note_addr_stored (x)
   rtx addr;
   if (x == 0 || GET_CODE (x) != MEM)
     return;
-  if (rtx_addr_varies_p (x))
+  if (GET_MODE (x) == BLKmode)
+    unknown_address_altered = 1;
+  else if (rtx_addr_varies_p (x))
     {
       if (GET_CODE (XEXP (x, 0)) == PLUS)
 	unknown_aggregate_altered = 1;
       else
 	unknown_address_altered = 1;
     }
-  else if (GET_MODE (x) == BLKmode)
-    unknown_address_altered = 1;
   else
     {
       register int i;
@@ -817,7 +1064,7 @@ note_addr_stored (x)
 	unknown_address_altered = 1;
       else if (i == loop_store_addrs_idx)
 	{
-	  loop_store_widths[i] == GET_MODE_SIZE (GET_MODE (x));
+	  loop_store_widths[i] = GET_MODE_SIZE (GET_MODE (x));
 	  loop_store_addrs[loop_store_addrs_idx++] = addr;
 	}
     }
@@ -856,15 +1103,16 @@ invariant_p (x, n_times_set)
     case SYMBOL_REF:
     case LABEL_REF:
     case CONST:
-    case UNCHANGING:
       return 1;
 
     case PC:
-    case VOLATILE:
     case CC0:
       return 0;
 
     case REG:
+      if (x == frame_pointer_rtx || x == arg_pointer_rtx
+	  || x->unchanging)
+	return 1;
       if (n_times_set[REGNO (x)] == -1)
 	return 2;
       return n_times_set[REGNO (x)] == 0;
@@ -874,6 +1122,13 @@ invariant_p (x, n_times_set)
 	 could clobber anything in memory.  */
       if (unknown_address_altered)
 	return 0;
+      /* Don't mess with volatile memory references.  */
+      if (x->volatil)
+	return 0;
+      /* If it's declared read-only, it is invariant
+	 if its address is invariant.  */
+      if (x->unchanging)
+	return invariant_p (XEXP (x, 0), n_times_set);
       /* A store in a varying-address aggregate component
 	 could clobber anything except a scalar with a fixed address.  */
       if (unknown_aggregate_altered
@@ -893,18 +1148,21 @@ invariant_p (x, n_times_set)
 	return 0;
       /* A store in a fixed address clobbers overlapping references.  */
       for (i = loop_store_addrs_idx - 1; i >= 0; i--)
-	if (addr_overlap_p (XEXP (x, 0), loop_store_addrs[i],
-			    loop_store_widths[i]))
+	if (addr_overlap_p (x, loop_store_addrs[i], loop_store_widths[i]))
 	  return 0;
       /* It's not invalidated by a store in memory
 	 but we must still verify the address is invariant.  */
+      break;
+
+    case ASM_OPERANDS:
+      /* Don't mess with insns declared volatile.  */
+      if (x->volatil)
+	return 0;
     }
 
   fmt = GET_RTX_FORMAT (code);
   for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
     {
-      if (fmt[i] == 'E')
-	abort ();
       if (fmt[i] == 'e')
 	{
 	  int tem = invariant_p (XEXP (x, i), n_times_set);
@@ -912,6 +1170,19 @@ invariant_p (x, n_times_set)
 	    return 0;
 	  if (tem == 2)
 	    conditional = 1;
+	}
+      else if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = 0; j < XVECLEN (x, i); j++)
+	    {
+	      int tem = invariant_p (XVECEXP (x, i, j), n_times_set);
+	      if (tem == 0)
+		return 0;
+	      if (tem == 2)
+		conditional = 1;
+	    }
+
 	}
     }
 
@@ -941,6 +1212,52 @@ addr_overlap_p (other, base, size)
   end = start + size;
   return refers_to_mem_p (other, base, start, end);
 }
+
+/* Return 1 if all the insns in the loop that set REG
+   are INSN and the immediately following insns,
+   and if each of those insns sets REG in an invariant way
+   according to TABLE (not counting uses of REG in them).
+
+   We assume that INSN itself is the first set of REG
+   and that its source is invariant.  */
+
+static int
+consec_sets_invariant_p (reg, insn, table)
+     rtx reg, insn;
+     short *table;
+{
+  register rtx p = insn;
+  register int regno = REGNO (reg);
+  /* Number of sets we have to insist on finding after INSN.  */
+  int count = table[regno] - 1;
+  int old = table[regno];
+
+  table[regno] = 0;
+
+  while (count > 0)
+    {
+      register enum rtx_code code;
+      p = NEXT_INSN (p);
+      code = GET_CODE (p);
+      if (code == INSN && GET_CODE (PATTERN (p)) == SET
+	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
+	  && REGNO (SET_DEST (PATTERN (p))) == regno
+	  && invariant_p (SET_SRC (PATTERN (p)), table))
+	count--;
+      else if (code != NOTE)
+	{
+	  table[regno] = old;
+	  return 0;
+	}
+    }
+
+  table[regno] = old;
+  return 1;
+}
+
+#if 0
+/* I don't think this condition is sufficient to allow INSN
+   to be moved, so we no longer test it.  */
 
 /* Return 1 if all insns in the basic block of INSN and following INSN
    that set REG are invariant according to TABLE.  */
@@ -948,7 +1265,7 @@ addr_overlap_p (other, base, size)
 static int
 all_sets_invariant_p (reg, insn, table)
      rtx reg, insn;
-     char *table;
+     short *table;
 {
   register rtx p = insn;
   register int regno = REGNO (reg);
@@ -969,6 +1286,7 @@ all_sets_invariant_p (reg, insn, table)
 	}
     }
 }
+#endif /* 0 */
 
 /* Increment N_TIMES_SET at the index of each register
    that is modified by an insn between FROM and TO.
@@ -998,11 +1316,43 @@ count_loop_regs_set (from, to, n_times_set, may_not_move, count_ptr, nregs)
   bzero (last_set, nregs * sizeof (rtx));
   for (insn = from; insn != to; insn = NEXT_INSN (insn))
     {
-      if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
-	  || GET_CODE (insn) == CALL_INSN)
+      if (GET_CODE (insn) == CALL_INSN)
+	{
+	  /* If a register is used as a subroutine address,
+	     don't allow this register's setting to be moved out of the loop.
+	     This condition is not at all logically correct
+	     but it averts a very common lossage pattern
+	     and creates lossage much less often.  */
+	  if (GET_CODE (PATTERN (insn)) == CALL
+	      && GET_CODE (XEXP (PATTERN (insn), 0)) == MEM
+	      && GET_CODE (XEXP (XEXP (PATTERN (insn), 0), 0)) == REG)
+	    {
+	      register int regno
+		= REGNO (XEXP (XEXP (PATTERN (insn), 0), 0));
+	      may_not_move[regno] = 1;
+	    }
+	  else if (GET_CODE (PATTERN (insn)) == SET
+	      && GET_CODE (SET_SRC (PATTERN (insn))) == CALL
+	      && GET_CODE (XEXP (SET_SRC (PATTERN (insn)), 0)) == MEM
+	      && GET_CODE (XEXP (XEXP (SET_SRC (PATTERN (insn)), 0), 0)) == REG)
+	    {
+	      register int regno
+		= REGNO (XEXP (XEXP (SET_SRC (PATTERN (insn)), 0), 0));
+	      may_not_move[regno] = 1;
+	      /* The call insn itself sets a reg, which cannot be moved.  */
+	      may_not_move[REGNO (SET_DEST (PATTERN (insn)))] = 1;
+	      n_times_set[REGNO (SET_DEST (PATTERN (insn)))]++;
+	    }
+	}
+      if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN) 
 	{
 	  ++count;
-	  if (GET_CODE (PATTERN (insn)) == SET)
+	  if (GET_CODE (PATTERN (insn)) == CLOBBER
+	      && GET_CODE (XEXP (PATTERN (insn), 0)) == REG)
+	    /* Don't move a reg that has an explicit clobber.
+	       We might do so sometimes, but it's not worth the pain.  */
+	    may_not_move[REGNO (XEXP (PATTERN (insn), 0))] = 1;
+	  else if (GET_CODE (PATTERN (insn)) == SET)
 	    {
 	      dest = SET_DEST (PATTERN (insn));
 	      while (GET_CODE (dest) == SUBREG
@@ -1035,6 +1385,10 @@ count_loop_regs_set (from, to, n_times_set, may_not_move, count_ptr, nregs)
 	      for (i = XVECLEN (PATTERN (insn), 0) - 1; i >= 0; i--)
 		{
 		  register rtx x = XVECEXP (PATTERN (insn), 0, i);
+		  if (GET_CODE (x) == CLOBBER && GET_CODE (XEXP (x, 0)) == REG)
+		    /* Don't move a reg that has an explicit clobber.
+		       It's not worth the pain to try to do it correctly.  */
+		    may_not_move[REGNO (XEXP (x, 0))] = 1;
 		  if (GET_CODE (x) == SET)
 		    {
 		      dest = SET_DEST (x);
@@ -1052,19 +1406,6 @@ count_loop_regs_set (from, to, n_times_set, may_not_move, count_ptr, nregs)
 			}
 		    }
 		}
-	    }
-	  /* If a register is used as a subroutine address,
-	     don't allow this register's setting to be moved out of the loop.
-	     This condition is not at all logically correct
-	     but it averts a very common lossage pattern
-	     and creates lossage much less often.  */
-	  else if (GET_CODE (PATTERN (insn)) == CALL
-		   && GET_CODE (XEXP (PATTERN (insn), 0)) == MEM
-		   && GET_CODE (XEXP (XEXP (PATTERN (insn), 0), 0)) == REG)
-	    {
-	      register int regno
-		= REGNO (XEXP (XEXP (PATTERN (insn), 0), 0));
-	      may_not_move[regno] = 1;
 	    }
 	}
       if (GET_CODE (insn) == CODE_LABEL || GET_CODE (insn) == JUMP_INSN)
@@ -1089,4 +1430,23 @@ loop_reg_used_before_p (insn, loop_start, scan_start, loop_end)
 	    || reg_used_between_p (reg, loop_start, insn));
   else
     return reg_used_between_p (reg, scan_start, insn);
+}
+
+/* Return nonzero if X is a division that might trap.  */
+
+static int
+may_trap_p (x)
+     rtx x;
+{
+  switch (GET_CODE (x))
+    {
+    case DIV:
+    case MOD:
+    case UDIV:
+    case UMOD:
+      if (! CONSTANT_P (XEXP (x, 1))
+	  && GET_CODE (XEXP (x, 1)) != CONST_DOUBLE)
+	return 1;
+    }
+  return 0;
 }

@@ -19,52 +19,238 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
-/* This file contains two passes of the compiler: reg_scan and reg_class.  */
+/* This file contains two passes of the compiler: reg_scan and reg_class.
+   It also defines some tables of information about the hardware registers
+   and a function init_reg_sets to initialize the tables.  */
 
 #include "config.h"
 #include "rtl.h"
+#include "hard-reg-set.h"
+#include "flags.h"
 #include "regs.h"
 #include "insn-config.h"
 #include "recog.h"
 
 #define max(A,B) ((A) > (B) ? (A) : (B))
 #define min(A,B) ((A) < (B) ? (A) : (B))
+
+/* Register tables used by many passes.  */
 
-/* savings[R].savings[CL] is the amount saved by putting register R
+/* Indexed by hard register number, contains 1 for registers
+   that are fixed use (stack pointer, pc, frame pointer, etc.).
+   These are the registers that cannot be used to allocate
+   a pseudo reg whose life does not cross calls.  */
+
+char fixed_regs[FIRST_PSEUDO_REGISTER];
+
+/* Same info as a HARD_REG_SET.  */
+
+HARD_REG_SET fixed_reg_set;
+
+/* Data for initializing the above.  */
+
+static char initial_fixed_regs[] = FIXED_REGISTERS;
+
+/* Indexed by hard register number, contains 1 for registers
+   that are fixed use or are clobbered by function calls.
+   These are the registers that cannot be used to allocate
+   a pseudo reg whose life crosses calls.  */
+
+char call_used_regs[FIRST_PSEUDO_REGISTER];
+
+/* Same info as a HARD_REG_SET.  */
+
+HARD_REG_SET call_used_reg_set;
+
+/* Data for initializing the above.  */
+
+static char initial_call_used_regs[] = CALL_USED_REGISTERS;
+
+/* For each reg class, a HARD_REG_SET saying which registers are in it.  */
+
+HARD_REG_SET reg_class_contents[] = REG_CLASS_CONTENTS;
+
+/* For each reg class, table listing all the containing classes.  */
+
+enum reg_class reg_class_superclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+/* For each reg class, table listing all the classes contained in it.  */
+
+enum reg_class reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
+
+/* For each pair of reg classes,
+   a largest reg class contained in their union.  */
+
+enum reg_class reg_class_subunion[N_REG_CLASSES][N_REG_CLASSES];
+
+
+/* Function called only once to initialize the tables above.  */
+
+void
+init_reg_sets ()
+{
+  register int i, j;
+
+  bcopy (initial_fixed_regs, fixed_regs, sizeof fixed_regs);
+  bcopy (initial_call_used_regs, call_used_regs, sizeof call_used_regs);
+
+  /* This macro allows the fixed or call-used registers
+     to depend on target flags.  */
+
+#ifdef CONDITIONAL_REGISTER_USAGE
+  CONDITIONAL_REGISTER_USAGE
+#endif
+
+  /* Initialize "constant" tables.  */
+
+  CLEAR_HARD_REG_SET (fixed_reg_set);
+  CLEAR_HARD_REG_SET (call_used_reg_set);
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    {
+      if (fixed_regs[i])
+	SET_HARD_REG_BIT (fixed_reg_set, i);
+      if (call_used_regs[i])
+	SET_HARD_REG_BIT (call_used_reg_set, i);
+    }
+
+  /* Initialize the table of subunions.
+     reg_class_subunion[I][J] gets the largest-numbered reg-class
+     that is contained in the union of classes I and J.  */
+
+  for (i = 0; i < N_REG_CLASSES; i++)
+    {
+      for (j = 0; j < N_REG_CLASSES; j++)
+	{
+#ifdef HARD_REG_SET
+	  register		/* Declare it register if it's a scalar.  */
+#endif
+	    HARD_REG_SET c;
+	  register int k;
+
+	  COPY_HARD_REG_SET (c, reg_class_contents[i]);
+	  IOR_HARD_REG_SET (c, reg_class_contents[j]);
+	  for (k = 0; k < N_REG_CLASSES; k++)
+	    {
+	      GO_IF_HARD_REG_SUBSET (reg_class_contents[k], c,
+				     subclass1);
+	      continue;
+
+	    subclass1:
+	      reg_class_subunion[i][j] = (enum reg_class) k;
+	    }
+	}
+    }
+
+  /* Initialize the tables of subclasses and superclasses of each reg class.
+     First clear the whole table, then add the elements as they are found.  */
+
+  for (i = 0; i < N_REG_CLASSES; i++)
+    {
+      for (j = 0; j < N_REG_CLASSES; j++)
+	{
+	  reg_class_superclasses[i][j] = LIM_REG_CLASSES;
+	  reg_class_subclasses[i][j] = LIM_REG_CLASSES;
+	}
+    }
+
+  for (i = 0; i < N_REG_CLASSES; i++)
+    {
+      if (i == (int) NO_REGS)
+	continue;
+
+      for (j = i + 1; j < N_REG_CLASSES; j++)
+	{
+	  enum reg_class *p;
+
+	  GO_IF_HARD_REG_SUBSET (reg_class_contents[i], reg_class_contents[j],
+				 subclass);
+	  continue;
+	subclass:
+	  /* Reg class I is a subclass of J.
+	     Add J to the table of superclasses of I.  */
+	  p = &reg_class_superclasses[i][0];
+	  while (*p != LIM_REG_CLASSES) p++;
+	  *p = (enum reg_class) j;
+	  /* Add I to the table of superclasses of J.  */
+	  p = &reg_class_subclasses[j][0];
+	  while (*p != LIM_REG_CLASSES) p++;
+	  *p = (enum reg_class) i;
+	}
+    }
+}
+
+/* Specify the usage characteristics of the register named NAME.
+   It should be a fixed register if FIXED and a
+   call-used register if CALL_USED.  */
+
+void
+fix_register (name, fixed, call_used)
+     char *name;
+     int fixed, call_used;
+{
+  static char *reg_names[] = REGISTER_NAMES;
+  int i;
+
+  /* Decode the name and update the primary form of
+     the register info.  */
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (!strcmp (reg_names[i], name))
+      {
+	fixed_regs[i] = fixed;
+	call_used_regs[i] = call_used;
+	break;
+      }
+
+  if (i == FIRST_PSEUDO_REGISTER)
+    {
+      warning ("unknown register name: %s", name);
+      return;
+    }
+
+  /* Reinitialize the HARD_REG_SETs that have the same info.  */
+
+  CLEAR_HARD_REG_SET (fixed_reg_set);
+  CLEAR_HARD_REG_SET (call_used_reg_set);
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    {
+      if (fixed_regs[i])
+	SET_HARD_REG_BIT (fixed_reg_set, i);
+      if (call_used_regs[i])
+	SET_HARD_REG_BIT (call_used_reg_set, i);
+    }
+}
+
+/* Now the data and code for the `regclass' pass, which happens
+   just before local-alloc.  */
+
+/* savings[R].savings[CL] is twice the amount saved by putting register R
    in class CL.  This data is used within `regclass' and freed
    when it is finished.  */
 
 struct savings
 {
   short savings[N_REG_CLASSES];
+  short memcost;
 };
 
 static struct savings *savings;
 
-/* (enum reg_class) prefclass[R] is the preferred class for register R.
+/* (enum reg_class) prefclass[R] is the preferred class for pseudo number R.
    This is available after `regclass' is run.  */
 
 static char *prefclass;
 
-static enum reg_class reg_class_subunion[N_REG_CLASSES][N_REG_CLASSES]
-  = REG_CLASS_SUBUNION;
+/* preferred_or_nothing[R] is nonzero if we should put pseudo number R
+   in memory if we can't get its perferred class.
+   This is available after `regclass' is run.  */
 
-static enum reg_class reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES]
-  = REG_CLASS_SUBCLASSES;
-
-/* Indexed by pseudo register number, gives uid of first insn using the reg
-   (as of the time reg_scan is called).  */
-
-short *regno_first_uid;
-
-/* Indexed by pseudo register number, gives uid of last insn using the reg
-   (as of the time reg_scan is called).  */
-
-short *regno_last_uid;
+static char *preferred_or_nothing;
 
 void reg_class_record ();
 void record_address_regs ();
-void reg_scan_mark_refs ();
 
 
 /* Return the reg_class in which pseudo reg number REGNO is best allocated.
@@ -79,12 +265,30 @@ reg_preferred_class (regno)
     return GENERAL_REGS;
   return (enum reg_class) prefclass[regno];
 }
+
+int
+reg_preferred_or_nothing (regno)
+{
+  if (prefclass == 0)
+    return 0;
+  return preferred_or_nothing[regno];
+}
+
+/* This prevents dump_flow_info from losing if called
+   before regclass is run.  */
+
+int
+regclass_init ()
+{
+  prefclass = 0;
+}
 
 /* This is a pass of the compiler that scans all instructions
    and calculates the preferred class for each pseudo-register.
    This information can be accessed later by calling `reg_preferred_class'.
    This pass comes just before local register allocation.  */
 
+void
 regclass (f, nregs)
      rtx f;
      int nregs;
@@ -113,19 +317,67 @@ regclass (f, nregs)
 	    && GET_CODE (PATTERN (insn)) != ADDR_DIFF_VEC)
 	|| GET_CODE (insn) == CALL_INSN)
       {
-	int insn_code_number = recog_memoized (insn);
+	if (GET_CODE (insn) == INSN && asm_noperands (PATTERN (insn)) > 0)
+	  {
+	    int noperands = asm_noperands (PATTERN (insn));
+	    rtx *operands = (rtx *) oballoc (noperands * sizeof (rtx));
+	    char **constraints
+	      = (char **) oballoc (noperands * sizeof (char *));
 
-	insn_extract (insn);
+	    decode_asm_operands (PATTERN (insn), operands, 0, constraints, 0);
 
-	for (i = insn_n_operands[insn_code_number] - 1; i >= 0; i--)
-	  reg_class_record (recog_operand[i],
-			    &insn_operand_constraint[insn_code_number][i]);
+	    for (i = noperands - 1; i >= 0; i--)
+	      reg_class_record (operands[i],
+				&constraints[i]);
+
+	    obfree (operands);
+	  }
+	else
+	  {
+	    int insn_code_number = recog_memoized (insn);
+
+	    insn_extract (insn);
+
+	    for (i = insn_n_operands[insn_code_number] - 1; i >= 0; i--)
+	      reg_class_record (recog_operand[i],
+				&insn_operand_constraint[insn_code_number][i]);
+
+	    /* Improve handling of two-address insns such as
+	       (set X (ashift CONST Y)) where CONST must be made to match X.
+	       Change it into two insns: (set X CONST)  (set X (ashift X Y)).
+	       If we left this for reloading, it would probably get three insns
+	       because X and Y might go in the same place.
+	       This prevents X and Y from receiving the same hard reg.  */
+
+	    if (optimize
+		&& insn_n_operands[insn_code_number] >= 3
+		&& insn_operand_constraint[insn_code_number][1][0] == '0'
+		&& insn_operand_constraint[insn_code_number][1][1] == 0
+		&& CONSTANT_P (recog_operand[1])
+		&& ! rtx_equal_p (recog_operand[0], recog_operand[1])
+		&& ! rtx_equal_p (recog_operand[0], recog_operand[2])
+		&& GET_CODE (recog_operand[0]) == REG)
+	      {
+		emit_insn_before (gen_move_insn (recog_operand[0], recog_operand[1]),
+				  insn);
+
+		/* This makes one more setting of new insns's destination.  */
+		reg_n_sets[REGNO (recog_operand[0])]++;
+
+		*recog_operand_loc[1] = recog_operand[0];
+		for (i = insn_n_dups[insn_code_number] - 1; i >= 0; i--)
+		  if (recog_dup_num[i] == 1)
+		    *recog_dup_loc[i] = recog_operand[0];
+	      }
+	  }
       }
 
   /* Now for each register look at how desirable each class is
      and find which class is preferred.  Store that in `prefclass[REGNO]'.  */
     
   prefclass = (char *) oballoc (nregs);
+    
+  preferred_or_nothing = (char *) oballoc (nregs);
 
   for (i = FIRST_PSEUDO_REGISTER; i < nregs; i++)
     {
@@ -160,6 +412,13 @@ regclass (f, nregs)
 #else
       prefclass[i] = (char) best;
 #endif
+
+      /* reg_n_refs + p->memcost measures the cost of putting in memory.
+	 If a GENERAL_REG is no better, don't even try for one.  */
+      if (reg_n_refs != 0)
+	preferred_or_nothing[i]
+	  = ((best_savings - p->savings[(int) GENERAL_REGS]) / 2 
+	     >= reg_n_refs[i] + p->memcost);
     }
 #endif /* REGISTER_CONSTRAINTS */
 }
@@ -185,13 +444,12 @@ reg_class_record (op, constraint_loc)
   register enum reg_class class = NO_REGS;
   char *next = 0;
   int insn_code = (constraint_loc - insn_operand_constraint[0]) / MAX_RECOG_OPERANDS;
+  int memok = 0;
+  int double_cost = 0;
 
   while (1)
     {
-      if (GET_CODE (op) == VOLATILE
-	  || GET_CODE (op) == UNCHANGING)
-	op = XEXP (op, 0);
-      else if (GET_CODE (op) == SUBREG)
+      if (GET_CODE (op) == SUBREG)
 	op = SUBREG_REG (op);
       else break;
     }
@@ -223,7 +481,6 @@ reg_class_record (op, constraint_loc)
       switch (*p)
 	{
 	case '=':
-	case '+':
 	case '?':
 	case '#':
 	case '!':
@@ -232,11 +489,20 @@ reg_class_record (op, constraint_loc)
 	case 'G':
 	case 'H':
 	case 'i':
+	case 'n':
 	case 's':
-	case 'm':
-	case 'o':
 	case 'p':
 	case ',':
+	  break;
+
+	case '+':
+	  /* An input-output operand is twice as costly if it loses.  */
+	  double_cost = 1;
+	  break;
+
+	case 'm':
+	case 'o':
+	  memok = 1;
 	  break;
 
 	  /* * means ignore following letter
@@ -247,9 +513,8 @@ reg_class_record (op, constraint_loc)
 
 	case 'g':
 	case 'r':
-	  if (GENERAL_REGS == ALL_REGS)
-	    return;
-	  class = GENERAL_REGS;
+	  class
+	    = reg_class_subunion[(int) class][(int) GENERAL_REGS];
 	  break;
 
 	case '0':
@@ -272,6 +537,7 @@ reg_class_record (op, constraint_loc)
     register int i;
     register struct savings *pp;
     register enum reg_class class1;
+    int cost = 2 * (1 + double_cost);
     pp = &savings[REGNO (op)];
 
     /* Increment the savings for this reg
@@ -279,15 +545,18 @@ reg_class_record (op, constraint_loc)
 
     if (class != NO_REGS && class != ALL_REGS)
       {
-	pp->savings[(int) class] += 2;
+	pp->savings[(int) class] += cost;
 	for (i = 0; ; i++)
 	  {
 	    class1 = reg_class_subclasses[(int)class][i];
 	    if (class1 == LIM_REG_CLASSES)
 	      break;
-	    pp->savings[(int) class1] += 2;
+	    pp->savings[(int) class1] += cost;
 	  }
       }
+
+    if (! memok)
+      pp->memcost += 1 + 2 * double_cost;
   }
 }
 
@@ -412,7 +681,7 @@ record_address_regs (x, bcost, icost)
 	   in INDEX_REG_CLASS.  */
 
 	class = INDEX_REG_CLASS;
-	if (class != NO_REGS && class != ALL_REGS)
+	if (icost != 0 && class != NO_REGS && class != ALL_REGS)
 	  {
 	    register int i;
 	    pp->savings[(int) class] += icost;
@@ -439,24 +708,39 @@ record_address_regs (x, bcost, icost)
 }
 #endif /* REGISTER_CONSTRAINTS */
 
-/* This is a pass of the compiler run before cse.
-   It sets up the vectors regno_first_uid, regno_last_uid.  */
+/* This is the `regscan' pass of the compiler, run just before cse
+   and again just before loop.
 
-reg_scan (f, nregs)
+   It finds the first and last use of each pseudo-register
+   and records them in the vectors regno_first_uid, regno_last_uid.
+   REPEAT is nonzero the second time this is called.  */
+
+/* Indexed by pseudo register number, gives uid of first insn using the reg
+   (as of the time reg_scan is called).  */
+
+short *regno_first_uid;
+
+/* Indexed by pseudo register number, gives uid of last insn using the reg
+   (as of the time reg_scan is called).  */
+
+short *regno_last_uid;
+
+void reg_scan_mark_refs ();
+
+void
+reg_scan (f, nregs, repeat)
      rtx f;
      int nregs;
+     int repeat;
 {
-  register int i;
-  register rtx last, insn;
+  register rtx insn;
 
-  /* This prevents dump_flow_info from losing if called
-     before regclass is run.  */
-  prefclass = 0;
-
-  regno_first_uid = (short *) oballoc (nregs * sizeof (short));
+  if (!repeat)
+    regno_first_uid = (short *) oballoc (nregs * sizeof (short));
   bzero (regno_first_uid, nregs * sizeof (short));
 
-  regno_last_uid = (short *) oballoc (nregs * sizeof (short));
+  if (!repeat)
+    regno_last_uid = (short *) oballoc (nregs * sizeof (short));
   bzero (regno_last_uid, nregs * sizeof (short));
 
   for (insn = f; insn; insn = NEXT_INSN (insn))

@@ -1,14 +1,27 @@
-unset-e EDITOR
-unset-e MAILER
-unset-e MAN
-unset-e MORE
-unset-e NAME
-unset-e ORGANIZATION
-unset-e PAGER
-unset-e TERMCAP
+# Don't let abort actually run, as it will make
+# stdio stop working and therefore the `pr' command below as well.
+b abort
+
+define pr
+set debug_rtx ($)
+end
+
+document pr
+Print the full structure of the rtx that is $.
+Works only when an inferior is executing.
+end
+
+define pt
+set debug_dump_tree ($)
+end
+
+document pt
+Print the full structure of the tree that is $.
+Works only when an inferior is executing.
+end
 
 define ptc
-output (enum tree_code) $.shared.code
+output (enum tree_code) $.common.code
 echo \n
 end
 
@@ -27,17 +40,19 @@ end
 
 define prc
 output (enum rtx_code) $.code
-echo \n
+echo \ (
+output $.mode
+echo )\n
 end
 
 document prc
-Print the rtx-code of the rtx that is $.
+Print the rtx-code and machine mode of the rtx that is $.
 end
 
 define pi
-print $.fld[0].rtx@6
+print $.fld[0].rtx@7
 end
 
 document pi
-Print the fields of an instruction.
+Print the fields of an instruction that is $.
 end

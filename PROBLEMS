@@ -35,27 +35,6 @@ a remainder--such as the 68020 for long operands.
 42. In subst in combine.c at line 704 or so, a reg that really
 wants an areg gets a dreg.  It is i*4, for indexing.  Why?
 
-45. What about reloading DFmode values?  Need a block of 2 regs
-as one spill.  But the 68000 and 68020 have no problems because
-they don't ever need to put a DF into ordinary registers and a
-DF needs only one FP register.
-
-48. Often see  tstl foo; jeq ...; movl foo,reg
-and it would be better perhaps to do  movl foo,dreg; jeq ...
-In some cases this could make things worse through the
-additional constraint on register usage (reg must be available
-before the jump and must be a dreg).  Also, this is a saving
-only if movl sets the cc's, which is a machine-dependent condition
-hard to test for.
--optforcemem may solve this problem.
-
-49. Scheme for making cse work on operations done by library calls:
-generate insns for them using a new LIBCALL rtl type, then converting
-that during or after cse to actual push and call instructions.
-(SET result (LIBCALL:SI (MULT:SI foo bar) "mulsi3"))
-No additional temporaries are needed to turn this into
-push push call pop store.
-
 52. Reloading can look at how reload_contents got set up.
 If it was copied from a register, just reload from that register.
 Otherwise, perhaps can change the previous insn to move the
@@ -71,14 +50,6 @@ to comparing the previous value of the destination.
 
 65. Should loops that neither start nor end with a break
 be rearranged to end with the last break?
-
-68. At line 767 of flow.c, we have
-  (set (reg foo) (ashift 1 (reg bar)))
-Local-alloc puts foo and bar both in register 0 since no reason not to.
-Later, the shift must be done in another register and the result copied to 0.
-It would not need to copy if this insn were 2op'd before local-alloc,
-which is possible since one can be sure in advance that this insn will
-need a reload.
 
 69. Define the floating point converting arithmetic instructions
 for the 68881.
@@ -102,19 +73,10 @@ Likewise and of result of a bfextu.  See hyph.c.
 96. Can do SImode bitfield insns without reloading, but must
 alter the operands in special ways.
 
-98. Reloading an operand of a compare insn
-prevented final from noticing that the compare was redundant.
-See hyph.c line 108.
-
 99. final could check loop-entry branches to see if they
 screw up deletion of a test instruction.  If they do,
 can put another test instruction before the branch and
 make it conditional and redirect it.
-
-101. In cse, stores at addresses that contain SYMBOL_REFS
-cannot alias if the symbols are different!
-But the symbols may not be explicitly present--they may
-be in address registers.
 
 106. Aliasing may be impossible if data types of refs differ
 and data type of containing objects also differ.
@@ -134,3 +96,24 @@ If the two operands to a comparison die there and both come from insns
 that are identical except for replacing one operand with the other,
 throw away those insns.  Ok if insns being discarded are known 1 to 1.
 An andl #1 after a seq is 1 to 1, but how should compiler know that?
+
+112. Can convert float to unsigned int by subtracting a constant,
+converting to signed int, and changing the sign bit.
+
+117. Any number of slow zero-extensions in one loop, that have
+their clr insns moved out of the loop, can share one register
+if their original life spans are disjoint.
+But it may be hard to be sure of this since
+the life span data that regscan produces may be hard to interpret
+validly or may be incorrect after cse.
+
+118. In cse, when a bfext insn refers to a register, if the field
+corresponds to a halfword or a byte and the register is equivalent
+to a memory location, it would be possible to detect this and
+replace it with a simple memory reference.
+
+121. Insns that store two values cannot be moved out of loops.
+The code in scan_loop doesn't even try to deal with them.
+
+122. When insn-output.c turns a bit-test into a sign-test,
+it should see whether the cc is already set up with that sign.

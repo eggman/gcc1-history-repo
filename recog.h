@@ -18,24 +18,47 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
+/* Recognize an insn and return its insn-code,
+   which is the sequence number of the DEFINE_INSN that it matches.
+   If the insn does not match, return -1.  */
 
+extern int recog_memoized ();
+
+/* Extract the operands from an insn that has been recognized.  */
+
+extern void insn_extract ();
+
+/* The following vectors hold the results from insn_extract.  */
+
+/* Indexed by N, gives value of operand N.  */
 extern rtx recog_operand[];
 
+/* Indexed by N, gives location where operand N was found.  */
 extern rtx *recog_operand_loc[];
 
+/* Indexed by N, gives location where the Nth duplicate-appearance of
+   an operand was found.  This is something that matched MATCH_DUP.  */
 extern rtx *recog_dup_loc[];
 
+/* Indexed by N, gives the operand number that was duplicated in the
+   Nth duplicate-appearance of an operand.  */
 extern char recog_dup_num[];
 
-extern rtx recog_addr_dummy;
+/* Tables defined in insn-output.c that give information about
+   each insn-code value.  */
 
-extern int recog ();
+/* These are vectors indexed by insn-code.  Details in genoutput.c.  */
 
 extern char *insn_template[];
+
+extern char *(*insn_outfun[]) ();
 
 extern int insn_n_operands[];
 
 extern int insn_n_dups[];
+
+/* These are two-dimensional arrays indexed first by the insn-code
+   and second by the operand number.  Details in genoutput.c.  */
 
 extern char *insn_operand_constraint[][MAX_RECOG_OPERANDS];
 
@@ -43,4 +66,6 @@ extern char insn_operand_address_p[][MAX_RECOG_OPERANDS];
 
 extern enum machine_mode insn_operand_mode[][MAX_RECOG_OPERANDS];
 
-extern char *output_insn_hairy ();
+extern char insn_operand_strict_low[][MAX_RECOG_OPERANDS];
+
+extern int (*insn_operand_predicate[][MAX_RECOG_OPERANDS]) ();

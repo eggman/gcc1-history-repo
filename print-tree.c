@@ -20,10 +20,8 @@ and this notice must be preserved on all copies.  */
 
 
 #include "config.h"
-#include <stdio.h>
-#include <strings.h>
-
 #include "tree.h"
+#include <stdio.h>
 
 
 /* Names of tree components.
@@ -39,7 +37,7 @@ extern char *tree_code_type[];
 extern int tree_code_length[];
 extern char *mode_name[];
 
-extern char *spaces;
+extern char spaces[];
 
 #define MIN(x,y) ((x < y) ? x : y)
 
@@ -52,6 +50,14 @@ extern int tree_node_counter;
 static char *markvec;
 
 static void dump ();
+void dump_tree ();
+
+void
+debug_dump_tree (root)
+     tree root;
+{
+  dump_tree (stderr, root);
+}
 
 void
 dump_tree (outf, root)
@@ -172,10 +178,10 @@ prtypeinfo (node)
       fputs ("static", outfile);
       first = 0;
     }
-  if (TREE_NONLOCAL (node))
+  if (TREE_VOLATILE (node))
     {
       if (!first) putc (' ', outfile);
-      fputs ("nonlocal", outfile);
+      fputs ("volatile", outfile);
       first = 0;
     }
   if (TREE_PACKED (node))
@@ -184,22 +190,22 @@ prtypeinfo (node)
       fputs ("packed", outfile);
       first = 0;
     }
+  if (TREE_READONLY (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("readonly", outfile);
+      first = 0;
+    }
   if (TREE_LITERAL (node))
     {
       if (!first) putc (' ', outfile);
       fputs ("literal", outfile);
       first = 0;
     }
-  if (TREE_VOLATILE (node))
+  if (TREE_NONLOCAL (node))
     {
       if (!first) putc (' ', outfile);
-      fputs ("volatile", outfile);
-      first = 0;
-    }
-  if (TREE_READONLY (node))
-    {
-      if (!first) putc (' ', outfile);
-      fputs ("readonly", outfile);
+      fputs ("nonlocal", outfile);
       first = 0;
     }
   if (TREE_ADDRESSABLE (node))
@@ -212,6 +218,30 @@ prtypeinfo (node)
     {
       if (!first) putc (' ', outfile);
       fputs ("regdecl", outfile);
+      first = 0;
+    }
+  if (TREE_THIS_VOLATILE (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("this_vol", outfile);
+      first = 0;
+    }
+  if (TREE_UNSIGNED (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("unsigned", outfile);
+      first = 0;
+    }
+  if (TREE_ASM_WRITTEN (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("asm_written", outfile);
+      first = 0;
+    }
+  if (TREE_INLINE (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("inline", outfile);
       first = 0;
     }
   fputs ("] ", outfile);
@@ -251,7 +281,7 @@ skip (indent)
      int indent;
 {
   putc ('\n',outfile);
-  fputs (spaces + (128 - (12 + MIN(40,(indent+1)*2))), outfile);
+  fputs (spaces + (strlen (spaces) - (12 + MIN (40,(indent+1)*2))), outfile);
 }
 
 /* Output a description of the tree node NODE
@@ -266,6 +296,7 @@ dump (node, indent)
   register enum tree_code code = TREE_CODE (node);
   register int i;
   register int len;
+  int nochain = 0;
 
   if (markvec[TREE_UID (node)])
     return;
@@ -273,7 +304,7 @@ dump (node, indent)
 
   fputs ("   ", outfile);
   fprintf (outfile, "%5d", TREE_UID (node));
-  fputs (spaces + (128 - MIN(40, (indent+1)*2)), outfile);
+  fputs (spaces + (strlen (spaces) - MIN (40, (indent+1)*2)), outfile);
   fputs (tree_code_name[(int) code], outfile);
 
   switch (*tree_code_type[(int) code])
@@ -359,7 +390,10 @@ dump (node, indent)
 	{
 	  part ("arg_types", TYPE_ARG_TYPES (node));
 	}
-      part ("chain", TREE_CHAIN (node));
+      /* A type's chain is not printed because the chain of types
+	 is not part of the meaning of any particular type.  */
+      /* part ("chain", TREE_CHAIN (node)); */
+      nochain = 1;
       fputc ('\n', outfile);
       cwalk (TYPE_SIZE (node), node, indent);
       walk (TREE_TYPE (node), node, indent);
@@ -464,6 +498,6 @@ dump (node, indent)
       abort ();
     } /* switch */
 
-  if (TREE_CHAIN (node) != NULL)
+  if (TREE_CHAIN (node) != NULL && ! nochain)
     dump(TREE_CHAIN (node), indent);
 }

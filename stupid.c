@@ -47,26 +47,7 @@ and this notice must be preserved on all copies.  */
 #include "rtl.h"
 #include "hard-reg-set.h"
 #include "regs.h"
-#include "stupid.h"
 
-/* Two vectors of length `first_temp_reg_num'
-   pointing to the last insn before the birth
-   and the last insn before the death
-   of pseudo-register N.  For user-variables only.
-   This info was set up in stmt.c.  */
-
-rtx *reg_birth_insn;
-rtx *reg_death_insn;
-
-/* Some constants from the machine description.  */
-
-static char fixed_regs[] = FIXED_REGISTERS;
-static char call_clobbered_regs[] = CALL_USED_REGISTERS;
-
-static HARD_REG_SET fixed_reg_set, call_clobbered_reg_set;
-
-static HARD_REG_SET reg_class_contents[] = REG_CLASS_CONTENTS;
-
 /* Vector mapping INSN_UIDs to suids.
    The suids are like uids but increase monononically always.
    We use them to see whether a subroutine call came
@@ -111,7 +92,7 @@ static HARD_REG_SET *after_insn_hard_regs;
   SET_HARD_REG_BIT (after_insn_hard_regs[INSN_SUID (INSN)], (REGNO))
 
 static void stupid_mark_refs ();
-static int stupid_reg_better_p ();
+static int stupid_reg_compare ();
 
 /* Stupid life analysis is for the case where only variables declared
    `register' go in registers.  For this case, we mark all
@@ -180,21 +161,6 @@ stupid_life_analysis (f, nregs, file)
   after_insn_hard_regs = (HARD_REG_SET *) alloca (max_uid * sizeof (HARD_REG_SET));
   bzero (after_insn_hard_regs, max_uid * sizeof (HARD_REG_SET));
 
-  /* Express the sets of fixed and call-clobbered regs
-     as HARD_REG_SETS.  These sets are constant
-     once the initialization here is finished.  */
-
-  CLEAR_HARD_REG_SET (fixed_reg_set);
-  CLEAR_HARD_REG_SET (call_clobbered_reg_set);
-
-  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    {
-      if (fixed_regs[i])
-	SET_HARD_REG_BIT (fixed_reg_set, i);
-      if (call_clobbered_regs[i])
-	SET_HARD_REG_BIT (call_clobbered_reg_set, i);
-    }
-
   /* Allocate and zero out many data structures
      that will record the data from lifetime analysis.  */
 
@@ -227,8 +193,6 @@ stupid_life_analysis (f, nregs, file)
       for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 	if (regs_live[i])
 	  SET_HARD_REG_BIT (*p, i);
-      if (regs_live[FUNCTION_VALUE_REGNUM])
-	SET_HARD_REG_BIT (*p, 1 + FUNCTION_VALUE_REGNUM);
 
       /* Mark all call-clobbered regs as live after each call insn
 	 so that a pseudo whose life span includes this insn
@@ -240,9 +204,9 @@ stupid_life_analysis (f, nregs, file)
 	{
 	  last_call_suid = INSN_SUID (insn);
 	  IOR_HARD_REG_SET (after_insn_hard_regs[last_call_suid],
-			    call_clobbered_reg_set);
+			    call_used_reg_set);
 	  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-	    if (call_clobbered_regs[i])
+	    if (call_used_regs[i])
 	      regs_live[i] = 0;
 	}
 
@@ -254,19 +218,8 @@ stupid_life_analysis (f, nregs, file)
 	  || GET_CODE (insn) == CALL_INSN
 	  || GET_CODE (insn) == JUMP_INSN)
 	{
-	  stupid_mark_refs (PATTERN (insn), insn, last, regs_live);
+	  stupid_mark_refs (PATTERN (insn), insn);
 	}
-    }
-
-  /* The births and deaths of user register variables
-     are passed in from stmt.c.  Put that info into our format.  */
-
-  for (i = FIRST_PSEUDO_REGISTER; i < first_temp_reg_num; i++)
-    {
-      if (reg_birth_insn[i] == 0 || reg_death_insn[i] == 0)
-	abort ();
-      reg_where_born[i] = INSN_SUID (reg_birth_insn[i]) + 1;
-      reg_where_dead[i] = INSN_SUID (reg_death_insn[i]);
     }
 
   /* Now decide the order in which to allocate the pseudo registers.  */
@@ -276,7 +229,7 @@ stupid_life_analysis (f, nregs, file)
 
   qsort (&reg_order[FIRST_PSEUDO_REGISTER],
 	 max_regno - FIRST_PSEUDO_REGISTER, sizeof (short),
-	 stupid_reg_better_p);
+	 stupid_reg_compare);
 
   /* Now, in that order, try to find hard registers for those pseudo regs.  */
 
@@ -311,7 +264,7 @@ stupid_life_analysis (f, nregs, file)
    Returns -1 (1) if register *R1P is higher priority than *R2P.  */
 
 static int
-stupid_reg_better_p (r1p, r2p)
+stupid_reg_compare (r1p, r2p)
      short *r1p, *r2p;
 {
   register int r1 = *r1p, r2 = *r2p;
@@ -343,10 +296,13 @@ stupid_find_reg (call_preserved, class, mode,
      int born_insn, dead_insn;
 {
   register int i, ins;
-  register HARD_REG_SET used, this_reg;
+#ifdef HARD_REG_SET
+  register		/* Declare them register if they are scalars.  */
+#endif
+    HARD_REG_SET used, this_reg;
 
   COPY_HARD_REG_SET (used,
-		     call_preserved ? call_clobbered_reg_set : fixed_reg_set);
+		     call_preserved ? call_used_reg_set : fixed_reg_set);
 
   for (ins = born_insn; ins < dead_insn; ins++)
     IOR_HARD_REG_SET (used, after_insn_hard_regs[ins]);
@@ -395,31 +351,43 @@ stupid_mark_refs (x, insn)
 	  /* Register is being assigned.  */
 	  regno = REGNO (SET_DEST (x));
 
-	  /* Update the life-interval bounds of this reg.  */
-	  reg_where_born[regno] = INSN_SUID (insn);
-	  if (reg_where_dead[regno] == 0)
-	    /* The following line is for unused outputs;
-	       they have to be stored somewhere.  */
-	    reg_where_dead[regno] = INSN_SUID (insn) + 1;
-
-	  /* Count the refs of this reg.  */
-	  reg_n_refs[regno]++;
-
 	  /* For hard regs, update the where-live info.  */
 	  if (regno < FIRST_PSEUDO_REGISTER)
 	    {
-	      regs_ever_live[regno] = 1;
-	      regs_live[regno] = 0;
-	      /* The following line is for unused outputs;
-		 they have to be stored somewhere.  */
-	      MARK_LIVE_AFTER (insn, regno);
+	      register int j
+		= HARD_REGNO_NREGS (regno, GET_MODE (SET_DEST (x)));
+	      while (--j >= 0)
+		{
+		  regs_ever_live[regno+j] = 1;
+		  regs_live[regno+j] = 0;
+		  /* The following line is for unused outputs;
+		     they do get stored even though never used again.  */
+		  MARK_LIVE_AFTER (insn, regno);
+		}
 	    }
-	  /* For pseudo regs, record whether they are live across a call.  */
-	  else if (last_call_suid < reg_where_dead[regno])
-	    reg_crosses_call[regno] = 1;
+	  /* For pseudo regs, record where born, where dead, number of
+	     times used, and whether live across a call.  */
+	  else
+	    {
+	      /* Update the life-interval bounds of this reg.  */
+	      reg_where_born[regno] = INSN_SUID (insn);
+
+	      /* The reg must live at least one insn even
+		 if it is never again used--because it has to go
+		 in SOME hard reg.  */
+	      if (reg_where_dead[regno] < INSN_SUID (insn) + 1)
+		reg_where_dead[regno] = INSN_SUID (insn) + 1;
+
+	      /* Count the refs of this reg.  */
+	      reg_n_refs[regno]++;
+
+	      if (last_call_suid < reg_where_dead[regno])
+		reg_crosses_call[regno] = 1;
+	    }
 	}
       /* Record references from the value being set,
-	 or from addresses in the place being set if that's not a reg.  */
+	 or from addresses in the place being set if that's not a reg.
+	 If setting a SUBREG, we treat the entire reg as *used*.  */
       if (code == SET)
 	{
 	  stupid_mark_refs (SET_SRC (x), insn);
@@ -435,15 +403,26 @@ stupid_mark_refs (x, insn)
     {
       regno = REGNO (x);
       if (regno < FIRST_PSEUDO_REGISTER)
-	regs_ever_live[regno] = 1;
-      reg_where_born[regno] = INSN_SUID (insn);
-      reg_n_refs[regno]++;
-      /* Don't deal here with pseudo-regs for user's register variables.  */
-      if (regs_live[regno] == 0
-	  && (regno < FIRST_PSEUDO_REGISTER || regno >= first_temp_reg_num))
 	{
-	  regs_live[regno] = 1;
-	  reg_where_dead[regno] = INSN_SUID (insn);
+	  /* Hard reg: mark it live for continuing scan of previous insns.  */
+	  register int j = HARD_REGNO_NREGS (regno, GET_MODE (x));
+	  while (--j >= 0)
+	    {
+	      regs_ever_live[regno+j] = 1;
+	      regs_live[regno+j] = 1;
+	    }
+	}
+      else
+	{
+	  /* Pseudo reg: record first use, last use and number of uses.  */
+
+	  reg_where_born[regno] = INSN_SUID (insn);
+	  reg_n_refs[regno]++;
+	  if (regs_live[regno] == 0)
+	    {
+	      regs_live[regno] = 1;
+	      reg_where_dead[regno] = INSN_SUID (insn);
+	    }
 	}
       return;
     }

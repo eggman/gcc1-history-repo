@@ -28,17 +28,8 @@
 ;;- cpp macro #define NOTICE_UPDATE_CC in file tm.h handles condition code
 ;;- updates for most instructions.
 
-(define_insn "tstdf"
-  [(set (cc0)
-	(match_operand:DF 0 "general_operand" "gF"))]
-  ""
-  "tstd %0")
-
-(define_insn "tstsf"
-  [(set (cc0)
-	(match_operand:SF 0 "general_operand" "gF"))]
-  ""
-  "tstf %0")
+; tstsi is first test insn so that it is the one to match
+; a constant argument.
 
 (define_insn "tstsi"
   [(set (cc0)
@@ -58,19 +49,17 @@
   ""
   "tstb %0")
 
-(define_insn "cmpdf"
+(define_insn "tstdf"
   [(set (cc0)
-	(minus (match_operand:DF 0 "general_operand" "gF")
-	       (match_operand:DF 1 "general_operand" "gF")))]
+	(match_operand:DF 0 "general_operand" "gF"))]
   ""
-  "cmpd %0,%1")
+  "tstd %0")
 
-(define_insn "cmpsf"
+(define_insn "tstsf"
   [(set (cc0)
-	(minus (match_operand:SF 0 "general_operand" "gF")
-	       (match_operand:SF 1 "general_operand" "gF")))]
+	(match_operand:SF 0 "general_operand" "gF"))]
   ""
-  "cmpf %0,%1")
+  "tstf %0")
 
 (define_insn "cmpsi"
   [(set (cc0)
@@ -92,6 +81,20 @@
 	       (match_operand:QI 1 "general_operand" "g")))]
   ""
   "cmpb %0,%1")
+
+(define_insn "cmpdf"
+  [(set (cc0)
+	(minus (match_operand:DF 0 "general_operand" "gF")
+	       (match_operand:DF 1 "general_operand" "gF")))]
+  ""
+  "cmpd %0,%1")
+
+(define_insn "cmpsf"
+  [(set (cc0)
+	(minus (match_operand:SF 0 "general_operand" "gF")
+	       (match_operand:SF 1 "general_operand" "gF")))]
+  ""
+  "cmpf %0,%1")
 
 (define_insn ""
   [(set (cc0)
@@ -136,17 +139,18 @@
   return \"movf %1,%0\";
 }")
 
-(define_insn "movti"
-  [(set (match_operand:TI 0 "general_operand" "=g")
-	(match_operand:TI 1 "general_operand" "g"))]
-  ""
-  "movh %1,%0")
+;; Some vaxes don't support this instruction.
+;;(define_insn "movti"
+;;  [(set (match_operand:TI 0 "general_operand" "=g")
+;;	(match_operand:TI 1 "general_operand" "g"))]
+;;  ""
+;;  "movh %1,%0")
 
 (define_insn "movdi"
   [(set (match_operand:DI 0 "general_operand" "=g")
 	(match_operand:DI 1 "general_operand" "g"))]
   ""
-  "movd %1,%0")
+  "movq %1,%0")
 
 (define_insn "movsi"
   [(set (match_operand:SI 0 "general_operand" "=g")
@@ -154,7 +158,12 @@
   ""
   "*
 { if (operands[1] == const1_rtx
-      && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0)
+      && REG_NOTES (insn)
+      && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0
+      /* Make sure the insn that stored the 0 is still present.  */
+      && ! XEXP (REG_NOTES (insn), 0)->volatil
+      && GET_CODE (XEXP (REG_NOTES (insn), 0)) != NOTE)
+    /* Fastest way to change a 0 to a 1.  */
     return \"incl %0\";
   if (GET_CODE (operands[1]) == SYMBOL_REF || GET_CODE (operands[1]) == CONST)
     {
@@ -194,6 +203,7 @@
   "*
 {
  if (operands[1] == const1_rtx
+      && REG_NOTES (insn)
       && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0)
     return \"incw %0\";
   if (operands[1] == const0_rtx)
@@ -234,13 +244,12 @@
   [(set (match_operand:BLK 0 "general_operand" "=g")
 	(match_operand:BLK 1 "general_operand" "g"))
    (use (match_operand:HI 2 "general_operand" "g"))
-   (clobber (nil))			;;- Clobber everything in memory
-   (clobber (reg 0))
-   (clobber (reg 1))
-   (clobber (reg 2))
-   (clobber (reg 3))
-   (clobber (reg 4))
-   (clobber (reg 5))]
+   (clobber (reg:SI 0))
+   (clobber (reg:SI 1))
+   (clobber (reg:SI 2))
+   (clobber (reg:SI 3))
+   (clobber (reg:SI 4))
+   (clobber (reg:SI 5))]
   ""
   "movc3 %2,%1,%0")
 
@@ -303,53 +312,9 @@
   return \"movad %a1,%0\";
 }")
 
-(define_insn "extendqihi2"
-  [(set (match_operand:HI 0 "general_operand" "=g")
-	(sign_extend:HI (match_operand:QI 1 "general_operand" "g")))]
-  ""
-  "cvtbw %1,%0")
-
-(define_insn "extendqisi2"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(sign_extend:SI (match_operand:QI 1 "general_operand" "g")))]
-  ""
-  "cvtbl %1,%0")
-
-(define_insn "floatqisf2"
-  [(set (match_operand:SF 0 "general_operand" "=g")
-	(float:SF (match_operand:QI 1 "general_operand" "g")))]
-  ""
-  "cvtbf %1,%0")
-
-(define_insn "floatqidf2"
-  [(set (match_operand:DF 0 "general_operand" "=g")
-	(float:DF (match_operand:QI 1 "general_operand" "g")))]
-  ""
-  "cvtbd %1,%0")
-
-(define_insn "trunchiqi2"
-  [(set (match_operand:QI 0 "general_operand" "=g")
-	(truncate:QI (match_operand:HI 1 "general_operand" "g")))]
-  ""
-  "cvtwb %1,%0")
-
-(define_insn "extendhisi2"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(sign_extend:SI (match_operand:HI 1 "general_operand" "g")))]
-  ""
-  "cvtwl %1,%0")
-
-(define_insn "floathisf2"
-  [(set (match_operand:SF 0 "general_operand" "=g")
-	(float:SF (match_operand:HI 1 "general_operand" "g")))]
-  ""
-  "cvtwf %1,%0")
-
-(define_insn "floathidf2"
-  [(set (match_operand:DF 0 "general_operand" "=g")
-	(float:DF (match_operand:HI 1 "general_operand" "g")))]
-  ""
-  "cvtwd %1,%0")
+;; Extension and truncation insns.
+;; Those for integer source operand
+;; are ordered widest source type first.
 
 (define_insn "truncsiqi2"
   [(set (match_operand:QI 0 "general_operand" "=g")
@@ -363,35 +328,29 @@
   ""
   "cvtlw %1,%0")
 
-(define_insn "floatsisf2"
-  [(set (match_operand:SF 0 "general_operand" "=g")
-	(float:SF (match_operand:SI 1 "general_operand" "g")))]
-  ""
-  "cvtlf %1,%0")
-
-(define_insn "floatsidf2"
-  [(set (match_operand:DF 0 "general_operand" "=g")
-	(float:DF (match_operand:SI 1 "general_operand" "g")))]
-  ""
-  "cvtld %1,%0")
-
-(define_insn "fixsfqi2"
+(define_insn "trunchiqi2"
   [(set (match_operand:QI 0 "general_operand" "=g")
-	(fix:QI (match_operand:SF 1 "general_operand" "gF")))]
+	(truncate:QI (match_operand:HI 1 "general_operand" "g")))]
   ""
-  "cvtfb %1,%0")
+  "cvtwb %1,%0")
 
-(define_insn "fixsfhi2"
-  [(set (match_operand:HI 0 "general_operand" "=g")
-	(fix:HI (match_operand:SF 1 "general_operand" "gF")))]
-  ""
-  "cvtfw %1,%0")
-
-(define_insn "fixsfsi2"
+(define_insn "extendhisi2"
   [(set (match_operand:SI 0 "general_operand" "=g")
-	(fix:SI (match_operand:SF 1 "general_operand" "gF")))]
+	(sign_extend:SI (match_operand:HI 1 "general_operand" "g")))]
   ""
-  "cvtfl %1,%0")
+  "cvtwl %1,%0")
+
+(define_insn "extendqihi2"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(sign_extend:HI (match_operand:QI 1 "general_operand" "g")))]
+  ""
+  "cvtbw %1,%0")
+
+(define_insn "extendqisi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(sign_extend:SI (match_operand:QI 1 "general_operand" "g")))]
+  ""
+  "cvtbl %1,%0")
 
 (define_insn "extendsfdf2"
   [(set (match_operand:DF 0 "general_operand" "=g")
@@ -399,29 +358,17 @@
   ""
   "cvtfd %1,%0")
 
-(define_insn "fixdfqi2"
-  [(set (match_operand:QI 0 "general_operand" "=g")
-	(fix:QI (match_operand:DF 1 "general_operand" "gF")))]
-  ""
-  "cvtdb %1,%0")
-
-(define_insn "fixdfhi2"
-  [(set (match_operand:HI 0 "general_operand" "=g")
-	(fix:HI (match_operand:DF 1 "general_operand" "gF")))]
-  ""
-  "cvtdw %1,%0")
-
-(define_insn "fixdfsi2"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(fix:SI (match_operand:DF 1 "general_operand" "gF")))]
-  ""
-  "cvtdl %1,%0")
-
 (define_insn "truncdfsf2"
   [(set (match_operand:SF 0 "general_operand" "=g")
 	(float_truncate:SF (match_operand:DF 1 "general_operand" "gF")))]
   ""
   "cvtdf %1,%0")
+
+(define_insn "zero_extendhisi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(zero_extend:SI (match_operand:HI 1 "general_operand" "g")))]
+  ""
+  "movzwl %1,%0")
 
 (define_insn "zero_extendqihi2"
   [(set (match_operand:HI 0 "general_operand" "=g")
@@ -434,12 +381,87 @@
 	(zero_extend:SI (match_operand:QI 1 "general_operand" "g")))]
   ""
   "movzbl %1,%0")
+
+;; Fix-to-float conversion insns.
+;; Note that the ones that start with SImode come first.
+;; That is so that an operand that is a CONST_INT
+;; (and therefore lacks a specific machine mode).
+;; will be recognized as SImode (which is always valid)
+;; rather than as QImode or HImode.
 
-(define_insn "zero_extendhisi2"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(zero_extend:SI (match_operand:HI 1 "general_operand" "g")))]
+(define_insn "floatsisf2"
+  [(set (match_operand:SF 0 "general_operand" "=g")
+	(float:SF (match_operand:SI 1 "general_operand" "g")))]
   ""
-  "movzwl %1,%0")
+  "cvtlf %1,%0")
+
+(define_insn "floatsidf2"
+  [(set (match_operand:DF 0 "general_operand" "=g")
+	(float:DF (match_operand:SI 1 "general_operand" "g")))]
+  ""
+  "cvtld %1,%0")
+
+(define_insn "floathisf2"
+  [(set (match_operand:SF 0 "general_operand" "=g")
+	(float:SF (match_operand:HI 1 "general_operand" "g")))]
+  ""
+  "cvtwf %1,%0")
+
+(define_insn "floathidf2"
+  [(set (match_operand:DF 0 "general_operand" "=g")
+	(float:DF (match_operand:HI 1 "general_operand" "g")))]
+  ""
+  "cvtwd %1,%0")
+
+(define_insn "floatqisf2"
+  [(set (match_operand:SF 0 "general_operand" "=g")
+	(float:SF (match_operand:QI 1 "general_operand" "g")))]
+  ""
+  "cvtbf %1,%0")
+
+(define_insn "floatqidf2"
+  [(set (match_operand:DF 0 "general_operand" "=g")
+	(float:DF (match_operand:QI 1 "general_operand" "g")))]
+  ""
+  "cvtbd %1,%0")
+
+;; Float-to-fix conversion insns.
+
+(define_insn "fix_truncsfqi2"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(fix:QI (fix:SF (match_operand:SF 1 "general_operand" "gF"))))]
+  ""
+  "cvtfb %1,%0")
+
+(define_insn "fix_truncsfhi2"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(fix:HI (fix:SF (match_operand:SF 1 "general_operand" "gF"))))]
+  ""
+  "cvtfw %1,%0")
+
+(define_insn "fix_truncsfsi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(fix:SI (fix:SF (match_operand:SF 1 "general_operand" "gF"))))]
+  ""
+  "cvtfl %1,%0")
+
+(define_insn "fix_truncdfqi2"
+  [(set (match_operand:QI 0 "general_operand" "=g")
+	(fix:QI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
+  ""
+  "cvtdb %1,%0")
+
+(define_insn "fix_truncdfhi2"
+  [(set (match_operand:HI 0 "general_operand" "=g")
+	(fix:HI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
+  ""
+  "cvtdw %1,%0")
+
+(define_insn "fix_truncdfsi2"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(fix:SI (fix:DF (match_operand:DF 1 "general_operand" "gF"))))]
+  ""
+  "cvtdl %1,%0")
 
 ;;- All kinds of add instructions.
 
@@ -482,8 +504,8 @@
     {
       if (operands[2] == const1_rtx)
 	return \"incl %0\";
-      if (GET_CODE (operands[1]) == CONST_INT
-	  && INTVAL (operands[1]) == -1)
+      if (GET_CODE (operands[2]) == CONST_INT
+	  && INTVAL (operands[2]) == -1)
 	return \"decl %0\";
       if (GET_CODE (operands[2]) == CONST_INT
 	  && (unsigned) (- INTVAL (operands[2])) < 64)
@@ -995,7 +1017,12 @@
 	(ashift:SI (match_operand:SI 1 "general_operand" "g")
 		   (match_operand:QI 2 "general_operand" "g")))]
   ""
-  "ashl %2,%1,%0")
+  "*
+{
+  if (operands[2] == const1_rtx && rtx_equal_p (operands[0], operands[1]))
+    return \"addl2 %0,%0\";
+  return \"ashl %2,%1,%0\";
+}")
 
 (define_insn "ashldi3"
   [(set (match_operand:DI 0 "general_operand" "=g")
@@ -1018,13 +1045,14 @@
   ""
   "rotq %2,%1,%0")
 
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(mult:SI (plus:SI (match_operand:SI 1 "general_operand" "g")
-			  (match_operand:SI 2 "general_operand" "g"))
-		 (match_operand:SI 3 "general_operand" "g")))]
-  ""
-  "index %1,$??,$??,%3,%2,%0")
+;This insn is probably slower than a multiply and an add.
+;(define_insn ""
+;  [(set (match_operand:SI 0 "general_operand" "=g")
+;	(mult:SI (plus:SI (match_operand:SI 1 "general_operand" "g")
+;			  (match_operand:SI 2 "general_operand" "g"))
+;		 (match_operand:SI 3 "general_operand" "g")))]
+;  ""
+;  "index %1,$0x80000000,$0x7fffffff,%3,%2,%0")
 
 (define_insn ""
   [(set (cc0)
@@ -1064,7 +1092,7 @@
 
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=g")
-	(sign_extract:SI (match_operand:SI 1 "general_operand" "r")
+	(sign_extract:SI (match_operand:SI 1 "register_operand" "r")
 			 (match_operand:SI 2 "general_operand" "g")
 			 (match_operand:SI 3 "general_operand" "g")))]
   ""
@@ -1079,7 +1107,7 @@
   "extzv %3,%2,%1,%0")
 
 (define_insn "insv"
-  [(set (zero_extract:SI (match_operand:QI 0 "general_operand" "=g")
+  [(set (zero_extract:SI (match_operand:QI 0 "general_operand" "+g")
 			 (match_operand:SI 1 "general_operand" "g")
 			 (match_operand:SI 2 "general_operand" "g"))
 	(match_operand:SI 3 "general_operand" "g"))]
@@ -1087,7 +1115,7 @@
   "insv %3,%2,%1,%0")
 
 (define_insn ""
-  [(set (zero_extract:SI (match_operand:SI 0 "general_operand" "=r")
+  [(set (zero_extract:SI (match_operand:SI 0 "register_operand" "+r")
 			 (match_operand:SI 1 "general_operand" "g")
 			 (match_operand:SI 2 "general_operand" "g"))
 	(match_operand:SI 3 "general_operand" "g"))]
@@ -1339,7 +1367,8 @@
 	     (const_int 0))
 	 (label_ref (match_operand 2 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jbs %1,%0,%l2")
 
 (define_insn ""
@@ -1351,8 +1380,85 @@
 	     (const_int 0))
 	 (label_ref (match_operand 2 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jbc %1,%0,%l2")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (match_operand:SI 1 "general_operand" "g"))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 2 "" ""))))]
+  "GET_CODE (operands[1]) == CONST_INT
+   && exact_log2 (INTVAL (operands[1])) >= 0
+   && (GET_CODE (operands[0]) != MEM
+       || ! mode_dependent_address_p (XEXP (operands[0], 0)))"
+  "*
+{
+  operands[1]
+    = gen_rtx (CONST_INT, VOIDmode, exact_log2 (INTVAL (operands[1])));
+  return \"jbs %1,%0,%l2\";
+}")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (match_operand:SI 1 "general_operand" "g"))
+	     (const_int 0))
+	 (label_ref (match_operand 2 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[1]) == CONST_INT
+   && exact_log2 (INTVAL (operands[1])) >= 0
+   && (GET_CODE (operands[0]) != MEM
+       || ! mode_dependent_address_p (XEXP (operands[0], 0)))"
+  "*
+{
+  operands[1]
+    = gen_rtx (CONST_INT, VOIDmode, exact_log2 (INTVAL (operands[1])));
+  return \"jbc %1,%0,%l2\";
+}")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (match_operand:SI 1 "general_operand" "g"))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 2 "" ""))))]
+  "GET_CODE (operands[1]) == CONST_INT
+   && exact_log2 (INTVAL (operands[1])) >= 0
+   && (GET_CODE (operands[0]) != MEM
+       || ! mode_dependent_address_p (XEXP (operands[0], 0)))"
+  "*
+{
+  operands[1]
+    = gen_rtx (CONST_INT, VOIDmode, exact_log2 (INTVAL (operands[1])));
+  return \"jbc %1,%0,%l2\";
+}")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (match_operand:SI 1 "general_operand" "g"))
+	     (const_int 0))
+	 (label_ref (match_operand 2 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[1]) == CONST_INT
+   && exact_log2 (INTVAL (operands[1])) >= 0
+   && (GET_CODE (operands[0]) != MEM
+       || ! mode_dependent_address_p (XEXP (operands[0], 0)))"
+  "*
+{
+  operands[1]
+    = gen_rtx (CONST_INT, VOIDmode, exact_log2 (INTVAL (operands[1])));
+  return \"jbs %1,%0,%l2\";
+}")
 
 (define_insn ""
   [(set (pc)
@@ -1363,7 +1469,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 2 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jbc %1,%0,%l2")
 
 (define_insn ""
@@ -1375,7 +1482,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 2 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jbs %1,%0,%l2")
 
 (define_insn ""
@@ -1386,7 +1494,8 @@
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbs %0,%l1")
 
 (define_insn ""
@@ -1397,7 +1506,8 @@
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbc %0,%l1")
 
 (define_insn ""
@@ -1408,7 +1518,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbc %0,%l1")
 
 (define_insn ""
@@ -1419,7 +1530,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbs %0,%l1")
 
 ;; These four entries allow a jlbc or jlbs to be made
@@ -1432,7 +1544,8 @@
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbs %0,%l1")
 
 (define_insn ""
@@ -1443,7 +1556,8 @@
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbc %0,%l1")
 
 (define_insn ""
@@ -1454,7 +1568,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbc %0,%l1")
 
 (define_insn ""
@@ -1465,7 +1580,8 @@
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))]
-  ""
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jlbs %0,%l1")
 
 ;; Subtract-and-jump and Add-and-jump insns.
@@ -1483,8 +1599,8 @@
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
    (set (match_dup 0)
-	(minus:SI (match_dup 0)
-		  (const_int 1)))]
+	(plus:SI (match_dup 0)
+		 (const_int -1)))]
   "!TARGET_UNIX_ASM"
   "jsobgtr %0,%l1")
 
@@ -1497,8 +1613,8 @@
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
    (set (match_dup 0)
-	(minus:SI (match_dup 0)
-		  (const_int 1)))]
+	(plus:SI (match_dup 0)
+		 (const_int -1)))]
   "!TARGET_UNIX_ASM"
   "jsobgeq %0,%l1")
 
@@ -1513,8 +1629,8 @@
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))
    (set (match_dup 0)
-	(minus:SI (match_dup 0)
-		  (const_int 1)))]
+	(plus:SI (match_dup 0)
+		 (const_int -1)))]
   "!TARGET_UNIX_ASM"
   "jsobgtr %0,%l1")
 
@@ -1527,8 +1643,8 @@
 	 (pc)
 	 (label_ref (match_operand 1 "" ""))))
    (set (match_dup 0)
-	(minus:SI (match_dup 0)
-		  (const_int 1)))]
+	(plus:SI (match_dup 0)
+		 (const_int -1)))]
   "!TARGET_UNIX_ASM"
   "jsobgeq %0,%l1")
 
@@ -1594,11 +1710,26 @@
   "!TARGET_UNIX_ASM"
   "jaobleq %1,%0,%l2")
 
+;; Note that operand 1 is total size of args, in bytes,
+;; and what the call insn wants is the number of words.
 (define_insn "call"
   [(call (match_operand:QI 0 "general_operand" "g")
 	 (match_operand:QI 1 "general_operand" "g"))]
   ""
-  "calls %1,%0")
+  "*
+  operands[1] = gen_rtx (CONST_INT, VOIDmode, (INTVAL (operands[1]) + 3)/ 4);
+  return \"calls %1,%0\";
+")
+
+(define_insn "call_value"
+  [(set (match_operand 0 "" "g")
+	(call (match_operand:QI 1 "general_operand" "g")
+	      (match_operand:QI 2 "general_operand" "g")))]
+  ""
+  "*
+  operands[2] = gen_rtx (CONST_INT, VOIDmode, (INTVAL (operands[2]) + 3)/ 4);
+  return \"calls %2,%1\";
+")
 
 (define_insn "return"
   [(return)]
@@ -1610,27 +1741,109 @@
 	(if_then_else (le (minus:SI (match_operand:SI 0 "general_operand" "g")
 				    (match_operand:SI 1 "general_operand" "g"))
 			  (match_operand:SI 2 "general_operand" "g"))
-		      (plus:SI (label_ref:SI (match_operand 3 "" ""))
-			       (sign_extend:SI
+		      (plus:SI (sign_extend:SI
 				(mem:HI (plus:SI (pc)
 						 (minus:SI (match_dup 0)
-							   (match_dup 1))))))
+							   (match_dup 1)))))
+			       (label_ref:SI (match_operand 3 "" "")))
 		      (pc)))]
   ""
   "casel %0,%1,%2")
+
+;; This used to arise from the preceding by simplification
+;; if operand 1 is zero.  Perhaps it is no longer necessary.
+(define_insn ""
+  [(set (pc)
+	(if_then_else (le (match_operand:SI 0 "general_operand" "g")
+			  (match_operand:SI 1 "general_operand" "g"))
+		      (plus:SI (sign_extend:SI
+				(mem:HI (plus:SI (pc)
+						 (minus:SI (match_dup 0)
+							   (const_int 0)))))
+			       (label_ref:SI (match_operand 3 "" "")))
+		      (pc)))]
+  ""
+  "casel %0,$0,%1")
 
 ;; This arises from the preceding by simplification if operand 1 is zero.
 (define_insn ""
   [(set (pc)
 	(if_then_else (le (match_operand:SI 0 "general_operand" "g")
 			  (match_operand:SI 1 "general_operand" "g"))
-		      (plus:SI (label_ref:SI (match_operand 3 "" ""))
-			       (sign_extend:SI
+		      (plus:SI (sign_extend:SI
 				(mem:HI (plus:SI (pc)
-						 (match_dup 0)))))
+						 (match_dup 0))))
+			       (label_ref:SI (match_operand 3 "" "")))
 		      (pc)))]
   ""
   "casel %0,$0,%1")
+
+;; Optimize   extzv ...,z;    andl2 ...,z
+;; with other operands constant.
+(define_peephole
+  [(set (match_operand:SI 0 "general_operand" "g")
+	(zero_extract:SI (match_operand:SI 1 "general_operand" "g")
+			 (match_operand:SI 2 "general_operand" "g")
+			 (match_operand:SI 3 "general_operand" "g")))
+   (set (match_operand:SI 4 "general_operand" "g")
+	(and:SI (match_dup 0)
+		(match_operand:SI 5 "general_operand" "g")))]
+  "GET_CODE (operands[2]) == CONST_INT
+   && GET_CODE (operands[3]) == CONST_INT
+   && (INTVAL (operands[2]) + INTVAL (operands[3])) == 32
+   && GET_CODE (operands[5]) == CONST_INT
+   && dead_or_set_p (insn, operands[0])"
+  "*
+{
+  unsigned long mask = INTVAL (operands[5]);
+  operands[3] = gen_rtx (CONST_INT, VOIDmode, -INTVAL (operands[3]));
+
+  if ((floor_log2 (mask) + 1) >= INTVAL (operands[2]))
+    mask &= ((1 << INTVAL (operands[2])) - 1);
+
+  operands[5] = gen_rtx (CONST_INT, VOIDmode, ~mask);
+  if (push_operand (operands[4], SImode))
+    {
+      output_asm_insn (\"rotl %3,%1,%0\", operands);
+      return \"bicl3 %5,%0,%4\";
+    }
+  else
+    {
+      output_asm_insn (\"rotl %3,%1,%4\", operands);
+      return \"bicl2 %5,%4\";
+    }
+}")
+
+;; Optimize   andl3 x,y,z; extzv z,....,z
+
+(define_peephole
+  [(set (match_operand:SI 0 "general_operand" "g")
+	(and:SI (match_operand:SI 1 "general_operand" "g")
+		(match_operand:SI 2 "general_operand" "g")))
+   (set (match_operand 3 "general_operand" "g")
+	(zero_extract:SI (match_dup 0)
+			 (match_operand:SI 4 "general_operand" "g")
+			 (match_operand:SI 5 "general_operand" "g")))]
+  "GET_CODE (operands[2]) == CONST_INT
+   && GET_CODE (operands[4]) == CONST_INT
+   && GET_CODE (operands[5]) == CONST_INT
+   && (INTVAL (operands[4]) + INTVAL (operands[5])) == 32
+   && dead_or_set_p (insn, operands[0])"
+  "*
+{
+  unsigned long mask = INTVAL (operands[2]);
+
+  mask &= ~((1 << INTVAL (operands[5])) - 1);
+  operands[2] = gen_rtx (CONST_INT, VOIDmode, ~mask);
+
+  operands[5] = gen_rtx (CONST_INT, VOIDmode, -INTVAL (operands[5]));
+
+  if (rtx_equal_p (operands[0], operands[1]))
+    output_asm_insn (\"bicl2 %2,%0\", operands);
+  else
+    output_asm_insn (\"bicl3 %2,%1,%0\", operands);
+  return \"rotl %5,%0,%3\";
+}")
 
 ;;- Local variables:
 ;;- mode:emacs-lisp

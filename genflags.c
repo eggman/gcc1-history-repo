@@ -23,90 +23,24 @@ and this notice must be preserved on all copies.  */
 
 
 #include <stdio.h>
+#include "config.h"
 #include "rtl.h"
-#include <obstack.h>
+#include "obstack.h"
 
 struct obstack obstack;
-struct obstack *current_obstack = &obstack;
+struct obstack *rtl_obstack = &obstack;
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
 extern int xmalloc ();
 extern void free ();
 
-/* flags to determine output of machine description dependent #define's.  */
-int max_recog_operands_flag;
-int max_dup_operands_flag;
-int max_sets_per_insn_flag;
-int register_constraint_flag;
-
-int sets_seen_this_insn;
-int dup_operands_seen_this_insn;
-
 void fatal ();
-
-void
-walk_insn_part (part)
-     rtx part;
-{
-  register int i, j;
-  register RTX_CODE code = GET_CODE (part);
-  register char *format_ptr;
-
-  switch (code)
-    {
-    case SET:
-      sets_seen_this_insn++;
-      break;
-
-    case MATCH_OPERAND:
-      if (XINT (part, 0) > max_recog_operands_flag)
-	max_recog_operands_flag = XINT (part, 0);
-      if (XSTR (part, 2) && *XSTR (part, 2))
-	register_constraint_flag = 1;
-      return;
-
-    case MATCH_DUP:
-      ++dup_operands_seen_this_insn;
-
-    case REG: case CONST_INT: case SYMBOL_REF:
-    case LABEL_REF: case PC: case CC0:
-      return;
-    }
-
-  format_ptr = GET_RTX_FORMAT (GET_CODE (part));
-
-  for (i = 0; i < GET_RTX_LENGTH (GET_CODE (part)); i++)
-    switch (*format_ptr++)
-      {
-      case 'e':
-	walk_insn_part (XEXP (part, i));
-	break;
-      case 'E':
-	if (XVEC (part, i) != NULL)
-	  for (j = 0; j < XVECLEN (part, i); j++)
-	    walk_insn_part (XVECEXP (part, i, j));
-	break;
-      }
-}
 
 void
 gen_insn (insn)
      rtx insn;
 {
-  int i;
-
-  /* Walk the insn pattern to gather the #define's status.  */
-  sets_seen_this_insn = 0;
-  dup_operands_seen_this_insn = 0;
-  for (i = 0; i < XVECLEN (insn, 1); i++) {
-    walk_insn_part (XVECEXP (insn, 1, i));
-  }
-  if (sets_seen_this_insn > max_sets_per_insn_flag)
-    max_sets_per_insn_flag = sets_seen_this_insn;
-  if (dup_operands_seen_this_insn > max_dup_operands_flag)
-    max_dup_operands_flag = dup_operands_seen_this_insn;
-
   /* Don't mention instructions whose names are the null string.
      They are in the machine description just to be recognized.  */
   if (strlen (XSTR (insn, 0)) == 0)
@@ -117,12 +51,13 @@ gen_insn (insn)
   printf ("extern rtx gen_%s ();\n", XSTR (insn, 0));
 }
 
+int
 xmalloc (size)
 {
   register int val = malloc (size);
 
   if (val == 0)
-    abort ();
+    fatal ("virtual memory exhausted");
 
   return val;
 }
@@ -134,7 +69,7 @@ xrealloc (ptr, size)
 {
   int result = realloc (ptr, size);
   if (!result)
-    abort ();
+    fatal ("virtual memory exhausted");
   return result;
 }
 
@@ -144,9 +79,10 @@ fatal (s, a1, a2)
   fprintf (stderr, "genflags: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
-  exit (1);
+  exit (FATAL_EXIT_CODE);
 }
 
+int
 main (argc, argv)
      int argc;
      char **argv;
@@ -156,7 +92,7 @@ main (argc, argv)
   extern rtx read_rtx ();
   register int c;
 
-  obstack_begin (current_obstack, 4060);
+  obstack_init (rtl_obstack);
 
   if (argc <= 1)
     fatal ("No input file name.");
@@ -165,7 +101,7 @@ main (argc, argv)
   if (infile == 0)
     {
       perror (argv[1]);
-      exit (1);
+      exit (FATAL_EXIT_CODE);
     }
 
   init_rtl ();
@@ -183,8 +119,10 @@ from the machine description file `md'.  */\n\n");
       ungetc (c, infile);
 
       desc = read_rtx (infile);
-      gen_insn (desc);
+      if (GET_CODE (desc) == DEFINE_INSN || GET_CODE (desc) == DEFINE_EXPAND)
+	gen_insn (desc);
     }
 
-  return 0;
+  fflush (stdout);
+  exit (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
 }

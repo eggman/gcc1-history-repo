@@ -21,14 +21,8 @@ and this notice must be preserved on all copies.  */
 /* Nonzero means reject anything that ANSI standard C forbids.  */
 extern int pedantic;
 
-extern void store_init_value ();
-extern int start_function ();
-extern void finish_function ();
-extern void store_parm_decls ();
-
-extern tree build_switch_stmt();
-extern void finish_switch_stmt ();
-extern void pushcase ();
+/* In a RECORD_TYPE or UNION_TYPE, nonzero if any component is read-only.  */
+#define C_TYPE_FIELDS_READONLY(type) TYPE_SEP_UNIT (type)
 
 /* in typecheck.c */
 extern tree build_component_ref(), build_conditional_expr(), build_compound_expr();
@@ -36,52 +30,59 @@ extern tree build_unary_op(), build_binary_op(), build_function_call();
 extern tree build_binary_op_nodefault ();
 extern tree build_indirect_ref(), build_array_ref(), build_c_cast();
 extern tree build_modify_expr();
-extern tree duplicate_reference ();
-extern tree c_sizeof ();
+extern tree c_sizeof (), c_alignof ();
+extern void store_init_value ();
+extern tree digest_init ();
+extern tree c_expand_start_case ();
+extern tree default_conversion ();
+
+/* Given two integer or real types, return the type for their sum.
+   Given two compatible ANSI C types, returns the merged type.  */
+
+extern tree commontype ();
 
 /* in decl.c */
-extern tree build_bind_stmt ();
 extern tree build_label ();
 
-extern void pushlevel(), poplevel(), pushgoto();
+extern int start_function ();
+extern void finish_function ();
+extern void store_parm_decls ();
+extern tree get_parm_types ();
+
+extern void pushlevel(), poplevel();
 
 extern tree groktypename(), lookup_name();
+
+extern tree lookup_label(), define_label();
+
+extern tree implicitly_declare(), getdecls(), gettags ();
 
 extern tree start_decl();
 extern void finish_decl();
 
-extern tree grokfield(), build_struct();
+extern tree start_struct(), finish_struct(), xref_tag();
+extern tree grokfield();
 
-extern tree start_enum(), finish_enum(), xref_enum();
+extern tree start_enum(), finish_enum();
 extern tree build_enumerator();
 
-extern tree implicitly_declare(), getdecls(), gettags ();
-extern tree build_return_stmt ();
-
-extern tree build_decl ();
-extern tree resolve_tags ();
+extern tree make_index_type ();
 
 extern tree double_type_node, long_double_type_node, float_type_node;
-extern tree char_type_node, unsigned_char_type_node;
+extern tree char_type_node, unsigned_char_type_node, signed_char_type_node;
+
 extern tree short_integer_type_node, short_unsigned_type_node;
 extern tree long_integer_type_node, long_unsigned_type_node;
 extern tree unsigned_type_node;
-extern tree string_type_node, char_array_type_node;
+extern tree string_type_node, char_array_type_node, int_array_type_node;
 
 extern int current_function_returns_value;
+extern int current_function_returns_null;
 
 extern void yyerror();
 extern int lineno;
 
 extern tree ridpointers[];
 
-/* Points to the LET_STMT node
-   whose contents are being processing */
-extern tree current_block;
-
 /* Points to the FUNCTION_DECL of the function whose body we are reading. */
 extern tree current_function_decl;
-
-/* Points to the CASE_STMT node of the innermost switch statement in
- * progress.  */
-extern tree current_switch_stmt;

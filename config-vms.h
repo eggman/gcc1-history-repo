@@ -1,4 +1,4 @@
-/* Configuration for GNU C-compiler for Motorola 68000 family.
+/* Configuration for GNU C-compiler for Vax.
    Copyright (C) 1987 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -18,7 +18,6 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
-
 /* #defines that need visibility everywhere.  */
 #define FALSE 0
 #define TRUE 1
@@ -33,8 +32,10 @@ and this notice must be preserved on all copies.  */
 #define HOST_BITS_PER_INT 32
 #define HOST_BITS_PER_LONG 32
 
-/*
-Local variables:
-version-control: t
-End:
-*/
+#define SUCCESS_EXIT_CODE 1
+#define FATAL_EXIT_CODE 0
+
+/* A couple of conditionals for execution machine are controlled here.  */
+#ifndef VMS
+#define VMS
+#endif

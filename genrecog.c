@@ -1,5 +1,5 @@
 /* Generate code from machine description to emit insns as rtl.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987,1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -20,7 +20,8 @@ and this notice must be preserved on all copies.  */
 
 
 /* This program is used to produce insn-recog.c, which contains
-   one function called `recog'.  This function contains a decision tree
+   a function called `recog' plus its subroutines.
+   These functions contain a decision tree
    that recognizes whether an rtx, the argument given to recog,
    is a valid instruction.
 
@@ -33,11 +34,12 @@ and this notice must be preserved on all copies.  */
    or as an argument to output_insn_hairy (also in insn-output.c).  */
 
 #include <stdio.h>
+#include "config.h"
 #include "rtl.h"
-#include <obstack.h>
+#include "obstack.h"
 
 struct obstack obstack;
-struct obstack *current_obstack = &obstack;
+struct obstack *rtl_obstack = &obstack;
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -72,7 +74,12 @@ struct decision
   char *reg_class;
   char enforce_mode;
   int veclen;
+  int subroutine_number;
 };
+
+#define SUBROUTINE_THRESHOLD 50
+
+int next_subroutine_number;
 
 /*
 recognize (top)
@@ -106,8 +113,6 @@ recognize (top)
 
 */
 
-struct decision *tree;
-
 int next_number;
 
 int next_insn_code;
@@ -116,11 +121,17 @@ int next_insn_code;
 int dupcount;
 
 struct decision *add_to_sequence ();
-void add_action ();
 struct decision *try_merge_2 ();
+void write_subroutine ();
+void print_code ();
+void clear_codes ();
+void clear_modes ();
+void change_state ();
+void write_tree ();
 char *copystr ();
 char *concat ();
 void fatal ();
+void mybzero ();
 
 struct decision *first;
 
@@ -128,22 +139,21 @@ struct decision *first;
    that will recognize INSN.  */
 
 struct decision *
-make_sequence (pattern)
-     rtx pattern;
+make_insn_sequence (insn)
+     rtx insn;
 {
-  register int i;
   rtx x;
-  char *c_test = XSTR (pattern, 2);
+  char *c_test = XSTR (insn, 2);
   struct decision *last;
 
   dupcount = 0;
 
-  if (XVECLEN (pattern, 1) == 1)
-    x = XVECEXP (pattern, 1, 0);
+  if (XVECLEN (insn, 1) == 1)
+    x = XVECEXP (insn, 1, 0);
   else
     {
       x = rtx_alloc (PARALLEL);
-      XVEC (x, 0) = XVEC (pattern, 1);
+      XVEC (x, 0) = XVEC (insn, 1);
       PUT_MODE (x, VOIDmode);
     }
 
@@ -193,6 +203,7 @@ add_to_sequence (pattern, last, position)
   new->c_test = 0;
   new->reg_class = 0;
   new->veclen = 0;
+  new->subroutine_number = 0;
 
   this = new;
 
@@ -421,7 +432,9 @@ struct decision *
 try_merge_2 (old, add)
      struct decision *old, *add;
 {
-  register struct decision *p = old, *last = 0, *prev_win = 0;
+  register struct decision *p;
+  struct decision *last = 0;
+  struct decision *last_same_place = 0;
 
   /* Put this in after the others that test the same place,
      if there are any.  If not, find the last chain element
@@ -436,35 +449,30 @@ try_merge_2 (old, add)
 
   int operand = 0 != add->tests;
 
-  while (p)
+  for (p = old; p; p = p->next)
     {
       if (p->position == add->position
 	  || (p->position && add->position
 	      && !strcmp (p->position, add->position)))
 	{
-	  if (!operand && p->tests)
+	  last_same_place = p;
+	  /* If enforce_mode, segregate the modes in numerical order.  */
+	  if (p->enforce_mode && (int) add->mode < (int) p->mode)
 	    break;
-	  if (prev_win && prev_win->enforce_mode
-	      && prev_win->mode == add->mode
-	      && p->mode != add->mode)
-	    {
-	      add->next = prev_win->next;
-	      prev_win->next = add;
-	      return old;
-	    }
-	  prev_win = p;
+	  /* Keep explicit decompositions before those that test predicates.
+	     If enforce_mode, do this separately within each mode.  */
+	  if (! p->enforce_mode || p->mode == add->mode)
+	    if (!operand && p->tests)
+	      break;
 	}
-      else if (prev_win)
-	{
-	  add->next = prev_win->next;
-	  prev_win->next = add;
-	  return old;
-	}
+      /* If this is past the end of the decisions at the same place as ADD,
+	 stop looking now; add ADD before here.  */
+      else if (last_same_place)
+	break;
       last = p;
-      p = p->next;
     }
 
-  /* If we leave the loop, p is place to insert before.  */
+  /* Insert before P, which means after LAST.  */
 
   if (last)
     {
@@ -477,6 +485,7 @@ try_merge_2 (old, add)
   return add;
 }
 
+int
 no_same_mode (node)
      struct decision *node;
 {
@@ -490,23 +499,77 @@ no_same_mode (node)
   return 1;
 }
 
+/* Count the number of subnodes of node NODE, assumed to be the start
+   of a next-chain.  If the number is high enough, make NODE start
+   a separate subroutine in the C code that is generated.  */
+
+int
+break_out_subroutines (node)
+     struct decision *node;
+{
+  int size = 0;
+  struct decision *sub;
+  for (sub = node; sub; sub = sub->next)
+    size += 1 + break_out_subroutines (sub->success);
+  if (size > SUBROUTINE_THRESHOLD)
+    {
+      node->subroutine_number = ++next_subroutine_number;
+      write_subroutine (node);
+      size = 1;
+    }
+  return size;
+}
+
+void
+write_subroutine (tree)
+     struct decision *tree;
+{
+  printf ("int\nrecog_%d (x0, insn)\n     register rtx x0;\n     rtx insn;\n{\n",
+	  tree->subroutine_number);
+  printf ("  register rtx x1, x2, x3, x4, x5;\n  rtx x6, x7, x8, x9, x10, x11;\n");
+  printf ("  int tem;\n");
+  write_tree (tree, "", 0, "", 1);
+  printf (" ret0: return -1;\n}\n\n");
+}
+
 /* Write out C code to perform the decisions in the tree.  */
 
-write_tree (tree, prevpos, afterward, afterpos)
+void
+write_tree (tree, prevpos, afterward, afterpos, initial)
      struct decision *tree;
      char *prevpos;
      int afterward;
      char *afterpos;
+     int initial;
 {
   register struct decision *p, *p1;
   char *pos;
   register int depth;
   int ignmode;
   enum { NO_SWITCH, CODE_SWITCH, MODE_SWITCH } in_switch = NO_SWITCH;
-  char modemap[NUM_MACHINE_MODE];
+  char modemap[NUM_MACHINE_MODES];
   char codemap[NUM_RTX_CODE];
 
   pos = prevpos;
+
+  if (tree->subroutine_number > 0 && ! initial)
+    {
+      printf (" L%d:\n", tree->number);
+
+      if (afterward)
+	{
+	  printf ("  tem = recog_%d (x0, insn);\n",
+		  tree->subroutine_number);
+	  printf ("  if (tem >= 0) return tem;\n");
+	  change_state (pos, afterpos);
+	  printf ("  goto L%d;\n", afterward);
+	}
+      else
+	printf ("  return recog_%d (x0, insn);\n",
+		tree->subroutine_number);
+      return;
+    }
+
   tree->label_needed = 1;
   for (p = tree; p; p = p->next)
     {
@@ -528,7 +591,8 @@ write_tree (tree, prevpos, afterward, afterpos)
       p->afterward = p1;
       if (p1) p1->label_needed = 1;
 
-      if (in_switch == MODE_SWITCH && (p->mode == VOIDmode || p->tests != 0))
+      if (in_switch == MODE_SWITCH
+	  && (p->mode == VOIDmode || (! p->enforce_mode && p->tests != 0)))
 	{
 	  in_switch = NO_SWITCH;
 	  printf ("  }\n");
@@ -595,15 +659,22 @@ write_tree (tree, prevpos, afterward, afterpos)
       if (in_switch == NO_SWITCH && pos[depth-1] != '*')
 	{
 	  register int i;
-	  bzero (modemap, sizeof modemap);
-	  for (p1 = p, i = 0; p1 && p1->mode != VOIDmode && p1->tests == 0;
+	  int lose = 0;
+
+	  mybzero (modemap, sizeof modemap);
+	  for (p1 = p, i = 0;
+	       (p1 && p1->mode != VOIDmode
+		&& (p1->tests == 0 || p1->enforce_mode));
 	       p1 = p1->next, i++)
 	    {
 	      if (! p->enforce_mode && modemap[(int) p1->mode])
-		break;
+		{
+		  lose = 1;
+		  break;
+		}
 	      modemap[(int) p1->mode] = 1;
 	    }
-	  if ((p1 == 0 || p1->mode == VOIDmode || p1->tests != 0) && i >= 4)
+	  if (!lose && i >= 4)
 	    {
 	      in_switch = MODE_SWITCH;
 	      printf (" switch (GET_MODE (x%d))\n  {\n", depth);
@@ -613,7 +684,7 @@ write_tree (tree, prevpos, afterward, afterpos)
       if (in_switch == NO_SWITCH)
 	{
 	  register int i;
-	  bzero (codemap, sizeof codemap);
+	  mybzero (codemap, sizeof codemap);
 	  for (p1 = p, i = 0; p1 && p1->code != UNKNOWN; p1 = p1->next, i++)
 	    {
 	      if (codemap[(int) p1->code])
@@ -647,9 +718,8 @@ write_tree (tree, prevpos, afterward, afterpos)
 	}
 
       printf ("  if (");
-      if (p->code != UNKNOWN && (p->exact || in_switch != CODE_SWITCH))
+      if (p->exact || (p->code != UNKNOWN && in_switch != CODE_SWITCH))
 	{
-	  register char *p1;
 	  if (p->exact)
 	    printf ("x%d == %s", depth, p->exact);
 	  else
@@ -745,13 +815,17 @@ write_tree (tree, prevpos, afterward, afterpos)
   for (p = tree; p; p = p->next)
     if (p->success)
       {
-	pos = p->position;
-	write_tree (p->success, pos,
-		    p->afterward ? p->afterward->number : afterward,
-		    p->afterward ? pos : afterpos);
+	  {
+	    pos = p->position;
+	    write_tree (p->success, pos,
+			p->afterward ? p->afterward->number : afterward,
+			p->afterward ? pos : afterpos,
+			0);
+	  }
       }
 }
 
+void
 print_code (code)
      RTX_CODE code;
 {
@@ -765,6 +839,7 @@ print_code (code)
     }
 }
 
+int
 same_codes (p, code)
      register struct decision *p;
      register RTX_CODE code;
@@ -776,6 +851,7 @@ same_codes (p, code)
   return 1;
 }
 
+void
 clear_codes (p)
      register struct decision *p;
 {
@@ -783,6 +859,7 @@ clear_codes (p)
     p->code = UNKNOWN;
 }
 
+int
 same_modes (p, mode)
      register struct decision *p;
      register enum machine_mode mode;
@@ -794,6 +871,7 @@ same_modes (p, mode)
   return 1;
 }
 
+void
 clear_modes (p)
      register struct decision *p;
 {
@@ -801,6 +879,7 @@ clear_modes (p)
     p->ignmode = 1;
 }
 
+void
 change_state (oldpos, newpos)
      char *oldpos;
      char *newpos;
@@ -846,6 +925,15 @@ copystr (s1)
   return tem;
 }
 
+void
+mybzero (b, length)
+     register char *b;
+     register int length;
+{
+  while (length-- > 0)
+    *b++ = 0;
+}
+
 char *
 concat (s1, s2)
      char *s1, *s2;
@@ -872,17 +960,17 @@ xrealloc (ptr, size)
 {
   int result = realloc (ptr, size);
   if (!result)
-    abort ();
+    fatal ("virtual memory exhausted");
   return result;
 }
 
+int
 xmalloc (size)
 {
   register int val = malloc (size);
 
   if (val == 0)
-    abort ();
-
+    fatal ("virtual memory exhausted");
   return val;
 }
 
@@ -894,9 +982,10 @@ fatal (s, a1, a2)
   fprintf (stderr, "\n");
   fprintf (stderr, "after %d instruction definitions\n",
 	   next_insn_code);
-  exit (1);
+  exit (FATAL_EXIT_CODE);
 }
 
+int
 main (argc, argv)
      int argc;
      char **argv;
@@ -905,10 +994,9 @@ main (argc, argv)
   struct decision *tree = 0;
   FILE *infile;
   extern rtx read_rtx ();
-  char *startpos;
   register int c;
 
-  obstack_begin (current_obstack, 4060);
+  obstack_init (rtl_obstack);
 
   if (argc <= 1)
     fatal ("No input file name.");
@@ -917,7 +1005,7 @@ main (argc, argv)
   if (infile == 0)
     {
       perror (argv[1]);
-      exit (1);
+      exit (FATAL_EXIT_CODE);
     }
 
   init_rtl ();
@@ -936,7 +1024,11 @@ from the machine description file `md'.  */\n\n");
       ungetc (c, infile);
 
       desc = read_rtx (infile);
-      tree = merge_trees (tree, make_sequence (desc));
+      if (GET_CODE (desc) == DEFINE_INSN)
+	tree = merge_trees (tree, make_insn_sequence (desc));
+      if (GET_CODE (desc) == DEFINE_PEEPHOLE
+	  || GET_CODE (desc) == DEFINE_EXPAND)
+	next_insn_code++;
     }
 
   printf ("#include \"config.h\"\n");
@@ -949,9 +1041,9 @@ from the machine description file `md'.  */\n\n");
 \n\
    recog returns -1 if the rtx is not valid.\n\
    If the rtx is valid, recog returns a nonnegative number\n\
-   which is the insn code number for the pattern that matched.\n\
-   This is the same as the order in the machine description of the\n\
-   entry that matched.  This number can be used as an index into\n\
+   which is the insn code number for the pattern that matched.\n");
+  printf ("   This is the same as the order in the machine description of\n\
+   the entry that matched.  This number can be used as an index into\n\
    insn_templates and insn_n_operands (found in insn-output.c)\n\
    or as an argument to output_insn_hairy (also in insn-output.c).  */\n\n");
 
@@ -961,10 +1053,16 @@ from the machine description file `md'.  */\n\n");
   printf ("char recog_dup_num[MAX_DUP_OPERANDS];\n\n");
   printf ("extern rtx recog_addr_dummy;\n\n");
   printf ("#define operands recog_operand\n\n");
-  printf ("int\nrecog (x0, insn)\n     register rtx x0;\n     rtx insn;{\n");
+
+  break_out_subroutines (tree);
+
+  printf ("int\nrecog (x0, insn)\n     register rtx x0;\n     rtx insn;\n{\n");
   printf ("  register rtx x1, x2, x3, x4, x5;\n  rtx x6, x7, x8, x9, x10, x11;\n");
-  startpos = "";
-  write_tree (tree, startpos, 0, "");
+  printf ("  int tem;\n");
+
+  write_tree (tree, "", 0, "", 1);
   printf (" ret0: return -1;\n}\n");
-  return 0;
+
+  fflush (stdout);
+  exit (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
 }

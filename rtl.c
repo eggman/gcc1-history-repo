@@ -1,5 +1,5 @@
 /* Manage RTL for C-Compiler
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -27,20 +27,21 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include <ctype.h>
 #include <stdio.h>
-#include <strings.h>
 #include "rtl.h"
 
-#include <obstack.h>
+#include "obstack.h"
 #define	obstack_chunk_alloc	xmalloc
 #define	obstack_chunk_free	free
 extern int xmalloc ();
 extern void free ();
 
-/* We use the same obstack used for the tree.
-   That way, the TREE_RTL of top-level variables and functions
-   is permanent.  */
+/* Obstack used for allocating RTL objects.
+   Between functions, this is the permanent_obstack.
+   While parsing and expanding a function, this is maybepermanent_obstack
+   so we can save it if it is an inline function.
+   During optimization and output, this is temporary_obstack.  */
 
-extern struct obstack *current_obstack;
+extern struct obstack *rtl_obstack;
 
 #define MIN(x,y) ((x < y) ? x : y)
 
@@ -65,7 +66,7 @@ char *rtx_name[] = {
 /* Indexed by machine mode, gives the name of that machine mode.
    This name does not include the letters "mode".  */
 
-#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT)  NAME,
+#define DEF_MACHMODE(SYM, NAME, CLASS, SIZE, UNIT)  NAME,
 
 char *mode_name[] = {
 #include "machmode.def"
@@ -74,9 +75,20 @@ char *mode_name[] = {
 #undef DEF_MACHMODE
 
 /* Indexed by machine mode, gives the length of the mode, in bytes.
+   GET_MODE_CLASS uses this.  */
+
+#define DEF_MACHMODE(SYM, NAME, CLASS, SIZE, UNIT)  CLASS,
+
+enum mode_class mode_class[] = {
+#include "machmode.def"
+};
+
+#undef DEF_MACHMODE
+
+/* Indexed by machine mode, gives the length of the mode, in bytes.
    GET_MODE_SIZE uses this.  */
 
-#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT)  SIZE,
+#define DEF_MACHMODE(SYM, NAME, CLASS, SIZE, UNIT)  SIZE,
 
 int mode_size[] = {
 #include "machmode.def"
@@ -87,7 +99,7 @@ int mode_size[] = {
 /* Indexed by machine mode, gives the length of the mode's subunit.
    GET_MODE_UNIT_SIZE uses this.  */
 
-#define DEF_MACHMODE(SYM, NAME, TYPE, SIZE, UNIT)  UNIT,
+#define DEF_MACHMODE(SYM, NAME, CLASS, SIZE, UNIT)  UNIT,
 
 int mode_unit_size[] = {
 #include "machmode.def"		/* machine modes are documented here */
@@ -130,7 +142,7 @@ rtvec_alloc (n)
   rtvec rt;
   int i;
 
-  rt = (rtvec) obstack_alloc (current_obstack,
+  rt = (rtvec) obstack_alloc (rtl_obstack,
 			      sizeof (struct rtvec_def)
 			      + (( n - 1) * sizeof (rtunion)));
 
@@ -154,7 +166,7 @@ rtx_alloc (code)
   register int length = sizeof (struct rtx_def)
     + (nelts - 1) * sizeof (rtunion);
 
-  rt = (rtx) obstack_alloc (current_obstack, length);
+  rt = (rtx) obstack_alloc (rtl_obstack, length);
 
   * (int *) rt = 0;
   PUT_CODE (rt, code);
@@ -176,17 +188,26 @@ copy_rtx (orig)
   register char *format_ptr;
 
   code = GET_CODE (orig);
-  if (code == REG
-      || code == CONST_INT
-      || code == CONST_DOUBLE
-      || code == SYMBOL_REF
-      || code == CODE_LABEL
-      || code == PC
-      || code == CC0)
-    return orig;
+
+  switch (code)
+    {
+    case REG:
+    case QUEUED:
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case SYMBOL_REF:
+    case CODE_LABEL:
+    case PC:
+    case CC0:
+      return orig;
+    }
 
   copy = rtx_alloc (code);
   PUT_MODE (copy, GET_MODE (orig));
+  copy->in_struct = orig->in_struct;
+  copy->volatil = orig->volatil;
+  copy->unchanging = orig->unchanging;
+  copy->integrated = orig->integrated;
   
   format_ptr = GET_RTX_FORMAT (GET_CODE (copy));
 
@@ -216,8 +237,45 @@ copy_rtx (orig)
   return copy;
 }
 
-/* Return 1 unless X is a value effectively constant.
-   The frame pointer, arg pointer, etc. are considered constant.  */
+/* Return 1 if the value of X is unstable
+   (would be different at a different point in the program).
+   The frame pointer, arg pointer, etc. are considered stable
+   (within one function) and so is anything marked `unchanging'.  */
+
+int
+rtx_unstable_p (x)
+     rtx x;
+{
+  register RTX_CODE code = GET_CODE (x);
+  register int i;
+  register char *fmt;
+
+  if (code == MEM)
+    return ! x->unchanging;
+
+  if (code == QUEUED)
+    return 1;
+
+  if (code == CONST || code == CONST_INT)
+    return 0;
+
+  if (code == REG)
+    return ! (REGNO (x) == FRAME_POINTER_REGNUM
+	      || REGNO (x) == ARG_POINTER_REGNUM
+	      || x->unchanging);
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    if (fmt[i] == 'e')
+      if (rtx_unstable_p (XEXP (x, i)))
+	return 1;
+  return 0;
+}
+
+/* Return 1 if X has a value that can vary even between two
+   executions of the program.  0 means X can be compared reliably
+   against certain constants or near-constants.
+   The frame pointer and the arg pointer are considered constant.  */
 
 int
 rtx_varies_p (x)
@@ -227,10 +285,13 @@ rtx_varies_p (x)
   register int i;
   register char *fmt;
 
-  if (code == MEM || code == QUEUED)
+  if (code == MEM)
     return 1;
 
-  if (code == CONST || code == CONST_INT || code == UNCHANGING)
+  if (code == QUEUED)
+    return 1;
+
+  if (code == CONST || code == CONST_INT)
     return 0;
 
   if (code == REG)
@@ -246,7 +307,8 @@ rtx_varies_p (x)
 }
 
 /* Return 1 if X refers to a memory location whose address 
-   is not effectively constant, or if X refers to a BLKmode memory object.  */
+   cannot be compared reliably with constant addresses,
+   or if X refers to a BLKmode memory object.  */
 
 int
 rtx_addr_varies_p (x)
@@ -266,31 +328,10 @@ rtx_addr_varies_p (x)
 	return 1;
   return 0;
 }
-
-/* Return nonzero if INSN alters memory at an address that is not fixed.  */
-
-int
-insn_store_addr_varies_p (insn)
-     rtx insn;
-{
-  register rtx x = PATTERN (insn);
-  if (GET_CODE (x) == SET || GET_CODE (x) == CLOBBER)
-    return rtx_addr_varies_p (SET_DEST (x));
-  else if (GET_CODE (x) == PARALLEL)
-    {
-      register int i;
-      for (i = XVECLEN (x, 0) - 1; i >= 0; i--)
-	{
-	  register rtx y = XVECEXP (x, 0, i);
-	  if (GET_CODE (y) == SET || GET_CODE (y) == CLOBBER)
-	    if (rtx_addr_varies_p (SET_DEST (y)))
-	      return 1;
-	}
-    }
-  return 0;
-}
 
-/* Nonzero if register REG appears somewhere within IN.  */
+/* Nonzero if register REG appears somewhere within IN.
+   Also works if REG is not a register; in this case it checks
+   for a subexpression of IN that is Lisp "equal" to REG.  */
 
 int
 reg_mentioned_p (reg, in)
@@ -298,14 +339,40 @@ reg_mentioned_p (reg, in)
 {
   register char *fmt;
   register int i;
-  register enum rtx_code code = GET_CODE (in);
+  register enum rtx_code code;
 
-  if (GET_CODE (in) == REG)
-    return REGNO (in) == REGNO (reg);
+  if (in == 0)
+    return 0;
+
+  if (reg == in)
+    return 1;
+
+  code = GET_CODE (in);
+
+  switch (code)
+    {
+      /* Compare registers by number.  */
+    case REG:
+      return GET_CODE (reg) == REG && REGNO (in) == REGNO (reg);
+
+      /* These codes have no constituent expressions
+	 and are unique.  */
+    case CC0:
+    case PC:
+    case CONST_INT:
+    case CONST:
+    case CONST_DOUBLE:
+    case LABEL_REF:
+    case SYMBOL_REF:
+      return 0;
+    }
+
+  if (GET_CODE (reg) == code && rtx_equal_p (reg, in))
+    return 1;
 
   fmt = GET_RTX_FORMAT (code);
 
-  for (i = GET_RTX_LENGTH (code); i >= 0; i--)
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
     {
       if (fmt[i] == 'E')
 	{
@@ -338,6 +405,75 @@ reg_used_between_p (reg, from_insn, to_insn)
   return 0;
 }
 
+/* Return 1 if X and Y are identical-looking rtx's.
+   This is the Lisp function EQUAL for rtx arguments.  */
+
+int
+rtx_equal_p (x, y)
+     rtx x, y;
+{
+  register int i;
+  register int hash = 0;
+  register RTX_CODE code = GET_CODE (x);
+  register char *fmt;
+
+  if (x == y)
+    return 1;
+
+  /* Rtx's of different codes cannot be equal.  */
+  if (code != GET_CODE (y))
+    return 0;
+
+  /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.
+     (REG:SI x) and (REG:HI x) are NOT equivalent.  */
+
+  if (GET_MODE (x) != GET_MODE (y))
+    return 0;
+
+  /* These three types of rtx's can be compared nonrecursively.  */
+  if (code == REG)
+    return (REGNO (x) == REGNO (y));
+  if (code == LABEL_REF)
+    return XEXP (x, 0) == XEXP (y, 0);
+  if (code == SYMBOL_REF)
+    return XSTR (x, 0) == XSTR (y, 0);
+
+  /* Compare the elements.  If any pair of corresponding elements
+     fail to match, return 0 for the whole things.  */
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      switch (fmt[i])
+	{
+	case 'i':
+	  if (XINT (x, i) != XINT (y, i))
+	    return 0;
+	  break;
+
+	case 'e':
+	  if (rtx_equal_p (XEXP (x, i), XEXP (y, i)) == 0)
+	    return 0;
+	  break;
+
+	case 's':
+	  if (strcmp (XSTR (x, i), XSTR (y, i)))
+	    return 0;
+	  break;
+
+	case '0':
+	  break;
+
+	  /* It is believed that rtx's at this level will never
+	     contain anything but integers and other rtx's,
+	     except for within LABEL_REFs and SYMBOL_REFs.  */
+	default:
+	  abort ();
+	}
+    }
+  return 1;
+}
+
 /* Call FUN on each register or MEM that is stored into or clobbered by X.
    (X would be the pattern of an insn).
    FUN receives two arguments:
@@ -353,12 +489,11 @@ note_stores (x, fun)
     {
       register rtx dest = SET_DEST (x);
       while (GET_CODE (dest) == SUBREG
-	     || GET_CODE (dest) == VOLATILE
 	     || GET_CODE (dest) == ZERO_EXTRACT
 	     || GET_CODE (dest) == SIGN_EXTRACT
 	     || GET_CODE (dest) == STRICT_LOW_PART)
 	dest = XEXP (dest, 0);
-      (*fun) (dest, x);
+      (*fun) (dest, GET_CODE (x) == CLOBBER);
     }
   else if (GET_CODE (x) == PARALLEL)
     {
@@ -370,12 +505,11 @@ note_stores (x, fun)
 	    {
 	      register rtx dest = SET_DEST (y);
 	      while (GET_CODE (dest) == SUBREG
-		     || GET_CODE (dest) == VOLATILE
 		     || GET_CODE (dest) == ZERO_EXTRACT
 		     || GET_CODE (dest) == SIGN_EXTRACT
 		     || GET_CODE (dest) == STRICT_LOW_PART)
 		dest = XEXP (dest, 0);
-	      (*fun) (dest, y);
+	      (*fun) (dest, GET_CODE (y) == CLOBBER);
 	    }
 	}
     }
@@ -401,9 +535,9 @@ dead_or_set_p (insn, reg)
   register int regno = REGNO (reg);
 
   for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
-    if (REGNO (XEXP (link, 0)) == regno
-	&& ((enum reg_note) GET_MODE (link) == REG_DEAD
-	    || (enum reg_note) GET_MODE (link) == REG_INC))
+    if ((REG_NOTE_KIND (link) == REG_DEAD
+	 || REG_NOTE_KIND (link) == REG_INC)
+	&& REGNO (XEXP (link, 0)) == regno)
       return 1;
 
   if (GET_CODE (PATTERN (insn)) == SET)
@@ -418,6 +552,42 @@ dead_or_set_p (insn, reg)
 	    return 1;
 	}
     }
+  return 0;
+}
+
+/* Return the reg-note of kind KIND in insn INSN, if there is one.
+   If DATUM is nonzero, look for one whose datum is DATUM.  */
+
+rtx
+find_reg_note (insn, kind, datum)
+     rtx insn;
+     enum reg_note kind;
+     rtx datum;
+{
+  register rtx link;
+
+  for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
+    if (REG_NOTE_KIND (link) == kind
+	&& (datum == 0 || datum == XEXP (link, 0)))
+      return link;
+  return 0;
+}
+
+/* Return the reg-note of kind KIND in insn INSN which applies to register
+   number REGNO, if any.  Return 0 if there is no such reg-note.  */
+
+rtx
+find_regno_note (insn, kind, regno)
+     rtx insn;
+     enum reg_note kind;
+     int regno;
+{
+  register rtx link;
+
+  for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
+    if (REG_NOTE_KIND (link) == kind
+	&& REGNO (XEXP (link, 0)) == regno)
+      return link;
   return 0;
 }
 
@@ -458,6 +628,15 @@ print_rtx (in_rtx)
 
   if (in_rtx->in_struct)
     fprintf (outfile, "/s");
+
+  if (in_rtx->volatil)
+    fprintf (outfile, "/v");
+
+  if (in_rtx->unchanging)
+    fprintf (outfile, "/u");
+
+  if (in_rtx->integrated)
+    fprintf (outfile, "/i");
 
   if (GET_MODE (in_rtx) != VOIDmode)
     fprintf (outfile, ":%s", GET_MODE_NAME (GET_MODE (in_rtx)));
@@ -538,6 +717,17 @@ print_rtx (in_rtx)
 
   fprintf (outfile, ")");
   sawclose = 1;
+}
+
+/* Call this function from the debugger to see what X looks like.  */
+
+void
+debug_rtx (x)
+     rtx x;
+{
+  outfile = stderr;
+  print_rtx (x);
+  fprintf (stderr, "\n");
 }
 
 /* External entry point for printing a chain of INSNs
@@ -723,7 +913,7 @@ read_rtx (infile)
     {
       register int k;
       read_name (tmp_char, infile);
-      for (k = 0; k < NUM_MACHINE_MODE; k++)
+      for (k = 0; k < NUM_MACHINE_MODES; k++)
 	if (!strcmp (GET_MODE_NAME (k), tmp_char))
 	  break;
 
@@ -866,7 +1056,7 @@ read_rtx (infile)
    It initializes the vector `rtx_length'.  */
 
 void
-init_rtl()
+init_rtl ()
 {
   int i;
 

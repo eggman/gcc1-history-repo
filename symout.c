@@ -1,5 +1,5 @@
 /* Output GDB-format symbol table information from GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -23,8 +23,11 @@ and this notice must be preserved on all copies.  */
 #include "tree.h"
 #include "symseg.h"
 #include "rtl.h"
+#include "gdbfiles.h"
 #include <stdio.h>
-#include <stab.h>
+
+/* .stabs code for source file name.  */
+#define	N_SO 0x64
 
 /* Unix maximum on file name length.  Needed for getwd.  */
 #define MAXNAMLEN 1024
@@ -36,6 +39,9 @@ and this notice must be preserved on all copies.  */
 /* Stream for writing symbol table file.  */
 static FILE *symfile;
 
+/* Name of symbol table file.  */
+static char *symfile_name;
+
 /* Stream for writing to assembler file.  */
 static FILE *asmfile;
 
@@ -45,6 +51,9 @@ static FILE *asmfile;
    before writing any of them.  */
 static int next_address;
 
+/* Chain recording all the types that have been output,
+   giving the address-in-the-symseg of each one.  */
+
 struct typevec_elt
 {
   int address;
@@ -53,7 +62,12 @@ struct typevec_elt
 
 static struct typevec_elt *typevec;
 
+/* Number of types recorded so far in the chain.  */
+
 static int total_types;
+
+/* `blockvec' is a chain recording all the symbol-blocks that have been output,
+   giving the address-in-the-symseg of each one.  */
 
 struct blockvec_elt
 {
@@ -62,6 +76,8 @@ struct blockvec_elt
 };
 
 static struct blockvec_elt *blockvec;
+
+/* Number of blocks recorded so far in the chain.  */
 
 static int total_blocks;
 
@@ -75,7 +91,9 @@ static int subrange_p ();
 static void symout_strings_skip ();
 static void symout_strings_print ();
 
-/* At the beginning of compilation, start writing the symbol table.  */
+/* At the beginning of compilation, start writing the symbol table.
+   Initialize the type and block chain.
+   Also open and initialize the symseg file.  */
 
 void
 symout_init (filename, asm_file, sourcename)
@@ -85,13 +103,17 @@ symout_init (filename, asm_file, sourcename)
 {
   struct symbol_root buffer;
 
+#ifdef VMS
+  fatal ("Cannot write GDB debugging format on VMS");
+#endif
+
   asmfile = asm_file;
   fprintf (asmfile, ".text 0\n.gdbbeg 0\n.gdbbeg 1\n");
   fprintf (asmfile,
 	   "Ltext:\t.stabs \"%s\",%d,0,0,Ltext\n",
 	   sourcename, N_SO);
   fprintf (asmfile, ".data 0\nLdata:\n");
-  fprintf (asmfile, ".lcomm Lbss,0\n");
+  ASM_OUTPUT_LOCAL (asmfile, "Lbss", 0);
   fprintf (asmfile, ".gdbsym Ldata,%d\n",
 	   (char *) &buffer.databeg - (char *) &buffer);
   fprintf (asmfile, ".gdbsym Lbss,%d\n",
@@ -99,10 +121,9 @@ symout_init (filename, asm_file, sourcename)
 
   symfile = fopen (filename, "w");
   if (symfile == 0)
-    {
-      perror (symfile);
-      fatal ("Cannot continue compilation.");
-    }
+    pfatal_with_name (symfile);
+  symfile_name = (char *) malloc (strlen (filename) + 1);
+  strcpy (symfile_name, filename);
 
   typevec = 0;
   blockvec = 0;
@@ -114,7 +135,7 @@ symout_init (filename, asm_file, sourcename)
 
   next_address = sizeof buffer;
 }
-
+
 /* Functions for outputting strings into the symbol table.
    The string to be output is effectively the concatenation of
    the two strings P1 and P2.  Their lengths are given as S1 and S2.
@@ -134,7 +155,7 @@ symout_strings (p1, s1, p2, s2)
   symout_strings_skip (p1, s1, p2, s2);
 }
 
-/* Similar but only output; do not update next_address.  */
+/* Like symout_strings but only output; do not update next_address.  */
 
 static void
 symout_strings_print (p1, s1, p2, s2)
@@ -164,7 +185,7 @@ symout_strings_print (p1, s1, p2, s2)
     }
 }
 
-/* Similar but only update next_address; do not output anything.  */
+/* Like symout_strings but just update next_address; do not output.  */
 
 static void
 symout_strings_skip (p1, s1, p2, s2)
@@ -219,7 +240,6 @@ symout_types (types)
   register struct typerec *records;
   register tree next;
   struct type buffer;
-  struct field fieldbuf;
 
   for (next = types, n_types = 0;
        next;
@@ -285,7 +305,10 @@ symout_types (types)
       switch (TREE_CODE (next))
 	{
 	case ARRAY_TYPE:
-	  records[i].nfields = ! integer_zerop (TYPE_MIN_VALUE (TYPE_DOMAIN (next)));
+	  records[i].nfields
+	    = (TYPE_DOMAIN(next)
+	       ? ! integer_zerop (TYPE_MIN_VALUE (TYPE_DOMAIN (next)))
+	       : 0 );
 	  break;
 
 	case INTEGER_TYPE:
@@ -311,7 +334,12 @@ symout_types (types)
 	symout_strings_print (records[i].name_prefix, 0,
 			      records[i].name, 0);
 
-      buffer.length = TREE_INT_CST_LOW (TYPE_SIZE (next)) * TYPE_SIZE_UNIT (next) / BITS_PER_UNIT;
+      if (TYPE_SIZE (next) == 0)
+	buffer.length = 0;
+      else
+	buffer.length
+	  = (TREE_INT_CST_LOW (TYPE_SIZE (next))
+	     * TYPE_SIZE_UNIT (next) / BITS_PER_UNIT);
       buffer.name = (char *) records[i].name_address;
       buffer.target_type = (struct type *) (TREE_TYPE (next) ? TYPE_OUTPUT_ADDRESS (TREE_TYPE (next)) : 0);
 
@@ -319,7 +347,7 @@ symout_types (types)
       buffer.function_type = 0;
       buffer.flags
 	= ((TREE_CODE (next) == INTEGER_TYPE || TREE_CODE (next) == ENUMERAL_TYPE)
-	   && type_unsigned_p (next))
+	   && TREE_UNSIGNED (next))
 	  ? TYPE_FLAG_UNSIGNED : 0;
       buffer.nfields = records[i].nfields;
       buffer.fields = (struct field *) records[i].fields_address;
@@ -421,7 +449,7 @@ static int
 subrange_p (type)
      tree type;
 {
-  int uns = type_unsigned_p (type);
+  int uns = TREE_UNSIGNED (type);
 
   if (TYPE_PRECISION (type) >= HOST_BITS_PER_INT)
     {
@@ -499,11 +527,16 @@ symout_record_fields (type)
       buffer.bitpos = DECL_OFFSET (field);
       buffer.bitsize
 	= (TREE_PACKED (field)
-	   ? TYPE_PRECISION (TREE_TYPE (field))
+	   ? TREE_INT_CST_LOW (DECL_SIZE (field)) * DECL_SIZE_UNIT (field)
 	   : 0);
       buffer.type = (struct type *) TYPE_OUTPUT_ADDRESS (TREE_TYPE (field));
-      buffer.name = (char *) next_address;
-      symout_strings_skip (0, IDENTIFIER_LENGTH (DECL_NAME (field)), 0, 0);
+      if (DECL_NAME (field))
+	{
+	  buffer.name = (char *) next_address;
+	  symout_strings_skip (0, IDENTIFIER_LENGTH (DECL_NAME (field)), 0, 0);
+	}
+      else
+	buffer.name = 0;
       fwrite (&buffer, sizeof (struct field), 1, symfile);
     }
 }
@@ -537,25 +570,24 @@ static void
 symout_record_field_names (type)
      tree type;
 {
-  struct field buffer;
   register tree field;
 
   for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
-    symout_strings_print (IDENTIFIER_POINTER (DECL_NAME (field)),
-			  IDENTIFIER_LENGTH (DECL_NAME (field)),
-			  0, 0);
+    if (DECL_NAME (field))
+      symout_strings_print (IDENTIFIER_POINTER (DECL_NAME (field)),
+			    IDENTIFIER_LENGTH (DECL_NAME (field)),
+			    0, 0);
 }
 
 static void
 symout_enum_value_names (type)
      tree type;
 {
-  struct field buffer;
   register tree value;
 
   for (value = TYPE_VALUES (type); value; value = TREE_CHAIN (value))
-    symout_strings_print (IDENTIFIER_POINTER (DECL_NAME (value)),
-			  IDENTIFIER_LENGTH (DECL_NAME (value)),
+    symout_strings_print (IDENTIFIER_POINTER (TREE_PURPOSE (value)),
+			  IDENTIFIER_LENGTH (TREE_PURPOSE (value)),
 			  0, 0);
 }
 
@@ -567,7 +599,7 @@ symout_enum_value_names (type)
    If FILTER is 2, do only the public ones (but no externals).
    If FILTER is 0, do all (except external functions).  */
 
-static int
+static void
 symout_block_symbols (decls, addr_buffer, filter)
      tree decls;
      int *addr_buffer;
@@ -592,6 +624,9 @@ symout_block_symbols (decls, addr_buffer, filter)
 	  && (filter || TREE_CODE (TREE_TYPE (decl)) == FUNCTION_TYPE))
 	continue;
 
+      if (TREE_TYPE (decl) == error_mark_node)
+	continue;
+
       symout_strings (IDENTIFIER_POINTER (DECL_NAME (decl)),
 		      IDENTIFIER_LENGTH (DECL_NAME (decl)),
 		      0, 0);
@@ -613,9 +648,10 @@ symout_block_symbols (decls, addr_buffer, filter)
 	      if (! TREE_PUBLIC (decl) || DECL_INITIAL (decl))
 		{
 		  char *str = XSTR (XEXP (DECL_RTL (decl), 0), 0);
-		  fprintf (asmfile, "\t.gdbsym _%s,%d\n", str,
-			   next_address
-			   + (char *)&buffer.value - (char *)&buffer);
+		  fprintf (asmfile, "\t.gdbsym ");
+		  ASM_OUTPUT_LABELREF (asmfile, str);
+		  fprintf (asmfile, ",%d\n",
+			   next_address + (char *)&buffer.value - (char *)&buffer);
 		  buffer.class = LOC_STATIC;
 		}
 	      else
@@ -682,9 +718,9 @@ symout_block_symbols (decls, addr_buffer, filter)
 
 /* Output the tags (struct, union and enum definitions) for a block,
    given a list of them (a chain of TREE_LIST nodes) in TAGS.
-   STore their addresses in the file into ADDR_BUFFER.  */
+   Store their addresses in the file into ADDR_BUFFER.  */
 
-static int
+static void
 symout_block_tags (tags, addr_buffer)
      tree tags;
      int *addr_buffer;
@@ -751,7 +787,7 @@ symout_block (decls, tags, args, superblock_address)
   addr_buffer = (int *) alloca (total * sizeof (int));
 
   symout_block_symbols (args, addr_buffer, 0);
-  symout_block_symbols (decls, addr_buffer, n_args);
+  symout_block_symbols (decls, addr_buffer + n_args, 0);
   symout_block_tags (tags, addr_buffer + n_decls + n_args);
 
   velt = (struct blockvec_elt *) xmalloc (sizeof (struct blockvec_elt));
@@ -792,7 +828,6 @@ symout_function (stmt, args, superblock_address)
      tree args;
      int superblock_address;
 {
-  register tree decl;
   int address = superblock_address;
 
   while (stmt)
@@ -828,7 +863,7 @@ symout_function (stmt, args, superblock_address)
    DECLS is the chain of declarations of variables in this block.
    TAGS is the list of struct, union and enum tag definitions.  */
 
-int
+void
 symout_top_blocks (decls, tags)
      tree decls;
      tree tags;
@@ -912,6 +947,75 @@ symout_top_blocks (decls, tags)
   next_address += (n_decls + n_tags) * sizeof (int);
 }
 
+/* Output the source-line-number information.  */
+
+/* Output a `struct source' for the source file described by F.
+   Return the address-in-the-symseg of the `struct source'.  */
+
+static int
+symout_source_file (f)
+     struct gdbfile *f;
+{
+  /* Make the `struct source' big enough for as many lines as
+     this file has.  */
+  int size = sizeof (struct source) + (f->nlines - 1) * sizeof (struct line);
+  struct source *buffer
+    = (struct source *) alloca (size);
+  int addr;
+
+  /* Use zero for the line data, since assembler will store the real data.  */
+  bzero (buffer, size);
+
+  /* Output the file's name as a string.  The assembler doesn't know this.  */
+  buffer->name = (char *) next_address;
+  symout_strings (f->name, 0, 0, 0);
+  buffer->nlines = f->nlines;
+
+  /* Write the structure.  */
+  addr = next_address;
+  fwrite (buffer, 1, size, symfile);
+  next_address += size;
+
+  /* Tell assembler where to write the real line-number data.  */
+  fprintf (asmfile, "\t.gdblinetab %d,%d\n",
+	   f->filenum, addr + sizeof (int));
+
+  return addr;
+}
+
+/* Output the `struct sourcevector' which describes all the
+   source files and points a `struct source' for each one.  */
+
+static int
+symout_sources ()
+{
+  register struct gdbfile *f;
+  int nfiles = 0;
+  struct sourcevector *s;
+  int i;
+  int size;
+  int addr;
+
+  /* Count number of files to determine size of the sourcevector.  */
+  for (f = gdbfiles; f; f = f->next)
+    ++nfiles;
+
+  /* Allocate buffer for the sourcevector and record its length.  */
+  size = sizeof (int) + nfiles * sizeof (struct source *);
+  s = (struct sourcevector *) alloca (size);
+  s->length = nfiles;
+
+  /* Output a `struct source' for each file; put address into sourcevector.  */
+  for (f = gdbfiles, i = 0; f; f = f->next, i++)
+    s->source[i] = (struct source *) symout_source_file (f);
+
+  /* Output the sourcevector.  */
+  addr = next_address;
+  fwrite (s, 1, size, symfile);
+  next_address += size;
+  return addr;
+}
+
 /* Call here at the end of compilation, after outputting all the
    blocks and symbols, to output the blockvector and typevector
    and close the symbol table file.  FILETIME is source file's
@@ -924,7 +1028,7 @@ symout_finish (filename, filetime)
 {
   int *blockvector = (int *) alloca ((total_blocks + 1) * sizeof (int));
   int *typevector = (int *) alloca ((total_types + 1) * sizeof (int));
-  int now = time ();
+  int now = time (0);
   register int i;
   struct symbol_root buffer;
   char dir[MAXNAMLEN];
@@ -963,6 +1067,8 @@ symout_finish (filename, filetime)
   fwrite (typevector, sizeof (int), total_types + 1, symfile);
   next_address += sizeof (int) * (total_types + 1);
 
+  buffer.sourcevector = (struct sourcevector *) symout_sources ();
+
   buffer.format = 1;
   buffer.textrel = 0;		/* These four will be set up by linker.  */
   buffer.datarel = 0;		/* Make them 0 now, which is right for */
@@ -979,14 +1085,27 @@ symout_finish (filename, filetime)
   symout_strings (filename, 0, 0, 0);
 
   buffer.filedir = (char *) next_address;
+#ifdef USG
+  strcpy (dir, getcwd (dir, MAXNAMLEN));
+#else
+#ifndef VMS
   getwd (dir);
+#else
+  abort ();
+#endif
+#endif
   symout_strings (dir, 0, 0, 0);
 
   fflush (symfile);
 
+  if (ferror (symfile) != 0)
+    fatal_io_error (symfile_name);
+
   buffer.length = next_address;
 
-  lseek (fileno (symfile), 0, 0);
-  write (fileno (symfile), &buffer, sizeof buffer);
+  if (lseek (fileno (symfile), 0, 0) < 0)
+    pfatal_with_name (symfile_name);
+  if (write (fileno (symfile), &buffer, sizeof buffer) < 0)
+    pfatal_with_name (symfile_name);
   close (fileno (symfile));
 }

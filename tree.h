@@ -29,9 +29,15 @@ enum tree_code {
 
 #undef DEFTREECODE
 
-typedef enum tree_code tree_code;
+/* Indexed by enum tree_code, contains a character which is
+   `e' for an expression, `r' for a reference, `c' for a constant,
+   `d' for a decl, `t' for a type, `s' for a statement,
+   and `x' for anything else (TREE_LIST, IDENTIFIER, etc).  */
 
 extern char *tree_code_type[];
+
+/* Number of argument-words in each kind of tree-node.  */
+
 extern int tree_code_length[];
 
 /* Get the definition of `enum machine_mode' */
@@ -63,6 +69,7 @@ enum built_in_function
   BUILT_IN_ABS,
   BUILT_IN_FABS,
   BUILT_IN_LABS,
+  BUILT_IN_FFS,
   BUILT_IN_DIV,
   BUILT_IN_LDIV,
   BUILT_IN_FFLOOR,
@@ -77,74 +84,172 @@ enum built_in_function
   BUILT_IN_GETMAN
 };
 
-#define TREE_UID(NODE) ((NODE)->shared.uid)
-#define TREE_TYPE(NODE) ((NODE)->shared.type)
-#define TREE_CHAIN(NODE) ((NODE)->shared.chain)
-#define TREE_CODE(NODE) ((NODE)->shared.code)
-#define TREE_SET_CODE(NODE, VALUE) ((NODE)->shared.code = (VALUE))
+/* The definition of tree nodes fills the next several pages.  */
 
-#define TREE_LITERAL(NODE) ((NODE)->shared.literal_attr)
-#define TREE_STATIC(NODE) ((NODE)->shared.static_attr)
-#define TREE_VOLATILE(NODE) ((NODE)->shared.volatile_attr)
-#define TREE_THIS_VOLATILE(NODE) ((NODE)->shared.this_vol_attr)
-#define TREE_READONLY(NODE) ((NODE)->shared.readonly_attr)
-#define TREE_PUBLIC(NODE) ((NODE)->shared.public_attr)
-#define TREE_PACKED(NODE) ((NODE)->shared.packed_attr)
-#define TREE_NONLOCAL(NODE) ((NODE)->shared.nonlocal_attr)
-#define TREE_EXTERNAL(NODE) ((NODE)->shared.external_attr)
-#define TREE_PERMANENT(NODE) ((NODE)->shared.permanent_attr)
-#define TREE_ADDRESSABLE(NODE) ((NODE)->shared.addressable_attr)
-#define TREE_REGDECL(NODE) ((NODE)->shared.regdecl_attr)
-#define TREE_UNSIGNED(NODE) ((NODE)->shared.unsigned_attr)
+/* A tree node can represent a data type, a variable, an expression
+   or a statement.  Each node has a TREE_CODE which says what kind of
+   thing it represents.  Some common codes are:
+   INTEGER_TYPE -- represents a type of integers.
+   ARRAY_TYPE -- represents a type of pointer.
+   VAR_DECL -- represents a declared variable.
+   INTEGER_CST -- represents a constant integer value.
+   PLUS_EXPR -- represents a sum (an expression).
 
-struct tree_shared
+   As for the contents of a tree node: there are some fields
+   that all nodes share.  Each TREE_CODE has various special-purpose
+   fields as well.  The fields of a node are never accessed directly,
+   always through accessor macros.  */
+
+/* This type is used everywhere to refer to a tree node.  */
+
+typedef union tree_node *tree;
+
+#define NULL_TREE (tree) NULL
+
+/* Every kind of tree node starts with this structure,
+   so all nodes have these fields.
+
+   See the accessor macros, defined below, for documentation of the fields.  */
+
+struct tree_common
 {
   int uid;
   union tree_node *chain;
   union tree_node *type;
-  enum tree_code code : 8;	/* Give it a byte only */
-    
-/* the attributes: (special properties of node) */
-  unsigned external_attr : 1;	/* name is external,
-				   meaning storage address is assigned by
-				   another module.  */
-  unsigned public_attr : 1;	/* name is public in its module.
-				   In C, this means, not declared "static" */
-  unsigned static_attr : 1;	/* variable is static,
-				   meaning storage gets a fixed address.  */
-  unsigned volatile_attr : 1;	/* Expression's value can change unpredictably.
-				   If any subexpression is volatile, this is
-				   set, even if this operation itself
-				   is not volatile.  */
-  unsigned packed_attr : 1;	/* store this structure field in
-				   a packed manner.  For FIELD_DECL nodes.
-				   Could also be relevant for RECORD_TYPE,
-				   ARRAY_TYPE, etc. in Pascal.  */
-  unsigned readonly_attr : 1;	/* this var or field cannot be assigned.
-				   Sometimes set in types, but never in a
-				   type that is the type of an expression.  */
-  unsigned literal_attr : 1;	/* value of expression is constant.
-				   Appears on all ..._CST nodes,
-				   and occasionally on expression nodes.  */
-  unsigned nonlocal_attr : 1;	/* this name is ref'd from an inner block
-				   Cannot happen in C because it does not
-				   allow inner blocks, as of now.
-				   For VAR_DECL nodes, and possibly
-				   FUNCTION_DECL or LABEL_DECL nodes.  */
-  unsigned permanent_attr : 1;	/* Nonzero means permanent node;
-				   node will continue to exist for the
-				   entire compiler run.  Otherwise it will be
-				   recycled at the end of this function.  */
-  unsigned addressable_attr : 1; /* Nonzero means address of this is needed.
-				    So it cannot be in a register.
-				    For VAR_DECL nodes.  */
-  unsigned regdecl_attr : 1;	/* Nonzero means declared `register'.
-				   For VAR_DECL nodes.  */
-  unsigned this_vol_attr : 1;   /* Nonzero means this operation is
-				   volatile (as opposed to an operand).  */
-  unsigned unsigned_attr : 1;   /* Nonzero means this type or field
-				   is unsigned.  */
+  enum tree_code code : 8;
+
+  unsigned external_attr : 1;
+  unsigned public_attr : 1;
+  unsigned static_attr : 1;
+  unsigned volatile_attr : 1;
+  unsigned packed_attr : 1;
+  unsigned readonly_attr : 1;
+  unsigned literal_attr : 1;
+  unsigned nonlocal_attr : 1;
+  unsigned permanent_attr : 1;
+  unsigned addressable_attr : 1;
+  unsigned regdecl_attr : 1;
+  unsigned this_vol_attr : 1;
+  unsigned unsigned_attr : 1;
+  unsigned asm_written_attr: 1;
+  unsigned inline_attr : 1;
 };
+
+/* Define accessors for the fields that all tree nodes have
+   (though some fields are not used for all kinds of nodes).  */
+
+/* The unique id of a tree node distinguishes it from all other nodes
+   in the same compiler run.  */
+#define TREE_UID(NODE) ((NODE)->common.uid)
+
+/* The tree-code says what kind of node it is.
+   Codes are defined in tree.def.  */
+#define TREE_CODE(NODE) ((NODE)->common.code)
+#define TREE_SET_CODE(NODE, VALUE) ((NODE)->common.code = (VALUE))
+
+/* In all nodes that are expressions, this is the data type of the expression.
+   In POINTER_TYPE nodes, this is the type that the pointer points to.
+   In ARRAY_TYPE nodes, this is the type of the elements.  */
+#define TREE_TYPE(NODE) ((NODE)->common.type)
+
+/* Nodes are chained together for many purposes.
+   Types are chained together to record them for being output to the debugger
+   (see the function `chain_type').
+   Decls in the same scope are chained together to record the contents
+   of the scope.
+   Statement nodes for successive statements used to be chained together.
+   Often lists of things are represented by TREE_LIST nodes thaht
+   are chained together.  */
+
+#define TREE_CHAIN(NODE) ((NODE)->common.chain)
+
+/* Define many boolean fields that all tree nodes have.  */
+
+/* In a VAR_DECL or FUNCTION_DECL,
+   nonzero means external reference:
+   do not allocate storage, and refer to a definition elsewhere.  */
+#define TREE_EXTERNAL(NODE) ((NODE)->common.external_attr)
+
+/* In a VAR_DECL, nonzero means allocate static storage.
+   In a FUNCTION_DECL, currently nonzero if function has been defined.  */
+#define TREE_STATIC(NODE) ((NODE)->common.static_attr)
+
+/* In a VAR_DECL or FUNCTION_DECL,
+   nonzero means name is to be accessible from outside this module.  */
+#define TREE_PUBLIC(NODE) ((NODE)->common.public_attr)
+
+/* In VAR_DECL nodes, nonzero means address of this is needed.
+   So it cannot be in a register.
+   In a FUNCTION_DECL, nonzero means its address is needed.
+   So it must be compiled even if it is an inline function.
+   In CONSTRUCTOR nodes, it means are all constants suitable
+   for output as assembly-language initializers.
+   In LABEL_DECL nodes, it means a goto for this label has been seen 
+   from a place outside all binding contours that restore stack levels,
+   or that an error message about jumping into such a binding contour
+   has been printed for this label.  */
+#define TREE_ADDRESSABLE(NODE) ((NODE)->common.addressable_attr)
+
+/* In VAR_DECL nodes, nonzero means declared `register'.  */
+#define TREE_REGDECL(NODE) ((NODE)->common.regdecl_attr)
+
+/* In any expression, nonzero means it has side effects or reevaluation
+   of the whole expression could produce a different value.
+   This is set if any subexpression is a function call, a side effect
+   or a reference to a volatile variable.
+   In a ..._DECL, this is set only of the declaration said `volatile'.
+   In a ..._TYPE, nonzero means the type is volatile-qualified.  */
+#define TREE_VOLATILE(NODE) ((NODE)->common.volatile_attr)
+
+/* Nonzero means this expression is volatile in the C sense:
+   its address should be of type `volatile WHATEVER *'.
+   If this bit is set, so is `volatile_attr'.  */
+#define TREE_THIS_VOLATILE(NODE) ((NODE)->common.this_vol_attr)
+
+/* In a VAR_DECL, PARM_DECL or FIELD_DECL, or any kind of ..._REF node,
+   nonzero means it may not be the lhs of an assignment.
+   In a ..._TYPE node, means this type is const-qualified.  */
+#define TREE_READONLY(NODE) ((NODE)->common.readonly_attr)
+
+/* Nonzero in a FIELD_DECL means it is a bit-field; it may occupy
+   less than a storage unit, and its address may not be taken, etc.
+   This controls layout of the containing record.
+   In a LABEL_DECL, nonzero means label was defined inside a binding
+   contour that restored a stack level and which is now exited.  */
+#define TREE_PACKED(NODE) ((NODE)->common.packed_attr)
+
+/* Value of expression is constant.
+   Always appears in all ..._CST nodes.
+   May also appear in an arithmetic expression, an ADDR_EXPR or a CONSTRUCTOR
+   if the value is constant.  */
+#define TREE_LITERAL(NODE) ((NODE)->common.literal_attr)
+
+/* Nonzero in a ..._DECL means this variable is ref'd from a nested function.
+   Cannot happen in C because it does not allow nested functions, as of now.
+   For VAR_DECL nodes, PARM_DECL nodes, and
+   maybe FUNCTION_DECL or LABEL_DECL nodes.  */
+#define TREE_NONLOCAL(NODE) ((NODE)->common.nonlocal_attr)
+
+/* Nonzero means permanent node;
+   node will continue to exist for the entire compiler run.
+   Otherwise it will be recycled at the end of the function.  */
+#define TREE_PERMANENT(NODE) ((NODE)->common.permanent_attr)
+
+/* In INTEGER_TYPE or ENUMERAL_TYPE nodes, means an unsigned type.
+   In FIELD_DECL nodes, means an unsigned bit field.  */
+#define TREE_UNSIGNED(NODE) ((NODE)->common.unsigned_attr)
+
+/* Nonzero in a VAR_DECL means assembler code has been written.
+   Nonzero in a FUNCTION_DECL means that the function has been compiled.
+   This is interesting in an inline function, since it might not need
+   to be compiled separately.  */
+#define TREE_ASM_WRITTEN(NODE) ((NODE)->common.asm_written_attr)
+
+/* Nonzero in a FUNCTION_DECL means this function can be substituted
+   where it is called.  */
+#define TREE_INLINE(NODE) ((NODE)->common.inline_attr)
+
+/* Define additional fields and accessors for nodes representing constants.  */
 
 /* In an INTEGER_CST node.  These two together make a 64 bit integer.
    If the data type is signed, the value is sign-extended to 64 bits
@@ -165,12 +270,12 @@ struct tree_shared
 
 struct tree_int_cst
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   long int_cst_low;
   long int_cst_high;
 };
 
-/* In REAL_CST, STRING_CST and COMPLEX_CST nodes,
+/* In REAL_CST, STRING_CST, COMPLEX_CST nodes, and CONSTRUCTOR nodes,
    and generally in all kinds of constants that could
    be given labels (rather than being immediate).  */
 
@@ -181,7 +286,7 @@ struct tree_int_cst
 
 struct tree_real_cst
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
   double real_cst;
@@ -193,7 +298,7 @@ struct tree_real_cst
 
 struct tree_string
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
   int length;
@@ -206,48 +311,74 @@ struct tree_string
 
 struct tree_complex
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
   union tree_node *real;
   union tree_node *imag;
 };
+
+/* Define fields and accessors for some special-purpose tree nodes.  */
 
 #define IDENTIFIER_LENGTH(NODE) ((NODE)->identifier.length)
 #define IDENTIFIER_POINTER(NODE) ((NODE)->identifier.pointer)
 #define IDENTIFIER_GLOBAL_VALUE(NODE) ((NODE)->identifier.global_value)
 #define IDENTIFIER_LOCAL_VALUE(NODE) ((NODE)->identifier.local_value)
 #define IDENTIFIER_LABEL_VALUE(NODE) ((NODE)->identifier.label_value)
+#define IDENTIFIER_IMPLICIT_DECL(NODE) ((NODE)->identifier.implicit_decl)
 
 struct tree_identifier
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   int length;
   char *pointer;
   union tree_node *global_value;
   union tree_node *local_value;
   union tree_node *label_value;
+  union tree_node *implicit_decl;
 };
 
 /* In a TREE_LIST node.  */
-#define TREE_PURPOSE(NODE) ((NODE)->exp.operands[0])
-#define TREE_VALUE(NODE) ((NODE)->exp.operands[1])
+#define TREE_PURPOSE(NODE) ((NODE)->list.purpose)
+#define TREE_VALUE(NODE) ((NODE)->list.value)
+
+struct tree_list
+{
+  char common[sizeof (struct tree_common)];
+  union tree_node *purpose;
+  union tree_node *value;
+};
+
+/* Define fields and accessors for some nodes that represent expressions.  */
 
 /* In a SAVE_EXPR node.  */
 #define SAVE_EXPR_RTL(NODE) (*(struct rtx_def **) &(NODE)->exp.operands[1])
 
+/* In a RTL_EXPR node.  */
+#define RTL_EXPR_SEQUENCE(NODE) (*(struct rtx_def **) &(NODE)->exp.operands[0])
+#define RTL_EXPR_RTL(NODE) (*(struct rtx_def **) &(NODE)->exp.operands[1])
+
 /* In a CALL_EXPR node.  */
 #define CALL_EXPR_RTL(NODE) (*(struct rtx_def **) &(NODE)->exp.operands[2])
 
+/* In a CONSTRUCTOR node.  */
+#define CONSTRUCTOR_ELTS(NODE) TREE_OPERAND (NODE, 1)
+
+/* In expression and reference nodes.  */
 #define TREE_OPERAND(NODE, I) ((NODE)->exp.operands[I])
+#define TREE_COMPLEXITY(NODE, I) ((NODE)->exp.complexity)
 
 struct tree_exp
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
+  int complexity;
   union tree_node *operands[1];
 };
+
+/* Define fields and accessors for nodes representing data types.  */
 
-/* In a data type node.  */
+/* See tree.def for documentation of the use of these fields.  */
+
 #define TYPE_SIZE(NODE) ((NODE)->type.size)
 #define TYPE_SIZE_UNIT(NODE) ((NODE)->type.size_unit)
 #define TYPE_MODE(NODE) ((NODE)->type.mode)
@@ -256,7 +387,6 @@ struct tree_exp
 #define TYPE_DOMAIN(NODE) ((NODE)->type.values)
 #define TYPE_FIELDS(NODE) ((NODE)->type.values)
 #define TYPE_ARG_TYPES(NODE) ((NODE)->type.values)
-#define TYPE_ELT_MODE(NODE) ((NODE)->shared.type)
 #define TYPE_SEP(NODE) ((NODE)->type.sep)
 #define TYPE_SEP_UNIT(NODE) ((NODE)->type.sep_unit)
 #define TYPE_POINTER_TO(NODE) ((NODE)->type.pointer_to)
@@ -271,7 +401,7 @@ struct tree_exp
 
 struct tree_type
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   union tree_node *values;
   union tree_node *sep;
   union tree_node *size;
@@ -279,7 +409,7 @@ struct tree_type
   unsigned char size_unit;
   unsigned char align;
   unsigned char sep_unit;
-  enum machine_mode elt_mode;
+  enum machine_mode elt_mode;	/* Unused */
   union tree_node *pointer_to;
   int parse_info;
   int symtab_address;
@@ -288,6 +418,8 @@ struct tree_type
   union tree_node *next_variant;
   union tree_node *main_variant;
 };
+
+/* Define fields and accessors for nodes representing declared names.  */
 
 #define DECL_VOFFSET(NODE) ((NODE)->decl.voffset)
 #define DECL_VOFFSET_UNIT(NODE) ((NODE)->decl.voffset_unit)
@@ -309,10 +441,12 @@ struct tree_type
 #define DECL_RTL(NODE) ((NODE)->decl.rtl)
 #define DECL_BLOCK_SYMTAB_ADDRESS(NODE) ((NODE)->decl.block_symtab_address)
 #define DECL_SYMTAB_INDEX(NODE) ((NODE)->decl.block_symtab_address)
+#define DECL_SAVED_INSNS(NODE) ((NODE)->decl.saved_insns)
+#define DECL_FRAME_SIZE(NODE) ((NODE)->decl.frame_size)
 
 struct tree_decl
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   char *filename;
   int linenum;
   union tree_node *size;
@@ -322,7 +456,6 @@ struct tree_decl
   unsigned char voffset_unit;
   union tree_node *name;
   union tree_node *context;
-  int unused;
   int offset;
   union tree_node *voffset;
   union tree_node *arguments;
@@ -330,8 +463,18 @@ struct tree_decl
   union tree_node *initial;
   struct rtx_def *rtl;	/* acts as link to register transfer language
 				   (rtl) info */
+  int frame_size;		/* For FUNCTION_DECLs: size of stack frame */
+  struct rtx_def *saved_insns;	/* For FUNCTION_DECLs: points to insn that
+				   constitute its definition on the
+				   permanent obstack.  */
   int block_symtab_address;
 };
+
+/* Define fields and accessors for nodes representing statements.
+   These are now obsolete for C, except for LET_STMT, which is used
+   to record the structure of binding contours (and the names declared
+   in each contour) for the sake of outputting debugging info.
+   Perhaps they will be used once again for other languages.  */
 
 /* For LABEL_STMT, GOTO_STMT, RETURN_STMT, LOOP_STMT,
    COMPOUND_STMT, ASM_STMT.  */
@@ -341,7 +484,7 @@ struct tree_decl
 
 struct tree_stmt
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   char *filename;
   int linenum;
   union tree_node *body;
@@ -357,7 +500,7 @@ struct tree_stmt
 
 struct tree_if_stmt
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   char *filename;
   int linenum;
   union tree_node *cond, *thenpart, *elsepart;
@@ -375,7 +518,7 @@ struct tree_if_stmt
 
 struct tree_bind_stmt
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   char *filename;
   int linenum;
   union tree_node *body, *vars, *supercontext, *bind_size, *type_tags;
@@ -388,15 +531,19 @@ struct tree_bind_stmt
 
 struct tree_case_stmt
 {
-  char shared[sizeof (struct tree_shared)];
+  char common[sizeof (struct tree_common)];
   char *filename;
   int linenum;
   union tree_node *index, *case_list;
 };
+
+/* Define the overall contents of a tree node.
+   It may be any of the structures declared above
+   for various types of node.  */
 
 union tree_node
 {
-  struct tree_shared shared;
+  struct tree_common common;
   struct tree_int_cst int_cst;
   struct tree_real_cst real_cst;
   struct tree_string string;
@@ -404,23 +551,35 @@ union tree_node
   struct tree_identifier identifier;
   struct tree_decl decl;
   struct tree_type type;
+  struct tree_list list;
   struct tree_exp exp;
   struct tree_stmt stmt;
   struct tree_if_stmt if_stmt;
   struct tree_bind_stmt bind_stmt;
   struct tree_case_stmt case_stmt;
 };
-
-typedef union tree_node *tree;
-
-#define NULL_TREE (tree) NULL
 
 extern char *oballoc ();
 extern char *permalloc ();
 
+/* Lowest level primitive for allocating a node.
+   The TREE_CODE is the only argument.  Contents are initialized
+   to zero except for a few of the common fields.  */
+
 extern tree make_node ();
+
+/* Make a copy of a node, with all the same contents except
+   for TREE_UID and TREE_PERMANENT.  (The copy is permanent
+   iff nodes being made now are permanent.)  */
+
 extern tree copy_node ();
+
+/* Return the (unique) IDENTIFIER_NODE node for a given name.
+   The name is supplied as a char *.  */
+
 extern tree get_identifier ();
+
+/* Construct various types of nodes.  */
 
 extern tree build_int_2 ();
 extern tree build_real ();
@@ -428,20 +587,13 @@ extern tree build_real_from_string ();
 extern tree build_real_from_int_cst ();
 extern tree build_complex ();
 extern tree build_string ();
-extern tree build1 ();
-extern tree build2 ();
-extern tree build3 ();
+extern tree build ();
+extern tree build_nt ();
 extern tree build_tree_list ();
-extern tree build_goto ();
-extern tree build_return ();
-extern tree build_if ();
-extern tree build_exit ();
-extern tree build_asm_stmt ();
-extern tree build_case ();
+extern tree build_decl ();
 extern tree build_let ();
-extern tree build_loop ();
-extern tree build_compound ();
-extern tree build_expr_stmt ();
+
+/* Construct various nodes representing data types.  */
 
 extern tree make_signed_type ();
 extern tree make_unsigned_type ();
@@ -450,23 +602,34 @@ extern tree build_pointer_type ();
 extern tree build_array_type ();
 extern tree build_function_type ();
 
+/* Construct expressions, performing type checking.  */
+
 extern tree build_binary_op ();
 extern tree build_indirect_ref ();
 extern tree build_unary_op ();
-
+
 /* Given a type node TYPE, and CONSTP and VOLATILEP, return a type
    for the same kind of data as TYPE describes.
    Variants point to the "main variant" (which has neither CONST nor VOLATILE)
    via TYPE_MAIN_VARIANT, and it points to a chain of other variants
    so that duplicate variants are never made.
    Only main variants should ever appear as types of expressions.  */
+
 extern tree build_type_variant ();
 
 /* Given a ..._TYPE node, calculate the TYPE_SIZE, TYPE_SIZE_UNIT,
    TYPE_ALIGN and TYPE_MODE fields.
    If called more than once on one node, does nothing except
    for the first time.  */
+
 extern void layout_type ();
+
+/* Given a hashcode and a ..._TYPE node (for which the hashcode was made),
+   return a canonicalized ..._TYPE node, so that duplicates are not made.
+   How the hash code is computed is up to the caller, as long as any two
+   callers that could hash identical-looking type nodes agree.  */
+
+extern tree type_hash_canon ();
 
 /* Given a VAR_DECL, PARM_DECL, RESULT_DECL or FIELD_DECL node,
    calculates the DECL_SIZE, DECL_SIZE_UNIT, DECL_ALIGN and DECL_MODE
@@ -475,6 +638,7 @@ extern void layout_type ();
    Second argument is the boundary that this field can be assumed to
    be starting at (in bits).  Zero means it can be assumed aligned
    on any boundary that may be needed.  */
+
 extern void layout_decl ();
 
 /* Fold constants as much as possible in an expression.
@@ -482,69 +646,87 @@ extern void layout_decl ();
    Acts only on the top level of the expression;
    if the argument itself cannot be simplified, its
    subexpressions are not changed.  */
+
 extern tree fold ();
 
 /* combine (tree_code, exp1, exp2) where EXP1 and EXP2 are constants
    returns a constant expression for the result of performing
    the operation specified by TREE_CODE on EXP1 and EXP2.  */
+
 extern tree combine ();
 
 extern tree convert ();
 extern tree convert_units ();
 extern tree size_in_bytes ();
+extern tree genop ();
+extern tree build_int ();
+
+/* Type for sizes of data-type.  */
+
+extern tree sizetype;
 
 /* Concatenate two lists (chains of TREE_LIST nodes) X and Y
    by making the last node in X point to Y.
    Returns X, except if X is 0 returns Y.  */
+
 extern tree chainon ();
 
 /* Make a new TREE_LIST node from specified PURPOSE, VALUE and CHAIN.  */
+
 extern tree tree_cons ();
 
 /* Return the last tree node in a chain.  */
+
 extern tree tree_last ();
 
 /* Reverse the order of elements in a chain, and return the new head.  */
+
 extern tree nreverse ();
 
 /* Returns the length of a chain of nodes
    (number of chain pointers to follow before reaching a null pointer).  */
+
 extern int list_length ();
 
 /* integer_zerop (tree x) is nonzero if X is an integer constant of value 0 */
+
 extern int integer_zerop ();
 
 /* integer_onep (tree x) is nonzero if X is an integer constant of value 1 */
+
 extern int integer_onep ();
 
 /* integer_all_onesp (tree x) is nonzero if X is an integer constant
    all of whose significant bits are 1.  */
+
 extern int integer_all_onesp ();
 
 /* type_unsigned_p (tree x) is nonzero if the type X is an unsigned type
    (all of its possible values are >= 0).
    If X is a pointer type, the value is 1.
    If X is a real type, the value is 0.  */
+
 extern int type_unsigned_p ();
 
 /* staticp (tree x) is nonzero if X is a reference to data allocated
    at a fixed address in memory.  */
+
 extern int staticp ();
 
 /* Gets an error if argument X is not an lvalue.
    Also returns 1 if X is an lvalue, 0 if not.  */
+
 extern int lvalue_or_else ();
 
-/* save_expr (EXP, CTX) returns an expression equivalent to EXP
+/* save_expr (EXP) returns an expression equivalent to EXP
    but it can be used multiple times within context CTX
-   and only evaluate EXP once.  CTX should be a LET_STMT node.  */
+   and only evaluate EXP once.  */
 
 extern tree save_expr ();
 
-/* stabilize_reference (EXP, CTX) returns an reference equivalent to EXP
-   but it can be used multiple times within context CTX
-   and only evaluate the subexpressions once.
-   CTX should be a LET_STMT node.  */
+/* stabilize_reference (EXP) returns an reference equivalent to EXP
+   but it can be used multiple times
+   and only evaluate the subexpressions once.  */
 
 extern tree stabilize_reference ();
 
@@ -562,10 +744,6 @@ extern tree get_unwidened ();
 
 extern tree get_narrower ();
 
-/* Given two integer or real types, return the type for their sum.  */
-
-extern tree commontype ();
-
 /* Given PRECISION and UNSIGNEDP, return a suitable type-tree
    for an integer type with at least that precision.
    The definition of this resides in language-specific code
@@ -574,20 +752,31 @@ extern tree commontype ();
 extern tree type_for_size ();
 
 /* Given an integer type T, return a type like T but unsigned.
-   If T is unsigned, the value is T.  */
+   If T is unsigned, the value is T.
+   The definition of this resides in language-specific code
+   as the repertoir of available types may vary.  */
+
 extern tree unsigned_type ();
 
 /* Given an integer type T, return a type like T but signed.
-   If T is signed, the value is T.  */
+   If T is signed, the value is T.
+   The definition of this resides in language-specific code
+   as the repertoir of available types may vary.  */
+
 extern tree signed_type ();
 
-/* dump_tree (FILE, TREE)
-   writes a description of TREE to stdio stream FILE, recursively
-   describing all nodes that TREE points to.
-   However, when describing a node of local duration,
-   nodes of permanent duration reached from it are not mentioned.
-   The idea is that all the permanent nodes are described at once.  */
-extern void dump_tree ();
+/* Return the floating type node for a given floating machine mode.  */
+
+extern tree get_floating_type ();
+
+/* Given the FUNCTION_DECL for the current function,
+   return zero if it is ok for this function to be inline.
+   Otherwise return a warning message with a single %s
+   for the function's name.  */
+
+extern char *function_cannot_inline_p ();
+
+/* Declare commonly used variables for tree structure.  */
 
 /* An integer constant with value 0 */
 extern tree integer_zero_node;
@@ -610,6 +799,9 @@ extern tree integer_type_node;
 /* The type node for the unsigned integer type.  */
 extern tree unsigned_type_node;
 
+/* The type node for the ordinary character type.  */
+extern tree char_type_node;
+
 /* Points to the name of the input file from which the current input
    being parsed originally came (before it went into cpp).  */
 extern char *input_filename;
@@ -617,3 +809,27 @@ extern char *input_filename;
 /* Nonzero for -pedantic switch: warn about anything
    that standard C forbids.  */
 extern int pedantic;
+
+/* In stmt.c */
+
+extern tree get_last_expr ();
+extern void expand_expr_stmt(), clear_last_expr();
+extern void expand_label(), expand_goto(), expand_asm();
+extern void expand_start_cond(), expand_end_cond();
+extern void expand_start_else(), expand_end_else();
+extern void expand_start_loop(), expand_start_loop_continue_elsewhere();
+extern void expand_loop_continue_here();
+extern void expand_end_loop();
+extern int expand_continue_loop();
+extern int expand_exit_loop(), expand_exit_loop_if_false();
+extern int expand_exit_something();
+
+extern void expand_start_delayed_expr ();
+extern tree expand_end_delayed_expr ();
+extern void expand_emit_delayed_expr ();
+
+extern void expand_null_return(), expand_return();
+extern void expand_start_bindings(), expand_end_bindings();
+extern void expand_start_case(), expand_end_case();
+extern int pushcase();
+extern void expand_start_function(), expand_end_function();

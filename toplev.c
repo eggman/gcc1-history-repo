@@ -1,5 +1,5 @@
 /* Top level of GNU C compiler
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -27,18 +27,28 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include <stdio.h>
 #include <signal.h>
-#include <strings.h>
+
+#ifdef USG
+#include <sys/param.h>
+#include <sys/times.h>
+#include <time.h>   /* Correct for hpux at least.  Is it good on other USG?  */
+#else
+#ifndef VMS
 #include <sys/time.h>
 #include <sys/resource.h>
+#endif
+#endif
+
 #ifndef _TYPES_
 #include <sys/types.h>
 #endif
 #include <sys/stat.h>
+
 #include "tree.h"
 #include "c-tree.h"
 #include "rtl.h"
+#include "flags.h"
 
-extern void dump_tree ();
 extern int yydebug;
 
 extern FILE *finput;
@@ -47,10 +57,15 @@ extern void init_lex ();
 extern void init_decl_processing ();
 extern void init_tree ();
 extern void init_rtl ();
-extern rtx expand_function ();
 extern void init_optabs ();
+extern void init_reg_sets ();
 extern void dump_flow_info ();
 extern void dump_local_alloc ();
+
+void rest_of_decl_compilation ();
+void error ();
+void error_with_file_and_line ();
+void set_target_switch ();
 
 /* Bit flags that specify the machine subtype we are compiling for.
    Bits are tested using macros TARGET_... defined in the tm-...h file
@@ -58,11 +73,15 @@ extern void dump_local_alloc ();
 
 int target_flags;
 
-/* Name of current real source file (what was input to cpp).
-   # commands in the input that specify file names
-   change this value.  */
+/* Name of current original source file (what was input to cpp).
+   This comes from each #-command in the actual input.  */
 
-extern char *input_filename;
+char *input_filename;
+
+/* Name of top-level original source file (what was input to cpp).
+   This comes from the first #-command in the actual input.  */
+
+char *main_input_filename;
 
 /* Current line number in real source file.  */
 
@@ -78,7 +97,6 @@ char *dump_base_name;
 
 /* Flags saying which kinds of debugging dump have been requested.  */
 
-int tree_dump = 0;
 int rtl_dump = 0;
 int rtl_dump_and_exit = 0;
 int jump_opt_dump = 0;
@@ -88,6 +106,7 @@ int flow_dump = 0;
 int combine_dump = 0;
 int local_reg_dump = 0;
 int global_reg_dump = 0;
+int jump2_opt_dump = 0;
 
 /* 1 => write gdb debugging output (using symout.c).  -g
    2 => write dbx debugging output (using dbxout.c).  -G  */
@@ -98,18 +117,84 @@ int write_symbols = 0;
 
 int optimize = 0;
 
-/* Nonzero for -optforcemem: load memory value into a register
+/* Nonzero for -fforce-mem: load memory value into a register
    before arithmetic on it.  This makes better cse but slower compilation.  */
 
-int force_mem = 0;
+int flag_force_mem = 0;
 
-/* Nonzero for -optforcemem: load memory address into a register before
+/* Nonzero for -fforce-addr: load memory address into a register before
    reference to memory.  This makes better cse but slower compilation.  */
 
-int force_addr = 0;
+int flag_force_addr = 0;
+
+/* Nonzero for -fdefer-pop: don't pop args after each function call;
+   instead save them up to pop many calls' args with one insns.  */
+
+int flag_defer_pop = 1;
+
+/* Nonzero for -ffloat-store: don't allocate floats and doubles
+   in extended-precision registers.  */
+
+int flag_float_store = 0;
+
+/* Nonzero for -fcombine-regs:
+   allow instruction combiner to combine an insn
+   that just copies one reg to another.  */
+
+int flag_combine_regs = 0;
+
+/* Nonzero for -fwritable-strings:
+   store string constants in data segment and don't uniquize them.  */
+
+int flag_writable_strings = 0;
+
+/* Nonzero means don't put addresses of constant functions in registers.
+   Used for compiling the Unix kernel, where strange substitutions are
+   done on the assembly output.  */
+
+int flag_no_function_cse = 0;
+
+/* Nonzero for -fomit-frame-pointer:
+   don't make a frame pointer in simple functions that don't require one.  */
+
+int flag_omit_frame_pointer = 0;
+
+/* Nonzero to inhibit use of define_optimization peephole opts.  */
+
+int flag_no_peephole = 0;
+
+/* Nonzero means `char' should be signed.  */
+
+int flag_signed_char;
+
+/* Nonzero means allow type mismatches in conditional expressions;
+   just make their values `void'.   */
+
+int flag_cond_mismatch;
+
+/* Nonzero means don't recognize the keyword `asm'.  */
+
+int flag_no_asm;
+
+/* Nonzero means warn about implicit declarations.  */
+
+int warn_implicit;
+
+/* Nonzero means warn about function definitions that default the return type
+   or that use a null return and have a return-type other than void.  */
+
+int warn_return_type;
+
+/* Nonzero means do some things the same way PCC does.  */
+
+int flag_traditional;
+
+/* Nonzero means all references through pointers are volatile.  */
+
+int flag_volatile;
 
 /* Nonzero means do stupid register allocation.  -noreg.
-   This an OPTIMIZE are controlled by different switches in cc1,
+   This and `optimize' are controlled by different switches in cc1,
    but normally cc controls them both with the -O switch.  */
 
 int obey_regdecls = 0;
@@ -123,15 +208,34 @@ int quiet_flag = 0;
 
 int inhibit_warnings = 0;
 
+/* Do print extra warnings (such as for uninitialized variables).  -W.  */
+
+int extra_warnings = 0;
+
 /* Number of error messages and warning messages so far.  */
 
 int errorcount = 0;
 int warningcount = 0;
 
+/* Nonzero if generating code to do profiling.  */
+
+int profile_flag = 0;
+
 /* Nonzero for -pedantic switch: warn about anything
    that standard C forbids.  */
 
 int pedantic = 0;
+
+/* Nonzero for -finline-functions: ok to inline functions that look like
+   good inline candidates.  */
+
+int flag_inline_functions;
+
+/* Nonzero for -fkeep-inline-functions: even if we make a function
+   go inline everywhere, keep its defintion around for debugging
+   purposes.  */
+
+int flag_keep_inline_functions;
 
 /* Name for output file of assembly code, specified with -o.  */
 
@@ -145,7 +249,6 @@ char *sym_file_name;
    and debugging dumps.  */
 
 FILE *asm_out_file;
-FILE *tree_dump_file;
 FILE *rtl_dump_file;
 FILE *jump_opt_dump_file;
 FILE *cse_dump_file;
@@ -154,12 +257,13 @@ FILE *flow_dump_file;
 FILE *combine_dump_file;
 FILE *local_reg_dump_file;
 FILE *global_reg_dump_file;
+FILE *jump2_opt_dump_file;
 
 /* Time accumulators, to count the total time spent in various passes.  */
 
 int parse_time;
 int varconst_time;
-int expand_time;
+int integration_time;
 int jump_time;
 int cse_time;
 int loop_time;
@@ -173,24 +277,54 @@ int dump_time;
 
 /* Return time used so far, in microseconds.  */
 
+int
 gettime ()
 {
+#ifdef USG
+  struct tms tms;
+#else
+#ifndef VMS
   struct rusage rusage;
+#else /* VMS */
+  struct
+    {
+      int proc_user_time;
+      int proc_system_time;
+      int child_user_time;
+      int child_system_time;
+    } vms_times;
+#endif
+#endif
+
   if (quiet_flag)
     return 0;
+
+#ifdef USG
+  times (&tms);
+  return (tms.tms_utime + tms.tms_stime) * (1000000 / HZ);
+#else
+#ifndef VMS
   getrusage (0, &rusage);
   return (rusage.ru_utime.tv_sec * 1000000 + rusage.ru_utime.tv_usec
 	  + rusage.ru_stime.tv_sec * 1000000 + rusage.ru_stime.tv_usec);
+#else /* VMS */
+  times (&vms_times);
+  return (vms_times.proc_user_time + vms_times.proc_system_time) * 10000;
+#endif
+#endif
 }
 
 #define TIMEVAR(VAR, BODY)    \
  { int otime = gettime (); BODY; VAR += gettime () - otime; }
 
+void
 print_time (str, total)
      char *str;
      int total;
 {
-  printf ("time in %s: %d.%06d\n", str, total / 1000000, total % 1000000);
+  fprintf (stderr,
+	   "time in %s: %d.%06d\n",
+	   str, total / 1000000, total % 1000000);
 }
 
 /* Count an error or warning.  Return 1 if the message should be printed.  */
@@ -207,19 +341,15 @@ count_error (warningp)
   else
     errorcount++;
 
-  /* If we are printing function names, make sure error message
-     starts at beginning of line.  */
-  if (!quiet_flag)
-    fprintf (stderr, "\n");
-
   return 1;
 }
 
 /* Print a fatal error message.  NAME is the text.
    Also include a system error message based on `errno'.  */
 
-int
+void
 pfatal_with_name (name)
+     char *name;
 {
   fprintf (stderr, "cc1: ");
   perror (name);
@@ -227,10 +357,18 @@ pfatal_with_name (name)
 }
 
 void
+fatal_io_error (name)
+     char *name;
+{
+  fprintf (stderr, "cc1:%s: I/O error\n", name);
+  exit (35);
+}
+
+void
 fatal (s)
      char *s;
 {
-  yyerror (s, 0);
+  error (s, 0);
   exit (34);
 }
 
@@ -248,36 +386,111 @@ announce_function (decl)
     }
 }
 
-static tree last_error_function;
+/* Prints out, if necessary, the name of the current function
+   which caused an error.  Called from all error and warning functions.  */
+
+void
+report_error_function()
+{
+  static tree last_error_function = NULL;
+
+  if (last_error_function != current_function_decl)
+    {
+      if (current_function_decl == NULL)
+	{
+	  if (!quiet_flag)
+	    fprintf (stderr, "\n");
+	  fprintf (stderr, "At top level:\n");
+	}
+      else
+	{
+	  if (!quiet_flag)
+	    /* We already know this info.  Don't print it twice.
+	       But make sure we are at the beginning of a line.  */
+	    fprintf (stderr, "\n");
+	  else
+	    fprintf (stderr, "In function %s:\n",
+		     IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
+	}
+      last_error_function = current_function_decl;
+    }
+}
 
 /* Report an error at the current line number.
    S and V are a string and an arg for `printf'.  */
 
 void
-yyerror (s, v)
+error (s, v)
      char *s;
      int v;			/* @@also used as pointer */
 {
-  yylineerror (lineno, s, v);
+  error_with_file_and_line (input_filename, lineno, s, v);
 }
 
-/* Report an error at line LINE.
+/* Report an error at line LINE of file FILE.
    S and V are a string and an arg for `printf'.  */
 
-yylineerror (line, s, v)
+void
+error_with_file_and_line (file, line, s, v)
+     char *file;
      int line;
      char *s;
      int v;
 {
   count_error (0);
 
-  if (last_error_function != current_function_decl)
-    {
-      fprintf (stderr, "In function %s:\n",
-	       IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
-      last_error_function = current_function_decl;
-    }
-  fprintf (stderr, "%s:%d: ", input_filename, line);
+  report_error_function ();
+
+  if (file)
+    fprintf (stderr, "%s:%d: ", file, line);
+  else
+    fprintf (stderr, "cc1: ");
+  fprintf (stderr, s, v);
+  fprintf (stderr, "\n");
+}
+
+/* Report an error at the declaration DECL.
+   S is string which uses %s to substitute the declaration name.  */
+
+void
+error_with_decl (decl, s)
+     tree decl;
+     char *s;
+{
+  count_error (0);
+
+  report_error_function ();
+
+  fprintf (stderr, "%s:%d: ",
+	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
+
+  if (DECL_NAME (decl))
+    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)));
+  else
+    fprintf (stderr, s, "((anonymous))");
+  fprintf (stderr, "\n");
+}
+
+/* Report a warning at line LINE.
+   S and V are a string and an arg for `printf'.  */
+
+void
+warning_with_line (line, s, v)
+     int line;
+     char *s;
+     int v;
+{
+  if (count_error (1) == 0)
+    return;
+
+  report_error_function ();
+
+  if (input_filename)
+    fprintf (stderr, "%s:%d: ", input_filename, line);
+  else
+    fprintf (stderr, "cc1: ");
+
+  fprintf (stderr, "warning: ");
   fprintf (stderr, s, v);
   fprintf (stderr, "\n");
 }
@@ -293,33 +506,34 @@ warning (s, v)
   warning_with_line (lineno, s, v);
 }
 
-/* Report a warning at line LINE.
-   S and V are a string and an arg for `printf'.  */
+/* Report a warning at the declaration DECL.
+   S is string which uses %s to substitute the declaration name.  */
 
-warning_with_line (line, s, v)
-     int line;
+void
+warning_with_decl (decl, s)
+     tree decl;
      char *s;
-     int v;
 {
   if (count_error (1) == 0)
     return;
 
-  if (last_error_function != current_function_decl)
-    {
-      fprintf (stderr, "In function %s:\n",
-	       IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
-      last_error_function = current_function_decl;
-    }
-  fprintf (stderr, "%s:%d: ", input_filename, line);
+  report_error_function ();
+
+  fprintf (stderr, "%s:%d: ",
+	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
 
   fprintf (stderr, "warning: ");
-  fprintf (stderr, s, v);
+  if (DECL_NAME (decl))
+    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)));
+  else
+    fprintf (stderr, s, "((anonymous))");
   fprintf (stderr, "\n");
 }
 
 /* When `malloc.c' is compiled with `rcheck' defined,
    it calls this function to report clobberage.  */
 
+void
 botch (s)
 {
   abort ();
@@ -327,6 +541,7 @@ botch (s)
 
 /* Same as `malloc' but report error if no memory available.  */
 
+int
 xmalloc (size)
      unsigned size;
 {
@@ -345,7 +560,7 @@ xrealloc (ptr, size)
 {
   int result = realloc (ptr, size);
   if (!result)
-    abort ();
+    fatal ("Virtual memory exhausted.");
   return result;
 }
 
@@ -390,7 +605,7 @@ compile_file (name)
 
   parse_time = 0;
   varconst_time = 0;
-  expand_time = 0;
+  integration_time = 0;
   jump_time = 0;
   cse_time = 0;
   loop_time = 0;
@@ -400,7 +615,7 @@ compile_file (name)
   global_alloc_time = 0;
   final_time = 0;
   symout_time = 0;
-  dump_time;
+  dump_time = 0;
 
   /* Open input file.  */
 
@@ -413,19 +628,9 @@ compile_file (name)
   init_tree ();
   init_lex ();
   init_rtl ();
+  init_emit_once ();
   init_decl_processing ();
   init_optabs ();
-
-  /* If tree dump desired, open the output file.  */
-  if (tree_dump)
-    {
-      register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
-      strcpy (dumpname, dump_base_name);
-      strcat (dumpname, ".tree");
-      tree_dump_file = fopen (dumpname, "w");
-      if (tree_dump_file == 0)
-	pfatal_with_name (dumpname);
-    }
 
   /* If rtl dump desired, open the output file.  */
   if (rtl_dump)
@@ -515,15 +720,37 @@ compile_file (name)
 	pfatal_with_name (dumpname);
     }
 
+  /* If jump2_opt dump desired, open the output file.  */
+  if (jump2_opt_dump)
+    {
+      register char *dumpname = (char *) xmalloc (dump_base_name_length + 7);
+      strcpy (dumpname, dump_base_name);
+      strcat (dumpname, ".jump2");
+      jump2_opt_dump_file = fopen (dumpname, "w");
+      if (jump2_opt_dump_file == 0)
+	pfatal_with_name (dumpname);
+    }
+
   /* Open assembler code output file.  */
  
   {
     register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
+    int len = strlen (dump_base_name);
     strcpy (dumpname, dump_base_name);
+    if (len > 2 && ! strcmp (".c", dumpname + len - 2))
+      dumpname[len - 2] = 0;
+    else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
+      dumpname[len - 3] = 0;
     strcat (dumpname, ".s");
-    asm_out_file = fopen (asm_file_name ? asm_file_name : dumpname, "w");
+    if (asm_file_name == 0)
+      {
+	asm_file_name = (char *) malloc (strlen (dumpname) + 1);
+	strcpy (asm_file_name, dumpname);
+      }
+    asm_out_file = fopen (asm_file_name, "w");
     if (asm_out_file == 0)
       pfatal_with_name (asm_file_name ? asm_file_name : dumpname);
+    fprintf (asm_out_file, ASM_FILE_START);
   }
 
   input_filename = name;
@@ -537,7 +764,12 @@ compile_file (name)
   if (write_symbols == 1)
     {
       register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
+      int len = strlen (dump_base_name);
       strcpy (dumpname, dump_base_name);
+      if (len > 2 && ! strcmp (".c", dumpname + len - 2))
+	dumpname[len - 2] = 0;
+      else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
+	dumpname[len - 3] = 0;
       strcat (dumpname, ".sym");
       if (sym_file_name == 0)
 	sym_file_name = dumpname;
@@ -547,11 +779,11 @@ compile_file (name)
   /* If dbx symbol table desired, initialize writing it
      and output the predefined types.  */
   if (write_symbols == 2)
-    dbxout_init (asm_out_file, input_filename);
+    dbxout_init (asm_out_file, main_input_filename);
 
   /* Initialize yet another pass.  */
 
-  init_final (input_filename);
+  init_final (main_input_filename);
 
   start_time = gettime ();
 
@@ -565,7 +797,28 @@ compile_file (name)
 
   parse_time += gettime () - start_time;
 
+  parse_time -= varconst_time;
+
   globals = getdecls ();
+
+  /* Really define vars that have had only a tentative definition.
+     Really output inline functions that must actually be callable
+     and have not been output so far.  */
+
+  {
+    tree decl;
+    for (decl = globals; decl; decl = TREE_CHAIN (decl))
+      {
+	if (TREE_CODE (decl) == VAR_DECL && TREE_STATIC (decl)
+	    && ! TREE_ASM_WRITTEN (decl))
+	  rest_of_decl_compilation (decl, 0, 1, 1);
+	if (TREE_CODE (decl) == FUNCTION_DECL
+	    && ! TREE_ASM_WRITTEN (decl)
+	    && DECL_INITIAL (decl) != 0
+	    && TREE_ADDRESSABLE (decl))
+	  output_inline_function (decl);
+      }
+  }
 
   /* Do dbx symbols */
   if (write_symbols == 2)
@@ -586,22 +839,7 @@ compile_file (name)
 	       symout_finish (name, statbuf.st_ctime);
 	     });
 
-  /* Close non-debugging input and output files.  */
-
-  fclose (finput);
-  fclose (asm_out_file);
-
-  if (!quiet_flag)
-    fprintf (stderr,"\n");
-
-  /* Dump the global nodes and close the tree dump file.  */
-  if (tree_dump)
-    {
-      dump_tree (tree_dump_file, globals);
-      fclose (tree_dump_file);
-    }
-
-  /* Close all other dump files.  */
+  /* Close the dump files.  */
 
   if (rtl_dump)
     fclose (rtl_dump_file);
@@ -630,12 +868,23 @@ compile_file (name)
   if (global_reg_dump)
     fclose (global_reg_dump_file);
 
+  if (jump2_opt_dump)
+    fclose (jump2_opt_dump_file);
+
+  /* Close non-debugging input and output files.  */
+
+  fclose (finput);
+  if (ferror (asm_out_file) != 0)
+    fatal_io_error (asm_file_name);
+  fclose (asm_out_file);
+
   /* Print the times.  */
 
   if (! quiet_flag)
     {
+      fprintf (stderr,"\n");
       print_time ("parse", parse_time);
-      print_time ("expand", expand_time);
+      print_time ("integration", integration_time);
       print_time ("jump", jump_time);
       print_time ("cse", cse_time);
       print_time ("loop", loop_time);
@@ -650,60 +899,86 @@ compile_file (name)
     }
 }
 
+/* This is called from finish_decl (within yyparse)
+   for each declaration of a function or variable.
+   This does nothing for automatic variables.
+   Otherwise, it sets up the RTL and outputs any assembler code
+   (label definition, storage allocation and initialization).
+
+   DECL is the declaration.  If ASMSPEC is nonzero, it specifies
+   the assembler symbol name to be used.  TOP_LEVEL is nonzero
+   if this declaration is not within a function.  */
+
+void
+rest_of_decl_compilation (decl, asmspec, top_level, at_end)
+     tree decl;
+     tree asmspec;
+     int top_level;
+     int at_end;
+{
+  /* Declarations of variables, and of functions defined elsewhere.  */
+
+  if (TREE_STATIC (decl) || TREE_EXTERNAL (decl))
+    TIMEVAR (varconst_time,
+	     {
+	       assemble_variable (decl, asmspec, top_level, write_symbols, at_end);
+	     });
+
+  if (top_level)
+    {
+      if (write_symbols == 1)
+	{
+	  TIMEVAR (symout_time,
+		   {
+		     /* The initizations make types when they contain
+			string constants.  The types are on the temporary
+			obstack, so output them now before they go away.  */
+		     symout_types (get_temporary_types ());
+		   });
+	}
+      else
+	/* Clean out the temporary type list, since the types will go away.  */
+	get_temporary_types ();
+    }
+}
+
 /* This is called from finish_function (within yyparse)
-   after each top-level definition is parsed, and from
-   finish_decl (also within yyparse) for each other top-level declaration.
+   after each top-level definition is parsed.
    It is supposed to compile that function or variable
    and output the assembler code for it.
    After we return, the tree storage is freed.  */
 
 void
-rest_of_compilation (decl, top_level)
+rest_of_compilation (decl)
      tree decl;
-     int top_level;
 {
   register rtx insns;
   int start_time = gettime ();
   int tem;
 
-  /* Declarations of variables, and of functions defined elsewhere.  */
+  /* If we are reconsidering an inline function
+     at the end of compilation, skip the stuff for making it inline.  */
 
-  if ((TREE_CODE (decl) == VAR_DECL
-       || (TREE_CODE (decl) == FUNCTION_DECL
-	   && DECL_INITIAL (decl) == 0))
-      && (TREE_STATIC  (decl) || TREE_EXTERNAL (decl)))
+  if (DECL_SAVED_INSNS (decl) == 0)
     {
-      TIMEVAR (varconst_time,
-	       {
-		 assemble_variable (decl, top_level);
-		 if (write_symbols == 2)
-		   dbxout_symbol (decl, 0);
-	       });
-    }
 
-  /* Function definitions are the real work
-     (all the rest of this function).  */
+      /* If requested, consider whether to make this function inline.  */
+      if (flag_inline_functions || TREE_INLINE (decl))
+	{
+	  TIMEVAR (integration_time,
+		   {
+		     int specd = TREE_INLINE (decl);
+		     char *lose = function_cannot_inline_p (decl);
+		     if (lose != 0 && specd)
+		       warning_with_decl (decl, lose);
+		     if (lose == 0)
+		       save_for_inline (decl);
+		     else
+		       TREE_INLINE (decl) = 0;
+		   });
+	}
 
-  else if (TREE_CODE (decl) == FUNCTION_DECL
-	   && DECL_INITIAL (decl))
-    {
-      /* Dump the function's tree if we are dumping trees.  */
-
-      if (tree_dump)
-	TIMEVAR (dump_time,
-		 dump_tree (tree_dump_file, decl));
-
-      /* Output some preliminaries for assembler.  */
-
-      TIMEVAR (varconst_time, assemble_function (decl));
-
-      /* Generate rtl code for this function (see stmt.c, expr.c).  */
-
-      TIMEVAR (expand_time,
-	       {
-		 init_emit (write_symbols);
-		 insns = expand_function (decl, !optimize);
-	       });
+      insns = get_insns ();
 
       /* Dump the rtl code if we are dumping rtl.  */
 
@@ -712,218 +987,281 @@ rest_of_compilation (decl, top_level)
 		 {
 		   fprintf (rtl_dump_file, "\n;; Function %s\n\n",
 			    IDENTIFIER_POINTER (DECL_NAME (decl)));
+		   if (DECL_SAVED_INSNS (decl))
+		     fprintf (rtl_dump_file, ";; (integrable)\n\n");
 		   print_rtl (rtl_dump_file, insns);
 		   fflush (rtl_dump_file);
 		 });
 
-      if (rtl_dump_and_exit)
+      /* If function is inline, and we don't yet know whether to
+	 compile it by itself, defer decision till end of compilation.
+	 finish_compilation will call rest_of_compilation again
+	 for those functions that need to be output.  */
+
+      if (TREE_PUBLIC (decl) == 0
+	  && TREE_INLINE (decl)
+	  && ! flag_keep_inline_functions)
 	goto exit_rest_of_compilation;
-
-      /* Do jump optimization the first time, if -opt.  */
-
-      if (optimize)
-	TIMEVAR (jump_time, jump_optimize (insns, 0));
-
-      /* Dump rtl code after jump, if we are doing that.  */
-
-      if (jump_opt_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (jump_opt_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		   print_rtl (jump_opt_dump_file, insns);
-		   fflush (jump_opt_dump_file);
-		 });
-
-      /* Perform common subexpression elimination.
-	 Nonzero value from `cse_main' means that jumps were simplified
-	 and some code may now be unreachable, so do
-	 jump optimization again.  */
-
-      if (optimize)
-	{
-	  TIMEVAR (cse_time, reg_scan (insns, max_reg_num ()));
-
-	  TIMEVAR (cse_time, tem = cse_main (insns, max_reg_num ()));
-
-	  if (tem)
-	    TIMEVAR (jump_time, jump_optimize (insns, 0));
-	}
-
-      /* Dump rtl code after cse, if we are doing that.  */
-
-      if (cse_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (cse_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		   print_rtl (cse_dump_file, insns);
-		   fflush (cse_dump_file);
-		 });
-
-      /* Move constant computations out of loops.  */
-
-      if (optimize)
-	{
-	  TIMEVAR (loop_time, loop_optimize (insns, max_reg_num ()));
-	}
-
-      /* Dump rtl code after loop opt, if we are doing that.  */
-
-      if (loop_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (loop_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		   print_rtl (loop_dump_file, insns);
-		   fflush (loop_dump_file);
-		 });
-
-      /* Now we choose between stupid (pcc-like) register allocation
-	 (if we got the -noreg switch and not -opt)
-	 and smart register allocation.  */
-
-      if (optimize)		/* Stupid allocation probably won't work */
-	obey_regdecls = 0;	/* if optimizations being done.  */
-
-      /* Print function header into flow dump now
-	 because doing the flow analysis makes some of the dump.  */
-
-      if (flow_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (flow_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		 });
-
-      if (obey_regdecls)
-	{
-	  TIMEVAR (flow_time,
-		   {
-		     regclass (insns, max_reg_num ());
-		     stupid_life_analysis (insns, max_reg_num (),
-					   flow_dump_file);
-		   });
-	}
-      else
-	{
-	  /* Do control and data flow analysis,
-	     and write some of the results to dump file.  */
-
-	  TIMEVAR (flow_time, flow_analysis (insns, max_reg_num (),
-					     flow_dump_file));
-	}
-
-      /* Dump rtl after flow analysis.  */
-
-      if (flow_dump)
-	TIMEVAR (dump_time,
-		 {
-		   print_rtl (flow_dump_file, insns);
-		   fflush (flow_dump_file);
-		 });
-
-      /* If -opt, try combining insns through substitution.  */
-
-      if (optimize)
-	TIMEVAR (combine_time, combine_instructions (insns, max_reg_num ()));
-
-      /* Dump rtl code after insn combination.  */
-
-      if (combine_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (combine_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		   dump_combine_stats (combine_dump_file);
-		   print_rtl (combine_dump_file, insns);
-		   fflush (combine_dump_file);
-		 });
-
-      /* Unless we did stupid register allocation,
-	 allocate pseudo-regs that are used only within 1 basic block.  */
-
-      if (!obey_regdecls)
-	TIMEVAR (local_alloc_time,
-		 {
-		   regclass (insns, max_reg_num ());
-		   local_alloc ();
-		 });
-
-      /* Dump rtl code after allocating regs within basic blocks.  */
-
-      if (local_reg_dump)
-	TIMEVAR (dump_time,
-		 {
-		   fprintf (local_reg_dump_file, "\n;; Function %s\n\n",
-			    IDENTIFIER_POINTER (DECL_NAME (decl)));
-		   dump_flow_info (local_reg_dump_file);
-		   dump_local_alloc (local_reg_dump_file);
-		   print_rtl (local_reg_dump_file, insns);
-		   fflush (local_reg_dump_file);
-		 });
-
-      if (global_reg_dump)
-	TIMEVAR (dump_time,
-		 fprintf (global_reg_dump_file, "\n;; Function %s\n\n",
-			  IDENTIFIER_POINTER (DECL_NAME (decl))));
-
-      /* Unless we did stupid register allocation,
-	 allocate remaining pseudo-regs, then do the reload pass
-	 fixing up any insns that are invalid.  */
-
-      TIMEVAR (global_alloc_time,
-	       {
-		 if (!obey_regdecls)
-		   global_alloc (global_reg_dump ? global_reg_dump_file : 0);
-		 else
-		   reload (insns, 0,
-			   global_reg_dump ? global_reg_dump_file : 0);
-	       });
-
-      if (global_reg_dump)
-	TIMEVAR (dump_time,
-		 {
-		   dump_global_regs (global_reg_dump_file);
-		   print_rtl (global_reg_dump_file, insns);
-		   fflush (global_reg_dump_file);
-		 });
-
-      /* One more attempt to remove jumps to .+1
-	 left by dead-store-elimination.
-	 Also do cross-jumping this time.  */
-
-      if (optimize)
-	TIMEVAR (jump_time, jump_optimize (insns, 1));
-
-      /* Now turn the rtl into assembler code.  */
-
-      TIMEVAR (final_time,
-	       {
-		 final (insns, asm_out_file,
-			IDENTIFIER_POINTER (DECL_NAME (decl)),
-			write_symbols, optimize);
-		 fflush (asm_out_file);
-	       });
-
-      /* Write GDB symbols if requested */
-
-      if (write_symbols == 1)
-	TIMEVAR (symout_time,
-		 {
-		   symout_types (get_permanent_types ());
-		   symout_types (get_temporary_types ());
-
-		   DECL_BLOCK_SYMTAB_ADDRESS (decl)
-		     = symout_function (DECL_INITIAL (decl),
-					DECL_ARGUMENTS (decl), 0);
-		 });
-
-      /* Write DBX symbols if requested */
-
-      if (write_symbols == 2)
-	TIMEVAR (symout_time, dbxout_function (decl));
     }
+
+  if (rtl_dump_and_exit)
+    goto exit_rest_of_compilation;
+
+  TREE_ASM_WRITTEN (decl) = 1;
+
+  insns = get_insns ();
+
+  /* Copy any shared structure that should not be shared.  */
+
+  unshare_all_rtl (insns);
+
+  /* See if we have allocated stack slots that are not directly addressable.
+     If so, scan all the insns and create explicit address computation
+     for all references to such slots.  */
+/*   fixup_stack_slots (); */
+
+  /* Do jump optimization the first time, if -opt.
+     Also do it if -W, but in that case it doesn't change the rtl code,
+     it only computes whether control can drop off the end of the function.  */
+
+  if (optimize || extra_warnings || warn_return_type)
+    TIMEVAR (jump_time, jump_optimize (insns, 0, 0));
+
+  /* Dump rtl code after jump, if we are doing that.  */
+
+  if (jump_opt_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (jump_opt_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	       print_rtl (jump_opt_dump_file, insns);
+	       fflush (jump_opt_dump_file);
+	     });
+
+  /* Perform common subexpression elimination.
+     Nonzero value from `cse_main' means that jumps were simplified
+     and some code may now be unreachable, so do
+     jump optimization again.  */
+
+  if (optimize)
+    {
+      TIMEVAR (cse_time, reg_scan (insns, max_reg_num (), 0));
+
+      TIMEVAR (cse_time, tem = cse_main (insns, max_reg_num ()));
+
+      if (tem)
+	TIMEVAR (jump_time, jump_optimize (insns, 0, 0));
+    }
+
+  /* Dump rtl code after cse, if we are doing that.  */
+
+  if (cse_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (cse_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	       print_rtl (cse_dump_file, insns);
+	       fflush (cse_dump_file);
+	     });
+
+  if (loop_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (loop_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	     });
+
+  /* Move constant computations out of loops.  */
+
+  if (optimize)
+    {
+      TIMEVAR (loop_time,
+	       {
+		 reg_scan (insns, max_reg_num (), 1);
+		 loop_optimize (insns, max_reg_num (),
+				loop_dump ? loop_dump_file : 0);
+	       });
+    }
+
+  /* Dump rtl code after loop opt, if we are doing that.  */
+
+  if (loop_dump)
+    TIMEVAR (dump_time,
+	     {
+	       print_rtl (loop_dump_file, insns);
+	       fflush (loop_dump_file);
+	     });
+
+  /* Now we choose between stupid (pcc-like) register allocation
+     (if we got the -noreg switch and not -opt)
+     and smart register allocation.  */
+
+  if (optimize)		/* Stupid allocation probably won't work */
+    obey_regdecls = 0;	/* if optimizations being done.  */
+
+  regclass_init ();
+
+  /* Print function header into flow dump now
+     because doing the flow analysis makes some of the dump.  */
+
+  if (flow_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (flow_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	     });
+
+  if (obey_regdecls)
+    {
+      TIMEVAR (flow_time,
+	       {
+		 regclass (insns, max_reg_num ());
+		 stupid_life_analysis (insns, max_reg_num (),
+				       flow_dump_file);
+	       });
+    }
+  else
+    {
+      /* Do control and data flow analysis,
+	 and write some of the results to dump file.  */
+
+      TIMEVAR (flow_time, flow_analysis (insns, max_reg_num (),
+					 flow_dump_file));
+      if (extra_warnings)
+	uninitialized_vars_warning (DECL_INITIAL (decl));
+    }
+
+  /* Dump rtl after flow analysis.  */
+
+  if (flow_dump)
+    TIMEVAR (dump_time,
+	     {
+	       print_rtl (flow_dump_file, insns);
+	       fflush (flow_dump_file);
+	     });
+
+  /* If -opt, try combining insns through substitution.  */
+
+  if (optimize)
+    TIMEVAR (combine_time, combine_instructions (insns, max_reg_num ()));
+
+  /* Dump rtl code after insn combination.  */
+
+  if (combine_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (combine_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	       dump_combine_stats (combine_dump_file);
+	       print_rtl (combine_dump_file, insns);
+	       fflush (combine_dump_file);
+	     });
+
+  /* Unless we did stupid register allocation,
+     allocate pseudo-regs that are used only within 1 basic block.  */
+
+  if (!obey_regdecls)
+    TIMEVAR (local_alloc_time,
+	     {
+	       regclass (insns, max_reg_num ());
+	       local_alloc ();
+	     });
+
+  /* Dump rtl code after allocating regs within basic blocks.  */
+
+  if (local_reg_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (local_reg_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	       dump_flow_info (local_reg_dump_file);
+	       dump_local_alloc (local_reg_dump_file);
+	       print_rtl (local_reg_dump_file, insns);
+	       fflush (local_reg_dump_file);
+	     });
+
+  if (global_reg_dump)
+    TIMEVAR (dump_time,
+	     fprintf (global_reg_dump_file, "\n;; Function %s\n\n",
+		      IDENTIFIER_POINTER (DECL_NAME (decl))));
+
+  /* Unless we did stupid register allocation,
+     allocate remaining pseudo-regs, then do the reload pass
+     fixing up any insns that are invalid.  */
+
+  TIMEVAR (global_alloc_time,
+	   {
+	     if (!obey_regdecls)
+	       global_alloc (global_reg_dump ? global_reg_dump_file : 0);
+	     else
+	       reload (insns, 0,
+		       global_reg_dump ? global_reg_dump_file : 0);
+	   });
+
+  if (global_reg_dump)
+    TIMEVAR (dump_time,
+	     {
+	       dump_global_regs (global_reg_dump_file);
+	       print_rtl (global_reg_dump_file, insns);
+	       fflush (global_reg_dump_file);
+	     });
+
+  /* One more attempt to remove jumps to .+1
+     left by dead-store-elimination.
+     Also do cross-jumping this time
+     and delete no-op move insns.  */
+
+  if (optimize)
+    {
+      TIMEVAR (jump_time, jump_optimize (insns, 1, 1));
+    }
+
+  /* Dump rtl code after jump, if we are doing that.  */
+
+  if (jump2_opt_dump)
+    TIMEVAR (dump_time,
+	     {
+	       fprintf (jump2_opt_dump_file, "\n;; Function %s\n\n",
+			IDENTIFIER_POINTER (DECL_NAME (decl)));
+	       print_rtl (jump2_opt_dump_file, insns);
+	       fflush (jump2_opt_dump_file);
+	     });
+
+  /* Now turn the rtl into assembler code.  */
+
+  TIMEVAR (final_time,
+	   {
+	     assemble_function (decl);
+	     final_start_function (insns, asm_out_file,
+				   write_symbols, optimize);
+	     final (insns, asm_out_file,
+		    write_symbols, optimize);
+	     final_end_function (insns, asm_out_file,
+				 write_symbols, optimize);
+	     fflush (asm_out_file);
+	   });
+
+  /* Write GDB symbols if requested */
+
+  if (write_symbols == 1)
+    {
+      TIMEVAR (symout_time,
+	       {
+		 symout_types (get_permanent_types ());
+		 symout_types (get_temporary_types ());
+
+		 DECL_BLOCK_SYMTAB_ADDRESS (decl)
+		   = symout_function (DECL_INITIAL (decl),
+				      DECL_ARGUMENTS (decl), 0);
+	       });
+    }
+  else
+    get_temporary_types ();
+
+  /* Write DBX symbols if requested */
+
+  if (write_symbols == 2)
+    TIMEVAR (symout_time, dbxout_function (decl));
 
  exit_rest_of_compilation:
 
@@ -934,8 +1272,8 @@ rest_of_compilation (decl, top_level)
 }
 
 /* Entry point of cc1.  Decode command args, then call compile_file.
-   Exit code is 34 if fatal error, else 33 if have error messages,
-   else 1 if have warnings, else 0.  */
+   Exit code is 35 if can't open files, 34 if fatal error,
+   33 if had nonfatal errors, else success.  */
 
 int
 main (argc, argv, envp)
@@ -944,7 +1282,26 @@ main (argc, argv, envp)
      char **envp;
 {
   register int i;
-  char *filename;
+  char *filename = 0;
+  int print_mem_flag = 0;
+
+#ifdef RLIMIT_STACK
+  /* Get rid of any avoidable limit on stack size.  */
+  {
+    struct rlimit rlim;
+
+    /* Set the stack limit huge so that alloca does not fail. */
+    getrlimit (RLIMIT_STACK, &rlim);
+    rlim.rlim_cur = rlim.rlim_max;
+    setrlimit (RLIMIT_STACK, &rlim);
+  }
+#endif /* RLIMIT_STACK */
+
+  /* Initialize whether `char' is signed.  */
+  flag_signed_char = DEFAULT_SIGNED_CHAR;
+
+  /* Initialize reg-sets now so switches may override.  */
+  init_reg_sets ();
 
   target_flags = 0;
   set_target_switch ("");
@@ -980,11 +1337,17 @@ main (argc, argv, envp)
 		case 'j':
 		  jump_opt_dump = 1;
 		  break;
+		case 'J':
+		  jump2_opt_dump = 1;
+		  break;
 		case 'l':
 		  local_reg_dump = 1;
 		  break;
 		case 'L':
 		  loop_dump = 1;
+		  break;
+		case 'm':
+		  print_mem_flag = 1;
 		  break;
 		case 'r':
 		  rtl_dump = 1;
@@ -992,26 +1355,99 @@ main (argc, argv, envp)
 		case 's':
 		  cse_dump = 1;
 		  break;
-		case 't':
-		  tree_dump = 1;
-		  break;
 		case 'y':
 		  yydebug = 1;
 		  break;
 		}
 	  }
-	else if (!strcmp (str, "quiet"))
-	  quiet_flag = 1;
-	else if (!strcmp (str, "opt"))
-	  optimize = 1;
-	else if (!strcmp (str, "optforcemem"))
-	  force_mem = 1;
-	else if (!strcmp (str, "optforceaddr"))
-	  force_addr = 1;
+	else if (str[0] == 'f')
+	  {
+	    register char *p = &str[1];
+	    if (!strcmp (p, "float-store"))
+	      flag_float_store = 1;
+	    else if (!strcmp (p, "traditional"))
+	      flag_traditional = 1;
+	    else if (!strcmp (p, "volatile"))
+	      flag_volatile = 1;
+	    else if (!strcmp (p, "defer-pop"))
+	      flag_defer_pop = 1;
+	    else if (!strcmp (p, "no-defer-pop"))
+	      flag_defer_pop = 0;
+	    else if (!strcmp (p, "omit-frame-pointer"))
+	      flag_omit_frame_pointer = 1;
+	    else if (!strcmp (p, "no-omit-frame-pointer"))
+	      flag_omit_frame_pointer = 0;
+	    else if (!strcmp (p, "no-peephole"))
+	      flag_no_peephole = 1;
+	    else if (!strcmp (p, "signed-char"))
+	      flag_signed_char = 1;
+	    else if (!strcmp (p, "unsigned-char"))
+	      flag_signed_char = 0;
+	    else if (!strcmp (p, "force-mem"))
+	      flag_force_mem = 1;
+	    else if (!strcmp (p, "force-addr"))
+	      flag_force_addr = 1;
+	    else if (!strcmp (p, "combine-regs"))
+	      flag_combine_regs = 1;
+	    else if (!strcmp (p, "writable-strings"))
+	      flag_writable_strings = 1;
+	    else if (!strcmp (p, "no-function-cse"))
+	      flag_no_function_cse = 1;
+	    else if (!strcmp (p, "cond-mismatch"))
+	      flag_cond_mismatch = 1;
+	    else if (!strcmp (p, "no-asm"))
+	      flag_no_asm = 1;
+	    else if (!strncmp (p, "fixed-", 6))
+	      fix_register (&p[6], 1, 1);
+	    else if (!strncmp (p, "call-used-", 10))
+	      fix_register (&p[10], 0, 1);
+	    else if (!strncmp (p, "call-saved-", 11))
+	      fix_register (&p[11], 0, 0);
+	    else if (!strcmp (p, "inline-functions"))
+	      flag_inline_functions = 1;
+	    else if (!strcmp (p, "keep-inline-functions"))
+	      flag_keep_inline_functions = 1;
+	    else
+	      error ("Invalid option, `%s'", argv[i]);	      
+	  }
 	else if (!strcmp (str, "noreg"))
 	  obey_regdecls = 1;
+	else if (!strcmp (str, "opt"))
+	  optimize = 1;
+	else if (!strcmp (str, "pedantic"))
+	  pedantic = 1;
+	else if (!strcmp (str, "traditional"))
+	  flag_traditional = 1;
+	else if (!strcmp (str, "ansi"))
+	  flag_no_asm = 1;
+	else if (!strcmp (str, "quiet"))
+	  quiet_flag = 1;
+	else if (!strcmp (str, "version"))
+	  {
+	    extern char *version_string;
+	    printf ("GNU C version %s", version_string);
+#ifdef TARGET_VERSION
+	    TARGET_VERSION;
+#endif
+#ifdef __GNUC__
+#ifndef __VERSION__
+#define __VERSION__ "[unknown]"
+#endif
+	    printf (" compiled by GNU C version %s.\n", __VERSION__);
+#else
+	    printf (" compiled by CC.\n");
+#endif
+	  }
 	else if (!strcmp (str, "w"))
 	  inhibit_warnings = 1;
+	else if (!strcmp (str, "W"))
+	  extra_warnings = 1;
+	else if (!strcmp (str, "Wimplicit"))
+	  warn_implicit = 1;
+	else if (!strcmp (str, "Wreturn-type"))
+	  warn_return_type = 1;
+	else if (!strcmp (str, "p"))
+	  profile_flag = 1;
 	else if (!strcmp (str, "g"))
 	  write_symbols = 1;
 	else if (!strcmp (str, "G"))
@@ -1027,7 +1463,7 @@ main (argc, argv, envp)
 	    asm_file_name = argv[++i];
 	  }
 	else
-	  yylineerror (0, "Invalid switch, %s.", argv[i]);
+	  error ("Invalid switch, %s.", argv[i]);
       }
     else
       filename = argv[i];
@@ -1037,12 +1473,34 @@ main (argc, argv, envp)
 
   if (dump_base_name == 0)
     dump_base_name = filename;
+
+#ifdef OVERRIDE_OPTIONS
+  /* Some machines may reject certain combinations of options.  */
+  OVERRIDE_OPTIONS;
+#endif
+
   compile_file (filename);
 
+#ifndef USG
+#ifndef VMS
+  if (print_mem_flag)
+    {
+      extern char **environ;
+      caddr_t lim = (caddr_t) sbrk (0);
+      
+      fprintf (stderr, "Data size %d.\n",
+	       (int) lim - (int) &environ);
+      fflush (stderr);
+
+      system ("ps v");
+    }
+#endif /* not VMS */
+#endif /* not USG */
+
   if (errorcount)
-    return 33;
-  else
-    return (warningcount > 0);
+    exit (FATAL_EXIT_CODE);
+  exit (SUCCESS_EXIT_CODE);
+  return 34;
 }
 
 /* Decode -m switches.  */
@@ -1058,10 +1516,11 @@ struct {char *name; int value;} target_switches []
 
 /* Decode the switch -mNAME.  */
 
+void
 set_target_switch (name)
      char *name;
 {
-  register int j = 0;
+  register int j;
   for (j = 0; j < sizeof target_switches / sizeof target_switches[0]; j++)
     if (!strcmp (target_switches[j].name, name))
       {

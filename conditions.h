@@ -51,6 +51,12 @@ and this notice must be preserved on all copies.  */
 
 typedef struct {int flags; rtx value1, value2; CC_STATUS_MDEP mdep;} CC_STATUS;
 
+/* While outputting an insn as assembler code,
+   this is the status BEFORE that insn.  */
+extern CC_STATUS cc_prev_status;
+
+/* While outputting an insn as assembler code,
+   this is being altered to the status AFTER that insn.  */
 extern CC_STATUS cc_status;
 
 /* These are the machine-independent flags:  */

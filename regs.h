@@ -71,7 +71,18 @@ extern char *reg_crosses_call;
 
 /* Total number of instructions at which (REG n) is live.
    The larger this is, the less priority (REG n) gets for
-   allocation in a real register.  */
+   allocation in a hard register (in global-alloc).
+   This is set in flow.c and remains valid for the rest of the compilation
+   of the function; it is used to control register allocation.
+
+   local-alloc.c may alter this number to change the priority.
+
+   Negative values are special.
+   -1 is used to mark a pseudo reg which has a constant or memory equivalent
+   and is used infrequently enough that it should not get a hard register.
+   -2 is used to mark a pseudo reg for a parameter, when a frame pointer
+   is not required.  global-alloc.c makes an allocno for this but does
+   not try to assign a hard register to it.  */
 
 extern int *reg_live_length;
 

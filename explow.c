@@ -22,6 +22,7 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include "rtl.h"
 #include "tree.h"
+#include "flags.h"
 #include "expr.h"
 
 /* Return an rtx for the sum of X and the integer C.  */
@@ -69,13 +70,13 @@ plus_constant (x, c)
 	  c += INTVAL (XEXP (x, 1));
 	  x = XEXP (x, 0);
 	}
-      else if (GET_CODE (XEXP (x, 0)) == CONST)
+      else if (CONSTANT_P (XEXP (x, 0)))
 	{
 	  return gen_rtx (PLUS, mode,
 			  plus_constant (XEXP (x, 0), c),
 			  XEXP (x, 1));
 	}
-      else if (GET_CODE (XEXP (x, 1)) == CONST)
+      else if (CONSTANT_P (XEXP (x, 1)))
 	{
 	  return gen_rtx (PLUS, mode,
 			  XEXP (x, 0),
@@ -103,7 +104,7 @@ plus_constant (x, c)
     x = gen_rtx (PLUS, mode, x, gen_rtx (CONST_INT, VOIDmode, c));
 
   if (all_constant)
-    return gen_rtx (CONST, VOIDmode, x);
+    return gen_rtx (CONST, mode, x);
   else
     return x;
 }
@@ -184,14 +185,7 @@ break_out_memory_refs (x)
   if (GET_CODE (x) == MEM || GET_CODE (x) == CONST
       || GET_CODE (x) == SYMBOL_REF)
     {
-      register rtx temp = gen_reg_rtx (Pmode);
-      if (GET_MODE (x) != Pmode && GET_MODE (x) != VOIDmode)
-	abort ();
-      emit_move_insn (temp, x);
-      /* Let optimizers know that TEMP's value never changes
-	 and that X can be substituted for it.  */
-      if (GET_CODE (x) != MEM)
-	REG_NOTES (get_last_insn ()) = gen_rtx (EXPR_LIST, REG_CONST, temp, 0);
+      register rtx temp = force_reg (Pmode, x);
       mark_reg_pointer (temp);
       x = temp;
     }
@@ -223,10 +217,13 @@ rtx
 copy_all_regs (x)
      register rtx x;
 {
-  if (GET_CODE (x) == MEM || GET_CODE (x) == REG)
+  if (GET_CODE (x) == REG)
     {
-      x = copy_to_reg (x);
+      if (REGNO (x) != FRAME_POINTER_REGNUM)
+	x = copy_to_reg (x);
     }
+  else if (GET_CODE (x) == MEM)
+    x = copy_to_reg (x);
   else if (GET_CODE (x) == PLUS || GET_CODE (x) == MINUS
 	   || GET_CODE (x) == MULT)
     {
@@ -251,12 +248,8 @@ memory_address (mode, x)
 
   /* By passing constant addresses thru registers
      we get a chance to cse them.  */
-  if (! cse_not_expected && CONSTANT_ADDRESS_P (x))
-    {
-      tem = copy_to_suggested_reg (x, gen_reg_rtx (Pmode));
-      REG_NOTES (get_last_insn ()) = gen_rtx (EXPR_LIST, REG_CONST, tem, 0);
-      return tem;
-    }
+  if (! cse_not_expected && CONSTANT_P (x))
+    return force_reg (Pmode, x);
 
   /* Accept a QUEUED that refers to a REG
      even though that isn't a valid address.
@@ -279,7 +272,8 @@ memory_address (mode, x)
 
   /* If it was valid before but breaking out memory refs invalidated it,
      use it the old way.  */
-  GO_IF_LEGITIMATE_ADDRESS (mode, oldx, win2);
+  if (memory_address_p (mode, oldx))
+    goto win2;
 
   /* Perform machine-dependent transformations on X
      in certain cases.  This is not necessary since the code
@@ -300,89 +294,28 @@ memory_address (mode, x)
     {
       int constant_term = 0;
       rtx y = eliminate_constant_term (x, &constant_term);
-      if (constant_term != 0)
-	GO_IF_LEGITIMATE_ADDRESS (mode, y, win1);
-      return force_operand (x, 0);
+      if (constant_term == 0
+	  || ! memory_address_p (mode, y))
+	return force_operand (x, 0);
 
-    win1:
-      return plus_constant (copy_to_reg (y), constant_term);
+      y = plus_constant (copy_to_reg (y), constant_term);
+      if (! memory_address_p (mode, y))
+	return force_operand (x, 0);
+      return y;
     }
   if (GET_CODE (x) == MULT || GET_CODE (x) == MINUS)
     return force_operand (x, 0);
 
   /* Last resort: copy the value to a register, since
      the register is a valid address.  */
-  return copy_to_reg (x);
+  return force_reg (Pmode, x);
 
  win2:
   x = oldx;
  win:
-  if (force_addr && GET_CODE (x) != REG)
-    return copy_to_reg (x);
+  if (flag_force_addr && GET_CODE (x) != REG)
+    return force_reg (Pmode, x);
   return x;
-}
-
-/* Return 1 if X and Y are identical-looking rtx's.
-   This is the Lisp function EQUAL for rtx arguments.  */
-
-int
-rtx_equal_p (x, y)
-     rtx x, y;
-{
-  register int i;
-  register int hash = 0;
-  register RTX_CODE code = GET_CODE (x);
-  register char *fmt;
-
-  if (x == y)
-    return 1;
-
-  /* Rtx's of different codes cannot be equal.  */
-  if (code != GET_CODE (y))
-    return 0;
-
-  /* These three types of rtx's can be compared nonrecursively.  */
-  if (code == REG)
-    return (REGNO (x) == REGNO (y));
-  if (code == LABEL_REF)
-    return XEXP (x, 0) == XEXP (y, 0);
-  if (code == SYMBOL_REF)
-    return XSTR (x, 0) == XSTR (y, 0);
-
-  /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.  */
-
-  if (GET_MODE (x) != GET_MODE (y))
-    return 0;
-
-  /* Compare the elements.  If any pair of corresponding elements
-     fail to match, return 0 for the whole things.  */
-
-  fmt = GET_RTX_FORMAT (code);
-  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
-    {
-      switch (fmt[i])
-	{
-	case 'i':
-	  if (XINT (x, i) != XINT (y, i))
-	    return 0;
-	  break;
-
-	case 'e':
-	  if (rtx_equal_p (XEXP (x, i), XEXP (y, i)) == 0)
-	    return 0;
-	  break;
-
-	case '0':
-	  break;
-
-	  /* It is believed that rtx's at this level will never
-	     contain anything but integers and other rtx's,
-	     except for within LABEL_REFs and SYMBOL_REFs.  */
-	default:
-	  abort ();
-	}
-    }
-  return 1;
 }
 
 /* Return a modified copy of X with its memory address copied
@@ -398,7 +331,7 @@ stabilize (x)
   if (GET_CODE (x) != MEM)
     return x;
   addr = XEXP (x, 0);
-  if (rtx_varies_p (addr))
+  if (rtx_unstable_p (addr))
     {
       rtx temp = copy_all_regs (addr);
       rtx mem;
@@ -422,6 +355,59 @@ copy_to_reg (x)
 {
   register rtx temp = gen_reg_rtx (GET_MODE (x));
   emit_move_insn (temp, x);
+  return temp;
+}
+
+/* Like copy_to_reg but always give the new register mode Pmode
+   in case X is a constant.  */
+
+rtx
+copy_addr_to_reg (x)
+     rtx x;
+{
+  register rtx temp = gen_reg_rtx (Pmode);
+  emit_move_insn (temp, x);
+  return temp;
+}
+
+/* Like copy_to_reg but always give the new register mode MODE
+   in case X is a constant.  */
+
+rtx
+copy_to_mode_reg (mode, x)
+     enum machine_mode mode;
+     rtx x;
+{
+  register rtx temp = gen_reg_rtx (mode);
+  if (GET_MODE (x) != mode && GET_MODE (x) != VOIDmode)
+    abort ();
+  emit_move_insn (temp, x);
+  return temp;
+}
+
+/* Load X into a register if it is not already one.
+   Use mode MODE for the register.
+   X should be valid for mode MODE, but it may be a constant which
+   is valid for all integer modes; that's why caller must specify MODE.
+
+   The caller must not alter the value in the register we return,
+   since we mark it as a "constant" register.  */
+
+rtx
+force_reg (mode, x)
+     enum machine_mode mode;
+     rtx x;
+{
+  register rtx temp, insn;
+
+  if (GET_CODE (x) == REG)
+    return x;
+  temp = gen_reg_rtx (mode);
+  insn = emit_move_insn (temp, x);
+  /* Let optimizers know that TEMP's value never changes
+     and that X can be substituted for it.  */
+  if (CONSTANT_P (x))
+    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV, x, 0);
   return temp;
 }
 
@@ -455,7 +441,7 @@ copy_to_suggested_reg (x, target)
   emit_move_insn (temp, x);
   return temp;
 }
-
+
 /* Adjust the stack pointer by ADJUST (an rtx for a number of bytes).
    This pops when ADJUST is positive.  ADJUST need not be constant.  */
 
@@ -466,11 +452,9 @@ adjust_stack (adjust)
   adjust = protect_from_queue (adjust, 0);
 
 #ifdef STACK_GROWS_DOWNWARD
-  emit_insn (gen_add2_insn (gen_rtx (REG, SImode, STACK_POINTER_REGNUM),
-			    adjust));
+  emit_insn (gen_add2_insn (stack_pointer_rtx, adjust));
 #else
-  emit_insn (gen_sub2_insn (gen_rtx (REG, SImode, STACK_POINTER_REGNUM),
-			    adjust));
+  emit_insn (gen_sub2_insn (stack_pointer_rtx, adjust));
 #endif
 }
 
@@ -484,42 +468,62 @@ anti_adjust_stack (adjust)
   adjust = protect_from_queue (adjust, 0);
 
 #ifdef STACK_GROWS_DOWNWARD
-  emit_insn (gen_sub2_insn (gen_rtx (REG, SImode, STACK_POINTER_REGNUM),
-			    adjust));
+  emit_insn (gen_sub2_insn (stack_pointer_rtx, adjust));
 #else
-  emit_insn (gen_add2_insn (gen_rtx (REG, SImode, STACK_POINTER_REGNUM),
-			    adjust));
+  emit_insn (gen_add2_insn (stack_pointer_rtx, adjust));
 #endif
 }
 
-/* Return a pseudo reg representing the value returned by
-   a function call that was just emitted.  */
+/* Round the size of a block to be pushed up to the boundary required
+   by this machine.  SIZE is the desired size, which need not be constant.  */
 
 rtx
-function_value (mode)
-     enum machine_mode mode;
+round_push (size)
+     rtx size;
 {
-  /* Copy register 0 in case the value we return
-     will not get used until after another function call happens.  */
-  return copy_to_reg (gen_rtx (REG, mode, FUNCTION_VALUE_REGNUM));
+#ifdef STACK_BOUNDARY
+  int align = STACK_BOUNDARY / BITS_PER_UNIT;
+  if (align == 1)
+    ;
+  if (GET_CODE (size) == CONST_INT)
+    {
+      int new = (INTVAL (size) + align - 1) / align * align;
+      if (INTVAL (size) != new)
+	size = gen_rtx (CONST_INT, VOIDmode, new);
+    }
+  else
+    {
+      size = expand_divmod (0, CEIL_DIV_EXPR, Pmode, size,
+			    gen_rtx (CONST_INT, VOIDmode, align),
+			    0, 1);
+      size = expand_mult (Pmode, size,
+			  gen_rtx (CONST_INT, VOIDmode, align),
+			  0, 1);
+    }
+#endif /* STACK_BOUNDARY */
+  return size;
 }
 
-/* Return a hard reg representing the value returned by
-   a function call that was just emitted.  */
+/* Return an rtx representing the register or memory location
+   in which a scalar value of data type VALTYPE
+   was returned by a function call to function FUNC.
+   FUNC is a FUNCTION_DECL node if the precise function is known,
+   otherwise 0.  */
 
 rtx
-hard_function_value (mode)
-     enum machine_mode mode;
+hard_function_value (valtype, func)
+     tree valtype;
+     tree func;
 {
-  return gen_rtx (REG, mode, FUNCTION_VALUE_REGNUM);
+  return FUNCTION_VALUE (valtype, func);
 }
 
-/* Return a pseudo reg representing the value returned by
-   a function call that was just emitted.  */
+/* Return an rtx representing the register or memory location
+   in which a scalar value of mode MODE was returned by a library call.  */
 
-void
-copy_function_value (reg)
-     rtx reg;
+rtx
+hard_libcall_value (mode)
+     enum machine_mode mode;
 {
-  emit_move_insn (reg, gen_rtx (REG, GET_MODE (reg), FUNCTION_VALUE_REGNUM));
+  return LIBCALL_VALUE (mode);
 }

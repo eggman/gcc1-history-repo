@@ -1,5 +1,5 @@
 /* Convert RTL to assembler code and output it, for GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -22,16 +22,20 @@ and this notice must be preserved on all copies.  */
 /* This is the final pass of the compiler.
    It looks at the rtl code for a function and outputs assembler code.
 
-   Final is responsible for changing pseudo-register references
-   into hard regs or stack slots.  This is done by altering the
-   REG rtx's for the pseudo regs into either hard regs or MEM rtx's.
-   SUBREG rtx's must also be altered.
+   Call `final_start_function' to output the assembler code for function entry,
+   `final' to output assembler code for some RTL code,
+   `final_end_function' to output assembler code for function exit.
+   If a function is compiled in several pieces, each piece is
+   output separately with `final'.
 
    Some optimizations are also done at this level.
    Move instructions that were made unnecessary by good register allocation
-   are detected and omitted from the output.
+   are detected and omitted from the output.  (Though most of these
+   are removed by the last jump pass.)
+
    Instructions to set the condition codes are omitted when it can be
    seen that the condition codes already had the desired values.
+
    In some cases it is sufficient if the inherited condition codes
    have related values, but this may require the following insn
    (the one that tests the condition codes) to be modified.
@@ -41,31 +45,40 @@ and this notice must be preserved on all copies.  */
    FUNCTION_EPILOGUE.  Those instructions never exist as rtl.  */
 
 #include <stdio.h>
-#include <stab.h>
 #include "config.h"
 #include "rtl.h"
 #include "regs.h"
 #include "insn-config.h"
 #include "recog.h"
 #include "conditions.h"
+#include "gdbfiles.h"
+
+/* .stabd code for line number.  */
+#ifndef N_SLINE
+#define	N_SLINE	0x44
+#endif
+
+/* .stabs code for included file name.  */
+#ifndef N_SOL
+#define	N_SOL 0x84
+#endif
 
 #define min(A,B) ((A) < (B) ? (A) : (B))
 
 void output_asm_insn ();
-static void alter_reg ();
 static void alter_subreg ();
 static int alter_cond ();
 static void output_asm_label ();
 static void output_operand ();
-static void output_address ();
-static void output_addr_reg ();
+void output_address ();
 void output_addr_const ();
+static void output_source_line ();
 
 static char *reg_name[] = REGISTER_NAMES;
 
 /* File in which assembler code is being written.  */
 
-static FILE *outfile;
+extern FILE *asm_out_file;
 
 /* All the symbol-blocks (levels of scoping) in the compilation
    are assigned sequence numbers in order of appearance of the
@@ -78,11 +91,28 @@ static FILE *outfile;
 
 static next_block_index;
 
+/* Chain of all `struct gdbfile's.  */
+
+struct gdbfile *gdbfiles;
+
+/* `struct gdbfile' for the last file we wrote a line number for.  */
+
+static struct gdbfile *current_gdbfile;
+
+/* Filenum to assign to the next distinct source file encountered.  */
+
+static int next_gdb_filenum;
+
 /* This variable contains machine-dependent flags (defined in tm-...h)
    set and examined by output routines
    that describe how to interpret the condition codes properly.  */
 
 CC_STATUS cc_status;
+
+/* During output of an insn, this contains a copy of cc_status
+   from before the insn.  */
+
+CC_STATUS cc_prev_status;
 
 /* Last source file name mentioned in a NOTE insn.  */
 
@@ -99,16 +129,34 @@ static char *lastfile;
 
 char regs_ever_live[FIRST_PSEUDO_REGISTER];
 
-/* Element N is nonzero if pseudo-reg N is being allocated in memory.
-   The value of the element is an rtx (MEM ...) to be used
-   to replace references to pseudo-reg N.
-   This is set up at the end of global allocation.
+/* Nonzero means current function must be given a frame pointer.
+   Set in stmt.c if anything is allocated on the stack there.
+   Set in reload1.c if anything is allocated on the stack there.  */
 
-   These MEM rtx's all have VOIDmode because we do not know the correct mode.
-   When they are substituted into the code, they will be given the
-   correct mode, copied from the (REG...) being replaced.  */
+int frame_pointer_needed;
 
-rtx *reg_spill_replacement;
+/* Assign unique numbers to labels generated for profiling.  */
+
+int profile_label_no;
+
+/* Length so far allocated in PENDING_BLOCKS.  */
+
+static int max_block_depth;
+
+/* Stack of sequence numbers of symbol-blocks of which we have seen the
+   beginning but not yet the end.  Sequence numbers are assigned at
+   the beginning; this stack allows us to find the sequence number
+   of a block that is ending.  */
+
+static int *pending_blocks;
+
+/* Number of elements currently in use in PENDING_BLOCKS.  */
+
+static int block_depth;
+
+/* Nonzero if have enabled APP processing of our assembler output.  */
+
+static int app_on;
 
 /* Initialize data in final at the beginning of a compilation.  */
 
@@ -118,75 +166,68 @@ init_final (filename)
 {
   next_block_index = 2;
   lastfile = filename;
+  app_on = 0;
+  max_block_depth = 20;
+  pending_blocks = (int *) xmalloc (20 * sizeof *pending_blocks);
+  gdbfiles = 0;
+  next_gdb_filenum = 0;
 }
 
-/* Main entry point for final pass: output assembler code from rtl.
+/* Enable APP processing of subsequent output.
+   Used before the output from an `asm' statement.  */
+
+void
+app_enable ()
+{
+  if (! app_on)
+    {
+      fprintf (asm_out_file, ASM_APP_ON);
+      app_on = 1;
+    }
+}
+
+/* Enable APP processing of subsequent output.
+   Called from varasm.c before most kinds of output.  */
+
+void
+app_disable ()
+{
+  if (app_on)
+    {
+      fprintf (asm_out_file, ASM_APP_OFF);
+      app_on = 0;
+    }
+}
+
+/* Output assembler code for the start of a function,
+   and initialize some of the variables in this file
+   for the new function.  The label for the function and associated
+   assembler pseudo-ops have already been output in `assemble_function'.
+
    FIRST is the first insn of the rtl for the function being compiled.
    FILE is the file to write assembler code to.
-   FNNAME is the name of the function being compiled.
    WRITE_SYMBOLS is 1 for gdb symbols, 2 for dbx symbols.
    OPTIMIZE is nonzero if we should eliminate redundant
      test and compare insns.  */
 
 void
-final (first, file, fnname, write_symbols, optimize)
+final_start_function (first, file, write_symbols, optimize)
      rtx first;
      FILE *file;
-     char *fnname;
      int write_symbols;
      int optimize;
 {
-  register rtx insn;
-  register int i;
-
-  /* Length so far allocated in PENDING_BLOCKS.  */
-  int max_depth = 20;
-  /* Stack of sequence numbers of symbol-blocks of which we have seen the
-     beginning but not yet the end.  Sequence numbers are assigned at
-     the beginning; this stack allows us to find the sequence number
-     of a block that is ending.  */
-  int *pending_blocks = (int *) alloca (max_depth * sizeof (int));
-  /* Number of elements currently in use in PENDING_BLOCKS.  */
-  int depth = 0;
-
-  /* Allocate in the stack frame whatever did not make it into a hard reg.  */
-
-  reg_spill_replacement = (rtx *) alloca (max_regno * sizeof (rtx));
-  bzero (reg_spill_replacement, max_regno * sizeof (rtx));
-
-  /* Parameter copies that didn't get into hardware registers
-     should be referenced in the parameter list.
-     For other registers, allocate a local stack slot.  */
-
-  for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
-    {
-      if (reg_renumber[i] < 0 && reg_n_refs[i] > 0)
-	reg_spill_replacement[i]
-	  = assign_stack_local (VOIDmode, PSEUDO_REGNO_BYTES (i));
-      alter_reg (regno_reg_rtx[i]);
-    }
+  extern int profile_flag;
 
   init_recog ();
-  outfile = file;
 
-  /* Tell assembler to switch to text segment.  */
-
-  fprintf (file, "%s\n", TEXT_SECTION_ASM_OP);
-
-  /* Tell assembler to move to target machine's alignment for functions.  */
-
-  ASM_OUTPUT_ALIGN (file, floor_log2 (FUNCTION_BOUNDARY / BITS_PER_UNIT));
-
-  /* Output label for the function.  */
-
-  fprintf (file, "_%s:\n", fnname);
+  block_depth = 0;
 
   /* Record beginning of the symbol-block that's the entire function.  */
-  /* Is this incorrect now?  */
 
   if (write_symbols == 1)
     {
-      pending_blocks[depth++] = next_block_index;
+      pending_blocks[block_depth++] = next_block_index;
       fprintf (file, "\t.gdbbeg %d\n", next_block_index++);
     }
 
@@ -195,14 +236,70 @@ final (first, file, fnname, write_symbols, optimize)
      so that the function's address will not appear to be
      in the last statement of the preceding function.  */
   if (NOTE_LINE_NUMBER (first) != NOTE_INSN_DELETED)
-    output_source_line (file, first);
+    output_source_line (file, first, write_symbols);
 
 #ifdef FUNCTION_PROLOGUE
   /* First output the function prologue: code to set up the stack frame.  */
   FUNCTION_PROLOGUE (file, get_frame_size ());
 #endif
 
+  if (profile_flag)
+    { 
+      int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
+      fprintf (file, "\t%s\n", DATA_SECTION_ASM_OP);
+      ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
+      ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
+      assemble_integer_zero ();
+      fprintf (file, "\t%s\n", TEXT_SECTION_ASM_OP);
+      FUNCTION_PROFILER (file, profile_label_no);
+      profile_label_no++;
+    }
+
   CC_STATUS_INIT;
+}
+
+/* Output assembler code for the end of a function.
+   For clarity, args are same as those of `final_start_function'
+   even though not all of them are needed.  */
+
+void
+final_end_function (first, file, write_symbols, optimize)
+     rtx first;
+     FILE *file;
+     int write_symbols;
+     int optimize;
+{
+  if (app_on)
+    {
+      fprintf (file, ASM_APP_OFF);
+      app_on = 0;
+    }
+
+  if (write_symbols == 1)
+    fprintf (file, "\t.gdbend %d\n", pending_blocks[0]);
+
+#ifdef FUNCTION_EPILOGUE
+  /* Finally, output the function epilogue:
+     code to restore the stack frame and return to the caller.  */
+  FUNCTION_EPILOGUE (file, get_frame_size ());
+#endif
+
+  /* If FUNCTION_EPILOGUE is not defined, then the function body
+     itself contains return instructions wherever needed.  */
+}
+
+/* Output assembler code for some insns: all or part of a function.
+   For description of args, see `final_start_function', above.  */
+
+void
+final (first, file, write_symbols, optimize)
+     rtx first;
+     FILE *file;
+     int write_symbols;
+     int optimize;
+{
+  register rtx insn;
+  register int i;
 
   for (insn = NEXT_INSN (first); insn; insn = NEXT_INSN (insn))
     {
@@ -218,28 +315,33 @@ final (first, file, fnname, write_symbols, optimize)
 	    break;
 	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_DELETED)
 	    break;		/* An insn that was "deleted" */
+	  if (app_on)
+	    {
+	      fprintf (file, ASM_APP_OFF);
+	      app_on = 0;
+	    }
 	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_BEG)
 	    {
 	      /* Beginning of a symbol-block.  Assign it a sequence number
 		 and push the number onto the stack PENDING_BLOCKS.  */
 
-	      if (depth == max_depth)
+	      if (block_depth == max_block_depth)
 		{
 		  /* PENDING_BLOCKS is full; make it longer.  */
-		  register int *new
-		    = (int *) alloca (2 * max_depth * sizeof (int));
-		  bcopy (pending_blocks, new, max_depth * sizeof (int));
-		  pending_blocks = new;
-		  max_depth <<= 1;
+		  max_block_depth *= 2;
+		  pending_blocks
+		    = (int *) xrealloc (pending_blocks,
+					max_block_depth * sizeof (int));
 		}
-	      pending_blocks[depth++] = next_block_index;
+	      pending_blocks[block_depth++] = next_block_index;
 
 	      /* Output debugging info about the symbol-block beginning.  */
 
 	      if (write_symbols == 2)
-		fprintf (file, "LBB%d:\n", next_block_index++);
+		ASM_OUTPUT_INTERNAL_LABEL (file, "LBB", next_block_index);
 	      else
-		fprintf (file, "\t.gdbbeg %d\n", next_block_index++);
+		fprintf (file, "\t.gdbbeg %d\n", next_block_index);
+	      next_block_index++;
 	    }
 	  else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_END)
 	    {
@@ -248,22 +350,47 @@ final (first, file, fnname, write_symbols, optimize)
 
 	      if (write_symbols == 2)
 		{
-		  if (depth > 0)
-		    fprintf (file, "LBE%d:\n", pending_blocks[--depth]);
+		  if (block_depth > 0)
+		    ASM_OUTPUT_INTERNAL_LABEL (file, "LBE",
+					       pending_blocks[--block_depth]);
 		}
 	      else
-		fprintf (file, "\t.gdbend %d\n", pending_blocks[--depth]);
+		fprintf (file, "\t.gdbend %d\n", pending_blocks[--block_depth]);
 	    }
-	  else
+	  else if (NOTE_LINE_NUMBER (insn) > 0)
 	    /* This note is a line-number.  */
-	    output_source_line (file, insn);
+	    output_source_line (file, insn, write_symbols);
 	  break;
 
 	case BARRIER:
 	  break;
 
 	case CODE_LABEL:
-	  fprintf (file, "L%d:\n", CODE_LABEL_NUMBER (insn));
+	  if (app_on)
+	    {
+	      fprintf (file, ASM_APP_OFF);
+	      app_on = 0;
+	    }
+#ifdef ASM_OUTPUT_CASE_LABEL
+	  if (NEXT_INSN (insn) != 0
+	      && GET_CODE (NEXT_INSN (insn)) == JUMP_INSN)
+	    {
+	      rtx nextbody = PATTERN (NEXT_INSN (insn));
+
+	      /* If this label is followed by a jump-table,
+		 output the two of them together in a special way.  */
+
+	      if (GET_CODE (nextbody) == ADDR_VEC
+		  || GET_CODE (nextbody) == ADDR_DIFF_VEC)
+		{
+		  ASM_OUTPUT_CASE_LABEL (file, "L", CODE_LABEL_NUMBER (insn),
+					 NEXT_INSN (insn));
+		  break;
+		}
+	    }
+#endif
+
+	  ASM_OUTPUT_INTERNAL_LABEL (file, "L", CODE_LABEL_NUMBER (insn));
 	  CC_STATUS_INIT;
 	  break;
 
@@ -274,15 +401,52 @@ final (first, file, fnname, write_symbols, optimize)
 	    char *template;
 
 	    /* An INSN, JUMP_INSN or CALL_INSN.
-	       First check for special kinds.  */
+	       First check for special kinds that recog doesn't recognize.  */
 	       
 	    if (GET_CODE (body) == USE /* These are just declarations */
 		|| GET_CODE (body) == CLOBBER)
 	      break;
 	    if (GET_CODE (body) == ASM_INPUT)
 	      {
-		output_asm_insn (XSTR (body, 0), 0);
+		if (! app_on)
+		  {
+		    fprintf (file, ASM_APP_ON);
+		    app_on = 1;
+		  }
+		fprintf (asm_out_file, "\t%s\n", XSTR (body, 0));
+
+		/* There's no telling what that did to the condition codes.  */
+		CC_STATUS_INIT;
 		break;
+	      }
+
+	    /* Detect `asm' construct with operands.  */
+	    if (asm_noperands (body) > 0)
+	      {
+		int noperands = asm_noperands (body);
+		rtx *ops = (rtx *) malloc (noperands * sizeof (rtx));
+		char *string;
+
+		if (! app_on)
+		  {
+		    fprintf (file, ASM_APP_ON);
+		    app_on = 1;
+		  }
+
+		/* Get out the operand values.  */
+		string = decode_asm_operands (body, ops, 0, 0, 0);
+		/* Output the insn using them.  */
+		output_asm_insn (string, ops);
+
+		/* There's no telling what that did to the condition codes.  */
+		CC_STATUS_INIT;
+		break;
+	      }
+
+	    if (app_on)
+	      {
+		fprintf (file, ASM_APP_OFF);
+		app_on = 0;
 	      }
 
 	    /* Detect insns that are really jump-tables
@@ -291,24 +455,20 @@ final (first, file, fnname, write_symbols, optimize)
 	    if (GET_CODE (body) == ADDR_VEC)
 	      {
 		enum machine_mode mode = GET_MODE (body);
-		char *pseudo = (mode == SImode) ? ".int"
-		  : ((mode == HImode) ? ".word" : (char *) abort ());
 		register int vlen, idx;
 		vlen = XVECLEN (body, 0);
 		for (idx = 0; idx < vlen; idx++)
-		  fprintf (file, "\t%s L%d\n", pseudo,
+		  ASM_OUTPUT_ADDR_VEC_ELT (file, 
 			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 0, idx), 0)));
 		break;
 	      }
 	    if (GET_CODE (body) == ADDR_DIFF_VEC)
 	      {
 		enum machine_mode mode = GET_MODE (body);
-		char *pseudo = (mode == SImode) ? ".int"
-		  : ((mode == HImode) ? ".word" : (char *) abort ());
 		register int vlen, idx;
 		vlen = XVECLEN (body, 1);
 		for (idx = 0; idx < vlen; idx++)
-		  fprintf (file, "\t%s L%d-L%d\n", pseudo,
+		  ASM_OUTPUT_ADDR_DIFF_ELT (file, 
 			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 1, idx), 0)),
 			   CODE_LABEL_NUMBER (XEXP (XEXP (body, 0), 0)));
 		break;
@@ -318,42 +478,16 @@ final (first, file, fnname, write_symbols, optimize)
 
 	    body = PATTERN (insn);
 
-	    /* Detect and ignore no-op move instructions
-	       resulting from not allocating a parameter in a register.  */
-
+	    /* Check for redundant move insns moving a reg into itself.
+	       This takes little time and does not affect the semantics
+	       so we do it even when `optimize' is 0.
+	       It is not safe to do this for memory references;
+	       we would not know if they were volatile.  */
 	    if (GET_CODE (body) == SET
-		&& (SET_DEST (body) == SET_SRC (body)
-		    || (GET_CODE (SET_DEST (body)) == MEM
-			&& GET_CODE (SET_SRC (body)) == MEM
-			&& (XEXP (SET_DEST (body), 0)
-			    == XEXP (SET_SRC (body), 0))))
-		&& GET_CODE (SET_DEST (body)) != VOLATILE)
+		&& SET_DEST (body) == SET_SRC (body)
+		&& GET_CODE (SET_DEST (body)) == REG)
 	      break;
-
-	    /* Detect and ignore no-op move instructions
-	       resulting from smart or fortuitous register allocation.  */
-
-	    if (GET_CODE (body) == SET)
-	      {
-		if (GET_CODE (SET_DEST (body)) == SUBREG)
-		  alter_subreg (SET_DEST (body));
-		if (GET_CODE (SET_SRC (body)) == SUBREG)
-		  alter_subreg (SET_SRC (body));
-		if (GET_CODE (SET_DEST (body)) == REG
-		    && GET_CODE (SET_SRC (body)) == REG)
-		  {
-		    rtx tem;
-		    if (REGNO (SET_DEST (body))
-			== REGNO (SET_SRC (body)))
-		      break;
-		    tem = find_equiv_reg (SET_DEST (body), insn, 0,
-					  REGNO (SET_SRC (body)), 0);
-		    if (tem != 0
-			&& GET_MODE (tem) == GET_MODE (SET_DEST (body)))
-		      break;
-		  }
-	      }
-
+	       
 	    /* Check for redundant test and compare instructions 
 	       (when the condition codes are already set up as desired).
 	       This is done only when optimizing; if not optimizing,
@@ -372,7 +506,11 @@ final (first, file, fnname, write_symbols, optimize)
 		     && rtx_equal_p (SET_SRC (body), cc_status.value1))
 		    || (cc_status.value2 != 0
 			&& rtx_equal_p (SET_SRC (body), cc_status.value2)))
-		  break;
+		  {
+		    /* Don't delete insn if has an addressing side-effect */
+		    if (! find_reg_note (insn, REG_INC, 0))
+		      break;
+		  }
 	      }
 
 	    /* If this is a conditional branch, maybe modify it
@@ -452,6 +590,8 @@ final (first, file, fnname, write_symbols, optimize)
 	      abort ();
 #endif
 
+	    cc_prev_status = cc_status;
+
 	    /* Update `cc_status' for this instruction.
 	       The instruction's output routine may change it further.
 	       This should be a no-op for jump instructions
@@ -462,17 +602,11 @@ final (first, file, fnname, write_symbols, optimize)
 	    NOTICE_UPDATE_CC (body);
 
 	    /* If the proper template needs to be chosen by some C code,
-	       run that code and get the real template.
-	       In this case the template we were passed
-	       consists of * and a decimal number.
-	       The number is used to select which case is run,
-	       in output_insn_hairy, a machine-generated function
-	       that all the C code for these situations is written into.  */
+	       run that code and get the real template.  */
 
 	    template = insn_template[insn_code_number];
 	    if (template == 0)
-	      template = output_insn_hairy (insn_code_number,
-					    recog_operand, insn);
+	      template = insn_outfun[insn_code_number] (recog_operand, insn);
 
 	    /* Output assembler code from the template.  */
 
@@ -480,37 +614,80 @@ final (first, file, fnname, write_symbols, optimize)
 	  }
 	}
     }
-
-#ifdef FUNCTION_EPILOGUE
-  /* Finally, output the function epilogue:
-     code to restore the stack frame and return to the caller.  */
-  FUNCTION_EPILOGUE (file, get_frame_size ());
-#endif
-
-  /* If FUNCTION_EPILOGUE is not defined, then the function body
-     itself contains return instructions wherever needed.  */
-}
-
-/* Output debugging info to the assembler file
-   based on the NOTE insn INSN, assumed to be a line number.  */
-
-output_source_line (file, insn)
-     FILE *file;
-     rtx insn;
-{
-  register char *filename = NOTE_SOURCE_FILE (insn);
-  if (filename && (lastfile == 0 || strcmp (filename, lastfile)))
-    fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
-	     filename, N_SOL);
-  lastfile = filename;
-
-  fprintf (file, "\t.stabd %d,0,%d\n",
-	   N_SLINE, NOTE_LINE_NUMBER (insn));
 }
 
-/* Replace all pseudo regs in *X with their allocated homes:
-   either a hard reg found in reg_renumber
-   or a memory location found in reg_spill_replacement.  */
+/* Set up FILENAME as the current file for GDB line-number output.  */
+
+void
+set_current_gdbfile (filename)
+     char *filename;
+{
+  register struct gdbfile *f;
+  for (f = gdbfiles; f; f = f->next)
+    if (!strcmp (f->name, filename))
+      break;
+
+  if (!f)
+    {
+      f = (struct gdbfile *) permalloc (sizeof (struct gdbfile));
+      f->next = gdbfiles;
+      gdbfiles = f;
+      f->name = filename;
+      f->filenum = next_gdb_filenum++;
+      f->nlines = 0;
+    }
+  current_gdbfile = f;
+  lastfile = filename;
+}
+
+/* Output debugging info to the assembler file FILE
+   based on the NOTE-insn INSN, assumed to be a line number.  */
+
+static void
+output_source_line (file, insn, write_symbols)
+     FILE *file;
+     rtx insn;
+     int write_symbols;
+{
+  register char *filename = NOTE_SOURCE_FILE (insn);
+  if (write_symbols == 1)
+    {
+      /* Output GDB-format line number info.  */
+
+      /* If this is not the same source file as last time,
+	 find or assign a GDB-file-number to this file.  */
+      if (filename && (lastfile == 0 || strcmp (filename, lastfile)
+		       || current_gdbfile == 0))
+	set_current_gdbfile (filename);
+
+      ++current_gdbfile->nlines;
+      fprintf (file, "\t.gdbline %d,%d\n",
+	       current_gdbfile->filenum, NOTE_LINE_NUMBER (insn));
+    }
+  else
+    {
+      /* Write DBX line number data.  */
+
+      if (filename && (lastfile == 0 || strcmp (filename, lastfile)))
+#ifdef ASM_OUTPUT_SOURCE_FILENAME
+	ASM_OUTPUT_SOURCE_FILENAME (file, filename);
+#else
+      fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
+	       filename, N_SOL);
+#endif
+      lastfile = filename;
+
+#ifdef ASM_OUTPUT_SOURCE_LINE
+      ASM_OUTPUT_SOURCE_LINE (file, NOTE_LINE_NUMBER (insn));
+#else
+      fprintf (file, "\t.stabd %d,0,%d\n",
+	       N_SLINE, NOTE_LINE_NUMBER (insn));
+#endif
+    }
+}
+
+/* If X is a SUBREG, replace it with a REG or a MEM,
+   based on the thing it is a subreg of.  */
 
 static void
 alter_subreg (x)
@@ -528,32 +705,39 @@ alter_subreg (x)
     }
   else if (GET_CODE (y) == MEM)
     {
-      register int offset = SUBREG_WORD (x) * BITS_PER_WORD;
+      register int offset = SUBREG_WORD (x) * UNITS_PER_WORD;
 #ifdef BYTES_BIG_ENDIAN
-      if (GET_MODE_SIZE (GET_MODE (x)) < UNITS_PER_WORD)
-	offset -= (GET_MODE_SIZE (GET_MODE (x))
-		   - min (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (y))));
+      offset -= (min (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (x)))
+		 - min (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (y))));
 #endif
       PUT_CODE (x, MEM);
       XEXP (x, 0) = plus_constant (XEXP (y, 0), offset);
     }
 }
 
-static void
-alter_reg (reg)
-     rtx reg;
+/* Do alter_subreg on all the SUBREGs contained in X.  */
+
+static rtx
+walk_alter_subreg (x)
+     rtx x;
 {
-  register int regno = REGNO (reg);
-
-  if (reg_spill_replacement[regno] != 0)
+  switch (GET_CODE (x))
     {
-      PUT_CODE (reg, MEM);
-      XEXP (reg, 0) = XEXP (reg_spill_replacement[regno], 0);
-    }
-  else
-    REGNO (reg) = reg_renumber[regno];
+    case PLUS:
+    case MULT:
+      XEXP (x, 0) = walk_alter_subreg (XEXP (x, 0));
+      XEXP (x, 1) = walk_alter_subreg (XEXP (x, 1));
+      break;
 
-  return;
+    case MEM:
+      XEXP (x, 0) = walk_alter_subreg (XEXP (x, 0));
+      break;
+
+    case SUBREG:
+      alter_subreg (x);
+    }
+
+  return x;
 }
 
 /* Given BODY, the body of a jump instruction, alter the jump condition
@@ -707,87 +891,147 @@ output_asm_insn (template, operands)
   register char *p;
   register int c;
 
+  /* An insn may return a null string template
+     in a case where no assembler code is needed.  */
+  if (*template == 0)
+    return;
+
   p = template;
-  putc ('\t', outfile);
+  putc ('\t', asm_out_file);
+
+#ifdef ASM_OUTPUT_OPCODE
+  ASM_OUTPUT_OPCODE (asm_out_file, p);
+#endif
+
   while (c = *p++)
     {
+#ifdef ASM_OUTPUT_OPCODE
+      if (c == '\n')
+	{
+	  putc (c, asm_out_file);
+	  while ((c = *p) == '\t')
+	    {
+	      putc (c, asm_out_file);
+	      p++;
+	    }
+	  ASM_OUTPUT_OPCODE (asm_out_file, p);
+	}
+      else
+#endif
       if (c != '%')
-	putc (c, outfile);
+	putc (c, asm_out_file);
       else
 	{
-	  if (*p == 'l')
+	  /* %% outputs a single %.  */
+	  if (*p == '%')
 	    {
-	      c = atoi (++p);
-	      output_asm_label (operands[c]);
+	      p++;
+	      putc (c, asm_out_file);
 	    }
-	  else if (*p == 'c')
+	  /* % followed by a letter and some digits
+	     outputs an operand in a special way depending on the letter.
+	     Letters `acln' are implemented here.
+	     Other letters are passed to `output_operand' so that
+	     the PRINT_OPERAND macro can define them.  */
+	  else if ((*p >= 'a' && *p <= 'z')
+		   || (*p >= 'A' && *p <= 'Z'))
 	    {
-	      c = atoi (++p);
-	      output_addr_const (outfile, operands[c]);
-	    }
-	  else if (*p == 'a')
-	    {
-	      c = atoi (++p);
-	      output_address (operands[c]);
-	    }
-	  else if (*p == 'n')
-	    {
-	      c = atoi (++p);
-	      if (GET_CODE (operands[c]) == CONST_INT)
-		fprintf (outfile, "%d", - INTVAL (operands[c]));
-	      else
+	      int letter = *p++;
+	      c = atoi (p);
+
+	      if (letter == 'l')
+		output_asm_label (operands[c]);
+	      else if (letter == 'a')
+		output_address (operands[c]);
+	      else if (letter == 'c')
 		{
-		  putc ('-', outfile);
-		  output_addr_const (operands[c]);
+		  if (CONSTANT_ADDRESS_P (operands[c]))
+		    output_addr_const (asm_out_file, operands[c]);
+		  else
+		    output_operand (operands[c], 'c');
 		}
+	      else if (letter == 'n')
+		{
+		  if (GET_CODE (operands[c]) == CONST_INT)
+		    fprintf (asm_out_file, "%d", - INTVAL (operands[c]));
+		  else
+		    {
+		      putc ('-', asm_out_file);
+		      output_addr_const (asm_out_file, operands[c]);
+		    }
+		}
+	      else if (*p >= '0' && *p <= '9')
+		output_operand (operands[c], letter);
+	      else
+		/* No operand-number follows the letter.  */
+		output_operand (0, letter);
+
+	      while ((c = *p) >= '0' && c <= '9') p++;
 	    }
-	  else
+	  /* % followed by a digit outputs an operand the default way.  */
+	  else if (*p >= '0' && *p <= '9')
 	    {
 	      c = atoi (p);
-	      output_operand (operands[c]);
+	      output_operand (operands[c], 0);
+	      while ((c = *p) >= '0' && c <= '9') p++;
 	    }
-	  while ((c = *p) >= '0' && c <= '9') p++;
+	  /* % followed by punctuation: output something for that
+	     punctuation character alone, with no operand.
+	     The PRINT_OPERAND macro decides what is actually done.  */
+	  else
+	    output_operand (0, *p++);
 	}
     }
 
-  putc ('\n', outfile);
+  putc ('\n', asm_out_file);
 }
 
 static void
 output_asm_label (x)
      rtx x;
 {
+  char buf[20];
+
   if (GET_CODE (x) == LABEL_REF)
-    fprintf (outfile, "L%d", CODE_LABEL_NUMBER (XEXP (x, 0)));
+    ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (XEXP (x, 0)));
   else if (GET_CODE (x) == CODE_LABEL)
-    fprintf (outfile, "L%d", CODE_LABEL_NUMBER (x));
+    ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (x));
   else
     abort ();
+
+  assemble_name (asm_out_file, buf);
 }
 
 /* Print operand X using machine-dependent assembler syntax.
-   The macro PRINT_OPERAND is defined just to control this function.  */
+   The macro PRINT_OPERAND is defined just to control this function.
+   CODE is a non-digit that preceded the operand-number in the % spec,
+   such as 'z' if the spec was `%z3'.  CODE is 0 if there was no char
+   between the % and the digits.
+   When CODE is a non-letter, X is 0.
+
+   The meanings of the letters are machine-dependent and controlled
+   by PRINT_OPERAND.  */
 
 static void
-output_operand (x)
+output_operand (x, code)
      rtx x;
+     int code;
 {
-  if (GET_CODE (x) == SUBREG)
+  if (x && GET_CODE (x) == SUBREG)
     alter_subreg (x);
-  PRINT_OPERAND (outfile, x);
+  PRINT_OPERAND (asm_out_file, x, code);
 }
 
 /* Print a memory reference operand for address X
    using machine-dependent assembler syntax.
    The macro PRINT_OPERAND_ADDRESS exists just to control this function.  */
 
-static void
+void
 output_address (x)
      rtx x;
 {
-  if (GET_CODE (x) == SUBREG)
-    alter_subreg (x);
-  PRINT_OPERAND_ADDRESS (outfile, x);
+  walk_alter_subreg (x);
+  PRINT_OPERAND_ADDRESS (asm_out_file, x);
 }
 
 /* Print an integer constant expression in assembler syntax.
@@ -799,22 +1043,23 @@ output_addr_const (file, x)
      FILE *file;
      rtx x;
 {
+  char buf[20];
+
  restart:
   switch (GET_CODE (x))
     {
     case SYMBOL_REF:
-      if (XSTR (x, 0)[0] == '*')
-	fprintf (file, "%s", XSTR (x, 0) + 1);
-      else
-	fprintf (file, "_%s", XSTR (x, 0));
+      assemble_name (file, XSTR (x, 0));
       break;
 
     case LABEL_REF:
-      fprintf (file, "L%d", CODE_LABEL_NUMBER (XEXP (x, 0)));
+      ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (XEXP (x, 0)));
+      assemble_name (asm_out_file, buf);
       break;
 
     case CODE_LABEL:
-      fprintf (file, "L%d", CODE_LABEL_NUMBER (x));
+      ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (x));
+      assemble_name (asm_out_file, buf);
       break;
 
     case CONST_INT:

@@ -1,29 +1,29 @@
 \initial {C}
-\entry {cascaded macros}{23}
-\entry {commands}{2}
-\entry {concatenation}{13}
-\entry {conditionals}{24}
+\entry {cascaded macros}{24}
+\entry {commands}{3}
+\entry {concatenation}{14}
+\entry {conditionals}{25}
 \initial {H}
 \entry {header file}{3}
 \initial {L}
-\entry {line control}{29}
+\entry {line control}{30}
 \initial {M}
-\entry {macro body uses macro}{23}
+\entry {macro body uses macro}{24}
 \initial {N}
-\entry {null command}{30}
+\entry {null command}{31}
 \initial {O}
-\entry {output format}{31}
+\entry {options}{32}
+\entry {output format}{32}
 \initial {P}
 \entry {predefined macros}{10}
-\entry {preprocessor commands}{2}
+\entry {preprocessor commands}{3}
 \initial {R}
-\entry {redefining macros}{16}
+\entry {redefining macros}{17}
 \initial {S}
-\entry {self-reference}{20}
-\entry {semicolons (after macro calls)}{18}
-\entry {side effects (in macro arguments)}{19}
-\entry {stringification}{12}
-\entry {switches}{31}
+\entry {self-reference}{21}
+\entry {semicolons (after macro calls)}{19}
+\entry {side effects (in macro arguments)}{20}
+\entry {stringification}{13}
 \initial {U}
-\entry {undefining macros}{15}
-\entry {unsafe macros}{19}
+\entry {undefining macros}{16}
+\entry {unsafe macros}{20}

@@ -67,10 +67,15 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include "tree.h"
 #include "rtl.h"
-#include "c-tree.h"
 #include <stdio.h>
+
+/* Typical USG systems don't have stab.h, and they also have
+   no use for DBX-format debugging info.  */
+
+#ifndef NO_DBX_FORMAT
+
 #include <stab.h>
-
+
 /* Stream for writing to assembler file.  */
 
 static FILE *asmfile;
@@ -133,8 +138,16 @@ static int current_sym_nchars;
 /* Break the current symbol-description, generating a continuation,
    if it has become long.  */
 
+#ifndef DBX_CONTIN_LENGTH
+#define DBX_CONTIN_LENGTH 80
+#endif
+
+#if DBX_CONTIN_LENGTH > 0
 #define CONTIN  \
-  do {if (current_sym_nchars > 80) dbxout_continue ();} while (0)
+  do {if (current_sym_nchars > DBX_CONTIN_LENGTH) dbxout_continue ();} while (0)
+#else
+#define CONTIN
+#endif
 
 void dbxout_types ();
 void dbxout_tags ();
@@ -160,7 +173,7 @@ dbxout_init (asm_file, input_file_name)
   
   fprintf (asmfile,
 	   "Ltext:\t.stabs \"%s\",%d,0,0,Ltext\n",
-	   input_filename, N_SO);
+	   input_file_name, N_SO);
 
   next_type_number = 1;
   next_block_number = 2;
@@ -171,8 +184,7 @@ dbxout_init (asm_file, input_file_name)
   dbxout_type_def (integer_type_node);
   dbxout_type_def (char_type_node);
 
-  /* Get all permanent types not yet gotten
-     and output them.  */
+  /* Get all permanent types not yet gotten, and output them.  */
 
   dbxout_types (get_permanent_types ());
 }
@@ -186,7 +198,11 @@ dbxout_init (asm_file, input_file_name)
 static void
 dbxout_continue ()
 {
+#ifdef DBX_CONTIN_CHAR
+  fprintf (asmfile, "%c", DBX_CONTIN_CHAR);
+#else
   fprintf (asmfile, "\\\\");
+#endif
   dbxout_finish_symbol ();
   fprintf (asmfile, ".stabs \"");
   current_sym_nchars = 0;
@@ -208,6 +224,14 @@ dbxout_type (type, full)
      int full;
 {
   register tree tem;
+
+  /* If there was an input error and we don't really have a type,
+     avoid crashing and write something that is at least valid
+     by assuming `int'.  */
+  if (type == error_mark_node)
+    type = integer_type_node;
+  else if (TYPE_SIZE (type) == 0)
+    type = TYPE_MAIN_VARIANT (type);
 
   if (TYPE_SYMTAB_ADDRESS (type) == 0)
     {
@@ -243,6 +267,21 @@ dbxout_type (type, full)
       return;
     }
 
+#ifdef DBX_NO_XREFS
+  /* For systems where dbx output does not allow the `=xsNAME:' syntax,
+     leave the type-number completely undefined rather than output
+     a cross-reference.  */
+  if (TREE_CODE (type) == RECORD_TYPE || TREE_CODE (type) == UNION_TYPE
+      || TREE_CODE (type) == ENUMERAL_TYPE)
+
+    if ((TYPE_NAME (type) != 0 && !full)
+	|| TYPE_SIZE (type) == 0)
+      {
+	typevec[TYPE_SYMTAB_ADDRESS (type)] = TYPE_XREF;
+	return;
+      }
+#endif
+
   /* Output a definition now.  */
 
   fprintf (asmfile, "=");
@@ -266,7 +305,7 @@ dbxout_type (type, full)
       break;
 
     case INTEGER_TYPE:
-      if (type == char_type_node)
+      if (type == char_type_node && ! TREE_UNSIGNED (type))
 	/* Output the type `char' as a subrange of itself!
 	   I don't understand this definition, just copied it
 	   from the output of pcc.  */
@@ -292,7 +331,9 @@ dbxout_type (type, full)
 	 followed by a reference to the target-type.
 	 ar1;0;N;M for an array of type M and size N.  */
       fprintf (asmfile, "ar1;0;%d;",
-	       TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type))));
+	       (TYPE_DOMAIN (type)
+		? TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type)))
+	        : -1));
       CHARS (17);
       dbxout_type (TREE_TYPE (type), 0);
       break;
@@ -306,7 +347,10 @@ dbxout_type (type, full)
 	  /* If the type is just a cross reference, output one
 	     and mark the type as partially described.
 	     If it later becomes defined, we will output
-	     its real definition.  */
+	     its real definition.
+	     If the type has a name, don't nest its name within
+	     another type's definition; instead, output an xref
+	     and let the definition come when the name is defined.  */
 	  fprintf (asmfile, (TREE_CODE (type) == RECORD_TYPE) ? "xs" : "xu");
 	  CHARS (3);
 	  dbxout_type_name (type);
@@ -324,7 +368,10 @@ dbxout_type (type, full)
 	/* Omit here the nameless fields that are used to skip bits.  */
 	if (DECL_NAME (tem) != 0)
 	  {
-	    CONTIN;
+	    /* Continue the line if necessary,
+	       but not before the first field.  */
+	    if (tem != TYPE_FIELDS (type))
+	      CONTIN;
 	    fprintf (asmfile, "%s:", IDENTIFIER_POINTER (DECL_NAME (tem)));
 	    CHARS (1 + strlen (IDENTIFIER_POINTER (DECL_NAME (tem))));
 	    dbxout_type (TREE_TYPE (tem), 0);
@@ -407,8 +454,8 @@ dbxout_symbol (decl, local)
      tree decl;
      int local;
 {
-  int symcode;
-  int letter;
+  int letter = 0;
+  tree type = TREE_TYPE (decl);
 
   /* If global, first output all types and all
      struct, enum and union tags that have been created
@@ -419,6 +466,11 @@ dbxout_symbol (decl, local)
       dbxout_tags (gettags ());
       dbxout_types (get_permanent_types ());
     }
+
+  /* If the decl lacks rtl representation, avoid fault below.  */
+
+  if (DECL_RTL (decl) == 0)
+    return;
 
   current_sym_code = 0;
   current_sym_value = 0;
@@ -480,13 +532,14 @@ dbxout_symbol (decl, local)
       /* Don't mention a variable at all
 	 if it was completely optimized into nothingness.  */
       if (GET_CODE (DECL_RTL (decl)) == REG
-	  && REGNO (DECL_RTL (decl)) == -1)
+	  && (REGNO (DECL_RTL (decl)) < 0
+	      || REGNO (DECL_RTL (decl)) >= FIRST_PSEUDO_REGISTER))
 	break;
 
       /* Ok, start a symtab entry and output the variable name.  */
       fprintf (asmfile, ".stabs \"%s:",
 	       IDENTIFIER_POINTER (DECL_NAME (decl)));
-      
+
       /* The kind-of-variable letter depends on where
 	 the variable is and on the scope of its name:
 	 G and N_GSYM for static storage and global scope,
@@ -520,30 +573,56 @@ dbxout_symbol (decl, local)
 	      else
 		current_sym_code = N_STSYM;
 	    }
-	  putc (letter, asmfile);
-	  dbxout_type (TREE_TYPE (decl), 0);
-	  dbxout_finish_symbol ();
 	}
-      else
+      else if (GET_CODE (DECL_RTL (decl)) == REG)
 	{
-	  if (GET_CODE (DECL_RTL (decl)) == REG)
+	  letter = 'r';
+	  current_sym_code = N_RSYM;
+	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl)));
+	}
+      else if (GET_CODE (DECL_RTL (decl)) == MEM
+	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
+		   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
+		       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
+	/* If the value is indirect by memory or by a register
+	   that isn't the frame pointer
+	   then it means the object is variable-sized and address through
+	   that register or stack slot.  DBX has no way to represent this
+	   so all we can do is output the variable as a pointer.  */
+	{
+	  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
 	    {
 	      letter = 'r';
 	      current_sym_code = N_RSYM;
-	      current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl)));
+	      current_sym_value = DBX_REGISTER_NUMBER (REGNO (XEXP (DECL_RTL (decl), 0)));
 	    }
 	  else
 	    {
-	      letter = 0;
 	      current_sym_code = N_LSYM;
-	      /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...))).
+	      /* DECL_RTL looks like (MEM (MEM (PLUS (REG...) (CONST_INT...)))).
 		 We want the value of that CONST_INT.  */
-	      current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1));
+	      current_sym_value = INTVAL (XEXP (XEXP (XEXP (DECL_RTL (decl), 0), 0), 1));
 	    }
-	  if (letter) putc (letter, asmfile);
-	  dbxout_type (TREE_TYPE (decl), 0);
-	  dbxout_finish_symbol ();
+
+	  type = build_pointer_type (TREE_TYPE (decl));
 	}
+      else if (GET_CODE (DECL_RTL (decl)) == MEM
+	       && XEXP (DECL_RTL (decl), 0) != const0_rtx)
+	/* const0_rtx is used as the address for a variable that
+	   is a dummy due to an erroneous declaration.
+	   Ignore such vars.  */
+	{
+	  current_sym_code = N_LSYM;
+	  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
+	    current_sym_value = 0;
+	  else
+	    /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...)))
+	       We want the value of that CONST_INT.  */
+	    current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1));
+	}
+      if (letter) putc (letter, asmfile);
+      dbxout_type (type, 0);
+      dbxout_finish_symbol ();
       break;
     }
 }
@@ -590,22 +669,92 @@ dbxout_parms (parms)
 {
   for (; parms; parms = TREE_CHAIN (parms))
     {
-      current_sym_code = N_PSYM;
-      current_sym_value = DECL_OFFSET (parms) / BITS_PER_UNIT;
-      /* A parm declared char is really passed as an int,
-	 so it occupies the least significant bytes.
-	 On a big-endian machine those are not the low-numbered ones.  */
-#ifdef BYTES_BIG_ENDIAN
-      current_sym_value += (GET_MODE_SIZE (TYPE_MODE (DECL_ARG_TYPE (parms)))
-			    - GET_MODE_SIZE (GET_MODE (DECL_RTL (parms))));
-#endif
-      current_sym_addr = 0;
-      current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+      if (DECL_OFFSET (parms) >= 0)
+	{
+	  current_sym_code = N_PSYM;
+	  current_sym_value = DECL_OFFSET (parms) / BITS_PER_UNIT;
+	  current_sym_addr = 0;
+	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
 
-      fprintf (asmfile, ".stabs \"%s:p",
-	       IDENTIFIER_POINTER (DECL_NAME (parms)));
-      dbxout_type (TREE_TYPE (parms), 0);
-      dbxout_finish_symbol ();
+	  fprintf (asmfile, ".stabs \"%s:p",
+		   IDENTIFIER_POINTER (DECL_NAME (parms)));
+
+	  if (GET_CODE (DECL_RTL (parms)) == REG
+	      && REGNO (DECL_RTL (parms)) >= 0
+	      && REGNO (DECL_RTL (parms)) < FIRST_PSEUDO_REGISTER)
+	    dbxout_type (DECL_ARG_TYPE (parms), 0);
+	  else
+	    {
+	      /* This is the case where the parm is passed as an int or double
+		 and it is converted to a char, short or float and stored back
+		 in the parmlist.  In this case, describe the parm
+		 with the variable's declared type, and adjust the address
+		 if the least significant bytes (which we are using) are not
+		 the first ones.  */
+#ifdef BYTES_BIG_ENDIAN
+	      if (TREE_TYPE (parms) != DECL_ARG_TYPE (parms))
+		current_sym_value += (GET_MODE_SIZE (TYPE_MODE (DECL_ARG_TYPE (parms)))
+				      - GET_MODE_SIZE (GET_MODE (DECL_RTL (parms))));
+#endif
+
+	      if (GET_CODE (DECL_RTL (parms)) == MEM
+		  && GET_CODE (XEXP (DECL_RTL (parms), 0)) == PLUS
+		  && GET_CODE (XEXP (XEXP (DECL_RTL (parms), 0), 1)) == CONST_INT
+		  && INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1)) == current_sym_value)
+		dbxout_type (TREE_TYPE (parms), 0);
+	      else
+		{
+		  current_sym_value = DECL_OFFSET (parms) / BITS_PER_UNIT;
+		  dbxout_type (DECL_ARG_TYPE (parms), 0);
+		}
+	    }
+	  dbxout_finish_symbol ();
+	}
+      /* Parm was passed in registers.
+	 If it is in a register, output a "regparm" symbol
+	 for the register it lives in.  */
+      else if (GET_CODE (DECL_RTL (parms)) == REG)
+	{
+	  current_sym_code = N_RSYM;
+	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (parms)));
+	  current_sym_addr = 0;
+	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+
+	  fprintf (asmfile, ".stabs \"%s:P",
+		   IDENTIFIER_POINTER (DECL_NAME (parms)));
+
+	  dbxout_type (DECL_ARG_TYPE (parms), 0);
+	  dbxout_finish_symbol ();
+	}
+      else if (GET_CODE (DECL_RTL (parms)) == MEM
+	       && XEXP (DECL_RTL (parms), 0) != const0_rtx)
+	{
+	  current_sym_code = N_LSYM;
+	  /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...))).
+	     We want the value of that CONST_INT.  */
+	  current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1));
+	  current_sym_addr = 0;
+	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+
+	  fprintf (asmfile, ".stabs \"%s:p",
+		   IDENTIFIER_POINTER (DECL_NAME (parms)));
+
+	  /* This is the case where the parm is passed as an int or double
+	     and it is converted to a char, short or float and stored back
+	     in the parmlist.  In this case, describe the parm
+	     with the variable's declared type, and adjust the address
+	     if the least significant bytes (which we are using) are not
+	     the first ones.  */
+#ifdef BYTES_BIG_ENDIAN
+	  if (TREE_TYPE (parms) != DECL_ARG_TYPE (parms))
+	    current_sym_value += (GET_MODE_SIZE (TYPE_MODE (DECL_ARG_TYPE (parms)))
+				  - GET_MODE_SIZE (GET_MODE (DECL_RTL (parms))));
+#endif
+
+	  dbxout_type (TREE_TYPE (parms), 0);
+	  dbxout_finish_symbol ();
+	}
+
     }
 }
 
@@ -619,8 +768,11 @@ dbxout_reg_parms (parms)
 {
   while (parms)
     {
+      /* Report parms that live in registers during the function.  */
       if (GET_CODE (DECL_RTL (parms)) == REG
-	  && REGNO (DECL_RTL (parms)) >= 0)
+	  && REGNO (DECL_RTL (parms)) >= 0
+	  && REGNO (DECL_RTL (parms)) < FIRST_PSEUDO_REGISTER
+	  && DECL_OFFSET (parms) >= 0)
 	{
 	  current_sym_code = N_RSYM;
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (parms)));
@@ -630,6 +782,32 @@ dbxout_reg_parms (parms)
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 	  dbxout_type (TREE_TYPE (parms), 0);
 	  dbxout_finish_symbol ();
+	}
+      /* Report parms that live in memory but outside the parmlist.  */
+      else if (GET_CODE (DECL_RTL (parms)) == MEM
+	       && GET_CODE (XEXP (DECL_RTL (parms), 0)) == PLUS
+	       && GET_CODE (XEXP (XEXP (DECL_RTL (parms), 0), 1)) == CONST_INT)
+	{
+	  int offset = DECL_OFFSET (parms) / BITS_PER_UNIT;
+	  /* A parm declared char is really passed as an int,
+	     so it occupies the least significant bytes.
+	     On a big-endian machine those are not the low-numbered ones.  */
+#ifdef BYTES_BIG_ENDIAN
+	  if (offset != -1 && TREE_TYPE (parms) != DECL_ARG_TYPE (parms))
+	    offset += (GET_MODE_SIZE (TYPE_MODE (DECL_ARG_TYPE (parms)))
+		       - GET_MODE_SIZE (GET_MODE (DECL_RTL (parms))));
+#endif
+	  if (INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1)) != offset)
+	    {
+	      current_sym_code = N_LSYM;
+	      current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1));
+	      current_sym_addr = 0;
+	      current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+	      fprintf (asmfile, ".stabs \"%s:",
+		       IDENTIFIER_POINTER (DECL_NAME (parms)));
+	      dbxout_type (TREE_TYPE (parms), 0);
+	      dbxout_finish_symbol ();
+	    }
 	}
       parms = TREE_CHAIN (parms);
     }
@@ -652,12 +830,20 @@ dbxout_types (types)
 }
 
 /* Output a definition of a typedef name.
-   It works much like any other kind of symbol definition.  */
+   It works much like any other kind of symbol definition.
+   Output nothing if TYPE's definition has been output already.  */
 
 static void
 dbxout_type_def (type)
      tree type;
 {
+#if 0  /* Incorrect; causes some type NAMES not to be defined,
+	  whose TYPES were defined already.  */
+  if (TYPE_SYMTAB_ADDRESS (type) != 0
+      && typevec[TYPE_SYMTAB_ADDRESS (type)] == TYPE_DEFINED)
+    return;
+#endif
+
   current_sym_code = N_LSYM;
   current_sym_value = 0;
   current_sym_addr = 0;
@@ -683,12 +869,12 @@ dbxout_tags (tags)
   register tree link;
   for (link = tags; link; link = TREE_CHAIN (link))
     {
-      register tree type = TREE_VALUE (link);
+      register tree type = TYPE_MAIN_VARIANT (TREE_VALUE (link));
       if (TREE_PURPOSE (link) != 0
-	  && (TYPE_SYMTAB_ADDRESS (type) == 0
-	      || (typevec[TYPE_SYMTAB_ADDRESS (type)] != TYPE_DEFINED))
+	  && ! TREE_ASM_WRITTEN (link)
 	  && TYPE_SIZE (type) != 0)
 	{
+	  TREE_ASM_WRITTEN (link) = 1;
 	  current_sym_code = N_LSYM;
 	  current_sym_value = 0;
 	  current_sym_addr = 0;
@@ -698,7 +884,6 @@ dbxout_tags (tags)
 		   IDENTIFIER_POINTER (TREE_PURPOSE (link)));
 	  dbxout_type (type, 1);
 	  dbxout_finish_symbol ();
-	  typevec[TYPE_SYMTAB_ADDRESS (type)] = TYPE_DEFINED;
 	}
     }
 }
@@ -721,6 +906,7 @@ static void
 dbxout_block (stmt, depth, args)
      register tree stmt;
      int depth;
+     tree args;
 {
   int blocknum;
 
@@ -741,7 +927,7 @@ dbxout_block (stmt, depth, args)
 	case LET_STMT:
 	  /* In dbx format, the syms of a block come before the N_LBRAC.  */
 	  dbxout_tags (STMT_TYPE_TAGS (stmt));
-	  dbxout_syms (STMT_VARS (stmt), 1);
+	  dbxout_syms (STMT_VARS (stmt));
 	  if (args)
 	    dbxout_reg_parms (args);
 
@@ -780,3 +966,34 @@ dbxout_function (decl)
   dbxout_parms (DECL_ARGUMENTS (decl));
   dbxout_block (DECL_INITIAL (decl), 0, DECL_ARGUMENTS (decl));
 }
+
+#else /* NO_DBX_FORMAT */
+
+void
+dbxout_init (asm_file, input_file_name)
+     FILE *asm_file;
+     char *input_file_name;
+{}
+
+void
+dbxout_symbol (decl, local)
+     tree decl;
+     int local;
+{}
+
+void
+dbxout_types (types)
+     register tree types;
+{}
+
+void
+dbxout_tags (tags)
+     tree tags;
+{}
+
+void
+dbxout_function (decl)
+     tree decl;
+{}
+
+#endif /* NO_DBX_FORMAT */

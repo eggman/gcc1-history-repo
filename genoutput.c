@@ -33,27 +33,34 @@ and this notice must be preserved on all copies.  */
    This says how many elements of `recog_dup_loc' are significant
    after an insn has been recognized.
 
-   4. An array of arrays of machine modes, `insn_operand_machine_mode',
-   indexed first by insn code number and second by operand number,
-   containing the machine mode that that operand is supposed to have.
-
-   5. An array of arrays of operand constraint strings,
+   4. An array of arrays of operand constraint strings,
    `insn_operand_constraint',
    indexed first by insn code number and second by operand number,
    containing the constraint for that operand.
+
    This array is generated only if register constraints appear in 
    match_operand rtx's.
 
-   6. An array of arrays of chars which indicate which operands of
+   5. An array of arrays of chars which indicate which operands of
    which insn patterns appear within ADDRESS rtx's.  This array is
    called `insn_operand_address_p' and is generated only if there
    are *no* register constraints in the match_operand rtx's.
 
-   7. An array of functions `insn_gen_function' which, indexed
+   6. An array of arrays of machine modes, `insn_operand_mode',
+   indexed first by insn code number and second by operand number,
+   containing the machine mode that that operand is supposed to have.
+   Also `insn_operand_strict_low', which is nonzero for operands
+   contained in a STRICT_LOW_PART.
+
+   7. An array of arrays of int-valued functions, `insn_operand_predicate',
+   indexed first by insn code number and second by operand number,
+   containing the match_operand predicate for this operand.
+
+   8. An array of functions `insn_gen_function' which, indexed
    by insn code number, gives the function to generate a body
    for that patter, given operands as arguments.
 
-   8. A function `output_insn_hairy' which is called with two arguments
+   9. A function `output_insn_hairy' which is called with two arguments
    (an insn code number and a vector of operand value rtx's)
    and returns a template to use for output of that insn.
    This is used only in the cases where the template is not constant.
@@ -74,13 +81,14 @@ Thus, the following entry in the machine description
       "clrd %0")
 
 assuming it is the 25th entry present, would cause
-insn_template[24] to be "c;rd %0", and insn_n_operands[24] to be 1.
+insn_template[24] to be "clrd %0", and insn_n_operands[24] to be 1.
 It would not make an case in output_insn_hairy because the template
 given in the entry is a constant (it does not start with `*').  */
 
 #include <stdio.h>
+#include "config.h"
 #include "rtl.h"
-#include <obstack.h>
+#include "obstack.h"
 
 /* No instruction can have more operands than this.
    Sorry for this arbitrary limit, but what machine will
@@ -89,7 +97,7 @@ given in the entry is a constant (it does not start with `*').  */
 #define MAX_MAX_OPERANDS 40
 
 struct obstack obstack;
-struct obstack *current_obstack = &obstack;
+struct obstack *rtl_obstack = &obstack;
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -97,6 +105,8 @@ extern int xmalloc ();
 extern void free ();
 
 void fatal ();
+void mybcopy ();
+void mybzero ();
 
 /* insns in the machine description are assigned sequential code numbers
    that are used by insn-recog.c (produced by genrecog) to communicate
@@ -116,8 +126,11 @@ struct data
   int n_dups;			/* Number times match_dup appears in pattern */
   struct data *next;
   char *constraints[MAX_MAX_OPERANDS];
+  char *predicates[MAX_MAX_OPERANDS];
   char address_p[MAX_MAX_OPERANDS];
   enum machine_mode modes[MAX_MAX_OPERANDS];
+  char strict_low[MAX_MAX_OPERANDS];
+  char outfun;			/* Nonzero means this has an output function */
 };
 
 /* This variable points to the first link in the chain.  */
@@ -148,16 +161,9 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"conditions.h\"\n");
   printf ("#include \"insn-flags.h\"\n");
   printf ("#include \"insn-config.h\"\n\n");
-
-  printf ("extern rtx adj_offsetable_operand();\n\
-extern void output_asm_insn();\n\n");
+  printf ("#include \"output.h\"\n");
 
   printf ("#include \"aux-output.c\"\n\n");
-
-  printf ("char *\noutput_insn_hairy (code_number, operands, insn)\n");
-  printf ("     int code_number;\n");
-  printf ("     rtx *operands;\n");
-  printf ("     rtx insn;\n{\n  switch (code_number)\n    {\n");
 }
 
 void
@@ -165,14 +171,21 @@ output_epilogue ()
 {
   register struct data *d;
 
-  printf ("    default: abort ();\n");
-  printf ("    }\n}\n");
-
   printf ("\nchar *insn_template[] =\n  {\n");
   for (d = insn_data; d; d = d->next)
     {
       if (d->template)
 	printf ("    \"%s\",\n", d->template);
+      else
+	printf ("    0,\n");
+    }
+  printf ("  };\n");
+
+  printf ("\nchar *(*insn_outfun[])() =\n  {\n");
+  for (d = insn_data; d; d = d->next)
+    {
+      if (d->outfun)
+	printf ("    output_%d,", d->code_number);
       else
 	printf ("    0,\n");
     }
@@ -210,7 +223,12 @@ output_epilogue ()
 	  register int i;
 	  printf ("    {");
 	  for (i = 0; i < d->n_operands; i++)
-	    printf (" \"%s\",", d->constraints[i]);
+	    {
+	      if (d->constraints[i] == 0)
+		printf (" \"\",");
+	      else
+		printf (" \"%s\",", d->constraints[i]);
+	    }
 	  if (d->n_operands == 0)
 	    printf (" 0");
 	  printf (" },\n");
@@ -245,40 +263,81 @@ output_epilogue ()
       printf (" },\n");
     }
   printf ("  };\n");
+
+  printf ("\nchar insn_operand_strict_low[][MAX_RECOG_OPERANDS] =\n  {\n");
+  for (d = insn_data; d; d = d->next)
+    {
+      register int i;
+      printf ("    {");
+      for (i = 0; i < d->n_operands; i++)
+	printf (" %d,", d->strict_low[i]);
+      if (d->n_operands == 0)
+	printf (" 0");
+      printf (" },\n");
+    }
+  printf ("  };\n");
+
+  printf ("\nint (*insn_operand_predicate[][MAX_RECOG_OPERANDS])() =\n  {\n");
+  for (d = insn_data; d; d = d->next)
+    {
+      register int i;
+      printf ("    {");
+      for (i = 0; i < d->n_operands; i++)
+	printf (" %s,", ((d->predicates[i] && d->predicates[i][0])
+			 ? d->predicates[i] : "0"));
+      if (d->n_operands == 0)
+	printf (" 0");
+      printf (" },\n");
+    }
+  printf ("  };\n");
 }
 
 /* scan_operands (X) stores in max_opno the largest operand
    number present in X, if that is larger than the previous
    value of max_opno.  It stores all the constraints in `constraints'
-   and all the machine modes in `modes'.  */
+   and all the machine modes in `modes'.
+
+   THIS_ADDRESS_P is nonzero if the containing rtx was an ADDRESS.
+   THIS_STRICT_LOW is nonzero if the containing rtx was a STRICT_LOW_PART.  */
 
 int max_opno;
 int num_dups;
 char *constraints[MAX_MAX_OPERANDS];
+char *predicates[MAX_MAX_OPERANDS];
 char address_p[MAX_MAX_OPERANDS];
 enum machine_mode modes[MAX_MAX_OPERANDS];
+char strict_low[MAX_MAX_OPERANDS];
 
 void
-scan_operands (part, this_address_p)
+scan_operands (part, this_address_p, this_strict_low)
      rtx part;
      int this_address_p;
+     int this_strict_low;
 {
   register int i, j;
-  register RTX_CODE code = GET_CODE (part);
+  register RTX_CODE code;
   register char *format_ptr;
+
+  if (part == 0)
+    return;
+
+  code = GET_CODE (part);
 
   if (code == MATCH_OPERAND)
     {
-      if (XINT (part, 0) > max_opno)
-	max_opno = XINT (part, 0);
-      if (max_opno > MAX_MAX_OPERANDS)
+      int opno = XINT (part, 0);
+      if (opno > max_opno)
+	max_opno = opno;
+      if (max_opno >= MAX_MAX_OPERANDS)
 	fatal ("Too many operands (%d) in one instruction pattern.\n",
 	       max_opno + 1);
-      modes[max_opno] = GET_MODE (part);
-      constraints[max_opno] = XSTR (part, 2);
+      modes[opno] = GET_MODE (part);
+      strict_low[opno] = this_strict_low;
+      predicates[opno] = XSTR (part, 1);
+      constraints[opno] = XSTR (part, 2);
       if (XSTR (part, 2) != 0 && *XSTR (part, 2) != 0)
 	have_constraints = 1;
-      address_p[max_opno] = this_address_p;
+      address_p[opno] = this_address_p;
       return;
     }
 
@@ -290,7 +349,13 @@ scan_operands (part, this_address_p)
 
   if (code == ADDRESS)
     {
-      scan_operands (XEXP (part, 0), 1);
+      scan_operands (XEXP (part, 0), 1, 0);
+      return;
+    }
+
+  if (code == STRICT_LOW_PART)
+    {
+      scan_operands (XEXP (part, 0), 0, 1);
       return;
     }
 
@@ -300,19 +365,19 @@ scan_operands (part, this_address_p)
     switch (*format_ptr++)
       {
       case 'e':
-	scan_operands (XEXP (part, i), 0);
+	scan_operands (XEXP (part, i), 0, 0);
 	break;
       case 'E':
 	if (XVEC (part, i) != NULL)
 	  for (j = 0; j < XVECLEN (part, i); j++)
-	    scan_operands (XVECEXP (part, i, j), 0);
+	    scan_operands (XVECEXP (part, i, j), 0, 0);
 	break;
       }
 }
 
-/* Read the next insn.  Assign its code number.
+/* Look at a define_insn just read.  Assign its code number.
    Record on insn_data the template and the number of arguments.
-   If the insn has a hairy output action, output it now.  */
+   If the insn has a hairy output action, output a function for now.  */
 
 void
 gen_insn (insn)
@@ -340,16 +405,20 @@ gen_insn (insn)
   max_opno = -1;
   num_dups = 0;
 
-  bzero (constraints, sizeof constraints);
-  bzero (address_p, sizeof address_p);
-  bzero (modes, sizeof modes);
+  mybzero (constraints, sizeof constraints);
+  mybzero (predicates, sizeof predicates);
+  mybzero (address_p, sizeof address_p);
+  mybzero (modes, sizeof modes);
+  mybzero (strict_low, sizeof strict_low);
   for (i = 0; i < XVECLEN (insn, 1); i++)
-    scan_operands (XVECEXP (insn, 1, i), 0);
+    scan_operands (XVECEXP (insn, 1, i), 0, 0);
   d->n_operands = max_opno + 1;
   d->n_dups = num_dups;
-  bcopy (constraints, d->constraints, sizeof constraints);
-  bcopy (address_p, d->address_p, sizeof address_p);
-  bcopy (modes, d->modes, sizeof modes);
+  mybcopy (constraints, d->constraints, sizeof constraints);
+  mybcopy (predicates, d->predicates, sizeof predicates);
+  mybcopy (address_p, d->address_p, sizeof address_p);
+  mybcopy (modes, d->modes, sizeof modes);
+  mybcopy (strict_low, d->strict_low, sizeof strict_low);
 
   /* We need to consider only the instructions whose assembler code template
      starts with a *.  These are the ones where the template is really
@@ -359,21 +428,151 @@ gen_insn (insn)
   if (XSTR (insn, 3)[0] != '*')
     {
       d->template = XSTR (insn, 3);
+      d->outfun = 0;
       return;
     }
 
   d->template = 0;
-  printf ("    case %d:\n", d->code_number);
-  printf ("%s\n", &(XSTR (insn, 3)[1]));
+  d->outfun = 1;
+
+  printf ("\nchar *\n");
+  printf ("output_%d (operands, insn)\n", d->code_number);
+  printf ("     rtx *operands;\n");
+  printf ("     rtx insn;\n");
+  printf ("{\n");
+  /* The following is done in a funny way to get around problems in
+     VAX-11 "C" on VMS.  It is the equivalent of:
+		printf ("%s\n", &(XSTR (insn, 3)[1])); */
+  {
+    register char *cp = &(XSTR (insn, 3)[1]);
+    while (*cp) putchar (*cp++);
+    putchar ('\n');
+  }
+  printf ("}\n");
 }
 
+/* Look at a define_peephole just read.  Assign its code number.
+   Record on insn_data the template and the number of arguments.
+   If the insn has a hairy output action, output it now.  */
+
+void
+gen_peephole (peep)
+     rtx peep;
+{
+  register struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  register int i;
+
+  d->code_number = next_code_number++;
+  d->name = 0;
+
+  /* Build up the list in the same order as the insns are seen
+     in the machine description.  */
+  d->next = 0;
+  if (end_of_insn_data)
+    end_of_insn_data->next = d;
+  else
+    insn_data = d;
+
+  end_of_insn_data = d;
+
+  max_opno = -1;
+  mybzero (constraints, sizeof constraints);
+
+  /* Get the number of operands by scanning all the
+     patterns of the peephole optimizer.
+     But ignore all the rest of the information thus obtained.  */
+  for (i = 0; i < XVECLEN (peep, 0); i++)
+    scan_operands (XVECEXP (peep, 0, i), 0, 0);
+
+  d->n_operands = max_opno + 1;
+  d->n_dups = 0;
+  mybcopy (constraints, d->constraints, sizeof constraints);
+  mybzero (d->predicates, sizeof predicates);
+  mybzero (d->address_p, sizeof address_p);
+  mybzero (d->modes, sizeof modes);
+  mybzero (d->strict_low, sizeof strict_low);
+
+  /* We need to consider only the instructions whose assembler code template
+     starts with a *.  These are the ones where the template is really
+     C code to run to decide on a template to use.
+     So for all others just return now.  */
+
+  if (XSTR (peep, 2)[0] != '*')
+    {
+      d->template = XSTR (peep, 2);
+      d->outfun = 0;
+      return;
+    }
+
+  d->template = 0;
+  d->outfun = 1;
+
+  printf ("\nchar *\n");
+  printf ("output_%d (operands, insn)\n", d->code_number);
+  printf ("     rtx *operands;\n");
+  printf ("     rtx insn;\n");
+  printf ("{\n");
+  printf ("%s\n", &(XSTR (peep, 2)[1]));
+  printf ("}\n");
+}
+
+/* Process a define_expand just read.  Assign its code number,
+   only for the purposes of `insn_gen_function'.  */
+
+void
+gen_expand (insn)
+     rtx insn;
+{
+  register struct data *d = (struct data *) xmalloc (sizeof (struct data));
+  register int i;
+
+  d->code_number = next_code_number++;
+  if (XSTR (insn, 0)[0])
+    d->name = XSTR (insn, 0);
+  else
+    d->name = 0;
+
+  /* Build up the list in the same order as the insns are seen
+     in the machine description.  */
+  d->next = 0;
+  if (end_of_insn_data)
+    end_of_insn_data->next = d;
+  else
+    insn_data = d;
+
+  end_of_insn_data = d;
+
+  max_opno = -1;
+  num_dups = 0;
+
+  /* Scan the operands to get the specified predicates and modes,
+     since expand_binop needs to know them.  */
+
+  mybzero (predicates, sizeof predicates);
+  mybzero (modes, sizeof modes);
+  if (XVEC (insn, 1))
+    for (i = 0; i < XVECLEN (insn, 1); i++)
+      scan_operands (XVECEXP (insn, 1, i), 0, 0);
+  d->n_operands = max_opno + 1;
+  mybcopy (predicates, d->predicates, sizeof predicates);
+  mybcopy (modes, d->modes, sizeof modes);
+
+  mybzero (d->constraints, sizeof constraints);
+  mybzero (d->address_p, sizeof address_p);
+  mybzero (d->strict_low, sizeof strict_low);
+
+  d->n_dups = 0;
+  d->template = 0;
+  d->outfun = 0;
+}
+
+int
 xmalloc (size)
 {
   register int val = malloc (size);
 
   if (val == 0)
-    abort ();
-
+    fatal ("virtual memory exhausted");
   return val;
 }
 
@@ -384,19 +583,39 @@ xrealloc (ptr, size)
 {
   int result = realloc (ptr, size);
   if (!result)
-    abort ();
+    fatal ("virtual memory exhausted");
   return result;
+}
+
+void
+mybzero (b, length)
+     register char *b;
+     register int length;
+{
+  while (length-- > 0)
+    *b++ = 0;
+}
+
+void
+mybcopy (b1, b2, length)
+     register char *b1;
+     register char *b2;
+     register int length;
+{
+  while (length-- > 0)
+    *b2++ = *b1++;
 }
 
 void
 fatal (s, a1, a2)
 {
-  fprintf (stderr, "genemit: ");
+  fprintf (stderr, "genoutput: ");
   fprintf (stderr, s, a1, a2);
   fprintf (stderr, "\n");
-  exit (1);
+  exit (FATAL_EXIT_CODE);
 }
 
+int
 main (argc, argv)
      int argc;
      char **argv;
@@ -406,7 +625,7 @@ main (argc, argv)
   extern rtx read_rtx ();
   register int c;
 
-  obstack_init (current_obstack);
+  obstack_init (rtl_obstack);
 
   if (argc <= 1)
     fatal ("No input file name.");
@@ -415,7 +634,7 @@ main (argc, argv)
   if (infile == 0)
     {
       perror (argv[1]);
-      exit (1);
+      exit (FATAL_EXIT_CODE);
     }
 
   init_rtl ();
@@ -434,10 +653,16 @@ main (argc, argv)
       ungetc (c, infile);
 
       desc = read_rtx (infile);
-      gen_insn (desc);
+      if (GET_CODE (desc) == DEFINE_INSN)
+	gen_insn (desc);
+      if (GET_CODE (desc) == DEFINE_PEEPHOLE)
+	gen_peephole (desc);
+      if (GET_CODE (desc) == DEFINE_EXPAND)
+	gen_expand (desc);
     }
 
   output_epilogue ();
 
-  return 0;
+  fflush (stdout);
+  exit (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
 }
