@@ -1,22 +1,21 @@
 /* Top level of GNU C compiler
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This is the top level of cc1.
@@ -126,6 +125,20 @@ int use_gdb_dbx_extensions;
 
 int optimize = 0;
 
+/* Nonzero for -fcaller-saves: allocate values in regs that need to
+   be saved across function calls, if that produces overall better code.
+   Optional now, so people can test it.  */
+
+#ifdef DEFAULT_CALLER_SAVES
+int flag_caller_saves = 1;
+#else
+int flag_caller_saves = 0;
+#endif
+
+/* Nonzero for -fpcc-struct-return: return values the same way PCC does.  */
+
+int flag_pcc_struct_return = 0;
+
 /* Nonzero for -fforce-mem: load memory value into a register
    before arithmetic on it.  This makes better cse but slower compilation.  */
 
@@ -213,6 +226,10 @@ int sorrycount = 0;
 
 int profile_flag = 0;
 
+/* Nonzero if generating code to do profiling on a line-by-line basis.  */
+
+int profile_block_flag;
+
 /* Nonzero for -pedantic switch: warn about anything
    that standard spec forbids.  */
 
@@ -267,7 +284,9 @@ struct { char *string; int *variable; int on_value;} f_options[] =
   {"inline-functions", &flag_inline_functions, 1},
   {"keep-inline-functions", &flag_keep_inline_functions, 1},
   {"syntax-only", &flag_syntax_only, 1},
-  {"shared-data", &flag_shared_data, 1}
+  {"shared-data", &flag_shared_data, 1},
+  {"caller-saves", &flag_caller_saves, 1},
+  {"pcc-struct-return", &flag_pcc_struct_return, 1}
 };
 
 /* Output files for assembler code (real compiler output)
@@ -1034,6 +1053,10 @@ compile_file (name)
 	       symout_finish (name, statbuf.st_ctime);
 	     });
 
+  /* Output some stuff at end of file if nec.  */
+
+  end_final (main_input_filename);
+
   /* Close the dump files.  */
 
   if (rtl_dump)
@@ -1668,6 +1691,14 @@ main (argc, argv, envp)
 	  warn_unused = 1;
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
+	else if (!strcmp (str, "a"))
+	  {
+#if !defined (BLOCK_PROFILER) || !defined (FUNCTION_BLOCK_PROFILER)
+	    warning ("`-a' option (basic block profile) not supported");
+#else
+	    profile_block_flag = 1;
+#endif
+	  }
 	else if (!strcmp (str, "gg"))
 	  write_symbols = GDB_DEBUG;
 #ifdef DBX_DEBUGGING_INFO

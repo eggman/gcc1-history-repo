@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* Note that some other tm- files include this one and then override
@@ -510,6 +509,11 @@ extern enum reg_class regno_reg_class[];
 
 #define FUNCTION_VALUE_REGNO_P(N) ((N) == 0)
 
+/* Define this if PCC uses the nonreentrant convention for returning
+   structure and union values.  */
+
+#define PCC_STATIC_STRUCT_RETURN
+
 /* 1 if N is a possible register number for function argument passing.
    On the 68000, no registers are used in this way.  */
 
@@ -622,6 +626,19 @@ extern enum reg_class regno_reg_class[];
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
   fprintf (FILE, "\tlea LP%d,a0\n\tjsr mcount\n", (LABELNO))
+
+/* Output assembler code to FILE to initialize this source file's
+   basic block profiling info, if that has not already been done.  */
+
+#define FUNCTION_BLOCK_PROFILER(FILE, LABELNO)  \
+  fprintf (FILE, "\ttstl LPBX0\n\tbne LPI%d\n\tpea LPBX0\n\tcall ___bb_init_func\n\taddql #4,sp\nLPI%d:\n",  \
+	   LABELNO, LABELNO);
+
+/* Output assembler code to FILE to increment the entry-count for
+   the BLOCKNO'th basic block in this source file.  */
+
+#define BLOCK_PROFILER(FILE, BLOCKNO)	\
+  fprintf (FILE, "\taddql #1,LPBX2+%d\n", 4 * BLOCKNO)
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
@@ -1083,10 +1100,8 @@ extern enum reg_class regno_reg_class[];
      expression is not an explicit floating point
      test instruction (which has code to deal with
      this), reinit the CC */					\
-  if (((cc_status.value1					\
-	&& FPA_REG_P(cc_status.value1))				\
-       || (cc_status.value2					\
-	   && FPA_REG_P(cc_status.value2)))			\
+  if (((cc_status.value1 && FPA_REG_P (cc_status.value1))	\
+       || (cc_status.value2 && FPA_REG_P (cc_status.value2)))	\
       && !(GET_CODE(EXP) == PARALLEL				\
 	   && GET_CODE (XVECEXP(EXP, 0, 0)) == SET		\
 	   && XEXP (XVECEXP (EXP, 0, 0), 0) == cc0_rtx))	\

@@ -1,22 +1,21 @@
 /* Convert RTL to assembler code and output it, for GNU compiler.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This is the final pass of the compiler.
@@ -92,6 +91,10 @@ extern int sdb_begin_function_line;
 
 /* Line number of last NOTE.  */
 static int last_linenum;
+
+/* Number of basic blocks seen so far;
+   used if profile_block_flag is set.  */
+static int count_basic_blocks;
 
 /* Nonzero while outputting an `asm' with operands.
    This means that inconsistencies are the user's fault, so don't abort.
@@ -207,6 +210,72 @@ init_final (filename)
   next_gdb_filenum = 0;
 }
 
+/* Called at end of source file,
+   to output the block-profiling table for this entire compilation.  */
+
+void
+end_final (filename)
+     char *filename;
+{
+  int i;
+
+  if (profile_block_flag)
+    {
+      char name[12];
+
+      data_section ();
+
+      /* Output the main header, of 6 words:
+	 0:  1 if this file's initialized, else 0.
+	 1:  address of file name.
+	 2:  address of table of counts.
+	 4:  number of counts in the table.
+	 5:  always 0, for compatibility with Sun.
+	 6:  extra word added by GNU: address of address table
+	      which contains addresses of basic blocks,
+	      in parallel with the table of counts.  */
+      ASM_OUTPUT_ALIGN (asm_out_file,
+			exact_log2 (min (UNITS_PER_WORD,
+					 BIGGEST_ALIGNMENT / BITS_PER_UNIT)));
+
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 0);
+      assemble_integer_zero ();
+
+      ASM_GENERATE_INTERNAL_LABEL (name, "LPBX", 1);
+      ASM_OUTPUT_INT (asm_out_file, gen_rtx (SYMBOL_REF, Pmode, name));
+      ASM_GENERATE_INTERNAL_LABEL (name, "LPBX", 2);
+      ASM_OUTPUT_INT (asm_out_file, gen_rtx (SYMBOL_REF, Pmode, name));
+      ASM_OUTPUT_INT (asm_out_file, gen_rtx (CONST_INT, VOIDmode,
+					     count_basic_blocks));
+      assemble_integer_zero ();
+      ASM_GENERATE_INTERNAL_LABEL (name, "LPBX", 3);
+      ASM_OUTPUT_INT (asm_out_file, gen_rtx (SYMBOL_REF, Pmode, name));
+
+      /* Output the file name.  */
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 1);
+      assemble_string (filename, strlen (filename) + 1);
+
+      /* Make space for the table of counts.  */
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 2);
+      ASM_OUTPUT_SKIP (asm_out_file, UNITS_PER_WORD * count_basic_blocks);
+
+      /* Output the table of addresses.  */
+      text_section ();
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 3);
+      for (i = 0; i < count_basic_blocks; i++)
+	{
+	  char name[12];
+	  ASM_GENERATE_INTERNAL_LABEL (name, "LPB", i);
+	  ASM_OUTPUT_INT (asm_out_file, gen_rtx (SYMBOL_REF, Pmode, name));
+	}
+
+      /* End with the address of the table of addresses,
+	 so we can find it easily, as the last word in the file's text.  */
+      ASM_GENERATE_INTERNAL_LABEL (name, "LPBX", 3);
+      ASM_OUTPUT_INT (asm_out_file, gen_rtx (SYMBOL_REF, Pmode, name));
+    }
+}
+
 /* Enable APP processing of subsequent output.
    Used before the output from an `asm' statement.  */
 
@@ -281,6 +350,13 @@ final_start_function (first, file, write_symbols, optimize)
     sdbout_begin_function (last_linenum);
 #endif
 
+#ifdef FUNCTION_BLOCK_PROFILER
+  if (profile_block_flag)
+    {
+      FUNCTION_BLOCK_PROFILER (file, profile_label_no);
+    }
+#endif /* FUNCTION_BLOCK_PROFILER */
+
   if (profile_flag)
     {
       int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
@@ -288,10 +364,12 @@ final_start_function (first, file, write_symbols, optimize)
       extern int current_function_needs_context;
       int sval = current_function_returns_struct;
       int cxt = current_function_needs_context;
+
       data_section ();
       ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
       ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
       assemble_integer_zero ();
+
       text_section ();
 
 #ifdef STRUCT_VALUE_INCOMING_REGNUM
@@ -317,7 +395,6 @@ final_start_function (first, file, write_symbols, optimize)
 #endif /* 0 */
 
       FUNCTION_PROFILER (file, profile_label_no);
-      profile_label_no++;
 
 #if 0
 #ifdef STATIC_CHAIN_INCOMING_REGNUM
@@ -341,6 +418,8 @@ final_start_function (first, file, write_symbols, optimize)
 #endif
 #endif
     }
+
+  profile_label_no++;
 }
 
 /* Output assembler code for the end of a function.
@@ -405,6 +484,7 @@ final (first, file, write_symbols, optimize, prescan)
   register rtx insn;
   register int i;
   rtx last_ignored_compare = 0;
+  int new_block = 1;
 
   init_recog ();
 
@@ -497,6 +577,7 @@ final (first, file, write_symbols, optimize, prescan)
 	  CC_STATUS_INIT;
 	  if (prescan > 0)
 	    break;
+	  new_block = 1;
 	  if (app_on)
 	    {
 	      fprintf (file, ASM_APP_OFF);
@@ -536,6 +617,21 @@ final (first, file, write_symbols, optimize, prescan)
 	    if (GET_CODE (body) == USE /* These are just declarations */
 		|| GET_CODE (body) == CLOBBER)
 	      break;
+
+	    if (profile_block_flag && new_block)
+	      {
+		new_block = 0;
+		/* Enable the table of basic-block use counts
+		   to point at the code it applies to.  */
+		ASM_OUTPUT_INTERNAL_LABEL (file, "LPB", count_basic_blocks);
+		/* Before first insn of this basic block, increment the
+		   count of times it was entered.  */
+#ifdef BLOCK_PROFILER
+		BLOCK_PROFILER (file, count_basic_blocks);
+#endif
+		count_basic_blocks++;
+	      }
+
 	    if (GET_CODE (body) == ASM_INPUT)
 	      {
 		/* There's no telling what that did to the condition codes.  */
@@ -670,6 +766,11 @@ final (first, file, write_symbols, optimize, prescan)
 	      }
 
 	  reinsert_compare:
+
+	    /* Following a conditional branch, we have a new basic block.  */
+	    if (GET_CODE (insn) == JUMP_INSN && GET_CODE (body) == SET
+		&& GET_CODE (SET_SRC (body)) != LABEL_REF)
+	      new_block = 1;
 
 	    /* If this is a conditional branch, maybe modify it
 	       if the cc's are in a nonstandard state
@@ -808,6 +909,7 @@ final (first, file, write_symbols, optimize, prescan)
 		      abort ();
 		    insn = PREV_INSN (insn);
 		    body = PATTERN (insn);
+		    new_block = 0;
 		    goto reinsert_compare;
 		  }
 	      }

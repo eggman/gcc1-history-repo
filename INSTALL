@@ -1,4 +1,4 @@
-This is a copy of one node from the Info file gcc.info-1.
+This is a copy of one node from the Info file gcc.info-2.
 For full information on installing and porting GCC, refer to the
 GCC manual:
 
@@ -43,7 +43,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           Intel 386 PCs running system V, using the GNU assembler and
           GNU linker.
 
-    `sequent-386'
+    `sequent-i386'
           Sequent with Intel 386 processors.
 
     `sun2'
@@ -94,7 +94,7 @@ Here is the procedure for installing GNU CC on a Unix system.
     `hp9k320'
           HP 9000 series 300 using HPUX assembler.
 
-    `kp9k320g'
+    `hp9k320g'
           HP 9000 series 300 using GNU assembler, linker and debugger.
           This requires the HP-adapt package which is or will soon be
           available along with the linker.
@@ -104,6 +104,9 @@ Here is the procedure for installing GNU CC on a Unix system.
 
     `news800'
           Sony NEWS 68020 system.
+
+    `next'
+          NeXT system.
 
     `3b1'
           AT&T 3b1, a.k.a. 7300 PC.
@@ -224,6 +227,9 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           Note that Encore systems are supported only under BSD.
 
+          For Sparc (Sun 4) machines, use `tm-sparc.h' with operating
+          system version 4, and `tm-sun4os3.h' with system version 3.
+
         * Make a symbolic link named `md' to the machine description
           pattern file.  Its name should be `MACHINE.md', but MACHINE
           is often not the same as the name used in the `tm.h' file
@@ -306,7 +312,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      `gcc-cc1', `gcc-cpp' and `gcc-gnulib' in directory
      `/usr/local/lib', which is where the compiler driver program
      looks for them.  It also copies the driver program `gcc' into
-     the directory `/usr/local', so that it appears in typical
+     the directory `/usr/local/bin', so that it appears in typical
      execution search paths.
 
      *Warning: there is a bug in `alloca' in the Sun library.  To
@@ -332,7 +338,7 @@ Here is the procedure for installing GNU CC on a Unix system.
      `fixincludes'.  This installs modified, corrected copies of the
      files `ioctl.h', `ttychars.h' and many others, in a special
      directory where only GNU CC will normally look for them.  This
-     script will work on various systems because it choose the files
+     script will work on various systems because it chooses the files
      by searching all the system headers for the problem cases that
      we know about.
 
@@ -347,7 +353,6 @@ Also, you can specify an alternative default directory for these
 files by setting the Make variable `libdir' when you make GNU CC.
 
 
-
 File: gcc.info,  Node: VMS Install,  Prev: Installation,  Up: Installation
 
 Installing GNU CC on VMS

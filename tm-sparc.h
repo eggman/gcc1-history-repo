@@ -4,23 +4,31 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Note that some other tm- files include this one and then override
    many of the definitions that relate to assembler syntax.  */
+
+/* Specify library to handle `-a' basic block profiling.  */
+
+#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
+%{a:/usr/lib/bb_link.o} "
+
+/* Special flags to the Sun-4 assembler when using pipe for input.  */
+
+#define ASM_SPEC " %{pipe:-} "
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
@@ -585,7 +593,27 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    for profiling a function entry.  */
 
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
-   abort ();
+  fprintf (FILE, "\tsethi %%hi(LP%d),%%o0\n\tcall mcount\n\tor %%lo(LP%d),%%o0,%%o0\n", \
+	   (LABELNO), (LABELNO))
+
+/* Output assembler code to FILE to initialize this source file's
+   basic block profiling info, if that has not already been done.  */
+
+#define FUNCTION_BLOCK_PROFILER(FILE, LABELNO)  \
+  fprintf (FILE, "\tsethi %%hi(LPBX0),%%o0\n\tld [%%lo(LPBX0)+%%o0],%%o1\n\ttst %%o1\n\tbne LPB%d\n\tnop\n\tcall ___bb_init_func\n\tnop\nLPB%d:\n",  \
+	   (LABELNO), (LABELNO))
+
+/* Output assembler code to FILE to increment the entry-count for
+   the BLOCKNO'th basic block in this source file.  */
+
+#define BLOCK_PROFILER(FILE, BLOCKNO) \
+{								\
+  int blockn = (BLOCKNO);					\
+  fprintf (FILE, "\tsethi %%hi(LPBX2+%d),%%g1\n\tld [%%lo(LPBX2+%d)+%%g1],%%g2\n\
+\tadd %%g2,1,%%g2\n\tst %%g2,[%%lo(LPBX2+%d)+%%g1]\n",		\
+	   4 * blockn, 4 * blockn, 4 * blockn);			\
+  CC_STATUS_INIT;  /* We have clobbered %g1.  Also %g2.  */	\
+}
 
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in

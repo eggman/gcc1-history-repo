@@ -1383,10 +1383,7 @@ what happens.  The self-references that do not expand in the first scan are
 marked so that they will not expand in the second scan either.
 
 The prescan is not done when an argument is stringified or concatenated.
-(More precisely, stringification and concatenation use the argument as
-written, in un-prescanned form.  The same actual argument would be used in
-prescanned form if it is substituted elsewhere without stringification or
-concatenation.)  Thus,
+Thus,
 
 @example
 #define str(s) #s
@@ -1398,9 +1395,22 @@ str (foo)
 expands to @samp{"foo"}.  Once more, prescan has been prevented from
 having any noticeable effect.
 
+More precisely, stringification and concatenation use the argument as
+written, in un-prescanned form.  The same actual argument would be used in
+prescanned form if it is substituted elsewhere without stringification or
+concatenation.
+
+@example
+#define str(s) #s lose(s)
+#define foo 4
+str (foo)
+@end example
+
+expands to @samp{"foo" lose(4)}.
+
 You might now ask, ``Why mention the prescan, if it makes no difference?
-Why not skip it and make the preprocessor faster?''  The answer is that the
-prescan does make a difference in two special cases:
+And why not skip it and make the preprocessor faster?''  The answer is
+that the prescan does make a difference in three special cases:
 
 @itemize @bullet
 @item
@@ -1408,6 +1418,9 @@ Nested calls to a macro.
 
 @item
 Macros that call other macros that stringify or concatenate.
+
+@item
+Macros whose expansions contain unshielded commas.
 @end itemize
 
 We say that @dfn{nested} calls to a macro occur when a macro's actual
@@ -1422,6 +1435,52 @@ during the main scan as an indirect self-reference and would not
 be expanded.  Here, the prescan cancels an undesirable side effect
 (in the medical, not computational, sense of the term) of the special
 rule for self-referential macros.
+
+But prescan causes trouble in certain other cases of nested macro calls.
+Here is an example:
+
+@example
+#define foo  a,b
+#define bar(x) lose(x)
+#define lose(x) (1 + (x))
+
+bar(foo)
+@end example
+
+@noindent
+We would like @samp{bar(foo)} to turn into @samp{(1 + (foo))}, which
+would then turn into @samp{(1 + (a,b))}.  But instead, @samp{bar(foo)}
+expands into @samp{lose(a,b)}, and you get an error because @code{lose}
+requires a single argument.  In this case, the problem is easily solved
+by the same parentheses that ought to be used to prevent misnesting of
+arithmetic operations:
+
+@example
+#define foo (a,b)
+#define bar(x) lose((x))
+@end example
+
+The problem is more serious when the operands of the macro are not
+expressions; for example, when they are statements.  Then parentheses
+are unacceptable because they would make for invalid C code:
+
+@example
+#define foo @{ int a, b; @dots{} @}
+@end example
+
+@noindent
+In GNU C you can shield the commas using the @samp{(@{@dots{}@})}
+construct which turns a compound statement into an expression:
+
+@example
+#define foo (@{ int a, b; @dots{} @})
+@end example
+
+Or you can rewrite the macro definition to avoid such commas:
+
+@example
+#define foo @{ int a; int b; @dots{} @}
+@end example
 
 There is also one case where prescan is useful.  It is possible
 to use prescan to expand an argument and then stringify it---if you use

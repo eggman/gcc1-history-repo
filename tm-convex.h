@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* Names to predefine in the preprocessor for this target machine.  */
@@ -61,7 +60,9 @@ extern int target_flags;
 
 /* Default target_flags if no switches specified.  */
 
+#ifndef TARGET_DEFAULT
 #define TARGET_DEFAULT 0
+#endif
 
 /* Pick a target if none was specified */
 
@@ -69,7 +70,7 @@ extern int target_flags;
 
 /* Allow $ in identifiers */
 
-#define DOLLARS_IN_IDENTIIFERS 1
+#define DOLLARS_IN_IDENTIFIERS 1
 
 /* Target machine storage layout */
 
@@ -81,6 +82,7 @@ extern int target_flags;
 #define BYTES_BIG_ENDIAN
 
 /* Define this if most significant word of a multiword number is numbered.  */
+/* Lie, so that gcc will take the low part of double reg N in reg N.  */
 /* #define WORDS_BIG_ENDIAN */
 
 /* Number of bits in an addressible storage unit */
@@ -186,7 +188,7 @@ extern int target_flags;
 #define ARG_POINTER_REGNUM 14
 
 /* Register in which static-chain is passed to a function.  */
-#define STATIC_CHAIN_REGNUM 10
+#define STATIC_CHAIN_REGNUM 0
 
 /* Register in which address to store a structure value
    is passed to a function.  */
@@ -277,9 +279,15 @@ enum reg_class { NO_REGS, S_REGS, A_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C) \
   (LD_D_P (VALUE) || LD_L_P (VALUE))
 
-#define LD_D_P(X)  (CONST_DOUBLE_HIGH (X) == 0)
-#define LD_L_P(X)  (CONST_DOUBLE_HIGH (X) >= 0 ? \
-		    CONST_DOUBLE_LOW (X) == 0 : CONST_DOUBLE_LOW (X) == -1)
+#define LD_D_P(X) (const_double_low_int (X) == 0)
+
+#define LD_L_P(X) (const_double_low_int (X) >= 0 \
+		   ? const_double_high_int (X) == 0 \
+		   : const_double_high_int (X) == -1)
+
+extern int const_double_low_int ();
+extern int const_double_high_int ();
+extern int const_double_float_int ();
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.
@@ -304,6 +312,10 @@ enum reg_class { NO_REGS, S_REGS, A_REGS, ALL_REGS, LIM_REG_CLASSES };
    goes at a more negative offset in the frame.  */
 #define FRAME_GROWS_DOWNWARD
 
+/* Define this if should default to -fcaller-saves.  */
+
+#define DEFAULT_CALLER_SAVES
+
 /* Offset within stack frame to start allocating local variables at.
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
    first local allocated.  Otherwise, it is the offset to the BEGINNING
@@ -312,7 +324,7 @@ enum reg_class { NO_REGS, S_REGS, A_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* If we generate an insn to push BYTES bytes,
    this says how many the stack pointer really advances by. */
-#define PUSH_ROUNDING(BYTES) (BYTES)
+#define PUSH_ROUNDING(BYTES) (((BYTES) + 3) & ~3)
 
 /* Offset of first parameter from the argument pointer register value.  */
 #define FIRST_PARM_OFFSET(FNDECL) 0
@@ -342,6 +354,11 @@ enum reg_class { NO_REGS, S_REGS, A_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* On Convex the return value is in S0 regardless.  */   
 
 #define LIBCALL_VALUE(MODE)  gen_rtx (REG, MODE, 0)
+
+/* Define this if PCC uses the nonreentrant convention for returning
+   structure and union values.  */
+
+#define PCC_STATIC_STRUCT_RETURN
 
 /* 1 if N is a possible register number for a function value.
    On the Convex, S0 is the only register thus used.  */
@@ -407,7 +424,7 @@ enum reg_class { NO_REGS, S_REGS, A_REGS, ALL_REGS, LIM_REG_CLASSES };
    knowing which registers should not be saved even if used.  */
 
 #define FUNCTION_PROLOGUE(FILE, SIZE)     \
-{  if ((SIZE) != 0) fprintf (FILE, "\tsub.w #%d,sp\n", (SIZE));}
+{  if ((SIZE) != 0) fprintf (FILE, "\tsub.w #%d,sp\n", ((SIZE) + 3) & -4);}
 
 /* Output assembler code to FILE to increment profiler label # LABELNO
    for profiling a function entry.  */
@@ -779,11 +796,10 @@ extern char *align_section ();
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
   sprintf (LABEL, "*%s%d", PREFIX, NUM)
 
-/* This is how to output an assembler line defining a `double' constant.
-   USE HEX until gcc is modified not to call this with DImode constants.  */
+/* This is how to output an assembler line defining a `double' constant.  */
 
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-  fprintf (FILE, "\tds.l 0x%016llx\n", (VALUE))
+  fprintf (FILE, "\tds.d %.17#g\n", (VALUE))
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
@@ -919,7 +935,7 @@ extern char *align_section ();
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
-      fprintf (FILE, "#%.20#g", u.d); }			 		\
+      fprintf (FILE, "#%.9#g", u.d); }			 		\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
 
 /* Print a memory operand whose address is X, on file FILE. */
@@ -965,4 +981,3 @@ extern char *align_section ();
   if (index) 								\
     fprintf (FILE, "(%s)", reg_name[REGNO (index)]);			\
 }
-

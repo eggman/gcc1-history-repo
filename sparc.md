@@ -4,20 +4,19 @@
 
 ;; This file is part of GNU CC.
 
-;; GNU CC is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.  No author or distributor
-;; accepts responsibility to anyone for the consequences of using it
-;; or for whether it serves any particular purpose or works at all,
-;; unless he says so in writing.  Refer to the GNU CC General Public
-;; License for full details.
+;; GNU CC is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 1, or (at your option)
+;; any later version.
 
-;; Everyone is granted permission to copy, modify and redistribute
-;; GNU CC, but only under the conditions described in the
-;; GNU CC General Public License.   A copy of this license is
-;; supposed to have been given to you along with GNU CC so you
-;; can know your rights and responsibilities.  It should be in a
-;; file named COPYING.  Among other things, the copyright notice
-;; and this notice must be preserved on all copies.
+;; GNU CC is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU CC; see the file COPYING.  If not, write to
+;; the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
 ;;- See file "rtl.def" for documentation on define_insn, match_*, et. al.
@@ -31,8 +30,8 @@
 ;; This controls RTL generation and register allocation.
 (define_insn "cmpsi"
   [(set (cc0)
-	(minus (match_operand:SI 0 "arith_operand" "r,rI")
-	       (match_operand:SI 1 "arith_operand" "I,r")))]
+	(compare (match_operand:SI 0 "arith_operand" "r,rI")
+		 (match_operand:SI 1 "arith_operand" "I,r")))]
   ""
   "*
 {
@@ -46,15 +45,15 @@
 
 (define_expand "cmpdf"
   [(set (cc0)
-	(minus:DF (match_operand:DF 0 "nonmemory_operand" "f,fG")
-		  (match_operand:DF 1 "nonmemory_operand" "G,f")))]
+	(compare (match_operand:DF 0 "nonmemory_operand" "f,fG")
+		 (match_operand:DF 1 "nonmemory_operand" "G,f")))]
   ""
   "emit_insn (gen_rtx (USE, VOIDmode, gen_rtx (REG, DFmode, 32)));")
 
 (define_insn ""
   [(set (cc0)
-	(minus:DF (match_operand:DF 0 "nonmemory_operand" "f,fG")
-		  (match_operand:DF 1 "nonmemory_operand" "G,f")))]
+	(compare (match_operand:DF 0 "nonmemory_operand" "f,fG")
+		 (match_operand:DF 1 "nonmemory_operand" "G,f")))]
   ""
   "*
 {
@@ -72,15 +71,15 @@
 
 (define_expand "cmpsf"
   [(set (cc0)
-	(minus:SF (match_operand:SF 0 "nonmemory_operand" "f,fG")
-		  (match_operand:SF 1 "nonmemory_operand" "G,f")))]
+	(compare (match_operand:SF 0 "nonmemory_operand" "f,fG")
+		 (match_operand:SF 1 "nonmemory_operand" "G,f")))]
   ""
   "emit_insn (gen_rtx (USE, VOIDmode, gen_rtx (REG, SFmode, 32)));")
 
 (define_insn ""
   [(set (cc0)
-	(minus:SF (match_operand:SF 0 "nonmemory_operand" "f,fG")
-		  (match_operand:SF 1 "nonmemory_operand" "G,f")))]
+	(compare (match_operand:SF 0 "nonmemory_operand" "f,fG")
+		 (match_operand:SF 1 "nonmemory_operand" "G,f")))]
   ""
   "*
 {
@@ -373,8 +372,8 @@
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
 	(match_operator 1 "eq_or_neq"
-			[(minus (match_operand:SI 2 "general_operand" "r,rI")
-				(match_operand:SI 3 "general_operand" "I,r"))
+			[(compare (match_operand:SI 2 "general_operand" "r,rI")
+				  (match_operand:SI 3 "general_operand" "I,r"))
 			 (const_int 0)]))]
   ""
   "*
@@ -401,8 +400,8 @@
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
 	(match_operator 1 "eq_or_neq"
-			[(minus:DF (match_operand:DF 2 "general_operand" "f,fG")
-				   (match_operand:DF 3 "general_operand" "G,f"))
+			[(compare (match_operand:DF 2 "general_operand" "f,fG")
+				  (match_operand:DF 3 "general_operand" "G,f"))
 			 (const_int 0)]))]
   ""
   "*
@@ -437,8 +436,8 @@
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=r,r")
 	(match_operator 1 "eq_or_neq"
-			[(minus:SF (match_operand:SF 2 "general_operand" "f,fG")
-				   (match_operand:SF 3 "general_operand" "G,f"))
+			[(compare (match_operand:SF 2 "general_operand" "f,fG")
+				  (match_operand:SF 3 "general_operand" "G,f"))
 			 (const_int 0)]))]
   ""
   "*
@@ -1696,7 +1695,7 @@
     {
       cc_status.flags |= CC_KNOW_HI_G1;
       cc_status.mdep = XEXP (operands[1], 0);
-      return \"sethi %%hi(%m1),%%g1\;ldsb [%%g1+%%lo(a1)],%0\";
+      return \"sethi %%hi(%m1),%%g1\;ldsb [%%g1+%%lo(%m1)],%0\";
     }
   return \"ldsb %1,%0\";
 }")
@@ -1712,7 +1711,7 @@
     {
       cc_status.flags |= CC_KNOW_HI_G1;
       cc_status.mdep = XEXP (operands[1], 0);
-      return \"sethi %%hi(%m1),%%g1\;ldub [%%g1+%%lo(a1)],%0\";
+      return \"sethi %%hi(%m1),%%g1\;ldub [%%g1+%%lo(%m1)],%0\";
     }
   return \"ldub %1,%0\";
 }")

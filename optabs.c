@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -331,6 +330,63 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 	}
     }
   delete_insns_since (last);
+  return 0;
+}
+
+/* Expand a binary operator which has both signed and unsigned forms.
+   UOPTAB is the optab for unsigned operations, and SOPTAB is for
+   signed operations.
+
+   If we widen unsigned operands, we may use a signed wider operation instead
+   of an unsigned wider operation, since the result would be the same.  */
+
+rtx
+sign_expand_binop (mode, uoptab, soptab, op0, op1, target, unsignedp, methods)
+    enum machine_mode mode;
+    optab uoptab, soptab;
+    rtx op0, op1, target;
+    int unsignedp;
+    enum optab_methods methods;
+{
+  register rtx temp;
+  optab direct_optab = unsignedp ? uoptab : soptab;
+  struct optab wide_soptab;
+
+  /* Do it without widening, if possible.  */
+  temp = expand_binop (mode, direct_optab, op0, op1, target,
+		       unsignedp, OPTAB_DIRECT);
+  if (temp || methods == OPTAB_DIRECT)
+    return temp;
+
+  /* Try widening to a signed int.  Make a fake signed optab that
+     hides any signed insn for direct use.  */
+  wide_soptab = *soptab;
+  wide_soptab.handlers[(int) mode].insn_code = CODE_FOR_nothing;
+  wide_soptab.handlers[(int) mode].lib_call = 0;
+
+  temp = expand_binop (mode, &wide_soptab, op0, op1, target,
+		       unsignedp, OPTAB_WIDEN);
+
+  /* For unsigned operands, try widening to an unsigned int.  */
+  if (temp == 0 && unsignedp)
+    temp = expand_binop (mode, uoptab, op0, op1, target,
+			 unsignedp, OPTAB_WIDEN);
+  if (temp || methods == OPTAB_WIDEN)
+    return temp;
+
+  /* Use the right width lib call if that exists.  */
+  temp = expand_binop (mode, direct_optab, op0, op1, target, unsignedp, OPTAB_LIB);
+  if (temp || methods == OPTAB_LIB)
+    return temp;
+
+  /* Must widen and use a lib call, use either signed or unsigned.  */
+  temp = expand_binop (mode, &wide_soptab, op0, op1, target,
+		       unsignedp, methods);
+  if (temp != 0)
+    return temp;
+  if (unsignedp)
+    return expand_binop (mode, uoptab, op0, op1, target,
+			 unsignedp, methods);
   return 0;
 }
 

@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 
@@ -65,9 +64,9 @@ extern short *reg_n_deaths;
 
 #define PSEUDO_REGNO_MODE(N) GET_MODE (regno_reg_rtx[N])
 
-/* Indexed by N, gives 1 if (REG n) is live across a CALL_INSN.  */
+/* Indexed by N, gives number of CALL_INSNS across which (REG n) is live.  */
 
-extern char *reg_crosses_call;
+extern int *reg_n_calls_crossed;
 
 /* Total number of instructions at which (REG n) is live.
    The larger this is, the less priority (REG n) gets for
@@ -126,3 +125,16 @@ extern char *regno_pointer_flag;
    This is computed by reg_scan.  */
 
 extern rtx *regno_reg_rtx;
+
+/* Flag set by local-alloc or global-alloc if they decide to allocate
+   something in a call-clobbered register.  */
+
+extern int caller_save_needed;
+
+/* Predicate to decide whether to give a hard reg to a pseudo which
+   is referenced REFS times and would need to be saved and restored
+   around a call CALLS times.  */
+
+#ifndef CALLER_SAVE_PROFITABLE
+#define CALLER_SAVE_PROFITABLE(REFS, CALLS)  (4 * (CALLS) < (REFS))
+#endif

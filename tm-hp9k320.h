@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Define USE_GAS if GCC is supposed to work with the GNU assembler,
    GNU linker and GNU debugger using DBX debugging information.
@@ -37,7 +36,9 @@ and this notice must be preserved on all copies.  */
 
 /* See tm-m68k.h.  7 means 68020 with 68881.  */
 
+#ifndef TARGET_DEFAULT
 #define	TARGET_DEFAULT 7
+#endif
 
 /* Define __HAVE_68881__ in preprocessor, unless -msoft-float is specified.
    This will control the use of inline 68881 insns in certain macros.  */
@@ -49,9 +50,25 @@ and this notice must be preserved on all copies.  */
 #define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} -D__HPUX_ASM__"
 #define ASM_SPEC "%{m68000:+X}"
 #else
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__}"
 
-/* -m68000 requires special flags to gas  */
+#if TARGET_DEFAULT & 02
+
+/* -m68881 is the default */
+#define CPP_SPEC \
+"%{!msoft-float:-D__HAVE_68881__ }\
+%{!ansi:%{m68000:-Dmc68000}%{mc68000:-Dmc68000}%{!mc68000:%{!m68000:-Dmc68020}}}"
+
+#else
+
+/* -msoft-float is the default */
+#define CPP_SPEC \
+"%{m68881:-D__HAVE_68881__ }\
+%{!ansi:%{m68000:-Dmc68000}%{mc68000:-Dmc68000}%{!mc68000:%{!m68000:-Dmc68020}}}"
+
+#endif
+
+
+/* -m68000 requires special flags to the assembler.  */
 #define ASM_SPEC \
  "%{m68000:-mc68000}%{mc68000:-mc68000}%{!mc68000:%{!m68000:-mc68020}}"
 
@@ -65,7 +82,7 @@ and this notice must be preserved on all copies.  */
 /* Names to predefine in the preprocessor for this target machine
    (for non-strict-ANSI programs only).  */
 
-#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dmc68000 -Dhpux -Dunix"
+#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dhpux -Dunix"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 

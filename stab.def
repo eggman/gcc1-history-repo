@@ -135,7 +135,8 @@ __define_stab (N_SSYM, 0x60, "SSYM")
    (On most machines the argument pointer is the same as the frame pointer.  */
 __define_stab (N_PSYM, 0xa0, "PSYM")
 
-/* Automatic variable in the stack.  Value is offset from frame pointer.  */
+/* Automatic variable in the stack.  Value is offset from frame pointer.
+   Also used for type descriptions.  */
 __define_stab (N_LSYM, 0x80, "LSYM")
 
 /* Alternate entry point.  Value is its address.  */

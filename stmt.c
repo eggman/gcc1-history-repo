@@ -1,22 +1,21 @@
 /* Expands front end tree to back end RTL for GNU C-Compiler
-   Copyright (C) 1987,1988, 1989 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file handles the generation of rtl code from tree structure
@@ -72,6 +71,11 @@ int current_function_pops_args;
 
 int current_function_returns_struct;
 
+/* Nonzero if function being compiled needs to
+   return the address of where it has put a structure value.  */
+
+int current_function_returns_pcc_struct;
+
 /* Nonzero if function being compiled needs to be passed a static chain.  */
 
 int current_function_needs_context;
@@ -108,6 +112,11 @@ rtx save_expr_regs;
 /* List (chain of EXPR_LISTs) of all stack slots in this function.
    Made for the sake of unshare_all_rtl.  */
 rtx stack_slot_list;
+
+/* Filename and line number of last line-number note,
+   whether we actually emitted it or not.  */
+char *emit_filename;
+int emit_lineno;
 
 /* Insn after which register parms and SAVE_EXPRs are born, if nonopt.  */
 static rtx parm_birth_insn;
@@ -672,7 +681,9 @@ fixup_gotos (thisblock, stack_level, cleanup_list, first_insn, dont_jump_in)
 	 Also mark the cleanup_list_list element for F
 	 that corresponds to this block, so that ultimately
 	 this block's cleanups will be executed by the code above.  */
-      else
+      /* Note: if THISBLOCK == 0 and we have a label that hasn't appeared,
+	 it means the label is undefined.  That's erroneous, but possible.  */
+      else if (thisblock != 0)
 	{
 	  tree lists = f->cleanup_list_list;
 	  for (; lists; lists = TREE_CHAIN (lists))
@@ -874,8 +885,6 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 
       for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
 	{
-	  tree val = TREE_VALUE (tail);
-
 	  XVECEXP (body, 0, i)
 	    = gen_rtx (SET, VOIDmode,
 		       output_rtx[i],
@@ -947,7 +956,8 @@ expand_expr_stmt (exp)
      except inside a ({...}) where they may be useful.  */
   if (extra_warnings && expr_stmts_for_value == 0 && !TREE_VOLATILE (exp)
       && exp != error_mark_node)
-    warning ("statement with no effect");
+    warning_with_file_and_line (emit_filename, emit_lineno,
+				"statement with no effect");
   last_expr_type = TREE_TYPE (exp);
   if (! flag_syntax_only)
     last_expr_value = expand_expr (exp, expr_stmts_for_value ? 0 : const0_rtx,
@@ -1300,7 +1310,7 @@ expand_null_return_1 (last_insn)
   do_pending_stack_adjust ();
 #ifdef FUNCTION_EPILOGUE
 #ifdef HAVE_return
-  if (! HAVE_return)
+  if (! HAVE_return || current_function_returns_pcc_struct)
     expand_goto_internal (0, return_label, last_insn);
   else
     {
@@ -1324,15 +1334,20 @@ void
 expand_return (retval)
      tree retval;
 {
-  /* If there are any cleanups to be performed, then they will
-     be inserted in front of our `last_insn'.  It is desirable
-     that the last_insn, for such purposes, should be the
-     last insn before computing the return value.  Otherwise, cleanups
-     which call functions can clobber the return value.  */
-  rtx last_insn = get_last_insn ();
   register rtx val = 0;
   register rtx op0;
   tree retval_rhs;
+  int cleanups;
+  struct nesting *block;
+
+  /* Are any cleanups needed?  E.g. C++ destructors to be run?  */
+  cleanups = 0;
+  for (block = block_stack; block; block = block->next)
+    if (block->data.block.cleanups != 0)
+      {
+	cleanups = 1;
+	break;
+      }
 
   if (TREE_CODE (retval) == RESULT_DECL)
     retval_rhs = retval;
@@ -1366,12 +1381,13 @@ expand_return (retval)
 	  emit_label_after (tail_recursion_label,
 			    tail_recursion_reentry);
 	}
-      expand_goto_internal (0, tail_recursion_label, last_insn);
+      expand_goto_internal (0, tail_recursion_label, get_last_insn ());
       emit_barrier ();
       return;
     }
 #ifdef HAVE_return
-  if (HAVE_return)
+  if (HAVE_return && ! cleanups
+      && ! current_function_returns_pcc_struct)
     {
       /* If this is  return x == y;  then generate
 	 if (x == y) return 1; else return 0;
@@ -1404,13 +1420,36 @@ expand_return (retval)
 	  }
     }
 #endif /* HAVE_return */
-  val = expand_expr (retval, 0, VOIDmode, 0);
-  emit_queue ();
 
-  if (GET_CODE (val) == REG)
-    emit_insn (gen_rtx (USE, VOIDmode, val));
+  if (cleanups && GET_CODE (DECL_RTL (DECL_RESULT (this_function))) == REG)
+    {
+      rtx last_insn;
+      /* Calculate the return value into a pseudo reg.  */
+      val = expand_expr (retval_rhs, 0, VOIDmode, 0);
+      emit_queue ();
+      /* Put the cleanups here.  */
+      last_insn = get_last_insn ();
+      /* Copy the value into hard return reg.  */
+      emit_move_insn (DECL_RTL (DECL_RESULT (this_function)), val);
+      val = DECL_RTL (DECL_RESULT (this_function));
 
-  expand_null_return_1 (last_insn);
+      if (GET_CODE (val) == REG)
+	emit_insn (gen_rtx (USE, VOIDmode, val));
+      expand_null_return_1 (last_insn);
+    }
+  else
+    {
+      /* No cleanups or no hard reg used;
+	 calculate value into hard return reg
+	 and let cleanups come after.  */
+      val = expand_expr (retval, 0, VOIDmode, 0);
+      emit_queue ();
+
+      val = DECL_RTL (DECL_RESULT (this_function));
+      if (GET_CODE (val) == REG)
+	emit_insn (gen_rtx (USE, VOIDmode, val));
+      expand_null_return ();
+    }
 }
 
 /* Return 1 if the end of the generated RTX is not a barrier.
@@ -2169,7 +2208,6 @@ pushcase_range (value1, value2, label)
   register struct case_node *n;
   tree index_type;
   tree nominal_type;
-  tree value;
 
   /* Fail if not inside a real case statement.  */
   if (! (case_stack && case_stack->data.case_stmt.start))
@@ -3025,7 +3063,6 @@ static void
 fixup_var_refs (var)
      rtx var;
 {
-  register rtx insn;
   extern rtx sequence_stack;
   rtx stack = sequence_stack;
   tree pending;
@@ -3301,7 +3338,7 @@ fixup_memory_subreg (x, insn)
 
 #ifdef BYTES_BIG_ENDIAN
   offset += (MIN (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (SUBREG_REG (x))))
-	     - MIN (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (x))));
+	     - MIN (UNITS_PER_WORD, GET_MODE_SIZE (mode)));
 #endif
   addr = plus_constant (addr, offset);
   if (memory_address_p (mode, addr))
@@ -3889,6 +3926,7 @@ assign_parms (fndecl)
 		   && ! TREE_INLINE (fndecl))
 		  /* layout_decl may set this.  */
 		  || TREE_ADDRESSABLE (parm)
+		  || TREE_VOLATILE (parm)
 		  /* If -ffloat-store specified, don't put explicit
 		     float variables into registers.  */
 		  || (flag_float_store
@@ -4035,7 +4073,7 @@ uninitialized_vars_warning (block)
 	  && GET_CODE (DECL_RTL (decl)) == REG
 	  && regno_uninitialized (REGNO (DECL_RTL (decl))))
 	warning_with_decl (decl,
-			   "variable `%s' used uninitialized in this function");
+			   "`%s' may be used uninitialized in this function");
       if (TREE_CODE (decl) == VAR_DECL
 	  && GET_CODE (DECL_RTL (decl)) == REG
 	  && regno_clobbered_at_setjmp (REGNO (DECL_RTL (decl))))
@@ -4119,14 +4157,13 @@ expand_function_start (subr)
 
   current_function_calls_setjmp = 0;
 
-  /* Nonzero if this function needs an arg saying where to store value.  */
-  current_function_returns_struct
-    = (DECL_MODE (DECL_RESULT (current_function_decl)) == BLKmode);
+  current_function_returns_pcc_struct = 0;
+  current_function_returns_struct = 0;
 
   /* Make the label for return statements to jump to, if this machine
      does not have a one-instruction return.  */
 #ifdef HAVE_return
-  if (HAVE_return)
+  if (HAVE_return && ! current_function_returns_pcc_struct)
     return_label = 0;
   else
     return_label = gen_label_rtx ();
@@ -4180,19 +4217,38 @@ expand_function_start (subr)
 
   /* Initialize rtx used to return the value.  */
 
-  if (DECL_MODE (DECL_RESULT (subr)) == BLKmode)
+  /* Decide whether to return the value in memory or in a register.  */
+  if (DECL_MODE (DECL_RESULT (current_function_decl)) == BLKmode
+      || (flag_pcc_struct_return
+	  && ((TREE_CODE (TREE_TYPE (DECL_RESULT (current_function_decl)))
+	       == RECORD_TYPE)
+	      || (TREE_CODE (TREE_TYPE (DECL_RESULT (current_function_decl)))
+		  == UNION_TYPE))))
     {
       /* Returning something that won't go in a register.  */
       register rtx value_address;
 
-      /* Expect to be passed the address of a place to store the value.  */
-      value_address = gen_reg_rtx (Pmode);
-      emit_move_insn (value_address, struct_value_incoming_rtx);
+#ifdef PCC_STATIC_STRUCT_RETURN
+      if (flag_pcc_struct_return)
+	{
+	  int size = int_size_in_bytes (TREE_TYPE (DECL_RESULT (subr)));
+	  value_address = assemble_static_space (size);
+	  current_function_returns_pcc_struct = 1;
+	}
+      else
+#endif
+	{
+	  /* Expect to be passed the address of a place to store the value.  */
+	  value_address = gen_reg_rtx (Pmode);
+	  emit_move_insn (value_address, struct_value_incoming_rtx);
+	  current_function_returns_struct = 1;
+	}
       DECL_RTL (DECL_RESULT (subr))
 	= gen_rtx (MEM, DECL_MODE (DECL_RESULT (subr)),
 		   value_address);
     }
   else
+    /* Scalar, returned in a register.  */
 #ifdef FUNCTION_OUTGOING_VALUE
     DECL_RTL (DECL_RESULT (subr))
       = FUNCTION_OUTGOING_VALUE (TREE_TYPE (DECL_RESULT (subr)), subr);
@@ -4244,7 +4300,7 @@ expand_function_end (filename, line)
 
   /* If returning a structure, arrange to return the address of the value
      in a place where debuggers expect to find it.  */
-  if (DECL_MODE (DECL_RESULT (current_function_decl)) == BLKmode)
+  if (current_function_returns_struct)
     {
       rtx value_address = XEXP (DECL_RTL (DECL_RESULT (current_function_decl)), 0);
       tree type = TREE_TYPE (DECL_RESULT (current_function_decl));
@@ -4290,11 +4346,27 @@ expand_function_end (filename, line)
      put here the label that return statements jump to.
      If there will be no epilogue, write a return instruction.  */
 #ifdef HAVE_return
-  if (HAVE_return)
+  if (HAVE_return && ! current_function_returns_pcc_struct)
     emit_jump_insn (gen_return ());
   else
 #endif
     emit_label (return_label);
+
+  /* If returning a structure PCC style,
+     really return the address of where we put the structure.
+     Do this after the return label, since all returns must
+     do it.  */
+  if (current_function_returns_pcc_struct)
+    {
+      rtx value_address = XEXP (DECL_RTL (DECL_RESULT (current_function_decl)), 0);
+      tree type = TREE_TYPE (DECL_RESULT (current_function_decl));
+      rtx outgoing
+	= hard_function_value (build_pointer_type (type),
+			       current_function_decl);
+
+      emit_move_insn (outgoing, value_address);
+      use_variable (outgoing);
+    }
 
   /* Fix up any gotos that jumped out to the outermost
      binding level of the function.
@@ -4305,5 +4377,3 @@ expand_function_end (filename, line)
      then you will lose.  */
   fixup_gotos (0, 0, 0, get_insns (), 0);
 }
-
-

@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file is part of the C front end.
@@ -601,6 +600,26 @@ c_alignof (type)
   return build_int (TYPE_ALIGN (type) / BITS_PER_UNIT);
 }
 
+/* Return either DECL or its known constant value (if it has one).  */
+
+static tree
+decl_constant_value (decl)
+     tree decl;
+{
+  if (! TREE_PUBLIC (decl)
+      /* Don't change a variable array bound or initial value to a constant
+	 in a place where a variable is invalid.  */
+      && current_function_decl != 0
+      && ! pedantic
+      && ! TREE_THIS_VOLATILE (decl)
+      && DECL_INITIAL (decl) != 0
+      && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR
+      && TREE_CODE (DECL_INITIAL (decl)) != ERROR_MARK
+      && DECL_MODE (decl) != BLKmode)
+    return DECL_INITIAL (decl);
+  return decl;
+}
+
 /* Perform default promotions for C data used in expressions.
    Arrays and functions are converted to pointers;
    enumeral types or short or char, to int.
@@ -615,6 +634,11 @@ default_conversion (exp)
 
   if (TREE_CODE (exp) == CONST_DECL)
     exp = DECL_INITIAL (exp);
+  /* Replace a nonvolatile const static variable with its value.  */
+  else if (optimize
+	   && TREE_CODE (exp) == VAR_DECL
+	   && TREE_READONLY (exp))
+    exp = decl_constant_value (exp);
 
   /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
      Strip such NOP_EXPRs, since EXP is being used in non-lvalue context.  */
@@ -667,9 +691,9 @@ default_conversion (exp)
 	  return error_mark_node;
 	}
 
-      if (TREE_READONLY (exp) || TREE_VOLATILE (exp))
+      if (TREE_READONLY (exp) || TREE_THIS_VOLATILE (exp))
 	restype = build_type_variant (restype, TREE_READONLY (exp),
-				      TREE_VOLATILE (exp));
+				      TREE_THIS_VOLATILE (exp));
 
       ptrtype = build_pointer_type (restype);
 
@@ -1002,13 +1026,22 @@ actualparameterlist (typelist, values, name)
       if (type != 0)
 	{
 	  /* Formal parm type is specified by a function prototype.  */
-	  tree parmval
-	    = convert_for_assignment (type, val, "argument passing");
+	  tree parmval;
+
+	  if (TYPE_SIZE (type) == 0)
+	    {
+	      error ("parameter type of called function is incomplete");
+	      parmval = val;
+	    }
+	  else
+	    {
+	      parmval = convert_for_assignment (type, val, "argument passing");
 #ifdef PROMOTE_PROTOTYPES
-	  if (TREE_CODE (type) == INTEGER_TYPE
-	      && (TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)))
-	    parmval = default_conversion (parmval);
+	      if (TREE_CODE (type) == INTEGER_TYPE
+		  && (TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)))
+		parmval = default_conversion (parmval);
 #endif
+	    }
 	  parm = build_tree_list (0, parmval);
 	}
       else if (TREE_CODE (TREE_TYPE (val)) == REAL_TYPE
@@ -2753,7 +2786,7 @@ build_c_cast (type, expr)
 {
   register tree value = expr;
   
-  if (type == error_mark_node)
+  if (type == error_mark_node || expr == error_mark_node)
     return error_mark_node;
   type = TYPE_MAIN_VARIANT (type);
 
@@ -2999,7 +3032,7 @@ convert_for_assignment (type, rhs, errtype)
   if (coder == ERROR_MARK)
     return rhs;
 
-  if (type == rhstype)
+  if (TYPE_MAIN_VARIANT (type) == TYPE_MAIN_VARIANT (rhstype))
     return rhs;
 
   if (coder == VOID_TYPE)
@@ -3159,7 +3192,7 @@ store_init_value (decl, init)
   else if (TREE_STATIC (decl)
 	   && ! initializer_constant_valid_p (value))
     {
-      error ("initializer for static variable uses complex arithmetic");
+      error ("initializer for static variable uses complicated arithmetic");
       value = error_mark_node;
     }
   else
@@ -3223,6 +3256,8 @@ digest_init (type, init, tail)
       if (pedantic && code == ARRAY_TYPE
 	  && TREE_CODE (init) != STRING_CST)
 	warning ("ANSI C forbids initializing array from array expression");
+      if (optimize && TREE_READONLY (init) && TREE_CODE (init) == VAR_DECL)
+	return decl_constant_value (init);
       return init;
     }
 
@@ -3234,6 +3269,8 @@ digest_init (type, init, tail)
 	warning ("ANSI C forbids initializing array from array expression");
       if (pedantic && (code == RECORD_TYPE || code == UNION_TYPE))
 	warning ("single-expression nonscalar initializer has braces");
+      if (optimize && TREE_READONLY (element) && TREE_CODE (element) == VAR_DECL)
+	return decl_constant_value (element);
       return element;
     }
 
@@ -3285,13 +3322,15 @@ digest_init (type, init, tail)
 	{
 	  tree string = element ? element : init;
 
-	  if (TREE_TYPE (TREE_TYPE (string)) != char_type_node
+	  if ((TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (string)))
+	       != char_type_node)
 	      && TYPE_PRECISION (typ1) == BITS_PER_UNIT)
 	    {
 	      error ("char-array initialized from wide string");
 	      return error_mark_node;
 	    }
-	  if (TREE_TYPE (TREE_TYPE (string)) == char_type_node
+	  if ((TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (string)))
+	       == char_type_node)
 	      && TYPE_PRECISION (typ1) != BITS_PER_UNIT)
 	    {
 	      error ("int-array initialized from non-wide string");

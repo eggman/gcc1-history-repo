@@ -1,3 +1,22 @@
+/* Fold a constant sub-tree into a single node for C-compiler
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+
+This file is part of GNU CC.
+
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
+
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
+
 /*@@ Fix lossage on folding division of big integers.  */
 
 /*@@ This file should be rewritten to use an arbitary precision
@@ -7,26 +26,6 @@
   @@ warn if precision et. al. is lost.
   @@ This would also make life easier when this technology is used
   @@ for cross-compilers.  */
-
-/* Fold a constant sub-tree into a single node for C-compiler
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
-
-This file is part of GNU CC.
-
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
-
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
 
 
 /* There are only two entry points in this file:
@@ -400,12 +399,8 @@ div_and_round_double (code, uns,
   int lnum = lnum_orig, hnum = hnum_orig;
   int lden = lden_orig, hden = hden_orig;
 
-  if ((hden == 0) && (lden == 0)) {
-    *hquo = *lquo = *hrem = *lrem = 0;
-    error
-      ("divide by 0 in constant folding - quotient and remainder set to 0.");
-    return;
-  }
+  if ((hden == 0) && (lden == 0))
+    abort ();
 
   /* calculate quotient sign and convert operands to unsigned.  */
   if (!uns) 
@@ -872,7 +867,7 @@ combine (code, arg1, arg2)
 
 	case RDIV_EXPR:
 	  if (d2 == 0)
-	    return 0;
+	    abort ();
 
 	  value = d1 / d2;
 	  break;
@@ -1024,6 +1019,25 @@ operand_equal_p (arg0, arg1)
     return 1;
   return 0;
 }
+
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+
+/* Return 1 if ARG is a real constant with value zero.
+   This function is not defined in the case where it is impossible
+   to tell whether a real constant is zero (for cross-compilation).  */
+
+static int
+real_zerop (arg)
+     tree arg;
+{
+#ifdef REAL_IS_NOT_DOUBLE
+  tree t1 = build_real_from_int_cst (TREE_TYPE (arg), integer_zero_node);
+  return REAL_VALUES_EQUAL (TREE_REAL_CST (arg), TREE_REAL_CST (t1));
+#else
+  return TREE_REAL_CST (arg) == 0;
+#endif
+}
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
 
 /* Perform constant folding and related simplification of EXPR.
    The related simplifications include x*1 => x, x*0 => 0, etc.,
@@ -1146,7 +1160,7 @@ fold (expr)
 	  if (TREE_CODE (arg0) == INTEGER_CST)
 	    {
 	      if (! TREE_UNSIGNED (type)
-		  || TREE_INT_CST_HIGH (arg0) < 0)
+		  && TREE_INT_CST_HIGH (arg0) < 0)
 		{
 		  if (TREE_INT_CST_LOW (arg0) == 0)
 		    t = build_int_2 (0, - TREE_INT_CST_HIGH (arg0));
@@ -1259,6 +1273,10 @@ fold (expr)
 	    }
 	}
     binary:
+#if defined (REAL_IS_NOT_DOUBLE) && ! defined (REAL_ARITHMETIC)
+      if (TREE_CODE (arg1) == REAL_CST)
+	return t;
+#endif /* REAL_IS_NOT_DOUBLE, and no REAL_ARITHMETIC */
       {
 	register tree t1 = NULL_TREE;
 	if (wins)
@@ -1346,6 +1364,14 @@ fold (expr)
     case RDIV_EXPR:
       if (integer_onep (arg1))
 	return convert (type, arg0);
+      if (integer_zerop (arg1))
+	return t;
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+      if (TREE_CODE (arg1) == REAL_CST
+	  && real_zerop (arg1))
+	return t;
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+
       goto binary;
 
     case CEIL_MOD_EXPR:
@@ -1354,6 +1380,8 @@ fold (expr)
     case TRUNC_MOD_EXPR:
       if (!loses && integer_onep (arg1))
 	return combine (code, arg1, arg1);
+      if (integer_zerop (arg1))
+	return t;
       goto binary;
 
     case LSHIFT_EXPR:
@@ -1377,44 +1405,85 @@ fold (expr)
 			       0);
 	      TREE_TYPE (t) = integer_type_node;
 	    }
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
 	  if (TREE_CODE (arg0) == REAL_CST)
 	    {
-	      t = build_int_2 (TREE_REAL_CST (arg0) == 0, 0);
+	      t = build_int_2 (real_zerop (arg0), 0);
 	      TREE_TYPE (t) = integer_type_node;
 	    }
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
 	}
       return t;
 
-    case TRUTH_AND_EXPR:
     case TRUTH_ANDIF_EXPR:
+      /* If first arg is constant zero, we know the answer.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && integer_zerop (arg0))
+	{
+	  t = build_int_2 (0, 0);
+	  TREE_TYPE (t) = type;
+	  return t;
+	}
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+      if (TREE_CODE (arg0) == REAL_CST && real_zerop (arg0))
+	{
+	  t = build_int_2 (0, 0);
+	  TREE_TYPE (t) = type;
+	  return t;
+	}
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+    case TRUTH_AND_EXPR:
       if (wins)
 	{
 	  if (TREE_CODE (arg0) == INTEGER_CST
 	      && TREE_CODE (arg1) == INTEGER_CST)
-	    t = build_int_2 (((TREE_INT_CST_LOW (arg0) || TREE_INT_CST_HIGH (arg0))
-			      && (TREE_INT_CST_LOW (arg1) || TREE_INT_CST_HIGH (arg1))),
-			     0);
-	  if (TREE_CODE (arg0) == REAL_CST
-	      && TREE_CODE (arg1) == REAL_CST)
-	    t = build_int_2 ((TREE_REAL_CST (arg0) && TREE_REAL_CST (arg1)),
-			     0);
-	  TREE_TYPE (t) = type;
+	    {
+	      t = build_int_2 (! integer_zerop (arg0) && ! integer_zerop (arg1),
+			       0);
+	      TREE_TYPE (t) = type;
+	    }
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+	  if (TREE_CODE (arg0) == REAL_CST && TREE_CODE (arg1) == REAL_CST)
+	    {
+	      t = build_int_2 (! real_zerop (arg0) && ! real_zerop (arg1), 0);
+	      TREE_TYPE (t) = type;
+	    }
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
 	}
       return t;
 
-    case TRUTH_OR_EXPR:
     case TRUTH_ORIF_EXPR:
+      /* If first arg is nonzero constant, we know the answer.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && ! integer_zerop (arg0))
+	{
+	  t = build_int_2 (1, 0);
+	  TREE_TYPE (t) = type;
+	  return t;
+	}
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
+      if (TREE_CODE (arg0) == REAL_CST && ! real_zerop (arg0))
+	{
+	  t = build_int_2 (1, 0);
+	  TREE_TYPE (t) = type;
+	  return t;
+	}
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+    case TRUTH_OR_EXPR:
       if (wins)
 	{
 	  if (TREE_CODE (arg0) == INTEGER_CST
 	      && TREE_CODE (arg1) == INTEGER_CST)
-	    t = build_int_2 (((TREE_INT_CST_LOW (arg0) || TREE_INT_CST_HIGH (arg0))
-			      || (TREE_INT_CST_LOW (arg1) || TREE_INT_CST_HIGH (arg1))),
-			     0);
+	    {
+	      t = build_int_2 (! integer_zerop (arg0) || ! integer_zerop (arg1),
+			       0);
+	      TREE_TYPE (t) = type;
+	    }
+#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
 	  if (TREE_CODE (arg0) == REAL_CST && TREE_CODE (arg1) == REAL_CST)
-	    t = build_int_2 ((TREE_REAL_CST (arg0) || TREE_REAL_CST (arg1)),
-			     0);
-	  TREE_TYPE (t) = type;
+	    {
+	      t = build_int_2 (! real_zerop (arg0) || ! real_zerop (arg1), 0);
+	      TREE_TYPE (t) = type;
+	    }
+#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
 	}
       return t;
 

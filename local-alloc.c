@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* Allocation of hard register numbers to pseudo registers is done in
@@ -127,9 +126,9 @@ static int *qty_size;
 
 static enum machine_mode *qty_mode;
 
-/* Nonzero if any of the regs tied to qty Q lives across a CALL_INSN.  */
+/* Number of times a reg tied to qty Q lives across a CALL_INSN.  */
 
-static char *qty_crosses_call;
+static int *qty_n_calls_crossed;
 
 /* Nonzero means don't allocate qty Q if we can't get its preferred class.  */
 
@@ -209,7 +208,7 @@ alloc_qty (regno, mode, size, insn_number)
   qty_size[qty] = size;
   qty_mode[qty] = mode;
   qty_birth[qty] = insn_number;
-  qty_crosses_call[qty] = reg_crosses_call[regno];
+  qty_n_calls_crossed[qty] = reg_n_calls_crossed[regno];
   qty_min_class[qty] = reg_preferred_class (regno);
   qty_preferred_or_nothing[qty] = reg_preferred_or_nothing (regno);
   qty_n_refs[qty] = reg_n_refs[regno];
@@ -232,7 +231,7 @@ local_alloc ()
   qty_death = (int *) alloca (max_regno * sizeof (int));
   qty_size = (int *) alloca (max_regno * sizeof (int));
   qty_mode = (enum machine_mode *) alloca (max_regno * sizeof (enum machine_mode));
-  qty_crosses_call = (char *) alloca (max_regno);
+  qty_n_calls_crossed = (int *) alloca (max_regno * sizeof (int));
   qty_min_class = (enum reg_class *) alloca (max_regno * sizeof (enum reg_class));
   qty_preferred_or_nothing = (char *) alloca (max_regno);
   qty_n_refs = (short *) alloca (max_regno * sizeof (short));
@@ -282,7 +281,7 @@ local_alloc ()
 	      qty_mode[i] = VOIDmode;
 	      qty_min_class[i] = NO_REGS;
 	      qty_preferred_or_nothing[i] = 0;
-	      qty_crosses_call[i] = 0;
+	      qty_n_calls_crossed[i] = 0;
 	      qty_n_refs[i] = 0;
 	    }
 	}
@@ -298,7 +297,7 @@ local_alloc ()
 	  CLEAR (qty_mode);
 	  CLEAR (qty_min_class);
 	  CLEAR (qty_preferred_or_nothing);
-	  CLEAR (qty_crosses_call);
+	  CLEAR (qty_n_calls_crossed);
 	  CLEAR (qty_n_refs);
 	}
 
@@ -579,17 +578,16 @@ block_alloc (b)
 	{
 	  if (N_REG_CLASSES > 1)
 	    {
-	      qty_phys_reg[q] = find_free_reg (qty_crosses_call[q],
-					       qty_min_class[q],
-					       qty_mode[q], q,
+	      qty_phys_reg[q] = find_free_reg (qty_min_class[q], 
+					       qty_mode[q], q, 0,
 					       qty_birth[q], qty_death[q]);
 	      if (qty_phys_reg[q] >= 0)
 		continue;
 	    }
 
 	  if (!qty_preferred_or_nothing[q])
-	    qty_phys_reg[q] = find_free_reg (qty_crosses_call[q], GENERAL_REGS,
-					     qty_mode[q], q,
+	    qty_phys_reg[q] = find_free_reg (GENERAL_REGS, 
+					     qty_mode[q], q, 0,
 					     qty_birth[q], qty_death[q]);
 	}
     }
@@ -705,7 +703,7 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
     {
       if (fixed_regs[ureg])
 	return 0;
-      if (reg_crosses_call[sreg] && call_used_regs[ureg])
+      if (reg_n_calls_crossed[sreg] != 0 && call_used_regs[ureg])
 	return 0;
       if (usize < ssize)
 	return 0;
@@ -715,7 +713,7 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
     {
       if (fixed_regs[sreg])
 	return 0;
-      if (reg_crosses_call[ureg] && call_used_regs[sreg])
+      if (reg_n_calls_crossed[ureg] != 0 && call_used_regs[sreg])
 	return 0;
       if (ssize < usize)
 	return 0;
@@ -770,7 +768,7 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
       if (reg_qty[ureg] >= 0
 	  && (qty_phys_sugg[reg_qty[ureg]] < 0
 	      /* If the old suggestion is no good, override it.  */
-	      || (qty_crosses_call[reg_qty[ureg]]
+	      || (qty_n_calls_crossed[reg_qty[ureg]] != 0
 		  && call_used_regs[qty_phys_sugg[reg_qty[ureg]]])))
 	qty_phys_sugg[reg_qty[ureg]] = sreg;
       return 0;
@@ -808,7 +806,7 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
       reg_offset[sreg] = reg_offset[ureg] + offset;
       if (sqty >= 0)
 	{
-	  qty_crosses_call[sqty] |= reg_crosses_call[sreg];
+	  qty_n_calls_crossed[sqty] += reg_n_calls_crossed[sreg];
 	  qty_n_refs[sqty] += reg_n_refs[sreg];
 	  if (! reg_preferred_or_nothing (sreg))
 	    qty_preferred_or_nothing[sqty] = 0;
@@ -1003,15 +1001,15 @@ wipe_dead_reg (reg, this_insn_number, death_insn_number)
      (but actually we test only the first of the block for holding MODE)
    and still free between insn BORN_INSN and insn DEAD_INSN,
    and return the number of the first of them.
-   Return -1 if such a block cannot be found.
-   If CALL_PRESERVED is nonzero, insist on registers preserved
-   over subroutine calls, and return -1 if cannot find such.  */
+   Return -1 if such a block cannot be found. 
+   If QTY crosses calls, insist on a register preserved by calls,
+   unless ACCEPT_CALL_CLOBBERED is nonzero.  */
 
 static int
-find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
-     int call_preserved;
+find_free_reg (class, mode, qty, accept_call_clobbered, born_insn, dead_insn)
      enum reg_class class;
      enum machine_mode mode;
+     int accept_call_clobbered;
      int qty;
      int born_insn, dead_insn;
 {
@@ -1021,8 +1019,12 @@ find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
 #endif
     HARD_REG_SET used;
 
-  COPY_HARD_REG_SET (used,
-		     call_preserved ? call_used_reg_set : fixed_reg_set);
+  if (accept_call_clobbered)
+    COPY_HARD_REG_SET (used, call_fixed_reg_set);
+  else if (qty_n_calls_crossed[qty] == 0)
+    COPY_HARD_REG_SET (used, fixed_reg_set);
+  else
+    COPY_HARD_REG_SET (used, call_used_reg_set);
 
   for (ins = born_insn; ins < dead_insn; ins++)
     IOR_HARD_REG_SET (used, regs_live_at[ins]);
@@ -1078,6 +1080,20 @@ find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
 	  i += j;		/* Skip starting points we know will lose */
 #endif
 	}
+    }
+
+  /* If it would be profitable to allocate a call-clobbered register
+     and save and restore it around calls, do that.  */
+
+  if (! accept_call_clobbered
+      && flag_caller_saves
+      && qty_n_calls_crossed[qty] != 0
+      && CALLER_SAVE_PROFITABLE (qty_n_refs[qty], qty_n_calls_crossed[qty]))
+    {
+      i = find_free_reg (class, mode, qty, 1, born_insn, dead_insn);
+      if (i >= 0)
+	caller_save_needed = 1;
+      return i;
     }
   return -1;
 }

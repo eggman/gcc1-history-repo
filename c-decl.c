@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* Process declarations and symbol lookup for C front end.
@@ -275,6 +274,7 @@ lang_decode_option (p)
       extra_warnings = 1;
       warn_implicit = 1;
       warn_return_type = 1;
+      warn_unused = 1;
     }
   else
     return 0;
@@ -636,14 +636,18 @@ duplicate_decls (new, old)
       else if (!types_match)
 	{
 	  error_with_decl (new, "conflicting types for `%s'");
+	  /* Check for function type mismatch
+	     involving an empty arglist vs a nonempty one.  */
 	  if (TREE_CODE (old) == FUNCTION_DECL
 	      && comptypes (TREE_TYPE (TREE_TYPE (old)),
 			    TREE_TYPE (TREE_TYPE (new)))
-	      && (TYPE_ARG_TYPES (TREE_TYPE (old)) == 0
-		  || TYPE_ARG_TYPES (TREE_TYPE (new)) == 0)
-	      && DECL_INITIAL (old) == 0 && DECL_INITIAL (new) == 0)
+	      && ((TYPE_ARG_TYPES (TREE_TYPE (old)) == 0
+		   && DECL_INITIAL (old) == 0)
+		  ||
+		  (TYPE_ARG_TYPES (TREE_TYPE (new)) == 0
+		   && DECL_INITIAL (new) == 0)))
 	    {
-	      /* Classify the problem.  */
+	      /* Classify the problem further.  */
 	      register tree t = TYPE_ARG_TYPES (TREE_TYPE (old));
 	      if (t == 0)
 		t = TYPE_ARG_TYPES (TREE_TYPE (new));
@@ -725,8 +729,21 @@ duplicate_decls (new, old)
       if (TREE_EXTERNAL (new))
 	{
 	  TREE_STATIC (new) = TREE_STATIC (old);
-	  TREE_PUBLIC (new) = TREE_PUBLIC (old);
 	  TREE_EXTERNAL (new) = TREE_EXTERNAL (old);
+
+	  /* For functions, static overrides non-static.  */
+	  if (TREE_CODE (new) == FUNCTION_DECL)
+	    {
+	      TREE_PUBLIC (new) &= TREE_PUBLIC (old);
+	      /* This is since we don't automatically
+		 copy the attributes of NEW into OLD.  */
+	      TREE_PUBLIC (old) = TREE_PUBLIC (new);
+	      /* If this clears `static', clear it in the identifier too.  */
+	      if (! TREE_PUBLIC (old))
+		TREE_PUBLIC (DECL_NAME (old)) = 0;
+	    }
+	  else
+	    TREE_PUBLIC (new) = TREE_PUBLIC (old);
 	}
       else
 	{
@@ -1660,6 +1677,7 @@ finish_decl (decl, init, asmspec)
 {
   register tree type = TREE_TYPE (decl);
   int was_incomplete = (DECL_SIZE (decl) == 0);
+  int temporary = allocation_temporary_p ();
 
   /* If `start_decl' didn't like having an initialization, ignore it now.  */
 
@@ -1683,8 +1701,7 @@ finish_decl (decl, init, asmspec)
      must go in the permanent obstack; but don't discard the
      temporary data yet.  */
 
-  if (current_binding_level == global_binding_level
-      && allocation_temporary_p ())
+  if (current_binding_level == global_binding_level && temporary)
     end_temporary_allocation ();
 
   /* Deduce size of array from initialization, if not already known */
@@ -1784,9 +1801,14 @@ finish_decl (decl, init, asmspec)
 			      0);
 
   /* Resume permanent allocation, if not within a function.  */
-  if (allocation_temporary_p ()
-      && current_binding_level == global_binding_level)
-    permanent_allocation ();
+  if (temporary && current_binding_level == global_binding_level)
+    {
+      permanent_allocation ();
+      /* We need to remember that this array HAD an initialization,
+	 but discard the actual nodes, since they are temporary anyway.  */
+      if (DECL_INITIAL (decl) != 0)
+	DECL_INITIAL (decl) = error_mark_node;
+    }
 }
 
 /* Given a parsed parameter declaration,
@@ -2239,6 +2261,8 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	}
       else if (TREE_CODE (declarator) == CALL_EXPR)
 	{
+	  tree arg_types;
+
 	  /* Declaring a function type.
 	     Make sure we have a valid type for the function to return.  */
 	  if (type == error_mark_node)
@@ -2263,14 +2287,15 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	  /* Construct the function type and go to the next
 	     inner layer of declarator.  */
 
-	  type =
-	    build_function_type (type,
-				 grokparms (TREE_OPERAND (declarator, 1),
-					    funcdef_flag
-					    /* Say it's a definition
-					       only for the CALL_EXPR
-					       closest to the identifier.  */
-					    && TREE_CODE (TREE_OPERAND (declarator, 0)) == IDENTIFIER_NODE));
+	  arg_types = grokparms (TREE_OPERAND (declarator, 1),
+				 funcdef_flag
+				 /* Say it's a definition
+				    only for the CALL_EXPR
+				    closest to the identifier.  */
+				 && TREE_CODE (TREE_OPERAND (declarator, 0)) == IDENTIFIER_NODE);
+	  /* Omit the arg types if -traditional, since the arg types
+	     and the list links might not be permanent.  */
+	  type = build_function_type (type, flag_traditional ? 0 : arg_types);
 	  declarator = TREE_OPERAND (declarator, 0);
 	}
       else if (TREE_CODE (declarator) == INDIRECT_REF)
@@ -2580,7 +2605,7 @@ grokparms (parms_info, funcdef_flag)
 	      tree type = TREE_VALUE (typelt);
 	      if (TYPE_SIZE (type) == 0)
 		{
-		  if (funcdef_flag && parm != 0 && DECL_NAME (parm) != 0)
+		  if (funcdef_flag && DECL_NAME (parm) != 0)
 		    error ("parameter `%s' has incomplete type",
 			   IDENTIFIER_POINTER (DECL_NAME (parm)));
 		  else
@@ -2588,25 +2613,28 @@ grokparms (parms_info, funcdef_flag)
 		  if (funcdef_flag)
 		    {
 		      TREE_VALUE (typelt) = error_mark_node;
-		      if (parm != 0)
-			TREE_TYPE (parm) = error_mark_node;
+		      TREE_TYPE (parm) = error_mark_node;
 		    }
 		}
+#if 0  /* This has been replaced by parm_tags_warning
+	  which uses a more accurate criterion for what to warn about.  */
 	      else
 		{
 		  /* Now warn if is a pointer to an incomplete type.  */
 		  while (TREE_CODE (type) == POINTER_TYPE
 			 || TREE_CODE (type) == REFERENCE_TYPE)
 		    type = TREE_TYPE (type);
+		  type = TYPE_MAIN_VARIANT (type);
 		  if (TYPE_SIZE (type) == 0)
 		    {
-		      if (parm != 0 && DECL_NAME (parm) != 0)
+		      if (DECL_NAME (parm) != 0)
 			warning ("parameter `%s' points to incomplete type",
 				 IDENTIFIER_POINTER (DECL_NAME (parm)));
 		      else
 			warning ("parameter points to incomplete type");
 		    }
 		}
+#endif
 	      typelt = TREE_CHAIN (typelt);
 	    }
 
@@ -2675,6 +2703,25 @@ get_parm_info (void_at_end)
 			       nreverse (saveable_tree_cons (NULL_TREE, void_type_node, types)));
 
   return saveable_tree_cons (parms, tags, nreverse (types));
+}
+
+/* At end of parameter list, warn about any struct, union or enum tags
+   defined within.  Do so because these types cannot ever become complete.  */
+
+void
+parmlist_tags_warning ()
+{
+  tree elt;
+
+  for (elt = current_binding_level->tags; elt; elt = TREE_CHAIN (elt))
+    {
+      enum tree_code code = TREE_CODE (TREE_VALUE (elt));
+      warning ("`%s %s' declared inside parameter list",
+	       (code == RECORD_TYPE ? "struct"
+		: code == UNION_TYPE ? "union"
+		: "enum"),
+	       IDENTIFIER_POINTER (TREE_PURPOSE (elt)));
+    }
 }
 
 /* Get the struct, enum or union (CODE says which) with tag NAME.
@@ -3026,7 +3073,7 @@ tree
 finish_enum (enumtype, values)
      register tree enumtype, values;
 {
-  register tree pair = values;
+  register tree pair;
   register long maxvalue = 0;
   register long minvalue = 0;
   register int i;
@@ -3116,8 +3163,6 @@ build_enumerator (name, value)
 }
 
 /* Create the FUNCTION_DECL for a function definition.
-   LINE1 is the line number that the definition absolutely begins on.
-   LINE2 is the line number that the name of the function appears on.
    DECLSPECS and DECLARATOR are the parts of the declaration;
    they describe the function's name and the type it returns,
    but twisted together in a fashion that parallels the syntax of C.
@@ -3353,6 +3398,8 @@ store_parm_decls ()
 	      DECL_ARG_TYPE (found) = TREE_TYPE (found);
 	      DECL_SOURCE_LINE (found) = DECL_SOURCE_LINE (fndecl);
 	      DECL_SOURCE_FILE (found) = DECL_SOURCE_FILE (fndecl);
+	      if (warn_implicit)
+		warning_with_decl (found, "type of `%s' defaults to `int'");
 	      pushdecl (found);
 	    }
 

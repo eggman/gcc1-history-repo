@@ -1,22 +1,21 @@
 /* Reload pseudo regs into hard regs for insns that require hard regs.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -72,6 +71,10 @@ static rtx *reg_last_reload_reg;
 /* Elt N nonzero if reg_last_reload_reg[N] has been set in this insn
    for an output reload that stores into reg N.  */
 static char *reg_has_output_reload;
+
+/* Elt N nonzero if hard reg N is a reload-register for an output reload
+   in the current insn.  */
+static char reg_is_output_reload[FIRST_PSEUDO_REGISTER];
 
 /* Element N is the constant value to which pseudo reg N is equivalent,
    or zero if pseudo reg N is not equivalent to a constant.
@@ -170,6 +173,11 @@ char *basic_block_needs;
    Used in find_equiv_reg.  */
 int reload_first_uid;
 
+/* Flag set by local-alloc or global-alloc if anything is live in
+   a call-clobbered reg across calls.  */
+
+int caller_save_needed;
+
 void mark_home_live ();
 static void reload_as_needed ();
 static int modes_equiv_for_class_p ();
@@ -180,6 +188,7 @@ static int spill_hard_reg ();
 static void choose_reload_targets ();
 static void delete_output_reload ();
 static void forget_old_reloads ();
+static void forget_old_reloads_1 ();
 static void order_regs_for_reload ();
 static void eliminate_frame_pointer ();
 static void inc_for_reload ();
@@ -780,6 +789,15 @@ reload (first, global, dumpfile)
 	}
     }
 
+  /* Insert code to save and restore call-clobbered hard regs
+     around calls.  */
+
+  if (caller_save_needed)
+    {
+      frame_pointer_needed = 1;
+      save_call_clobbered_regs ();
+    }
+
   /* Now we know for certain whether we have a frame pointer.
      If not, correct all references to go through the stack pointer.
      This must be done before reloading, since reloading could generate
@@ -1335,6 +1353,7 @@ reload_as_needed (first, live_known)
   register rtx insn;
   register int i;
   int this_block = 0;
+  rtx x;
 
   bzero (spill_reg_rtx, sizeof spill_reg_rtx);
   reg_last_reload_reg = (rtx *) alloca (max_regno * sizeof (rtx));
@@ -1350,19 +1369,15 @@ reload_as_needed (first, live_known)
       /* Notice when we move to a new basic block.  */
       if (basic_block_needs && this_block + 1 < n_basic_blocks
 	  && insn == basic_block_head[this_block+1])
-	{
-	  ++this_block;
-	  /* When we enter a basic block which had no spilling,
-	     forget any inherited reloads, since we might use those
-	     same registers for allocated pseudos.  */
-	  if (basic_block_needs != 0
-	      && basic_block_needs[this_block] == 0)
-	    bzero (reg_last_reload_reg, max_regno * sizeof (rtx));
-	}
+	++this_block;
 
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	  || GET_CODE (insn) == CALL_INSN)
 	{
+	  /* If insn has no reloads, we want these to be zero, down below.  */
+	  bzero (reg_has_output_reload, max_regno);
+	  bzero (reg_is_output_reload, FIRST_PSEUDO_REGISTER);
+
 	  if (GET_MODE (insn) == VOIDmode)
 	    n_reloads = 0;
 	  /* First find the pseudo regs that must be reloaded for this insn.
@@ -1407,7 +1422,24 @@ reload_as_needed (first, live_known)
 	     for this insn in order to be stored in
 	     (obeying register constraints).  That is correct; such reload
 	     registers ARE still valid.  */
-	  forget_old_reloads (PATTERN (insn));
+	  note_stores (PATTERN (insn), forget_old_reloads_1);
+
+	  /* Likewise for regs altered by auto-increment in this insn.
+	     But note that the reg-notes are not changed by reloading:
+	     they still contain the pseudo-regs, not the spill regs.  */
+	  for (x = REG_NOTES (insn); x; x = XEXP (x, 1))
+	    if (REG_NOTE_KIND (x) == REG_INC)
+	      {
+		/* See if this pseudo reg was reloaded in this insn.
+		   If so, its last-reload info is still valid
+		   because it is based on this insn's reload.  */
+		for (i = 0; i < n_reloads; i++)
+		  if (reload_out[i] == XEXP (x, 0))
+		    break;
+
+		if (i != n_reloads)
+		  forget_old_reloads_1 (XEXP (x, 0));
+	      }
 	}
       /* A reload reg's contents are unknown after a label.  */
       if (GET_CODE (insn) == CODE_LABEL)
@@ -1434,53 +1466,50 @@ reload_as_needed (first, live_known)
     }
 }
 
-/* If we see a pseudo-reg with a hard reg being stored into,
-   don't try to reuse an old reload reg
-   which previously contained a copy of it.  */
+/* Discard all record of any value reloaded from X,
+   or reloaded in X from someplace else;
+   unless X is an output reload reg of the current insn.  */
 
 static void
-forget_old_reloads (x)
+forget_old_reloads_1 (x)
      rtx x;
 {
-  if (GET_CODE (x) == SET && GET_CODE (SET_DEST (x)) == REG)
-    {
-      register int regno = REGNO (SET_DEST (x));
-      int nr;
+  register int regno;
+  int nr;
 
-      if (regno >= FIRST_PSEUDO_REGISTER)
-	nr = 1;
-      /* Don't do this for spill regs.  If a spill reg got in there
-	 it is due to an output reload, which is still valid.  */
-      else if (spill_reg_order[regno] >= 0)
-	nr = 0;
-      else
-	{
-	  int i;
-	  nr = HARD_REGNO_NREGS (regno, GET_MODE (SET_DEST (x)));
-	  /* Storing into a spilled-reg invalidates its contents.
-	     This can happen if a block-local pseudo is allocated to that reg
-	     and it wasn't spilled because this block's total need is 0.
-	     Then some insn might have an optional reload and use this reg.  */
-	  for (i = 0; i < nr; i++)
-	    if (spill_reg_order[regno + i] >= 0
-		&& reg_has_output_reload[regno + i] == 0)
-	      reg_reloaded_contents[spill_reg_order[regno + i]] = -1;
-	}
-      
-      while (nr-- > 0) reg_last_reload_reg[regno + nr] = 0;
-    }
-  else if (GET_CODE (x) == PARALLEL)
+  if (GET_CODE (x) != REG)
+    return;
+
+  regno = REGNO (x);
+
+  if (regno >= FIRST_PSEUDO_REGISTER)
+    nr = 1;
+  else
     {
-      register int i;
-      for (i = 0; i < XVECLEN (x, 0); i++)
-	{
-	  register rtx y = XVECEXP (x, 0, i);
-	  if (GET_CODE (y) == SET && GET_CODE (SET_DEST (y)) == REG)
-	    forget_old_reloads (y);
-	}
+      int i;
+      nr = HARD_REGNO_NREGS (regno, GET_MODE (x));
+      /* Storing into a spilled-reg invalidates its contents.
+	 This can happen if a block-local pseudo is allocated to that reg
+	 and it wasn't spilled because this block's total need is 0.
+	 Then some insn might have an optional reload and use this reg.  */
+      for (i = 0; i < nr; i++)
+	if (spill_reg_order[regno + i] >= 0
+	    /* But don't do this if the reg actually serves as an output
+	       reload reg in the current instruction.  */
+	    && reg_is_output_reload[regno + i] == 0)
+	  reg_reloaded_contents[spill_reg_order[regno + i]] = -1;
     }
+
+  /* Since value of X has changed,
+     forget any value previously copied from it.  */
+
+  while (nr-- > 0)
+    /* But don't forget a copy if this is the output reload
+       that establishes the copy's validity.  */
+    if (reg_has_output_reload[regno + nr] == 0)
+      reg_last_reload_reg[regno + nr] = 0;
 }
-
+
 /* Comparison function for qsort to decide which of two reloads
    should be handled first.  *P1 and *P2 are the reload numbers.  */
 
@@ -1533,7 +1562,6 @@ choose_reload_targets (insn)
 
   bzero (reload_inherited, FIRST_PSEUDO_REGISTER);
   bzero (reload_reg_in_use, FIRST_PSEUDO_REGISTER);
-  bzero (reg_has_output_reload, max_regno);
 
   /* In order to be certain of getting the registers we need,
      we must sort the reloads into order of increasing register class.
@@ -1616,6 +1644,8 @@ choose_reload_targets (insn)
 	  ;
 	else if (GET_CODE (reload_in[r]) == REG)
 	  regno = REGNO (reload_in[r]);
+	else if (GET_CODE (reload_in_reg[r]) == REG)
+	  regno = REGNO (reload_in_reg[r]);
 #if 0
 	/* This won't work, since REGNO can be a pseudo reg number.
 	   Also, it takes much more hair to keep track of all the things
@@ -1890,11 +1920,18 @@ choose_reload_targets (insn)
 	      reg_last_reload_reg[nregno] = reload_reg_rtx[r];
 	      reg_reloaded_contents[i] = nregno;
 	      reg_has_output_reload[nregno] = 1;
+	      reg_is_output_reload[spill_regs[i]] = 1;
 	    }
 	  /* Maybe the spill reg contains a copy of reload_in.  */
-	  else if (reload_out[r] == 0 && GET_CODE (reload_in[r]) == REG)
+	  else if (reload_out[r] == 0
+		   && (GET_CODE (reload_in[r]) == REG
+		       || GET_CODE (reload_in_reg[r]) == REG))
 	    {
-	      register int nregno = REGNO (reload_in[r]);
+	      register int nregno;
+	      if (GET_CODE (reload_in[r]) == REG)
+		nregno = REGNO (reload_in[r]);
+	      else
+		nregno = REGNO (reload_in_reg[r]);
 	      /* If there are two separate reloads (one in and one out)
 		 for the same (hard or pseudo) reg, set reg_last_reload_reg
 		 based on the output reload.  */
@@ -1910,6 +1947,18 @@ choose_reload_targets (insn)
 	  else
 	    reg_reloaded_contents[i] = -1;
 	}
+#if 0
+      /* If a register gets output-reloaded from a non-spill register,
+	 that invalidates any previous reloaded copy of it.
+	 But forget_old_reloads_1 won't get to see it, because
+	 it thinks only about the original insn.  So invalidate it here.  */
+      if (i < 0 && reload_out[r] != 0 && GET_CODE (reload_out[r]) == REG)
+	{
+	  register int nregno = REGNO (reload_out[r]);
+	  reg_last_reload_reg[nregno] = 0;
+	  reg_has_output_reload[nregno] = 1;
+	}
+#endif
     }
 
   /* Now output the instructions to copy the data into and out of the
@@ -2167,6 +2216,11 @@ choose_reload_targets (insn)
 	    old = gen_rtx (SUBREG, mode, old, 0);
 	  /* Output the reload insn.  */
 	  store_insn = emit_insn_after (gen_move_insn (old, reloadreg), insn);
+	  /* If this output reload doesn't come from a spill reg,
+	     clear any memory of reloaded copies of the pseudo reg.
+	     If this output reload comes from a spill reg,
+	     reg_has_output_reload will make this do nothing.  */
+	  note_stores (PATTERN (store_insn), forget_old_reloads_1);
 	  /* If final will look at death notes for this reg,
 	     put one on each output-reload insn.  */
 #ifdef PRESERVE_DEATH_INFO_REGNO_P
@@ -2174,6 +2228,35 @@ choose_reload_targets (insn)
 	    REG_NOTES (store_insn)
 		= gen_rtx (EXPR_LIST, REG_DEAD,
 			   reloadreg, REG_NOTES (store_insn));
+
+	  {
+	    /* Move all death-notes from the insn being reloaded
+	       to the output reload.
+	       This may err on the side of caution.
+	       If one insn gets >1 output reloads, this will move
+	       the death notes to the first output reload insn generated,
+	       which will be the last one in the insn stream.  */
+
+	    /* The note we will examine next.  */
+	    rtx reg_notes = REG_NOTES (insn);
+	    /* The place that pointed to this note.  */
+	    rtx *prev_reg_note = &REG_NOTES (insn);
+
+	    while (reg_notes)
+	      {
+		rtx next_reg_notes = XEXP (reg_notes, 1);
+		if (REG_NOTE_KIND (reg_notes) == REG_DEAD)
+		  {
+		    *prev_reg_note = next_reg_notes;
+		    XEXP (reg_notes, 1) = REG_NOTES (store_insn);
+		    REG_NOTES (store_insn) = reg_notes;
+		  }
+		else
+		  prev_reg_note = &XEXP (reg_notes, 1);
+
+		reg_notes = next_reg_notes;
+	      }
+	  }
 #endif
 	}
       else store_insn = 0;
@@ -2381,7 +2464,7 @@ constraint_accepts_reg_p (string, reg)
      rtx reg;
 {
   int value = 0;
-  int regno = REGNO (reg);
+  int regno = true_regnum (reg);
 
   /* We win if this register is a general register
      and each alternative accepts all general registers.  */

@@ -3,20 +3,19 @@
 
 #This file is part of GNU CC.
 
-#GNU CC is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY.  No author or distributor
-#accepts responsibility to anyone for the consequences of using it
-#or for whether it serves any particular purpose or works at all,
-#unless he says so in writing.  Refer to the GNU CC General Public
-#License for full details.
+#GNU CC is free software; you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation; either version 1, or (at your option)
+#any later version.
 
-#Everyone is granted permission to copy, modify and redistribute
-#GNU CC, but only under the conditions described in the
-#GNU CC General Public License.   A copy of this license is
-#supposed to have been given to you along with GNU CC so you
-#can know your rights and responsibilities.  It should be in a
-#file named COPYING.  Among other things, the copyright notice
-#and this notice must be preserved on all copies.
+#GNU CC is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+
+#You should have received a copy of the GNU General Public License
+#along with GNU CC; see the file COPYING.  If not, write to
+#the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
 CFLAGS = -g
@@ -28,7 +27,7 @@ BISONFLAGS = -v
 AR = ar
 SHELL = /bin/sh
 # on sysV, define this as cp.
-INSTALL = install
+INSTALL = install -c
 
 # Directory in which to put the executable for the command `gcc'
 bindir = $(prefix)/usr/local/bin
@@ -95,8 +94,8 @@ OBJS = toplev.o version.o tree.o print-tree.o stor-layout.o fold-const.o \
  rtl.o expr.o stmt.o expmed.o explow.o optabs.o varasm.o \
  symout.o dbxout.o sdbout.o emit-rtl.o insn-emit.o \
  integrate.o jump.o cse.o loop.o flow.o stupid.o combine.o \
- regclass.o local-alloc.o global-alloc.o reload.o reload1.o insn-peep.o \
- final.o recog.o insn-recog.o insn-extract.o insn-output.o
+ regclass.o local-alloc.o global-alloc.o reload.o reload1.o caller-save.o \
+ insn-peep.o final.o recog.o insn-recog.o insn-extract.o insn-output.o
 
 # Files to be copied away after each stage in building.
 STAGE_GCC=gcc
@@ -250,6 +249,8 @@ reload.o : reload.c $(CONFIG_H) $(RTL_H)  \
    reload.h recog.h hard-reg-set.h insn-config.h regs.h
 reload1.o : reload1.c $(CONFIG_H) $(RTL_H) flags.h  \
    reload.h regs.h hard-reg-set.h insn-config.h basic-block.h
+caller-save.o : caller-save.c $(CONFIG_H) $(RTL_H) flags.h \
+   reload.h regs.h hard-reg-set.h insn-config.h basic-block.h recog.h
 final.o : final.c $(CONFIG_H) $(RTL_H) regs.h recog.h conditions.h gdbfiles.h \
    insn-config.h real.h
 recog.o : recog.c $(CONFIG_H) $(RTL_H)  \

@@ -396,6 +396,32 @@ __builtin_saveregs ()
 #endif
 #endif
 
+#ifdef L_bb_init_func
+#if defined (sun) && defined (m68k)
+struct bb
+{
+  int initialized;
+  char *filename;
+  int *counts;
+  int ncounts;
+  int zero_word;
+  int *addresses;
+};
+
+__bb_init_function (blocks)
+	struct bb *blocks;
+{
+  extern int __tcov_init;
+
+  if (! ___tcov_init)
+    ___tcov_init_func ();
+
+  ___bb_link (blocks->filename, blocks->counts, blocks->nblocks);
+}
+
+#endif
+#endif
+
 /* frills for C++ */
 
 #ifdef L_builtin_new

@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file contains two passes of the compiler: reg_scan and reg_class.
@@ -66,6 +65,18 @@ HARD_REG_SET call_used_reg_set;
 /* Data for initializing the above.  */
 
 static char initial_call_used_regs[] = CALL_USED_REGISTERS;
+  
+/* Indexed by hard register number, contains 1 for registers that are
+   fixed use -- i.e. in fixed_regs -- or a function value return register
+   or STRUCT_VALUE_REGNUM or STATIC_CHAIN_REGNUM.  These are the
+   registers that cannot hold quantities across calls even if we are
+   willing to save and restore them.  */
+
+char call_fixed_regs[FIRST_PSEUDO_REGISTER];
+
+/* The same info as a HARD_REG_SET.  */
+
+HARD_REG_SET call_fixed_reg_set;
 
 /* Indexed by hard register number, contains 1 for registers
    that are being used for global register decls.
@@ -221,13 +232,26 @@ init_reg_sets_1 ()
 
   CLEAR_HARD_REG_SET (fixed_reg_set);
   CLEAR_HARD_REG_SET (call_used_reg_set);
+  CLEAR_HARD_REG_SET (call_fixed_reg_set);
+
+  bcopy (fixed_regs, call_fixed_regs, sizeof call_fixed_regs);
+#ifdef STRUCT_VALUE_REGNUM
+  call_fixed_regs[STRUCT_VALUE_REGNUM] = 1;
+#endif
+#ifdef STATIC_CHAIN_REGNUM
+  call_fixed_regs[STATIC_CHAIN_REGNUM] = 1;
+#endif
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     {
+      if (FUNCTION_VALUE_REGNO_P (i))
+	call_fixed_regs[i] = 1;
       if (fixed_regs[i])
 	SET_HARD_REG_BIT (fixed_reg_set, i);
       if (call_used_regs[i])
 	SET_HARD_REG_BIT (call_used_reg_set, i);
+      if (call_fixed_regs[i])
+	SET_HARD_REG_BIT (call_fixed_reg_set, i);
     }
 }
 

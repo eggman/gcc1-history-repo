@@ -4,20 +4,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Global variables for machine-dependend things.  */
 
@@ -71,6 +70,7 @@ safe_insn_src_p (op, mode)
     case NOT:
       return 1;
 
+    case COMPARE:
     case MINUS:
     case PLUS:
       return (mode != SFmode && mode != DFmode);
@@ -337,6 +337,7 @@ single_insn_src_p (op, mode)
     case NOT:
       return 1;
 
+    case COMPARE:
     case MINUS:
       /* If the target is cc0, then these insns will take
 	 two insns (one being a nop).  */
@@ -422,6 +423,7 @@ strict_single_insn_op_p (op, mode)
     case NOT:
       return 1;
 
+    case COMPARE:
     case MINUS:
       /* If the target is cc0, then these insns will take
 	 two insns (one being a nop).  */
@@ -1329,6 +1331,8 @@ output_mul_by_constant (insn, operands, unsignedp)
   int first = 1;		/* True if dst has unknown data in it */
   int i;
 
+  CC_STATUS_INIT;
+
   c = INTVAL (operands[2]);
   if (c == 0)
     {
@@ -1429,17 +1433,30 @@ output_mul_insn (operands, unsignedp)
   int lucky1 = ((unsigned)REGNO (operands[1]) - 8) <= 1;
   int lucky2 = ((unsigned)REGNO (operands[2]) - 8) <= 1;
 
+  CC_STATUS_INIT;
+
   if (lucky1)
-    if (lucky2)
-      output_asm_insn ("call .mul,2\n\tnop", operands);
-    else
-      {
-	rtx xoperands[2];
-	xoperands[0] = gen_rtx (REG, SImode,
-				8 ^ (REGNO (operands[1]) == 8));
-	xoperands[1] = operands[2];
-	output_asm_insn ("call .mul,2\n\tmov %1,%0", xoperands);
-      }
+    {
+      if (lucky2)
+	{
+	  if (REGNO (operands[1]) == REGNO (operands[2]))
+	    {
+	      if (REGNO (operands[1]) == 8)
+		output_asm_insn ("mov %%o0,%%o1");
+	      else
+		output_asm_insn ("mov %%o1,%%o0");
+	    }
+	  output_asm_insn ("call .mul,2\n\tnop", operands);
+	}
+      else
+	{
+	  rtx xoperands[2];
+	  xoperands[0] = gen_rtx (REG, SImode,
+				  8 ^ (REGNO (operands[1]) == 8));
+	  xoperands[1] = operands[2];
+	  output_asm_insn ("call .mul,2\n\tmov %1,%0", xoperands);
+	}
+    }
   else if (lucky2)
     {
       rtx xoperands[2];

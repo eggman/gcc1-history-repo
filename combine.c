@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This module is essentially the "combiner" phase of the U. of Arizona
@@ -455,14 +454,15 @@ try_combine (i3, i2, i1)
     }
 
   /* If I1 or I2 contains an autoincrement or autodecrement,
-     make sure that register is not used between there and I3.
+     make sure that register is not used between there and I3,
+     and not already used in I3 either.
      Also insist that I3 not be a jump; if it were one
      and the incremented register were spilled, we would lose.  */
   for (link = REG_NOTES (i2); link; link = XEXP (link, 1))
     if (REG_NOTE_KIND (link) == REG_INC
 	&& (GET_CODE (i3) == JUMP_INSN
 	    || reg_used_between_p (XEXP (link, 0), i2, i3)
-	    || reg_mentioned_p (XEXP (link, 0), i3)))
+	    || reg_mentioned_p (XEXP (link, 0), PATTERN (i3))))
       return 0;
 
   if (i1)
@@ -470,7 +470,22 @@ try_combine (i3, i2, i1)
       if (REG_NOTE_KIND (link) == REG_INC
 	  && (GET_CODE (i3) == JUMP_INSN
 	      || reg_used_between_p (XEXP (link, 0), i1, i3)
-	      || reg_mentioned_p (XEXP (link, 0), i3)))
+	      || reg_mentioned_p (XEXP (link, 0), PATTERN (i3))))
+	return 0;
+
+  /* If I3 has an inc, then give up if I1 or I2 uses the reg that is inc'd,
+     EXCEPT in one case: I3 has a post-inc in an output operand.  */
+  if (!(GET_CODE (PATTERN (i3)) == SET
+	&& GET_CODE (SET_SRC (PATTERN (i3))) == REG
+	&& GET_CODE (SET_DEST (PATTERN (i3))) == MEM
+	&& (GET_CODE (XEXP (SET_DEST (PATTERN (i3)), 0)) == POST_INC
+	    || GET_CODE (XEXP (SET_DEST (PATTERN (i3)), 0)) == POST_DEC)))
+    /* It's not the exception.  */
+    for (link = REG_NOTES (i3); link; link = XEXP (link, 1))
+      if (REG_NOTE_KIND (link) == REG_INC
+	  && (reg_mentioned_p (XEXP (link, 0), PATTERN (i2))
+	      || (i1 != 0
+		  && reg_mentioned_p (XEXP (link, 0), PATTERN (i1)))))
 	return 0;
 
   /* Don't combine an insn I1 or I2 that follows a CC0-setting insn.
@@ -593,7 +608,7 @@ try_combine (i3, i2, i1)
 
   if (insn_code_number >= 0
       /* Is the result a reasonable ASM_OPERANDS?  */
-      || check_asm_operands (newpat))
+      || (check_asm_operands (newpat) && ! added_sets_1 && ! added_sets_2))
     {
       /* Yes.  Install it.  */
       register int regno;
@@ -1315,14 +1330,13 @@ subst (x, from, to)
 					  ? (1 << shiftcount) - 1
 					  : 0))));
 	}
-      /* Can simplify (set (cc0) (minus:VOIDmode (zero/sign_extend FOO) CONST))
-	 to (set (cc0) (minus:VOIDmode FOO CONST)) if CONST fits in FOO's mode
+      /* Can simplify (set (cc0) (compare (zero/sign_extend FOO) CONST))
+	 to (set (cc0) (compare FOO CONST)) if CONST fits in FOO's mode
 	 and we are only testing equality.
 	 In fact, this is valid for zero_extend if what follows is an
 	 unsigned comparison, and for sign_extend with a signed comparison.  */
       if (SET_DEST (x) == cc0_rtx
-	  && GET_CODE (SET_SRC (x)) == MINUS
-	  && GET_MODE (SET_SRC (x)) == VOIDmode
+	  && GET_CODE (SET_SRC (x)) == COMPARE
 	  && (GET_CODE (XEXP (SET_SRC (x), 0)) == ZERO_EXTEND
 	      || GET_CODE (XEXP (SET_SRC (x), 0)) == SIGN_EXTEND)
 	  && next_insn_tests_no_inequality (subst_insn)

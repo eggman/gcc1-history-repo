@@ -2,6 +2,7 @@
 
 #include "tm-convex.h"
 
+#undef TARGET_DEFAULT
 #define TARGET_DEFAULT 1
 
 #define CC1_SPEC "%{mc2:-mnoc1}"

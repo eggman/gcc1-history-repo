@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file contains the data flow analysis pass of the compiler.
@@ -152,7 +151,7 @@ short *reg_n_deaths;
    This information remains valid for the rest of the compilation
    of the current function; it is used to control register allocation.  */
 
-char *reg_crosses_call;
+int *reg_n_calls_crossed;
 
 /* Total number of instructions at which (REG n) is live.
    The larger this is, the less priority (REG n) gets for
@@ -829,8 +828,8 @@ allocate_for_life_analysis ()
   reg_live_length = (int *) oballoc (max_regno * sizeof (int));
   bzero (reg_live_length, max_regno * sizeof (int));
 
-  reg_crosses_call = (char *) oballoc (max_regno);
-  bzero (reg_crosses_call, max_regno);
+  reg_n_calls_crossed = (int *) oballoc (max_regno * sizeof (int));
+  bzero (reg_n_calls_crossed, max_regno * sizeof (int));
 
   reg_basic_block = (short *) oballoc (max_regno * sizeof (short));
   for (i = 0; i < max_regno; i++)
@@ -1106,7 +1105,7 @@ propagate_block (old, first, last, final, significant, bnum)
 
 		  for (i = 0; i < sometimes_max; i++, p++)
 		    if (old[p->offset] & (1 << p->bit))
-		      reg_crosses_call[p->offset * REGSET_ELT_BITS + p->bit] = 1;
+		      reg_n_calls_crossed[p->offset * REGSET_ELT_BITS + p->bit]+= 1;
 		}
 	    }
 
@@ -1582,6 +1581,10 @@ mark_used_regs (needed, live, x, final, insn)
 		 so waste no more time.  */
 	      if (regno == STACK_POINTER_REGNUM)
 		return;
+	      /* No death notes for global register variables;
+		 their values are live after this function exits.  */
+	      if (global_regs[regno])
+		return;
 
 	      n = HARD_REGNO_NREGS (regno, GET_MODE (x));
 	      while (--n > 0)
@@ -1627,6 +1630,7 @@ mark_used_regs (needed, live, x, final, insn)
 
 		  reg_n_refs[regno] += loop_depth;
 		}
+
 	      /* Record and count the insns in which a reg dies.
 		 If it is used in this insn and was dead below the insn
 		 then it dies in this insn.  */
@@ -1938,8 +1942,10 @@ dump_flow_info (file)
 	  fprintf (file, " in block %d", reg_basic_block[i]);
 	if (reg_n_deaths[i] != 1)
 	  fprintf (file, "; dies in %d places", reg_n_deaths[i]);
-	if (reg_crosses_call[i])
-	  fprintf (file, "; crosses calls");
+	if (reg_n_calls_crossed[i] == 1)
+	  fprintf (file, "; crosses 1 call", reg_n_calls_crossed[i]);
+	else if (reg_n_calls_crossed[i])
+	  fprintf (file, "; crosses %d calls", reg_n_calls_crossed[i]);
 	if (PSEUDO_REGNO_BYTES (i) != UNITS_PER_WORD)
 	  fprintf (file, "; %d bytes", PSEUDO_REGNO_BYTES (i));
 	class = reg_preferred_class (i);

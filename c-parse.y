@@ -1,26 +1,25 @@
 /* YACC parser for C syntax.
-   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988, 1989 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
+
 GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
-/*  To whomever it may concern: I have heard that such a thing was once
- written by AT&T, but I have never seen it.  */
+/* To whomever it may concern: I have heard that such a thing was once
+written by AT&T, but I have never seen it.  */
 
 %expect 23
 
@@ -64,7 +63,7 @@ extern int errno;
 
 %start program
 
-%union {long itype; tree ttype; enum tree_code code; char *cptr; }
+%union {long itype; tree ttype; enum tree_code code; }
 
 /* All identifiers that are not reserved words
    and are not declared typedefs in the current block */
@@ -973,6 +972,12 @@ stmt:
 		  register tree label
 		    = build_decl (LABEL_DECL, NULL_TREE, NULL_TREE);
 
+		  /* build_c_cast puts on a NOP_EXPR to make a non-lvalue.
+		     Strip such NOP_EXPRs.  */
+		  if (TREE_CODE (value) == NOP_EXPR
+		      && TREE_TYPE (value) == TREE_TYPE (TREE_OPERAND (value, 0)))
+		    value = TREE_OPERAND (value, 0);
+
 		  if (TREE_CODE (value) != INTEGER_CST
 		      && value != error_mark_node)
 		    {
@@ -1103,7 +1108,9 @@ asm_clobbers:
 parmlist:
 		{ pushlevel (0); }
 	  parmlist_1
-		{ $$ = $2; poplevel (0, 0, 0); }
+		{ $$ = $2;
+		  parmlist_tags_warning ();
+		  poplevel (0, 0, 0); }
 	;
 
 /* This is referred to where either a parmlist or an identifier list is ok.
@@ -1111,7 +1118,9 @@ parmlist:
 parmlist_or_identifiers:
 		{ pushlevel (0); }
 	  parmlist_or_identifiers_1
-		{ $$ = $2; poplevel (0, 0, 0); }
+		{ $$ = $2;
+		  parmlist_tags_warning ();
+		  poplevel (0, 0, 0); }
 	;
 
 parmlist_or_identifiers_1:
@@ -1297,61 +1306,146 @@ static int *wide_buffer;	/* Pointer to wide-string buffer.
 /* Nonzero if end-of-file has been seen on input.  */
 static int end_of_file;
 
-#define MIN_WORD_SIZE       2      /* minimum size for C keyword */
-#define MAX_WORD_SIZE       9      /* maximum size for C keyword */
-#define MIN_KEY_SIZE        4      /* range of the hash keys values for the */
-#define MAX_KEY_SIZE        39     /* minimum perfect hash generator */
+/* Data type that represents the GNU C reserved words. */
+struct resword { char *name; short token; enum rid rid; };
 
+#define MIN_WORD_LENGTH     2      /* minimum size for C keyword */
+#define MAX_WORD_LENGTH     9      /* maximum size for C keyword */
+#define MIN_HASH_VALUE      4      /* range of the hash keys values for the */
+#define MAX_HASH_VALUE      39     /* minimum perfect hash generator */
 #define NORID RID_UNUSED
 
-struct resword {char *name; short token; enum rid rid;};
+/* This function performs the minimum-perfect hash mapping from input
+   string to reswords table index.  It only looks at the first and 
+   last characters in the string, thus assuring the O(1) lookup time 
+   (this keeps our constant down to an insignificant amount!).  Compiling
+   the following 2 functions as inline removes all overhead of the
+   function calls. */
+
+#ifdef __GNUC__
+inline 
+#endif
+static int 
+hash (str, len)
+   register char	*str;
+   register int	len;
+{
+
+/* This table is used to build the hash table index that recognizes
+   reserved words in 0(1) steps.  It is larger than strictly necessary, 
+   but I'm trading off the space for the time-saving luxury of avoiding 
+   subtraction of an offset.  All those ``39's'' (actually just a
+   short-hand for MAX_HASH_VALUE #defined above) are used to speed up 
+   the search when the string found on the input stream doesn't have a 
+   first or last character that is part of the set of alphabetic 
+   characters that comprise the first or last characters in C 
+   reserved words. */
+
+  static int hash_table[] = 
+    {
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
+      39,  39,  39,  39,  39,   5,  39,  32,  33,  18,
+       2,   0,  13,  28,  19,  18,  39,   0,   5,   1,
+      11,   3,  39,  39,  12,   6,   0,   0,   7,   1,
+      39,  39,  39,  39,  39,  39,  39,  39,
+    };
+
+/* The hash function is very simple: add the length of STR
+   to the hash_table value of its first and last character. 
+   Putting LEN near LEN - 1 generates slightly better 
+   code... */
+
+  return len + hash_table[str[len - 1]] + hash_table[str[0]];
+}
+
+/* This routine attempts to match the string found in the reswords table
+   with the one from the input stream.  If all the relevant details 
+   match then an actual strcmp comparison is performed and the address of
+   correct struct resword entry is returned.  Otherwise, a NULL 
+   pointer is returned. */
+
+#ifdef __GNUC__
+inline 
+#endif
+static struct resword *
+is_reserved_word (str, len)
+   register char *str;
+   register int len;
+{
 
 /* This is the hash table of keywords.
    The order of keywords has been chosen for perfect hashing.
    Therefore, this table cannot be updated by hand.
-   Use the program perfect-hash to generate an updated table.  */
+   Use the program ``gperf,'' available with the latest libg++ 
+   distribution, to generate an updated table.  The command-line
+   arguments to build this table were: gperf -g -o -j1 -t gnuc.input  */
 
-static struct resword reswords[] 
-  = {{NULL, 0, NORID},            
-     {NULL, 0, NORID}, /* these locations are not used. */
-     {NULL, 0, NORID}, /* they simplify the hashing.    */
-     {NULL, 0, NORID},
-     {"else", ELSE, NORID},
-     {"enum", ENUM, NORID},
-     {"while", WHILE, NORID},
-     {"extern", SCSPEC, RID_EXTERN},
-     {"double", TYPESPEC, RID_DOUBLE},
-     {"default", DEFAULT, NORID},
-     {"do", DO, NORID},
-     {"goto", GOTO, NORID},
-     {"short", TYPESPEC, RID_SHORT},        
-     {"struct", STRUCT, NORID},
-     {"return", RETURN, NORID},
-     {"signed", TYPESPEC, RID_SIGNED},       
-     {"float", TYPESPEC, RID_FLOAT},        
-     {"typeof", TYPEOF, NORID},
-     {"typedef", SCSPEC, RID_TYPEDEF},        
-     {"switch", SWITCH, NORID},
-     {"int", TYPESPEC, RID_INT},          
-     {"for", FOR, NORID},
-     {"register", SCSPEC, RID_REGISTER},       
-     {"inline", SCSPEC, RID_INLINE},         
-     {"sizeof", SIZEOF, NORID},
-     {"void", TYPESPEC, RID_VOID},         
-     {"__alignof", ALIGNOF, NORID},
-     {"volatile", TYPE_QUAL, RID_VOLATILE},    
-     {"case", CASE, NORID},
-     {"const", TYPE_QUAL, RID_CONST},       
-     {"if", IF, NORID},
-     {"long", TYPESPEC, RID_LONG},         
-     {"continue", CONTINUE, NORID},
-     {"asm", ASM, NORID},
-     {"union", UNION, NORID},
-     {"char", TYPESPEC, RID_CHAR},         
-     {"break", BREAK, NORID},               
-     {"static", SCSPEC, RID_STATIC},         
-     {"unsigned", TYPESPEC, RID_UNSIGNED},     
-     {"auto", SCSPEC, RID_AUTO}};
+  static struct resword reswords[] =
+    {
+
+      /* These first locations are unused, they simplify the hashing. */
+
+		{ "",},{ "",},{ "",},{ "",},
+		{ "else", ELSE, NORID },
+		{ "enum", ENUM, NORID },
+		{ "while", WHILE, NORID },
+		{ "do", DO, NORID },
+		{ "double", TYPESPEC, RID_DOUBLE },
+		{ "default", DEFAULT, NORID },
+		{ "unsigned", TYPESPEC, RID_UNSIGNED },
+		{ "short", TYPESPEC, RID_SHORT },
+		{ "struct", STRUCT, NORID },
+		{ "void", TYPESPEC, RID_VOID },
+		{ "signed", TYPESPEC, RID_SIGNED },
+		{ "volatile", TYPE_QUAL, RID_VOLATILE },
+		{ "union", UNION, NORID },
+		{ "extern", SCSPEC, RID_EXTERN },
+		{ "float", TYPESPEC, RID_FLOAT },
+		{ "typeof", TYPEOF, NORID },
+		{ "typedef", SCSPEC, RID_TYPEDEF },
+		{ "int", TYPESPEC, RID_INT },
+		{ "case", CASE, NORID },
+		{ "const", TYPE_QUAL, RID_CONST },
+		{ "inline", SCSPEC, RID_INLINE },
+		{ "sizeof", SIZEOF, NORID },
+		{ "continue", CONTINUE, NORID },
+		{ "__alignof", ALIGNOF, NORID },
+		{ "for", FOR, NORID },
+		{ "return", RETURN, NORID },
+		{ "static", SCSPEC, RID_STATIC },
+		{ "switch", SWITCH, NORID },
+		{ "register", SCSPEC, RID_REGISTER },
+		{ "if", IF, NORID },
+		{ "char", TYPESPEC, RID_CHAR },
+		{ "goto", GOTO, NORID },
+		{ "asm", ASM, NORID },
+		{ "long", TYPESPEC, RID_LONG },
+		{ "break", BREAK, NORID },
+		{ "auto", SCSPEC, RID_AUTO },
+    };
+
+  if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH) 
+    {
+      register int key = hash (str, len);
+
+      if (key <= MAX_HASH_VALUE) 
+        {
+          register char *s = reswords[key].name;
+
+          if (*s == *str && !strcmp (str + 1, s + 1)) 
+            return &reswords[key];
+        }
+    }
+  return 0;
+}
 
 /* The elements of `ridpointers' are identifier nodes
    for the reserved type names and storage classes.
@@ -1361,71 +1455,6 @@ tree ridpointers[(int) RID_MAX];
 
 int check_newline ();
 
-/* This function performs the minimum-perfect hash mapping from input
-   string to reswords table index.  It only looks at the first and 
-   last characters in the string, thus assuring the O(1) lookup time 
-   (this keeps our constant down to an insignificant amount!).  Compiling
-   the following 2 functions as inline removes all overhead of the
-   function calls. */
-
-#ifdef __GNUC__
-inline
-#endif
-static int
-hash (str, len)
-     register char *str;             
-     register int len;
-{
-  /* This table is used to build the hash table index that recognizes
-     reserved words in 0(1) steps.  It is larger than strictly necessary, 
-     but I'm trading off the space for the time-saving luxury of avoiding 
-     subtraction of an offset. */
-
-  static char hash_table[]
-    = {0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-       0,  0,  0,  0,  0,  6,  0, 29, 31, 24,
-       2,  0, 11,  1,  6, 17,  0,  0, 26,  1,
-       1,  6,  0,  0,  7,  7,  0, 28, 19,  1,
-       0,  0,  0,  0,  0,  0,  0,  0};
-
-  /* The hash function couldn't be simpler: add the length of the string
-     to the Hash_Table value of its first and last character. */
-
-  return len + hash_table[(int) str[0]] + hash_table[(int) str[len - 1]];
-}
-
-/* This routine attempts to match the string found in the reswords with
-   the one from the input stream.  If all the relevant details match an
-   actual strcmp comparison is performed.  */
-
-#ifdef __GNUC__
-inline
-#endif
-static struct resword *
-is_reserved_word (str,len)
-     register char *str;
-     register int len;
-{
-  if (len <= MAX_WORD_SIZE && len >= MIN_WORD_SIZE) 
-    {
-      register int key = hash (str, len);
-
-      if (key >= MIN_KEY_SIZE && key <= MAX_KEY_SIZE)
-	if (reswords[key].name[0] == str[0]
-	    && !strcmp (reswords[key].name + 1, str + 1))
-	  return &reswords[key];
-    }
-  return NULL;   
-}
-
 void
 init_lex ()
 {
@@ -1732,7 +1761,7 @@ linenum:
 
   /* skip the rest of this line.  */
  skipline:
-  while ((c = getc (finput)) && c != '\n');
+  while ((c = getc (finput)) != EOF && c != '\n');
   return c;
 }
 
@@ -2374,7 +2403,7 @@ yylex ()
 	if (wide_flag)
 	  widep = wide_buffer;
 
-	while (c != '"')
+	while (c != '"' && c >= 0)
 	  {
 	    if (c == '\\')
 	      {

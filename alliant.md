@@ -1,23 +1,22 @@
 ;;- Machine description for GNU compiler
 ;;- Alliant FX Version (Based on Motorola 68000)
-;;   Copyright (C) 1988 Free Software Foundation, Inc.
+;;   Copyright (C) 1989 Free Software Foundation, Inc.
 
 ;; This file is part of GNU CC.
 
-;; GNU CC is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.  No author or distributor
-;; accepts responsibility to anyone for the consequences of using it
-;; or for whether it serves any particular purpose or works at all,
-;; unless he says so in writing.  Refer to the GNU CC General Public
-;; License for full details.
+;; GNU CC is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 1, or (at your option)
+;; any later version.
 
-;; Everyone is granted permission to copy, modify and redistribute
-;; GNU CC, but only under the conditions described in the
-;; GNU CC General Public License.   A copy of this license is
-;; supposed to have been given to you along with GNU CC so you
-;; can know your rights and responsibilities.  It should be in a
-;; file named COPYING.  Among other things, the copyright notice
-;; and this notice must be preserved on all copies.
+;; GNU CC is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU CC; see the file COPYING.  If not, write to
+;; the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
 ;;- instruction definitions
@@ -154,14 +153,15 @@
 ;; A composite of the cmp, cmpa, & cmpi m68000 op codes.
 (define_insn "cmpsi"
   [(set (cc0)
-	(minus (match_operand:SI 0 "general_operand" "rKs,mr")
-	       (match_operand:SI 1 "general_operand" "mr,Ksr")))]
+	(compare (match_operand:SI 0 "general_operand" "rKs,mr")
+		 (match_operand:SI 1 "general_operand" "mr,Ksr")))]
   ""
   "*
 {
   if (REG_P (operands[1])
       || (!REG_P (operands[0]) && GET_CODE (operands[0]) != MEM))
-    { cc_status.flags |= CC_REVERSED;
+    {
+      cc_status.flags |= CC_REVERSED;
       return \"cmpl %0,%1\"; 
     }
   return \"cmpl %1,%0\";
@@ -169,14 +169,15 @@
 
 (define_insn "cmphi"
   [(set (cc0)
-	(minus (match_operand:HI 0 "general_operand" "rn,mr")
-	       (match_operand:HI 1 "general_operand" "mr,nr")))]
+	(compare (match_operand:HI 0 "general_operand" "rn,mr")
+		 (match_operand:HI 1 "general_operand" "mr,nr")))]
   ""
   "*
 {
   if (REG_P (operands[1])
       || (!REG_P (operands[0]) && GET_CODE (operands[0]) != MEM))
-    { cc_status.flags |= CC_REVERSED;
+    {
+      cc_status.flags |= CC_REVERSED;
       return \"cmpw %0,%1\"; 
     }
   return \"cmpw %1,%0\";
@@ -187,22 +188,23 @@
 ;;
 ;;(define_insn ""
 ;;  [(set (cc0)
-;;	(minus (match_operand:QI 0 "memory_operand" ">")
-;;	       (match_operand:QI 1 "memory_operand" ">")))]
+;;	(compare (match_operand:QI 0 "memory_operand" ">")
+;;	         (match_operand:QI 1 "memory_operand" ">")))]
 ;;  "GET_CODE (XEXP (operands[0], 0)) == POST_INC
 ;;   && GET_CODE (XEXP (operands[1], 0)) == POST_INC"
 ;;  "cmpmb %1,%0")
 
 (define_insn "cmpqi"
   [(set (cc0)
-	(minus (match_operand:QI 0 "general_operand" "dn,md")
-	       (match_operand:QI 1 "general_operand" "dm,nd")))]
+	(compare (match_operand:QI 0 "general_operand" "dn,md")
+		 (match_operand:QI 1 "general_operand" "dm,nd")))]
   ""
   "*
 {
   if (REG_P (operands[1])
       || (!REG_P (operands[0]) && GET_CODE (operands[0]) != MEM))
-    { cc_status.flags |= CC_REVERSED;
+    {
+      cc_status.flags |= CC_REVERSED;
       return \"cmpb %0,%1\";
     }
   return \"cmpb %1,%0\";
@@ -210,15 +212,15 @@
 
 (define_expand "cmpdf"
   [(set (cc0)
-	(minus:DF (match_operand:DF 0 "general_operand" "")
-		  (match_operand:DF 1 "general_operand" "")))]
+	(compare (match_operand:DF 0 "general_operand" "")
+		 (match_operand:DF 1 "general_operand" "")))]
   "TARGET_68881"
   "")
 
 (define_insn ""
   [(set (cc0)
-	(minus:DF (match_operand:DF 0 "general_operand" "f,m")
-		  (match_operand:DF 1 "general_operand" "fm,f")))]
+	(compare (match_operand:DF 0 "general_operand" "f,m")
+		 (match_operand:DF 1 "general_operand" "fm,f")))]
   "TARGET_68881"
   "*
 {
@@ -236,15 +238,15 @@
 
 (define_expand "cmpsf"
  [(set (cc0)
-       (minus:SF (match_operand:SF 0 "general_operand" "")
-		 (match_operand:SF 1 "general_operand" "")))]
+       (compare (match_operand:SF 0 "general_operand" "")
+		(match_operand:SF 1 "general_operand" "")))]
  "TARGET_68881"
  "")
 
 (define_insn ""
   [(set (cc0)
-	(minus:SF (match_operand:SF 0 "general_operand" "f,md")
-		  (match_operand:SF 1 "general_operand" "fmd,f")))]
+	(compare (match_operand:SF 0 "general_operand" "f,md")
+		 (match_operand:SF 1 "general_operand" "fmd,f")))]
   "TARGET_68881"
   "*
 {
@@ -432,9 +434,7 @@
       else if (DATA_REG_P (operands[0])
 	       && INTVAL (operands[1]) < 128
 	       && INTVAL (operands[1]) >= -128)
-        {
-	  return \"moveq %1,%0\";
-	}
+	return \"moveq %1,%0\";
       else if (ADDRESS_REG_P (operands[0])
 	       && INTVAL (operands[1]) < 0x8000
 	       && INTVAL (operands[1]) >= -0x8000)
@@ -675,7 +675,7 @@
     {
       if (REG_P (operands[0]))
 	{
-	  output_asm_insn (\"fmove.d %1,%-\;movl %+,%0\", operands);
+	  output_asm_insn (\"fmoved %1,%-\;movl %+,%0\", operands);
 	  operands[0] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
 	  return \"movl %+,%0\";
 	}
@@ -954,14 +954,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[1])) {
-    if (FP_REG_P (operands[0])) 
-      return \"fmoveds %1,%0\";
-    else {
-      output_asm_insn (\"fmoveds %1,%-\", operands);
-      return \"movl %+,%0\";
+  if (FP_REG_P (operands[1]))
+    {
+      if (FP_REG_P (operands[0])) 
+	return \"fmoveds %1,%0\";
+      else
+	{
+	  output_asm_insn (\"fmoveds %1,%-\", operands);
+	  return \"movl %+,%0\";
+	}
     }
-  }
   if (FP_REG_P (operands[0])) 
     return \"fmoveds %1,%0\";
   return \"fmoveds %1,%0\";
@@ -1033,18 +1035,21 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[1])) {
-    if (FP_REG_P (operands[0])) {
-      output_asm_insn (\"fmovedl %1,%-\", operands);
+  if (FP_REG_P (operands[1]))
+    {
+      if (FP_REG_P (operands[0]))
+	{
+	  output_asm_insn (\"fmovedl %1,%-\", operands);
+	  return \"fmoveld %+,%0\";
+        }
+      return \"fmovedl %1,%0\";
+    }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmoved %1,%0\", operands);
+      output_asm_insn (\"fmovedl %0,%-\", operands);
       return \"fmoveld %+,%0\";
     }
-    return \"fmovedl %1,%0\";
-  }
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmoved %1,%0\", operands);
-    output_asm_insn (\"fmovedl %0,%-\", operands);
-    return \"fmoveld %+,%0\";
-  }
   return \"fmovedl %1,%0\";
 }")
 
@@ -1054,13 +1059,20 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[1])) {
-    if (FP_REG_P (operands[0])) {
+  if (FP_REG_P (operands[1]))
+    {
+      if (FP_REG_P (operands[0]))
+        {
+	  output_asm_insn (\"fmovesl %1,%-\", operands);
+	  return \"fmovels %+,%0\";
+	}
+      return \"fmovesl %1,%0\";
+    }
+  if (FP_REG_P (operands[0]))
+    {
       output_asm_insn (\"fmovesl %1,%-\", operands);
       return \"fmovels %+,%0\";
     }
-    return \"fmovesl %1,%0\";
-  }
   return \"fmovesl %1,%0\";
 }")
 
@@ -1072,14 +1084,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesb %1,%-\", operands);
-    return \"fmovebs %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesb %1,%-\", operands);
-    return \"movb% %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesb %1,%-\", operands);
+      return \"fmovebs %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesb %1,%-\", operands);
+      return \"movb% %+,%0\";
+    }
   return \"fmovesb %1,%0\";
 }")
 
@@ -1089,14 +1103,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesw %1,%-\", operands);
-    return \"fmovews %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesw %1,%-\", operands);
-    return \"movw% %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesw %1,%-\", operands);
+      return \"fmovews %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesw %1,%-\", operands);
+      return \"movw% %+,%0\";
+    }
   return \"fmovesw %1,%0\";
 }")
 
@@ -1106,14 +1122,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesl %1,%-\", operands);
-    return \"fmovels %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovesl %1,%-\", operands);
-    return \"movl %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesl %1,%-\", operands);
+      return \"fmovels %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovesl %1,%-\", operands);
+      return \"movl %+,%0\";
+    }
   return \"fmovesl %1,%0\";
 }")
 
@@ -1123,14 +1141,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedb %1,%-\", operands);
-    return \"fmovebd %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedb %1,%-\", operands);
-    return \"movb% %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedb %1,%-\", operands);
+      return \"fmovebd %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedb %1,%-\", operands);
+      return \"movb% %+,%0\";
+    }
   return \"fmovedb %1,%0\";
 }")
 
@@ -1140,14 +1160,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedw %1,%-\", operands);
-    return \"fmovewd %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedw %1,%-\", operands);
-    return \"movw% %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedw %1,%-\", operands);
+      return \"fmovewd %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedw %1,%-\", operands);
+      return \"movw% %+,%0\";
+    }
   return \"fmovedw %1,%0\";
 }")
 
@@ -1157,14 +1179,16 @@
   "TARGET_68881"
   "*
 {
-  if (FP_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedl %1,%-\", operands);
-    return \"fmoveld %+,%0\";
-  }
-  if (DATA_REG_P (operands[0])) {
-    output_asm_insn (\"fmovedl %1,%-\", operands);
-    return \"movl %+,%0\";
-  }
+  if (FP_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedl %1,%-\", operands);
+      return \"fmoveld %+,%0\";
+    }
+  if (DATA_REG_P (operands[0]))
+    {
+      output_asm_insn (\"fmovedl %1,%-\", operands);
+      return \"movl %+,%0\";
+    }
   return \"fmovedl %1,%0\";
 }")
 
@@ -1172,14 +1196,22 @@
 ;; add instructions
 
 (define_insn "addsi3"
-  [(set (match_operand:SI 0 "general_operand" "=m,r,!a")
-	(plus:SI (match_operand:SI 1 "general_operand" "%0,0,a")
-		 (match_operand:SI 2 "general_operand" "dIKLs,mrIKLs,rJK")))]
+  [(set (match_operand:SI 0 "general_operand" "=m,r,!a,!a")
+	(plus:SI (match_operand:SI 1 "general_operand" "%0,0,a,rJK")
+		 (match_operand:SI 2 "general_operand" "dIKLs,mrIKLs,rJK,a")))]
   ""
   "*
 {
   if (! operands_match_p (operands[0], operands[1]))
     {
+      if (!ADDRESS_REG_P (operands[1]))
+	{
+	  rtx tmp = operands[1];
+
+	  operands[1] = operands[2];
+	  operands[2] = tmp;
+	}
+
       /* These insns can result from reloads to access
 	 stack slots over 64k from the frame pointer.  */
       if (GET_CODE (operands[2]) == CONST_INT
@@ -1713,9 +1745,7 @@
 	  || offsetable_memref_p (operands[0])))
     { 
       if (DATA_REG_P (operands[0]))
-	{
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, logval);
-	}
+	operands[1] = gen_rtx (CONST_INT, VOIDmode, logval);
       else
         {
 	  operands[0] = adj_offsetable_operand (operands[0], 3 - (logval / 8));
@@ -1916,9 +1946,9 @@
 }")
 
 (define_insn ""
-  [(set (cc0) (minus (match_operand:QI 0 "general_operand" "i")
-		     (lshiftrt:SI (match_operand:SI 1 "memory_operand" "m")
-				  (const_int 24))))]
+  [(set (cc0) (compare (match_operand:QI 0 "general_operand" "i")
+		       (lshiftrt:SI (match_operand:SI 1 "memory_operand" "m")
+				    (const_int 24))))]
   "(GET_CODE (operands[0]) == CONST_INT
     && (INTVAL (operands[0]) & ~0xff) == 0)"
   "* cc_status.flags |= CC_REVERSED;
@@ -1926,9 +1956,9 @@
 ")
 
 (define_insn ""
-  [(set (cc0) (minus (lshiftrt:SI (match_operand:SI 0 "memory_operand" "m")
-				  (const_int 24))
-		     (match_operand:QI 1 "general_operand" "i")))]
+  [(set (cc0) (compare (lshiftrt:SI (match_operand:SI 0 "memory_operand" "m")
+				    (const_int 24))
+		       (match_operand:QI 1 "general_operand" "i")))]
   "(GET_CODE (operands[1]) == CONST_INT
     && (INTVAL (operands[1]) & ~0xff) == 0)"
   "*
@@ -1936,9 +1966,9 @@
 ")
 
 (define_insn ""
-  [(set (cc0) (minus (match_operand:QI 0 "general_operand" "i")
-		     (ashiftrt:SI (match_operand:SI 1 "memory_operand" "m")
-				  (const_int 24))))]
+  [(set (cc0) (compare (match_operand:QI 0 "general_operand" "i")
+		       (ashiftrt:SI (match_operand:SI 1 "memory_operand" "m")
+				    (const_int 24))))]
   "(GET_CODE (operands[0]) == CONST_INT
     && ((INTVAL (operands[0]) + 0x80) & ~0xff) == 0)"
   "* cc_status.flags |= CC_REVERSED;
@@ -1946,9 +1976,9 @@
 ")
 
 (define_insn ""
-  [(set (cc0) (minus (ashiftrt:SI (match_operand:SI 0 "memory_operand" "m")
-				  (const_int 24))
-		     (match_operand:QI 1 "general_operand" "i")))]
+  [(set (cc0) (compare (ashiftrt:SI (match_operand:SI 0 "memory_operand" "m")
+				    (const_int 24))
+		       (match_operand:QI 1 "general_operand" "i")))]
   "(GET_CODE (operands[1]) == CONST_INT
     && ((INTVAL (operands[1]) + 0x80) & ~0xff) == 0)"
   "*
@@ -2773,8 +2803,8 @@
 	(plus:SI (match_operand:SI 0 "general_operand" "")
 		 ;; Note operand 1 has been negated!
 		 (match_operand:SI 1 "immediate_operand" "")))
-   (set (cc0) (minus (match_operand:SI 2 "general_operand" "")
-		     (match_dup 3)))
+   (set (cc0) (compare (match_operand:SI 2 "general_operand" "")
+		       (match_dup 3)))
    (set (pc) (if_then_else (ltu (cc0) (const_int 0))
 			   (label_ref (match_operand 4 "" "")) (pc)))]
   ""
@@ -2847,9 +2877,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (ne (minus (plus:HI (match_operand:HI 0 "general_operand" "g")
-			     (const_int -1))
-		    (const_int -1))
+	 (ne (compare (plus:HI (match_operand:HI 0 "general_operand" "g")
+			       (const_int -1))
+		      (const_int -1))
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
@@ -2871,9 +2901,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (ne (minus (plus:SI (match_operand:SI 0 "general_operand" "g")
-			     (const_int -1))
-		    (const_int -1))
+	 (ne (compare (plus:SI (match_operand:SI 0 "general_operand" "g")
+			       (const_int -1))
+		      (const_int -1))
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))
@@ -2927,11 +2957,12 @@
 
   if (size == 0) 
     return \"subl a0,a0\;jsr %0\;movl a6@(-4),a0\";
-  else {
-    xoperands[1] = gen_rtx (CONST_INT, VOIDmode, size/4 );
-    output_asm_insn (\"movl sp,a0\;movl %1,%-\", xoperands );
-    return \"jsr %0\;movl a6@(-4),a0\;addqw #4,sp\";
-  }
+  else
+    {
+      xoperands[1] = gen_rtx (CONST_INT, VOIDmode, size/4 );
+      output_asm_insn (\"movl sp,a0\;movl %1,%-\", xoperands );
+      return \"jsr %0\;movl a6@(-4),a0\;addqw #4,sp\";
+    }
 }")
 
 ;; Call subroutine, returning value in operand 0
@@ -2949,11 +2980,12 @@
 
   if (size == 0)
     return \"subl a0,a0\;jsr %1\;movl a6@(-4),a0\";
-  else {
-    xoperands[2] = gen_rtx (CONST_INT, VOIDmode, size/4 );
-    output_asm_insn (\"movl sp,a0\;movl %2,%-\", xoperands );
-    return \"jsr %1\;movl a6@(-4),a0\;addqw #4,sp\";
-  }
+  else
+    {
+      xoperands[2] = gen_rtx (CONST_INT, VOIDmode, size/4 );
+      output_asm_insn (\"movl sp,a0\;movl %2,%-\", xoperands );
+      return \"jsr %1\;movl a6@(-4),a0\;addqw #4,sp\";
+    }
 }")
 
 (define_insn "return"

@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file handles generation of all the assembler code
@@ -318,6 +317,59 @@ assemble_integer_zero ()
 {
   ASM_OUTPUT_INT (asm_out_file, const0_rtx);
 }
+
+/* Assemble a string constant with the specified C string as contents.  */
+
+void
+assemble_string (p, size)
+     unsigned char *p;
+     int size;
+{
+  register int i;
+  int excess = 0;
+  int pos = 0;
+  int maximum = 2000;
+
+  /* If the string is very long, split it up.  */
+
+  while (pos < size)
+    {
+      int thissize = size - pos;
+      if (thissize > maximum)
+	thissize = maximum;
+
+#ifdef ASM_OUTPUT_ASCII
+      ASM_OUTPUT_ASCII (asm_out_file, p, thissize);
+#else
+      fprintf (asm_out_file, "\t.ascii \"");
+
+      for (i = 0; i < thissize; i++)
+	{
+	  register int c = p[i];
+	  if (c == '\"' || c == '\\')
+	    putc ('\\', asm_out_file);
+	  if (c >= ' ' && c < 0177)
+	    putc (c, asm_out_file);
+	  else
+	    {
+	      fprintf (asm_out_file, "\\%o", c);
+	      /* After an octal-escape, if a digit follows,
+		 terminate one string constant and start another.
+		 The Vax assembler fails to stop reading the escape
+		 after three digits, so this is the only way we
+		 can get it to parse the data properly.  */
+	      if (i < thissize - 1
+		  && p[i + 1] >= '0' && p[i + 1] <= '9')
+		fprintf (asm_out_file, "\"\n\t.ascii \"");
+	    }
+	}
+      fprintf (asm_out_file, "\"\n");
+#endif /* no ASM_OUTPUT_ASCII */
+
+      pos += thissize;
+      p += thissize;
+    }
+}
 
 /* Assemble everything that is needed for a variable or function declaration.
    Not used for automatic variables, and not used for function definitions.
@@ -508,6 +560,36 @@ assemble_name (file, name)
     fputs (&name[1], file);
   else
     ASM_OUTPUT_LABELREF (file, name);
+}
+
+/* Allocate SIZE bytes writable static space with a gensym name
+   and return an RTX to refer to its address.  */
+
+rtx
+assemble_static_space (size)
+     int size;
+{
+  char name[12];
+  char *namestring;
+  rtx x;
+  /* Round size up to multiple of BIGGEST_ALIGNMENT bits
+     so that each uninitialized object starts on such a boundary.  */
+  int rounded = ((size + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
+		 / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
+		 * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
+
+  if (flag_shared_data)
+    data_section ();
+  ASM_GENERATE_INTERNAL_LABEL (name, "LF", const_labelno);
+  ++const_labelno;
+
+  namestring = (char *) obstack_alloc (saveable_obstack,
+				       strlen (name) + 2);
+  strcpy (namestring, name);
+  
+  x = gen_rtx (SYMBOL_REF, Pmode, namestring);
+  ASM_OUTPUT_LOCAL (asm_out_file, name, size, rounded);
+  return x;
 }
 
 /* Here we combine duplicate floating constants to make
@@ -1349,11 +1431,19 @@ force_const_mem (mode, x)
 	  switch (mode)
 	    {
 	    case DImode:
+#ifndef WORDS_BIG_ENDIAN
 	      /* Output two ints.  */
 	      ASM_OUTPUT_INT (asm_out_file,
 			      gen_rtx (CONST_INT, VOIDmode, u.i[0]));
 	      ASM_OUTPUT_INT (asm_out_file,
 			      gen_rtx (CONST_INT, VOIDmode, u.i[1]));
+#else
+	      /* Output two ints.  */
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode, u.i[1]));
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode, u.i[0]));
+#endif
 	      break;
 
 	    case DFmode:
@@ -1584,12 +1674,7 @@ output_constant (exp, size)
 	}
       else if (TREE_CODE (exp) == STRING_CST)
 	{
-	  register int i;
-	  register unsigned char *p
-	    = (unsigned char *) TREE_STRING_POINTER (exp);
 	  int excess = 0;
-	  int pos = 0;
-	  int maximum = 2000;
 
 	  if (size > TREE_STRING_LENGTH (exp))
 	    {
@@ -1597,45 +1682,7 @@ output_constant (exp, size)
 	      size = TREE_STRING_LENGTH (exp);
 	    }
 
-	  /* If the string is very long, split it up.  */
-
-	  while (pos < size)
-	    {
-	      int thissize = size - pos;
-	      if (thissize > maximum)
-		thissize = maximum;
-
-#ifdef ASM_OUTPUT_ASCII
-	      ASM_OUTPUT_ASCII (asm_out_file, p, thissize);
-#else
-	      fprintf (asm_out_file, "\t.ascii \"");
-
-	      for (i = 0; i < thissize; i++)
-		{
-		  register int c = p[i];
-		  if (c == '\"' || c == '\\')
-		    putc ('\\', asm_out_file);
-		  if (c >= ' ' && c < 0177)
-		    putc (c, asm_out_file);
-		  else
-		    {
-		      fprintf (asm_out_file, "\\%o", c);
-		      /* After an octal-escape, if a digit follows,
-			 terminate one string constant and start another.
-			 The Vax assembler fails to stop reading the escape
-			 after three digits, so this is the only way we
-			 can get it to parse the data properly.  */
-		      if (i < thissize - 1
-			  && p[i + 1] >= '0' && p[i + 1] <= '9')
-			fprintf (asm_out_file, "\"\n\t.ascii \"");
-		    }
-		}
-	      fprintf (asm_out_file, "\"\n");
-#endif /* no ASM_OUTPUT_ASCII */
-
-	      pos += thissize;
-	      p += thissize;
-	    }
+	  assemble_string (TREE_STRING_POINTER (exp), size);
 	  size = excess;
 	}
       else

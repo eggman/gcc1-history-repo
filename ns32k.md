@@ -13,20 +13,19 @@
 
 ;; This file is part of GNU CC.
 
-;; GNU CC is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.  No author or distributor
-;; accepts responsibility to anyone for the consequences of using it
-;; or for whether it serves any particular purpose or works at all,
-;; unless he says so in writing.  Refer to the GNU CC General Public
-;; License for full details.
+;; GNU CC is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 1, or (at your option)
+;; any later version.
 
-;; Everyone is granted permission to copy, modify and redistribute
-;; GNU CC, but only under the conditions described in the
-;; GNU CC General Public License.   A copy of this license is
-;; supposed to have been given to you along with GNU CC so you
-;; can know your rights and responsibilities.  It should be in a
-;; file named COPYING.  Among other things, the copyright notice
-;; and this notice must be preserved on all copies.
+;; GNU CC is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU CC; see the file COPYING.  If not, write to
+;; the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
 ;;- Instruction patterns.  When multiple patterns apply,
@@ -87,22 +86,22 @@
 
 (define_insn "cmpdf"
   [(set (cc0)
-	(minus (match_operand:DF 0 "general_operand" "fmF")
-	       (match_operand:DF 1 "general_operand" "fmF")))]
+	(compare (match_operand:DF 0 "general_operand" "fmF")
+		 (match_operand:DF 1 "general_operand" "fmF")))]
   "TARGET_32081"
   "cmpl %0,%1")
 
 (define_insn "cmpsf"
   [(set (cc0)
-	(minus (match_operand:SF 0 "general_operand" "fmF")
-	       (match_operand:SF 1 "general_operand" "fmF")))]
+	(compare (match_operand:SF 0 "general_operand" "fmF")
+		 (match_operand:SF 1 "general_operand" "fmF")))]
   "TARGET_32081"
   "cmpf %0,%1")
 
 (define_insn "cmpsi"
   [(set (cc0)
-	(minus (match_operand:SI 0 "general_operand" "rmn")
-	       (match_operand:SI 1 "general_operand" "rmn")))]
+	(compare (match_operand:SI 0 "general_operand" "rmn")
+		 (match_operand:SI 1 "general_operand" "rmn")))]
   ""
   "*
 {
@@ -127,8 +126,8 @@
 
 (define_insn "cmphi"
   [(set (cc0)
-	(minus (match_operand:HI 0 "general_operand" "g")
-	       (match_operand:HI 1 "general_operand" "g")))]
+	(compare (match_operand:HI 0 "general_operand" "g")
+		 (match_operand:HI 1 "general_operand" "g")))]
   ""
   "*
 {
@@ -159,8 +158,8 @@
 
 (define_insn "cmpqi"
   [(set (cc0)
-	(minus (match_operand:QI 0 "general_operand" "g")
-	       (match_operand:QI 1 "general_operand" "g")))]
+	(compare (match_operand:QI 0 "general_operand" "g")
+		 (match_operand:QI 1 "general_operand" "g")))]
   ""
   "*
 {
@@ -1709,10 +1708,10 @@
 
 (define_insn ""
   [(set (cc0)
-	(minus (zero_extract (match_operand:SI 0 "general_operand" "rm")
-			     (const_int 1)
-			     (match_operand:SI 1 "general_operand" "rmn"))
-	       (const_int 1)))]
+	(compare (zero_extract (match_operand:SI 0 "general_operand" "rm")
+			       (const_int 1)
+			       (match_operand:SI 1 "general_operand" "rmn"))
+		 (const_int 1)))]
   ""
   "*
 { cc_status.flags = CC_Z_IN_NOT_F;
@@ -1732,10 +1731,10 @@
 
 (define_insn ""
   [(set (cc0)
-	(minus (zero_extract (match_operand:HI 0 "general_operand" "g")
-			     (const_int 1)
-			     (match_operand:HI 1 "general_operand" "rmn"))
-	       (const_int 1)))]
+	(compare (zero_extract (match_operand:HI 0 "general_operand" "g")
+			       (const_int 1)
+			       (match_operand:HI 1 "general_operand" "rmn"))
+		 (const_int 1)))]
   ""
   "*
 { cc_status.flags = CC_Z_IN_NOT_F;
@@ -1755,10 +1754,10 @@
 
 (define_insn ""
   [(set (cc0)
-	(minus (zero_extract:SI (match_operand:QI 0 "general_operand" "g")
-				(const_int 1)
-				(match_operand:QI 1 "general_operand" "rmn"))
-	       (const_int 1)))]
+	(compare (zero_extract:SI (match_operand:QI 0 "general_operand" "g")
+				  (const_int 1)
+				  (match_operand:QI 1 "general_operand" "rmn"))
+		 (const_int 1)))]
   ""
   "*
 { cc_status.flags = CC_Z_IN_NOT_F;

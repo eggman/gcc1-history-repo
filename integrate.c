@@ -4,23 +4,21 @@
 
 This file is part of GNU CC.
 
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
+
 GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
-#include <ctype.h>
 #include <stdio.h>
 
 #include "config.h"
@@ -613,6 +611,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	{
 	  int size = int_size_in_bytes (TREE_TYPE (formal));
 	  copy = assign_stack_local (tmode, size);
+	  if (!memory_address_p (DECL_MODE (formal), XEXP (copy, 0)))
+	    copy = change_address (copy, VOIDmode, copy_rtx (XEXP (copy, 0)));
 	  store_expr (arg, copy, 0);
 	}
       else if (! TREE_READONLY (formal)
@@ -720,7 +720,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
       /* Make certain that we can accept struct_value_{incoming_rtx,rtx},
 	 and map it.  If it is a hard register, it is mapped automagically.  */
-      if (GET_CODE (struct_value_incoming_rtx) == REG)
+      if (this_struct_value_rtx == 0
+	  || GET_CODE (struct_value_incoming_rtx) == REG)
 	;
       else if (GET_CODE (struct_value_incoming_rtx) == MEM
 	       && XEXP (XEXP (struct_value_incoming_rtx, 0), 0) == frame_pointer_rtx

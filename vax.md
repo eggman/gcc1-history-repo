@@ -1,24 +1,23 @@
 
 ;;- Machine description for GNU compiler
 ;;- Vax Version
-;;   Copyright (C) 1987 Free Software Foundation, Inc.
+;;   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 ;; This file is part of GNU CC.
 
-;; GNU CC is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY.  No author or distributor
-;; accepts responsibility to anyone for the consequences of using it
-;; or for whether it serves any particular purpose or works at all,
-;; unless he says so in writing.  Refer to the GNU CC General Public
-;; License for full details.
+;; GNU CC is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 1, or (at your option)
+;; any later version.
 
-;; Everyone is granted permission to copy, modify and redistribute
-;; GNU CC, but only under the conditions described in the
-;; GNU CC General Public License.   A copy of this license is
-;; supposed to have been given to you along with GNU CC so you
-;; can know your rights and responsibilities.  It should be in a
-;; file named COPYING.  Among other things, the copyright notice
-;; and this notice must be preserved on all copies.
+;; GNU CC is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU CC; see the file COPYING.  If not, write to
+;; the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
 ;;- Instruction patterns.  When multiple patterns apply,
@@ -64,36 +63,36 @@
 
 (define_insn "cmpsi"
   [(set (cc0)
-	(minus (match_operand:SI 0 "general_operand" "g")
-	       (match_operand:SI 1 "general_operand" "g")))]
+	(compare (match_operand:SI 0 "general_operand" "g")
+		 (match_operand:SI 1 "general_operand" "g")))]
   ""
   "cmpl %0,%1")
 
 (define_insn "cmphi"
   [(set (cc0)
-	(minus (match_operand:HI 0 "general_operand" "g")
-	       (match_operand:HI 1 "general_operand" "g")))]
+	(compare (match_operand:HI 0 "general_operand" "g")
+		 (match_operand:HI 1 "general_operand" "g")))]
   ""
   "cmpw %0,%1")
 
 (define_insn "cmpqi"
   [(set (cc0)
-	(minus (match_operand:QI 0 "general_operand" "g")
-	       (match_operand:QI 1 "general_operand" "g")))]
+	(compare (match_operand:QI 0 "general_operand" "g")
+		 (match_operand:QI 1 "general_operand" "g")))]
   ""
   "cmpb %0,%1")
 
 (define_insn "cmpdf"
   [(set (cc0)
-	(minus (match_operand:DF 0 "general_operand" "gF")
-	       (match_operand:DF 1 "general_operand" "gF")))]
+	(compare (match_operand:DF 0 "general_operand" "gF")
+		 (match_operand:DF 1 "general_operand" "gF")))]
   ""
   "cmp%# %0,%1")
 
 (define_insn "cmpsf"
   [(set (cc0)
-	(minus (match_operand:SF 0 "general_operand" "gF")
-	       (match_operand:SF 1 "general_operand" "gF")))]
+	(compare (match_operand:SF 0 "general_operand" "gF")
+		 (match_operand:SF 1 "general_operand" "gF")))]
   ""
   "cmpf %0,%1")
 
@@ -1494,6 +1493,107 @@
   ""
   "jgtru %l0")
 
+;; Recognize jlbs and jlbc insns.
+;; These come before the jbc and jbs recognizers so these will be preferred.
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (const_int 1))
+	     (const_int 0))
+	 (label_ref (match_operand 1 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbs %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (const_int 1))
+	     (const_int 0))
+	 (label_ref (match_operand 1 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbc %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (const_int 1))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 1 "" ""))))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbc %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (const_int 1))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 1 "" ""))))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbs %0,%l1")
+
+;; These four entries allow a jlbc or jlbs to be made
+;; by combination with a bic.
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (not:SI (const_int -2)))
+	     (const_int 0))
+	 (label_ref (match_operand 1 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbs %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (not:SI (const_int -2)))
+	     (const_int 0))
+	 (label_ref (match_operand 1 "" ""))
+	 (pc)))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbc %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (not:SI (const_int -2)))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 1 "" ""))))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbc %0,%l1")
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
+		     (not:SI (const_int -2)))
+	     (const_int 0))
+	 (pc)
+	 (label_ref (match_operand 1 "" ""))))]
+  "GET_CODE (operands[0]) != MEM
+   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
+  "jlbs %0,%l1")
+
 ;; Recognize jbs and jbc instructions.
 
 (define_insn ""
@@ -1671,104 +1771,6 @@
   "GET_CODE (operands[0]) != MEM
    || ! mode_dependent_address_p (XEXP (operands[0], 0))"
   "jbs %1,%0,%l2")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (const_int 1))
-	     (const_int 0))
-	 (label_ref (match_operand 1 "" ""))
-	 (pc)))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbs %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (const_int 1))
-	     (const_int 0))
-	 (label_ref (match_operand 1 "" ""))
-	 (pc)))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbc %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (const_int 1))
-	     (const_int 0))
-	 (pc)
-	 (label_ref (match_operand 1 "" ""))))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbc %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (const_int 1))
-	     (const_int 0))
-	 (pc)
-	 (label_ref (match_operand 1 "" ""))))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbs %0,%l1")
-
-;; These four entries allow a jlbc or jlbs to be made
-;; by combination with a bic.
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (not:SI (const_int -2)))
-	     (const_int 0))
-	 (label_ref (match_operand 1 "" ""))
-	 (pc)))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbs %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (not:SI (const_int -2)))
-	     (const_int 0))
-	 (label_ref (match_operand 1 "" ""))
-	 (pc)))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbc %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (ne (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (not:SI (const_int -2)))
-	     (const_int 0))
-	 (pc)
-	 (label_ref (match_operand 1 "" ""))))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbc %0,%l1")
-
-(define_insn ""
-  [(set (pc)
-	(if_then_else
-	 (eq (and:SI (match_operand:SI 0 "general_operand" "g")
-		     (not:SI (const_int -2)))
-	     (const_int 0))
-	 (pc)
-	 (label_ref (match_operand 1 "" ""))))]
-  "GET_CODE (operands[0]) != MEM
-   || ! mode_dependent_address_p (XEXP (operands[0], 0))"
-  "jlbs %0,%l1")
 
 ;; Subtract-and-jump and Add-and-jump insns.
 ;; These are not used when output is for the Unix assembler
@@ -1838,9 +1840,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (lt (minus (plus:SI (match_operand:SI 0 "general_operand" "+g")
-			     (const_int 1))
-		    (match_operand:SI 1 "general_operand" "g"))
+	 (lt (compare (plus:SI (match_operand:SI 0 "general_operand" "+g")
+			       (const_int 1))
+		      (match_operand:SI 1 "general_operand" "g"))
 	     (const_int 0))
 	 (label_ref (match_operand 2 "" ""))
 	 (pc)))
@@ -1853,9 +1855,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (le (minus (plus:SI (match_operand:SI 0 "general_operand" "+g")
-			     (const_int 1))
-		    (match_operand:SI 1 "general_operand" "g"))
+	 (le (compare (plus:SI (match_operand:SI 0 "general_operand" "+g")
+			       (const_int 1))
+		      (match_operand:SI 1 "general_operand" "g"))
 	     (const_int 0))
 	 (label_ref (match_operand 2 "" ""))
 	 (pc)))
@@ -1869,9 +1871,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (ge (minus (plus:SI (match_operand:SI 0 "general_operand" "+g")
-			     (const_int 1))
-		    (match_operand:SI 1 "general_operand" "g"))
+	 (ge (compare (plus:SI (match_operand:SI 0 "general_operand" "+g")
+			       (const_int 1))
+		      (match_operand:SI 1 "general_operand" "g"))
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 2 "" ""))))
@@ -1884,9 +1886,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (gt (minus (plus:SI (match_operand:SI 0 "general_operand" "+g")
-			     (const_int 1))
-		    (match_operand:SI 1 "general_operand" "g"))
+	 (gt (compare (plus:SI (match_operand:SI 0 "general_operand" "+g")
+			       (const_int 1))
+		      (match_operand:SI 1 "general_operand" "g"))
 	     (const_int 0))
 	 (pc)
 	 (label_ref (match_operand 2 "" ""))))
@@ -1902,9 +1904,9 @@
 (define_insn ""
   [(set (pc)
 	(if_then_else
-	 (ne (minus (plus:SI (match_operand:SI 0 "general_operand" "g")
-			     (const_int -1))
-		    (const_int -1))
+	 (ne (compare (plus:SI (match_operand:SI 0 "general_operand" "g")
+			       (const_int -1))
+		      (const_int -1))
 	     (const_int 0))
 	 (label_ref (match_operand 1 "" ""))
 	 (pc)))

@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -721,7 +720,8 @@ offsetable_memref_p (op)
    after the addition of a positive integer less than the
    size of that mode.
 
-   We assume that the original address is valid and do not check it.  */
+   We assume that the original address is valid and do not check it.
+   We require a strictly valid address, for the sake of use in reload.c.  */
 
 int
 offsetable_address_p (mode, y)
@@ -744,7 +744,7 @@ offsetable_address_p (mode, y)
       int old = INTVAL (y1 = *y2);
       int good;
       INTVAL (y1) += GET_MODE_SIZE (mode) - 1;
-      good = memory_address_p (mode, y);
+      good = strict_memory_address_p (mode, y);
       /* In any case, restore old contents of memory.  */
       INTVAL (y1) = old;
       return good;
@@ -761,7 +761,7 @@ offsetable_address_p (mode, y)
 
   z = plus_constant (y, GET_MODE_SIZE (mode) - 1);
 
-  return memory_address_p (mode, z);
+  return strict_memory_address_p (mode, z);
 }
 
 /* Return 1 if ADDR is an address-expression whose effect depends

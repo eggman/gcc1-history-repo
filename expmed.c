@@ -4,20 +4,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -193,14 +192,13 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value, align)
 	{
 	  if (GET_MODE_BITSIZE (GET_MODE (value)) >= bitsize)
 	    {
-	      /* Avoid making subreg of a subreg.  */
-	      if (GET_CODE (value1) == SUBREG)
-		value1 = copy_to_reg (value1);
 	      /* Optimization: Don't bother really extending VALUE
 		 if it has all the bits we will actually use.  */
-	      value1 = gen_rtx (SUBREG, SImode, value1, 0);
-	      if (GET_CODE (SUBREG_REG (value1)) != REG)
+
+	      /* Avoid making subreg of a subreg, or of a mem.  */
+	      if (GET_CODE (value1) != REG)
 		value1 = copy_to_reg (value1);
+	      value1 = gen_rtx (SUBREG, SImode, value1, 0);
 	    }
 	  else if (!CONSTANT_P (value))
 	    /* Parse phase is supposed to make VALUE's data type
@@ -1446,10 +1444,9 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
       else
 	{
 	  /* See if we can do remainder without a library call.  */
-	  temp = expand_binop (mode,
-			       unsignedp ? umod_optab : smod_optab,
-			       adjusted_op0, op1, target,
-			       unsignedp, OPTAB_WIDEN);
+	  temp = sign_expand_binop (mode, umod_optab, smod_optab,
+				    adjusted_op0, op1, target,
+				    unsignedp, OPTAB_WIDEN);
 	  if (temp != 0)
 	    return temp;
 	  /* No luck there.
@@ -1472,13 +1469,13 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
     /* If producing quotient in order to subtract for remainder,
        and a remainder subroutine would be ok,
        don't use a divide subroutine.  */
-    temp = expand_binop (mode, unsignedp ? udiv_optab : sdiv_optab,
-			 adjusted_op0, op1, target,
-			 unsignedp, OPTAB_WIDEN);
+    temp = sign_expand_binop (mode, udiv_optab, sdiv_optab,
+			      adjusted_op0, op1, target,
+			      unsignedp, OPTAB_WIDEN);
   else
-    temp = expand_binop (mode, unsignedp ? udiv_optab : sdiv_optab,
-			 adjusted_op0, op1, target,
-			 unsignedp, OPTAB_LIB_WIDEN);
+    temp = sign_expand_binop (mode, udiv_optab, sdiv_optab,
+			      adjusted_op0, op1, target,
+			      unsignedp, OPTAB_LIB_WIDEN);
 
   /* If we really want the remainder, get it by subtraction.  */
   if (rem_flag)
@@ -1486,10 +1483,9 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
       if (temp == 0)
 	{
 	  /* No divide instruction either.  Use library for remainder.  */
-	  temp = expand_binop (mode,
-			       unsignedp ? umod_optab : smod_optab,
-			       op0, op1, target,
-			       unsignedp, OPTAB_LIB_WIDEN);
+	  temp = sign_expand_binop (mode, umod_optab, smod_optab,
+				    op0, op1, target,
+				    unsignedp, OPTAB_LIB_WIDEN);
 	}
       else
 	{

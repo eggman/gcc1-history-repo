@@ -49,9 +49,9 @@ This brings to mind Hayes' changes for Stanford MIPS.
 * Detect dead stores into memory?
 
 A store into memory is dead if it is followed by another store into
-the same location; and, in between, there is no reference to
-that anything that might be that location (including no reference
-to a variable address).
+the same location; and, in between, there is no reference to anything
+that might be that location (including no reference to a variable
+address).
 
 * Loop optimization.
 
@@ -59,7 +59,7 @@ Strength reduction and iteration variable elimination could be
 smarter.  They should know how to decide which iteration variables are
 not worth making explicit because they can be computed as part of an
 address calculation.  Based on this information, they should decide
-when it is desirable to eliminate one iteration iable and create
+when it is desirable to eliminate one iteration variable and create
 another in its place.
 
 It should be possible to compute what the value of an iteration
@@ -207,41 +207,6 @@ where static data needs to be addressed using base registers.
 for scalars and another for large objects.  The compiler does not
 now have a way to understand this.
 
-* Some machines use a caller-saves convention for saving registers over
-function calls.  Here is a design for how to handle such a convention.
-
-Classify all the hard registers as call-clobbered, then teach the
-compiler how to put call-crossing pseudo-regs in call-clobbered hard
-registers by generating save/restore insns around the call.  Generate
-the save/restores somewhere around the reload pass; this avoids
-getting confused by cross jumping which happens after.  Actually put
-the save/restore insns into the RTL chain, so that cross-jumping and
-peephole opt. will work on them.
-
-The time to generate these insns is when you can still tell what regs
-are live at each call, but late enough to know exactly where the
-pseudos have been allocated.  Perhaps the best time is just before
-reload_as_needed.
-
-This requires changes in local-alloc.c and global-alloc.c to be willing
-to allocate call-crossing pseudos to call-clobbered registers.
-That isn't hard if you do it with a special flag macro that simply says to
-ignore (in those passes) whether a register is call-clobbered.
-This macro would be defined if the target machine uses caller-saves.
-
-To get the best output, it is necessary to count the cost (in
-additional save/restores) for each pseudo register of putting it in a
-call-clobbered hard reg.  This means counting *how many times* each
-pseudo crosses a call.  Depending on that value, it might be better to
-put the pseudo in memory than in a call-clobbered register.  Cost
-counting would be done in flow.c, perhaps, and costs would affect
-allocation decisions in local-alloc and global-alloc.  Perhaps each
-pseudo should have one priority for getting a call-saved reg and
-another, lower (in general) priority for a call-clobbered reg.
-
-Then there would no longer be a need for the flag: the changes would
-improve the output, on all machines.
-
 5. Precompilation of header files.
 
 In the future, many programs will use thousands of lines of header files.
@@ -311,6 +276,8 @@ The second step is to divide the output into strings, some keyed and
 some unconditional.  This division is done without changing the order
 of the text being divided up.
 
+JNC@lcs.mit.edu has some ideas on this subject also.
+
 6. Other possibly nice features.
 
 * cpp could have a #provide directive.
@@ -363,7 +330,7 @@ VI.    Specification of what constitutes correct performance of an
     A. The components of GCC
     B. The itinerary of a C program through GCC
     C. A system of benchmark programs
-    D. What your RTL and assembler look should like with these benchmarks
+    D. What your RTL and assembler should look like with these benchmarks
     E. Fine tuning for speed and size of compiled code
 VII.   A systematic procedure for debugging an implementation of GCC
     A. Use of GDB

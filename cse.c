@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -258,6 +257,11 @@ static int *reg_in_table;
 static int *all_minus_one;
 static int *consec_ints;
 
+/* Set nonzero in cse_insn to tell cse_basic_block to skip immediately
+   to the next basic block and treat it as a continuation of this one.  */
+
+static int cse_skip_to_next_block;
+
 /* UID of insn that starts the basic block currently being cse-processed.  */
 
 static int cse_basic_block_start;
@@ -403,6 +407,7 @@ static int get_integer_term ();
 static rtx get_related_value ();
 static void note_mem_written ();
 static int cse_rtx_addr_varies_p ();
+static int fold_cc0 ();
 
 /* Return an estimate of the cost of computing rtx X.
    The only use of this is to compare the costs of two expressions
@@ -890,7 +895,8 @@ lookup_as_function (x, code)
 
 #define CHEAPER(X,Y)	\
    (((X)->cost < (Y)->cost) ||						\
-    (GET_CODE ((X)->exp) == REG && GET_CODE ((Y)->exp) == REG		\
+    ((X)->cost == (Y)->cost						\
+     && GET_CODE ((X)->exp) == REG && GET_CODE ((Y)->exp) == REG	\
      && (regno_last_uid[REGNO ((X)->exp)] > cse_basic_block_end		\
 	 || regno_first_uid[REGNO ((X)->exp)] < cse_basic_block_start)	\
      && (regno_last_uid[REGNO ((X)->exp)]				\
@@ -1960,19 +1966,26 @@ fold_rtx (x, copyflag)
 	 and this must be a comparison.
 	 Decode the info on how the previous insn set the cc0
 	 and use that to deduce result of comparison.  */
-      if (XEXP (x, 0) == cc0_rtx)
+      if (XEXP (x, 0) == cc0_rtx
+	  || GET_CODE (XEXP (x, 0)) == COMPARE)
 	{
-	  if (prev_insn_cc0 == 0
-	      || const_arg1 != const0_rtx
-	      /* 0200 bit in prev_insn_cc0 means only zeroness is known,
-		 and sign is not known.  */
-	      || ((prev_insn_cc0 & 0200)
-		  && code != EQ && code != NE))
-	    return x;
-	  if (code == LEU || code == LTU || code == GEU || code == GTU)
-	    arg0 = prev_insn_cc0 & 7;
+	  if (XEXP (x, 0) == cc0_rtx)
+	    arg0 = prev_insn_cc0;
 	  else
-	    arg0 = (prev_insn_cc0 >> 3) & 7;
+	    arg0 = fold_cc0 (XEXP (x, 0));
+
+	  if (arg0 == 0
+	      || const_arg1 != const0_rtx
+	      /* 0200 bit in arg0 means only zeroness is known,
+		 and sign is not known.  */
+	      || ((arg0 & 0200) != 0 && code != EQ && code != NE))
+	    return x;
+
+	  /* Extract either the signed or the unsigned digit from ARG0.  */
+	  if (code == LEU || code == LTU || code == GEU || code == GTU)
+	    arg0 = arg0 & 7;
+	  else
+	    arg0 = (arg0 >> 3) & 7;
 	  if (arg0 == 7) arg0 = -1;
 
 	  switch (code)
@@ -2007,16 +2020,20 @@ fold_rtx (x, copyflag)
 	  switch (code)
 	    {
 	    case PLUS:
-	      if (const_arg0 == const0_rtx)
+	      if (const_arg0 == const0_rtx
+		  || const_arg0 == fconst0_rtx
+		  || const_arg0 == dconst0_rtx)
 		return XEXP (x, 1);
-	      if (const_arg1 == const0_rtx)
+	      if (const_arg1 == const0_rtx
+		  || const_arg1 == fconst0_rtx
+		  || const_arg1 == dconst0_rtx)
 		return XEXP (x, 0);
 
 	      /* Handle both-operands-constant cases.  */
 	      if (const_arg0 != 0 && const_arg1 != 0
 		  && GET_CODE (const_arg0) != CONST_DOUBLE
 		  && GET_CODE (const_arg1) != CONST_DOUBLE
-		  && GET_MODE_CLASS (GET_MODE (x)))
+		  && GET_MODE_CLASS (GET_MODE (x)) == MODE_INT)
 	        {
 		  if (GET_CODE (const_arg1) == CONST_INT)
 		    new = plus_constant (const_arg0, INTVAL (const_arg1));
@@ -2045,7 +2062,7 @@ fold_rtx (x, copyflag)
 				     INTVAL (const_arg1));
 	      break;
 
-	    case MINUS:
+	    case COMPARE:
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
 
@@ -2056,13 +2073,21 @@ fold_rtx (x, copyflag)
 		  if (GET_MODE_CLASS (GET_MODE (x)) == MODE_INT)
 		    return const0_rtx;
 		}
+	      break;
+	      
+	    case MINUS:
+	      if (const_arg1 == const0_rtx
+		  || const_arg1 == fconst0_rtx
+		  || const_arg1 == dconst0_rtx)
+		return XEXP (x, 0);
 
-	      /* MINUS with VOIDmode is an overflowless subtraction
-		 for comparison purposes.  It's incorrect to fold it
-		 at all unless we can determine the comparison results.
-		 Leave that to fold_cc0.  */
-	      if (GET_MODE (x) == VOIDmode)
-		return x;
+	      if (XEXP (x, 0) == XEXP (x, 1)
+		  || (const_arg0 != 0 && const_arg0 == const_arg1))
+		{
+		  /* We can't assume x-x is 0 with IEEE floating point.  */
+		  if (GET_MODE_CLASS (GET_MODE (x)) == MODE_INT)
+		    return const0_rtx;
+		}
 
 	      /* Change subtraction from zero into negation.  */
 	      if (const_arg0 == const0_rtx)
@@ -2083,6 +2108,10 @@ fold_rtx (x, copyflag)
 		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 0));
 	      if (const_arg1 == const0_rtx || const_arg0 == const0_rtx)
 		new = const0_rtx;
+	      if (const_arg1 == fconst0_rtx || const_arg0 == fconst0_rtx)
+		new = fconst0_rtx;
+	      if (const_arg1 == dconst0_rtx || const_arg0 == dconst0_rtx)
+		new = dconst0_rtx;
 	      if (const_arg1 == const1_rtx)
 		return XEXP (x, 0);
 	      if (const_arg0 == const1_rtx)
@@ -2186,12 +2215,6 @@ fold_rtx (x, copyflag)
 	  break;
 
 	case MINUS:
-	  if (GET_MODE (x) == VOIDmode)
-	    /* Overflowless comparison:
-	       cannot represent an exact answer, so don't fold.
-	       This is used only to set the CC0,
-	       and fold_cc0 will take care of it.  */
-	    return x;
 	  val = arg0 - arg1;
 	  break;
 
@@ -2382,7 +2405,7 @@ equiv_constant (x)
 {
   rtx tem1;
 
-  if (CONSTANT_P (x))
+  if (CONSTANT_P (x) || GET_CODE (x) == CONST_DOUBLE)
     return x;
   else if (GET_CODE (x) == REG
 	   && (tem1 = qty_const[reg_qty[REGNO (x)]]) != 0
@@ -2421,7 +2444,7 @@ static int
 fold_cc0 (x)
      rtx x;
 {
-  if (GET_CODE (x) == MINUS && GET_MODE (x) == VOIDmode)
+  if (GET_CODE (x) == COMPARE)
     {
       rtx y0 = fold_rtx (XEXP (x, 0), 0);
       rtx y1 = fold_rtx (XEXP (x, 1), 0);
@@ -3124,7 +3147,7 @@ cse_insn (insn)
 	sets[i].dest_hash_code = HASH (SET_DEST (sets[i].rtl), mode);
 
       if (dest == cc0_rtx
-	  && (GET_CODE (src) == MINUS
+	  && (GET_CODE (src) == COMPARE
 	      || CONSTANT_P (src)
 	      || GET_CODE (src) == REG))
 	this_insn_cc0 = fold_cc0 (src);
@@ -3338,6 +3361,11 @@ cse_insn (insn)
 	      NOTE_LINE_NUMBER (prev_insn) = NOTE_INSN_DELETED;
 	      NOTE_SOURCE_FILE (prev_insn) = 0;
 	    }
+	  /* If jump target is the following label, and this is only use of it,
+	     skip direct to that label and continue optimizing there.  */
+	  if (no_labels_between_p (insn, XEXP (SET_SRC (x), 0))
+	      && LABEL_NUSES (XEXP (SET_SRC (x), 0)) == 1)
+	    cse_skip_to_next_block = 1;
 	}
     }
 
@@ -3441,7 +3469,63 @@ invalidate_from_clobbers (w, x)
     }
 }
 
-static void cse_basic_block ();
+/* Find the end of INSN's basic block, and return the uid of its last insn
+   and the total number of SETs in all the insns of the block.  */
+
+struct cse_basic_block_data { int uid, nsets; rtx last; };
+
+static struct cse_basic_block_data
+cse_end_of_basic_block (insn)
+     rtx insn;
+{
+  rtx p = insn;
+  struct cse_basic_block_data val;
+  int nsets = 0;
+  int last_uid = 0;
+
+  /* Scan to end of this basic block.  */
+  while (p && GET_CODE (p) != CODE_LABEL)
+    {
+      /* Don't cse out the end of a loop.  This makes a difference
+	 only for the unusual loops that always execute at least once;
+	 all other loops have labels there so we will stop in any case.
+	 Cse'ing out the end of the loop is dangerous because it
+	 might cause an invariant expression inside the loop
+	 to be reused after the end of the loop.  This would make it
+	 hard to move the expression out of the loop in loop.c,
+	 especially if it is one of several equivalent expressions
+	 and loop.c would like to eliminate it.
+	 The occasional optimizations lost by this will all come back
+	 if loop and cse are made to work alternatingly.  */
+      if (GET_CODE (p) == NOTE
+	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
+	break;
+
+      /* Don't cse over a call to setjmp; on some machines (eg vax)
+	 the regs restored by the longjmp come from
+	 a later time than the setjmp.  */
+      if (GET_CODE (p) == NOTE
+	  && NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
+	break;
+
+      /* A PARALLEL can have lots of SETs in it,
+	 especially if it is really an ASM_OPERANDS.  */
+      if (GET_CODE (p) == INSN && GET_CODE (PATTERN (p)) == PARALLEL)
+	nsets += XVECLEN (PATTERN (p), 0);
+      else
+	nsets += 1;
+
+      last_uid = INSN_UID (p);
+      p = NEXT_INSN (p);
+    }
+  val.uid = last_uid;
+  val.nsets = nsets;
+  val.last = p;
+
+  return val;
+}
+
+static rtx cse_basic_block ();
 
 /* Perform cse on the instructions of a function.
    F is the first instruction.
@@ -3492,55 +3576,22 @@ cse_main (f, nregs)
      (which is 2 for each SET).  */
   while (insn)
     {
-      register rtx p = insn;
-      register int last_uid;
+      struct cse_basic_block_data val;
 
-      max_qty = 0;
+      val = cse_end_of_basic_block (insn);
 
-      /* Find end of next basic block */
-      while (p && GET_CODE (p) != CODE_LABEL)
-	{
-	  /* Don't cse out the end of a loop.  This makes a difference
-	     only for the unusual loops that always execute at least once;
-	     all other loops have labels there so we will stop in any case.
-	     Cse'ing out the end of the loop is dangerous because it
-	     might cause an invariant expression inside the loop
-	     to be reused after the end of the loop.  This would make it
-	     hard to move the expression out of the loop in loop.c,
-	     especially if it is one of several equivalent expressions
-	     and loop.c would like to eliminate it.
-	     The occasional optimizations lost by this will all come back
-	     if loop and cse are made to work alternatingly.  */
-	  if (GET_CODE (p) == NOTE
-	      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
-	    break;
-
-	  /* Don't cse over a call to setjmp; on some machines (eg vax)
-	     the regs restored by the longjmp come from
-	     a later time than the setjmp.  */
-	  if (GET_CODE (p) == NOTE
-	      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
-	    break;
-
-	  /* A PARALLEL can have lots of SETs in it,
-	     especially if it is really an ASM_OPERANDS.  */
-	  if (GET_CODE (p) == INSN && GET_CODE (PATTERN (p)) == PARALLEL)
-	    max_qty += XVECLEN (PATTERN (p), 0) * 2;
-	  else
-	    max_qty += 2;;
-
-	  last_uid = INSN_UID (p);
-	  p = NEXT_INSN (p);
-	}
-
-      cse_basic_block_end = last_uid;
+      cse_basic_block_end = val.uid;
       cse_basic_block_start = INSN_UID (insn);
+      max_qty = val.nsets * 2;
+
+      /* Make MAX_QTY bigger to give us room to optimize
+	 past the end of this basic block, if that should prove useful.  */
+      if (max_qty < 500)
+	max_qty = 500;
 
       max_qty += max_reg;
 
-      cse_basic_block (insn, p);
-
-      insn = p ? NEXT_INSN (p) : 0;
+      insn = cse_basic_block (insn, val.last);
     }
 
   /* Tell refers_to_mem_p that qty_const info is not available.  */
@@ -3552,7 +3603,7 @@ cse_main (f, nregs)
   return cse_jumps_altered;
 }
 
-static void
+static rtx
 cse_basic_block (from, to)
      register rtx from, to;
 {
@@ -3568,9 +3619,14 @@ cse_basic_block (from, to)
 
   new_basic_block ();
 
+  cse_skip_to_next_block = 0;
+
   for (insn = from; insn != to; insn = NEXT_INSN (insn))
     {
-      register enum rtx_code code = GET_CODE (insn);
+      register enum rtx_code code;
+
+      code = GET_CODE (insn);
+
       if (code == INSN || code == JUMP_INSN || code == CALL_INSN)
 	cse_insn (insn);
       /* Memory, and some registers, are invalidate by subroutine calls.  */
@@ -3601,8 +3657,34 @@ cse_basic_block (from, to)
 	     it requires no further processing here.  */
 	  break;
 	}
+
+      if (cse_skip_to_next_block)
+	{
+	  struct cse_basic_block_data val;
+
+	  /* Skip the remaining insns in this block.  */
+	  cse_skip_to_next_block = 0;
+	  insn = to;
+	  if (insn == 0)
+	    break;
+
+	  /* Find the end of the following block.  */
+	  val = cse_end_of_basic_block (NEXT_INSN (insn));
+
+	  /* If the tables we allocated have enough space left
+	     to handle all the SETs in the next basic block,
+	     continue through it.  Otherwise, return,
+	     and that block will be scanned individually.  */
+	  if (val.nsets * 2 + next_qty > max_qty)
+	    break;
+
+	  cse_basic_block_end = val.uid;
+	  to = val.last;
+	}
     }
 
   if (next_qty > max_qty)
     abort ();
+
+  return to ? NEXT_INSN (to) : 0;
 }

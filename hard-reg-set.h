@@ -3,20 +3,19 @@
 
 This file is part of GNU CC
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* Define the type of a set of hard registers.  */
@@ -104,59 +103,59 @@ typedef long HARD_REG_SET[HARD_REG_SET_LONGS];
  ((SET)[(BIT) / HOST_BITS_PER_LONG] & (1 << ((BIT) % HOST_BITS_PER_LONG)))
 
 #define CLEAR_HARD_REG_SET(TO)  \
-{ register long *scan_tp_ = (TO);				\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ = 0; }
+do { register long *scan_tp_ = (TO);				\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ = 0; } while (0)
 
 #define SET_HARD_REG_SET(TO)  \
-{ register long *scan_tp_ = (TO);				\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ = -1; }
+do { register long *scan_tp_ = (TO);				\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ = -1; } while (0)
 
 #define COPY_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ = *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ = *scan_fp_++; } while (0)
 
 #define COMPL_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ = ~ *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ = ~ *scan_fp_++; } while (0)
 
 #define AND_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ &= *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ &= *scan_fp_++; } while (0)
 
 #define AND_COMPL_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ &= ~ *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ &= ~ *scan_fp_++; } while (0)
 
 #define IOR_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ |= *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ |= *scan_fp_++; } while (0)
 
 #define IOR_COMPL_HARD_REG_SET(TO, FROM)  \
-{ register long *scan_tp_ = (TO), *scan_fp_ = (FROM);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    *scan_tp_++ |= ~ *scan_fp_++; }
+do { register long *scan_tp_ = (TO), *scan_fp_ = (FROM);	\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       *scan_tp_++ |= ~ *scan_fp_++; } while (0)
 
 #define GO_IF_HARD_REG_SUBSET(X,Y,TO)  \
-{ register long *scan_xp_ = (X), *scan_yp_ = (Y);		\
-  register int i;						\
-  for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
-    if (0 != (*scan_xp_++ & ~*scan_yp_++)) break;		\
-  if (i == HARD_REG_SET_LONGS) goto TO; }
+do { register long *scan_xp_ = (X), *scan_yp_ = (Y);		\
+     register int i;						\
+     for (i = 0; i < HARD_REG_SET_LONGS; i++)			\
+       if (0 != (*scan_xp_++ & ~*scan_yp_++)) break;		\
+     if (i == HARD_REG_SET_LONGS) goto TO; } while (0)
 
 #endif
 
@@ -183,6 +182,18 @@ extern char call_used_regs[FIRST_PSEUDO_REGISTER];
 /* The same info as a HARD_REG_SET.  */
 
 extern HARD_REG_SET call_used_reg_set;
+  
+/* Indexed by hard register number, contains 1 for registers that are
+   fixed use -- i.e. in fixed_regs -- or a function value return register
+   or STRUCT_VALUE_REGNUM or STATIC_CHAIN_REGNUM.  These are the
+   registers that cannot hold quantities across calls even if we are
+   willing to save and restore them.  */
+
+extern char call_fixed_regs[FIRST_PSEUDO_REGISTER];
+
+/* The same info as a HARD_REG_SET.  */
+
+extern HARD_REG_SET call_fixed_reg_set;
 
 /* Indexed by hard register number, contains 1 for registers
    that are being used for global register decls.

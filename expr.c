@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include "config.h"
@@ -237,7 +236,9 @@ protect_from_queue (x, modify)
 }
 
 /* Return nonzero if X contains a QUEUED expression:
-   if it contains anything that will be altered by a queued increment.  */
+   if it contains anything that will be altered by a queued increment.
+   We handle only combinations of MEM, PLUS, MINUS and MULT operators
+   since memory addresses generally contain only those.  */
 
 static int
 queued_subexp_p (x)
@@ -358,7 +359,8 @@ convert_move (to, from, unsignedp)
 	  if (HAVE_zero_extendsidi2)
 	    {
 	      convert_move (gen_lowpart (SImode, to), from, unsignedp);
-	      emit_unop_insn (CODE_FOR_zero_extendsidi2, to, to, ZERO_EXTEND);
+	      emit_unop_insn (CODE_FOR_zero_extendsidi2, to,
+			      gen_lowpart (SImode, to), ZERO_EXTEND);
 	    }
 	  else
 #endif
@@ -1317,6 +1319,10 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 
 	  if (reg_mentioned_p (stack_pointer_rtx, temp))
 	    {
+	      /* Now that emit_library_call does force_operand
+		 before pushing anything, preadjustment does not work.  */
+	      temp = copy_to_reg (temp);
+#if 0
 	      /* Correct TEMP so it holds what will be a description of
 		 the address to copy to, valid after one arg is pushed.  */
 	      int xsize = GET_MODE_SIZE (Pmode);
@@ -1335,7 +1341,8 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      temp = plus_constant (temp, xsize);
 #else
 	      temp = plus_constant (temp, -xsize);
-#endif
+#endif /* not STACK_GROWS_DOWNWARD */
+#endif /* 0 */
 	    }
 
 	  /* Make current_args_size nonzero around the library call
@@ -1463,6 +1470,7 @@ emit_library_call (va_alist)
   struct arg { rtx value; enum machine_mode mode; };
   struct arg *argvec;
   int old_args_size = current_args_size;
+  int stack_padding = 0;
 
   va_start (p);
   orgfun = fun = va_arg (p, rtx);
@@ -1526,9 +1534,15 @@ emit_library_call (va_alist)
     }
 
   if (args_size != 0)
-    argblock
-      = push_block (round_push (gen_rtx (CONST_INT, VOIDmode, args_size)));
+    {
+#ifdef STACK_ARGS_ADJUST
+      stack_padding = STACK_ARGS_ADJUST (args_size);
+      args_size += stack_padding;
 #endif
+      argblock
+	= push_block (round_push (gen_rtx (CONST_INT, VOIDmode, args_size)));
+    }
+#endif /* no PUSH_ROUNDING */
 
   INIT_CUMULATIVE_ARGS (args_so_far, (tree)0);
 
@@ -1539,7 +1553,7 @@ emit_library_call (va_alist)
   inc = 1;
   argnum = 0;
 #endif
-  args_size = 0;
+  args_size = stack_padding;
 
   for (count = 0; count < nargs; count++, argnum += inc)
     {
@@ -1860,7 +1874,9 @@ store_constructor (exp, target)
 	  bitpos = DECL_OFFSET (field);
 
 	  store_field (target, bitsize, bitpos, mode, TREE_VALUE (elt),
-		       VOIDmode, 0, TYPE_ALIGN (TREE_TYPE (elt)));
+		       /* The alignment of TARGET is
+			  at least what its type requires.  */
+		       VOIDmode, 0, TYPE_ALIGN (TREE_TYPE (exp)));
 	}
     }
   else if (TREE_CODE (TREE_TYPE (exp)) == ARRAY_TYPE)
@@ -1901,7 +1917,9 @@ store_constructor (exp, target)
 		    * TYPE_SIZE_UNIT (elttype));
 
 	  store_field (target, bitsize, bitpos, mode, TREE_VALUE (elt),
-		       VOIDmode, 0);
+		       /* The alignment of TARGET is
+			  at least what its type requires.  */
+		       VOIDmode, 0, TYPE_ALIGN (TREE_TYPE (exp)));
 	}
     }
 }
@@ -2170,15 +2188,9 @@ expand_expr (exp, target, tmode, modifier)
 	return gen_rtx (CONST_INT, VOIDmode, TREE_INT_CST_LOW (exp));
       /* Generate immediate CONST_DOUBLE
 	 which will be turned into memory by reload if necessary.  */
-#ifdef WORDS_BIG_ENDIAN
-      return immed_double_const (TREE_INT_CST_HIGH (exp),
-				 TREE_INT_CST_LOW (exp),
-				 mode);
-#else
       return immed_double_const (TREE_INT_CST_LOW (exp),
 				 TREE_INT_CST_HIGH (exp),
 				 mode);
-#endif
 
     case CONST_DECL:
       return expand_expr (DECL_INITIAL (exp), target, VOIDmode, 0);
@@ -2333,7 +2345,8 @@ expand_expr (exp, target, tmode, modifier)
 	  && TREE_CODE (TREE_TYPE (TREE_OPERAND (exp, 0))) == ARRAY_TYPE
 	  && TREE_LITERAL (TREE_OPERAND (exp, 1))
 	  && TREE_CODE (TREE_OPERAND (exp, 0)) == VAR_DECL
-	  && DECL_INITIAL (TREE_OPERAND (exp, 0)))
+	  && DECL_INITIAL (TREE_OPERAND (exp, 0))
+	  && TREE_CODE (DECL_INITIAL (TREE_OPERAND (exp, 0))) != ERROR_MARK)
 	{
 	  tree index = fold (TREE_OPERAND (exp, 1));
 	  if (TREE_CODE (index) == INTEGER_CST)
@@ -2416,7 +2429,7 @@ expand_expr (exp, target, tmode, modifier)
 				plus_constant (XEXP (op0, 0),
 					       (bitpos / BITS_PER_UNIT)));
 	MEM_IN_STRUCT_P (op0) = 1;
-	MEM_VOLATILE_P (op0) = volstruct;
+	MEM_VOLATILE_P (op0) |= volstruct;
 	/* If OP0 is in the shared structure-value stack slot,
 	   and it is not BLKmode, copy it into a register.
 	   The shared slot may be clobbered at any time by another call.
@@ -3112,7 +3125,6 @@ expand_expr (exp, target, tmode, modifier)
  binop2:
   temp = expand_binop (mode, this_optab, op0, op1, target,
 		       TREE_UNSIGNED (TREE_TYPE (exp)), OPTAB_LIB_WIDEN);
- binop1:
   if (temp == 0)
     abort ();
   return temp;
@@ -3618,6 +3630,9 @@ expand_call (exp, target, ignore)
      an extra, implicit first parameter.  Otherwise,
      it is passed by being copied directly into struct_value_rtx.  */
   int structure_value_addr_parm = 0;
+  /* Nonzero if called function returns an aggregate in memory PCC style,
+     by returning the address of where to find it.  */
+  int pcc_struct_value = 0;
 
   /* Number of actual parameters in this call, including struct value addr.  */
   int num_actuals;
@@ -3636,6 +3651,8 @@ expand_call (exp, target, ignore)
   int starting_args_size;
   /* Nonzero means count reg-parms' size in ARGS_SIZE.  */
   int stack_count_regparms = 0;
+  /* Number of bytes of padding BELOW the first argument.  */
+  int stack_padding = 0;
   /* Data on reg parms scanned so far.  */
   CUMULATIVE_ARGS args_so_far;
   /* Nonzero if a reg parm has been scanned.  */
@@ -3715,19 +3732,34 @@ expand_call (exp, target, ignore)
 
   /* Set up a place to return a structure.  */
 
-  if (TYPE_MODE (TREE_TYPE (exp)) == BLKmode)
+  if (TYPE_MODE (TREE_TYPE (exp)) == BLKmode
+      || (flag_pcc_struct_return
+	  && (TREE_CODE (TREE_TYPE (exp)) == RECORD_TYPE
+	      || TREE_CODE (TREE_TYPE (exp)) == UNION_TYPE)))
     {
       /* This call returns a big structure.  */
-      if (target)
+#ifdef PCC_STATIC_STRUCT_RETURN
+      if (flag_pcc_struct_return)
 	{
-	  structure_value_addr = XEXP (target, 0);
-	  if (reg_mentioned_p (stack_pointer_rtx, structure_value_addr))
-	    structure_value_addr = copy_to_reg (structure_value_addr);
+	  pcc_struct_value = 1;
+	  is_integrable = 0;  /* Easier than making that case work right.  */
 	}
       else
-	/* Make room on the stack to hold the value.  */
-	structure_value_addr = get_structure_value_addr (expr_size (exp));
+#endif
+	{
+	  if (target)
+	    {
+	      structure_value_addr = XEXP (target, 0);
+	      if (reg_mentioned_p (stack_pointer_rtx, structure_value_addr))
+		structure_value_addr = copy_to_reg (structure_value_addr);
+	    }
+	  else
+	    /* Make room on the stack to hold the value.  */
+	    structure_value_addr = get_structure_value_addr (expr_size (exp));
+	}
     }
+
+  /* If called function is inline, try to integrate it.  */
 
   if (is_integrable)
     {
@@ -3866,7 +3898,8 @@ expand_call (exp, target, ignore)
       args[i].tree_value = TREE_VALUE (p);
       args[i].offset = args_size;
 
-      if (type == error_mark_node)
+      if (type == error_mark_node
+	  || TYPE_SIZE (type) == 0)
 	continue;
 
       /* Decide where to pass this arg.  */
@@ -4002,9 +4035,35 @@ expand_call (exp, target, ignore)
   for (i = 0; i < num_actuals; i++)
     if (args[i].reg != 0 || is_const)
       {
+	int j;
+	int struct_value_lossage = 0;
+
+	/* First, see if this is a precomputed struct-returning function call
+	   and other subsequent parms are also such.  */
+	if (TYPE_MODE (TREE_TYPE (args[i].tree_value)) == BLKmode
+	    && TREE_CODE (args[i].tree_value) == CALL_EXPR)
+	  for (j = i + 1; j < num_actuals; j++)
+	    if (TYPE_MODE (TREE_TYPE (args[j].tree_value)) == BLKmode
+		&& TREE_CODE (args[j].tree_value) == CALL_EXPR
+		&& args[j].reg != 0 || is_const)
+	      {
+		/* We have two precomputed structure-values call expressions
+		   in our parm list.  Both of them would normally use
+		   the structure-value block.  To avoid the conflict,
+		   compute this parm with a different temporary block.  */
+		int size = int_size_in_bytes (TREE_TYPE (args[i].tree_value));
+		rtx structval = assign_stack_local (BLKmode, size);
+		args[i].value = expand_expr (args[i].tree_value, structval,
+					     VOIDmode, 0);
+		struct_value_lossage = 1;
+		break;
+	      }
+	if (!struct_value_lossage)
+	  args[i].value = expand_expr (args[i].tree_value, 0, VOIDmode, 0);
+
 	if (args[i].reg != 0)
 	  reg_parm_seen = 1;
-	args[i].value = expand_expr (args[i].tree_value, 0, VOIDmode, 0);
+
 	if (GET_CODE (args[i].value) != MEM
 	    && ! CONSTANT_P (args[i].value)
 	    && GET_CODE (args[i].value) != CONST_DOUBLE)
@@ -4044,16 +4103,24 @@ expand_call (exp, target, ignore)
     {
       old_stack_level = copy_to_mode_reg (Pmode, stack_pointer_rtx);
       old_pending_adj = pending_stack_adjust;
+#ifdef STACK_ARGS_ADJUST
+      stack_padding = STACK_ARGS_ADJUST (args_size.constant);
+      args_size.constant += stack_padding;
+#endif
       argblock = push_block (round_push (ARGS_SIZE_RTX (args_size)));
     }
   else if (args_size.constant > 0)
     {
       int needed = args_size.constant;
 
+#ifdef STACK_ARGS_ADJUST
+      stack_padding = STACK_ARGS_ADJUST (needed);
+      needed += stack_padding;
+#endif
 #ifdef STACK_BOUNDARY
       needed = (needed + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
-      args_size.constant = needed;
 #endif
+      args_size.constant = needed;
 
       if (
 #ifndef PUSH_ROUNDING
@@ -4087,6 +4154,14 @@ expand_call (exp, target, ignore)
 	 to be allocated for it.  */
       argblock = push_block (const0_rtx);
     }
+#endif
+
+#ifdef STACK_ARGS_ADJUST
+  /* If stack needs padding below the args, increase all arg offsets
+     so the args are stored above the padding.  */
+  if (stack_padding)
+    for (i = 0; i < num_actuals; i++)
+      args[i].offset.constant += stack_padding;
 #endif
 
   /* Don't try to defer pops if preallocating, not even from the first arg,
@@ -4140,7 +4215,8 @@ expand_call (exp, target, ignore)
       else
 	args[i].stack = 0;
 
-      if (args[i].reg == 0)
+      if (args[i].reg == 0
+	  && TYPE_SIZE (TREE_TYPE (args[i].tree_value)) != 0)
 	store_one_arg (&args[i], argblock, may_be_alloca);
     }
 
@@ -4253,6 +4329,23 @@ expand_call (exp, target, ignore)
       if (target == 0)
 	target = gen_rtx (MEM, BLKmode,
 			  memory_address (BLKmode, structure_value_addr));
+    }
+  else if (pcc_struct_value)
+    {
+      if (target != 0)
+	{
+	  valreg = hard_function_value (build_pointer_type (TREE_TYPE (exp)),
+					fndecl);
+	  target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
+			    copy_to_reg (valreg));
+	}
+      else if (TYPE_MODE (TREE_TYPE (exp)) != BLKmode)
+	emit_move_insn (target, gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
+					 copy_to_reg (valreg)));
+      else
+	emit_block_move (target, gen_rtx (MEM, BLKmode, copy_to_reg (valreg)),
+			 expr_size (exp),
+			 TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT);
     }
   else if (target && GET_MODE (target) == TYPE_MODE (TREE_TYPE (exp)))
     {

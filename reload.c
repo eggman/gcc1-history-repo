@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 /* This file contains subroutines used only from the file reload1.c.
@@ -97,6 +96,10 @@ actually doing the reloads, not when just counting them.
    reload_inc		  int, positive amount to increment or decrement by if
 			   reload_in is a PRE_DEC, PRE_INC, POST_DEC, POST_INC.
 			   Ignored otherwise (don't assume it is zero).
+   reload_in_reg	  rtx.  A reg for which reload_in is the equivalent.
+			   If reload_in is a symbol_ref which came from
+			   reg_equiv_constant, then this is the pseudo
+			   which has that symbol_ref as equivalent.
    reload_reg_rtx	  rtx.  This is the register to reload into.
 			   If it is zero when `find_reloads' returns,
 			   you must find a suitable register in the class
@@ -117,6 +120,7 @@ char reload_strict_low[FIRST_PSEUDO_REGISTER];
 rtx reload_reg_rtx[FIRST_PSEUDO_REGISTER];
 char reload_optional[FIRST_PSEUDO_REGISTER];
 int reload_inc[FIRST_PSEUDO_REGISTER];
+rtx reload_in_reg[FIRST_PSEUDO_REGISTER];
 char reload_nocombine[FIRST_PSEUDO_REGISTER];
 
 /* All the "earlyclobber" operands of the current insn
@@ -214,7 +218,7 @@ static int find_inc_amount ();
    Therefore, the reload-number for OUT is stored in
    output_reloadnum when we return; the return value applies to IN.
    Usually (presently always), when IN and OUT are nonzero,
-   these two values are equal, but the caller should be careful to
+   the two reload-numbers are equal, but the caller should be careful to
    distinguish them.  */
 
 static int
@@ -361,6 +365,7 @@ push_reload (in, out, inloc, outloc, class,
       reload_inc[i] = 0;
       reload_strict_low[i] = strict_low;
       reload_nocombine[i] = 0;
+      reload_in_reg[i] = *inloc;
 
       n_reloads++;
     }

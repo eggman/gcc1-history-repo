@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /*
  *  set_cmp (left_rtx, right_rtx, [bhwlsd])
@@ -29,10 +28,6 @@ and this notice must be preserved on all copies.  */
  *    outputs the necessary instructions, eg,
  *    "eq.w a1,a2 ! jbra.t L5"
  *    for (cmpsi a1 a2) (beq L5)
- *  if necessary, it reverses the order of the operands to put a constant first
- *  the operands of eq can be swapped without changing the sense
- *    of the test; swapping the operands of lt changes it to le with
- *    the branch sense reversed, and similarly for le.
  */
  
 static rtx xop0, xop1;
@@ -88,7 +83,7 @@ gen_cmp (label, cmpop, tf)
       ops[1] = xop1;
     }
 
-  sprintf (buf, "%s.%c %%0,%%1! jbr%c.%c %%l2", cmpop, typech, regch, tf);
+  sprintf (buf, "%s.%c %%0,%%1\n\tjbr%c.%c %%l2", cmpop, typech, regch, tf);
   output_asm_insn (buf, ops);
   return "";
 }
@@ -147,31 +142,6 @@ align_section (n)
 }
 
 /*
- *  calls like  (*f)()  generate  calls @n(ap)  -- invalid, since ap 
- *  has been changed for the call.  Detect this case so the instruction
- *   pattern can deal with it.
- */
-
-call_ap_check (addr)
-     rtx addr;
-{
-  if (GET_CODE (addr) != MEM)
-    return 0;
-  addr = XEXP (addr, 0);
-  if (GET_CODE (addr) != MEM)
-    return 0;
-  addr = XEXP (addr, 0);
-  if (REG_P (addr) && REGNO (addr) == ARG_POINTER_REGNUM)
-    return 1;
-  if (GET_CODE (addr) != PLUS)
-    return 0;
-  addr = XEXP (addr, 0);
-  if (REG_P (addr) && REGNO (addr) == ARG_POINTER_REGNUM)
-    return 1;
-  return 0;
-}
-
-/*
  *  pick target machine if not specified, the same as the host
  */
 
@@ -192,4 +162,130 @@ override_options ()
     }
 #endif
 }
+
+/*
+ * Routines to look at CONST_DOUBLEs without sinful knowledge of
+ * what the inside of u.d looks like
+ *
+ * const_double_high_int  -- high word of machine double or long long
+ * const_double_low_int   -- low word
+ * const_double_float_int -- the word of a machine float
+ */
+
+static double frexp ();
+static void float_extract ();
+
+int
+const_double_high_int (x)
+     rtx x;
+{
+  if (GET_MODE (x) == DImode)
+    return CONST_DOUBLE_HIGH (x);
+  else
+    {
+      int sign, expd, expf;
+      unsigned fracdh, fracdl, fracf;
+      float_extract (x, &sign, &expd, &fracdh, &fracdl, &expf, &fracf);
+
+      if (fracdh == 0)
+	return 0;
+      if (expd < -01777 || expd > 01777)
+	return 1 << 31;
+      return sign << 31 | (expd + 02000) << 20 | fracdh - (1 << 20);
+    }
+}
+
+int
+const_double_low_int (x)
+     rtx x;
+{
+  if (GET_MODE (x) == DImode)
+    return CONST_DOUBLE_LOW (x);
+  else
+    {
+      int sign, expd, expf;
+      unsigned fracdh, fracdl, fracf;
+      float_extract (x, &sign, &expd, &fracdh, &fracdl, &expf, &fracf);
+      return fracdl;
+    }
+}
+
+int
+const_double_float_int (x)
+     rtx x;
+{
+  int sign, expd, expf;
+  unsigned fracdh, fracdl, fracf;
+  float_extract (x, &sign, &expd, &fracdh, &fracdl, &expf, &fracf);
+
+  if (fracf == 0)
+    return 0;
+  if (expf < -0177 || expf > 0177)
+    return 1 << 31;
+  return sign << 31 | (expf + 0200) << 20 | fracf - (1 << 23);
+}
+
+#define T21  ((double) (1 << 21))
+#define T24  ((double) (1 << 24))
+#define T53  ((double) (1 << 27) * (double) (1 << 26))
+
+static void
+float_extract (x, sign, expd, fracdh, fracdl, expf, fracf)
+     rtx x;
+     int *sign, *expd, *expf;
+     unsigned *fracdh, *fracdl, *fracf;
+{
+  int exp, round;
+  double d, r;
+  union real_extract u;
+
+  bcopy (&CONST_DOUBLE_LOW (x), &u, sizeof u);
+
+  /* Get sign and exponent.  */
+
+  if (*sign = u.d < 0)
+    u.d = -u.d;
+  d = frexp (u.d, &exp);  
+
+  /* Get 21 fraction bits for high word and 32 for low word.  */
+
+  for (round = 0; ; round = 1)
+    {
+      r = frexp (round ? d + 1.0 / T53 : d, expd);
+      *expd += exp;
+      *fracdh = r * T21;
+      *fracdl = (r - *fracdh / T21) * T53;
+      if (round || ((r - *fracdh / T21) - *fracdl / T53) < 0.5 * T53)
+	break;
+    }
+
+  /* Get 24 bits for float fraction. */
+
+  for (round = 0; ; round = 1)
+    {
+      r = frexp (round ? d + 1.0 / T24 : d, expf);
+      *expf += exp;
+      *fracf = r * T24;
+      if (round || (r - *fracf / T24) < 0.5 * T24)
+	break;
+    }
+}
+
+static double
+frexp (d, exp)
+     double d;
+     int *exp;
+{
+  int e = 0;
+
+  if (d > 0)
+    {
+      while (d < 0.5) d *= 2.0, e--;
+      while (d >= 1.0) d /= 2.0, e++;
+    }
+
+  *exp = e;
+  return d;
+}
+
 

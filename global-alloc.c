@@ -3,20 +3,19 @@
 
 This file is part of GNU CC.
 
-GNU CC is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY.  No author or distributor
-accepts responsibility to anyone for the consequences of using it
-or for whether it serves any particular purpose or works at all,
-unless he says so in writing.  Refer to the GNU CC General Public
-License for full details.
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 1, or (at your option)
+any later version.
 
-Everyone is granted permission to copy, modify and redistribute
-GNU CC, but only under the conditions described in the
-GNU CC General Public License.   A copy of this license is
-supposed to have been given to you along with GNU CC so you
-can know your rights and responsibilities.  It should be in a
-file named COPYING.  Among other things, the copyright notice
-and this notice must be preserved on all copies.  */
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 #include <stdio.h>
@@ -292,13 +291,13 @@ global_alloc (file)
 	       for this pseudo-reg.  If that fails, try any reg.  */
 	    if (N_REG_CLASSES > 1)
 	      {
-		find_reg (allocno_order[i], 0, 0,
+		find_reg (allocno_order[i], 0, 0, 0,
 			  hard_reg_preferences[allocno_order[i]]);
 		if (reg_renumber[allocno_reg[allocno_order[i]]] >= 0)
 		  continue;
 	      }
 	    if (!reg_preferred_or_nothing (allocno_reg[allocno_order[i]]))
-	      find_reg (allocno_order[i], 0, 1,
+	      find_reg (allocno_order[i], 0, 1, 0,
 			hard_reg_preferences[allocno_order[i]]);
 	  }
     }
@@ -464,14 +463,18 @@ global_conflicts ()
    If ALL_REGS_P is zero, consider only the preferred class of ALLOCNO's reg.
    Otherwise ignore that preferred class.
 
+   If ACCEPT_CALL_CLOBBERED is nonzero, accept a call-clobbered hard reg that
+   will have to be saved and restored at calls.
+
    If we find one, record it in reg_renumber.
    If not, do nothing.  */
 
 static void
-find_reg (allocno, losers, all_regs_p, prefregs)
+find_reg (allocno, losers, all_regs_p, accept_call_clobbered, prefregs)
      int allocno;
      register short *losers;
      int all_regs_p;
+     int accept_call_clobbered;
      HARD_REG_SET prefregs;
 {
   register int i, prefreg, pass;
@@ -484,9 +487,12 @@ find_reg (allocno, losers, all_regs_p, prefregs)
     = all_regs_p ? GENERAL_REGS : reg_preferred_class (allocno_reg[allocno]);
   enum machine_mode mode = PSEUDO_REGNO_MODE (allocno_reg[allocno]);
 
-  COPY_HARD_REG_SET (used,
-		     (reg_crosses_call[allocno_reg[allocno]]
-		      ? call_used_reg_set : fixed_reg_set));
+  if (accept_call_clobbered)
+    COPY_HARD_REG_SET (used, call_fixed_reg_set);
+  else if (reg_n_calls_crossed[allocno_reg[allocno]] == 0)
+    COPY_HARD_REG_SET (used, fixed_reg_set);
+  else
+    COPY_HARD_REG_SET (used, call_used_reg_set);
 
   /* Some registers should not be allocated in global-alloc.  */
   IOR_HARD_REG_SET (used, no_global_alloc_regs);
@@ -582,6 +588,21 @@ find_reg (allocno, losers, all_regs_p, prefregs)
 	    IOR_HARD_REG_SET (hard_reg_conflicts[j], this_reg);
 	  }
     }
+  else if (flag_caller_saves)
+    {
+      /* Did not find a register.  If it would be profitable to
+	 allocate a call-clobbered register and save and restore it
+	 around calls, do that.  */
+      if (! accept_call_clobbered
+	  && reg_n_calls_crossed[allocno_reg[allocno]] != 0
+	  && CALLER_SAVE_PROFITABLE (reg_n_refs[allocno_reg[allocno]],
+				     reg_n_calls_crossed[allocno_reg[allocno]]))
+	{
+	  find_reg (allocno, losers, all_regs_p, 1, prefregs);
+	  if (reg_renumber[allocno_reg[allocno]] >= 0)
+	    caller_save_needed = 1;
+	}
+    }
 }
 
 /* Called from `reload' to look for a hard reg to put pseudo reg REGNO in.
@@ -604,10 +625,12 @@ retry_global_alloc (regno, forbidden_regs)
 	 first try allocating in the class that is cheapest
 	 for this pseudo-reg.  If that fails, try any reg.  */
       if (N_REG_CLASSES > 1)
-	find_reg (allocno, forbidden_regs, 0, hard_reg_preferences[allocno]);
+	find_reg (allocno, forbidden_regs, 0, 0,
+		  hard_reg_preferences[allocno]);
       if (reg_renumber[regno] < 0
 	  && !reg_preferred_or_nothing (regno))
-	find_reg (allocno, forbidden_regs, 1, hard_reg_preferences[allocno]);
+	find_reg (allocno, forbidden_regs, 1, 0,
+		  hard_reg_preferences[allocno]);
     }
 }
 
