@@ -76,6 +76,10 @@ int current_function_returns_struct;
 
 int current_function_needs_context;
 
+/* Nonzero if function being compiled can call setjmp.  */
+
+int current_function_calls_setjmp;
+
 /* If function's args have a fixed size, this is that size, in bytes.
    Otherwise, it is -1.
    May affect compilation of return insn or of function epilogue.  */
@@ -3202,6 +3206,25 @@ uninitialized_vars_warning (block)
   for (sub = STMT_BODY (block); sub; sub = TREE_CHAIN (sub))
     uninitialized_vars_warning (sub);
 }
+
+/* If this function call setjmp, put all vars into the stack
+   unless they were declared `register'.  */
+
+void
+setjmp_protect (block)
+     tree block;
+{
+  register tree decl, sub;
+  for (decl = STMT_VARS (block); decl; decl = TREE_CHAIN (decl))
+    if ((TREE_CODE (decl) == VAR_DECL
+	 || TREE_CODE (decl) == PARM_DECL)
+	&& DECL_RTL (decl) != 0
+	&& GET_CODE (DECL_RTL (decl)) == REG
+	&& ! TREE_REGDECL (decl))
+      put_var_into_stack (decl);
+  for (sub = STMT_BODY (block); sub; sub = TREE_CHAIN (sub))
+    setjmp_protect (sub);
+}
 
 /* Generate RTL for the start of the function FUNC (a FUNCTION_DECL tree node)
    and initialize static variables for generating RTL for the statements
@@ -3247,6 +3270,10 @@ expand_function_start (subr)
   /* Nonzero if this is a nested function that uses a static chain.  */
 
   current_function_needs_context = (DECL_CONTEXT (current_function_decl) != 0);
+
+  /* Set if a call to setjmp is seen.  */
+
+  current_function_calls_setjmp = 0;
 
   /* Nonzero if this function needs an arg saying where to store value.  */
   current_function_returns_struct

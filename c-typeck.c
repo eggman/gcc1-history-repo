@@ -658,15 +658,22 @@ default_conversion (exp)
 	  return error_mark_node;
 	}
 
-/* ??? This is not really quite correct
-   in that the type of the operand of ADDR_EXPR
-   is not the target type of the type of the ADDR_EXPR itself.
-   Question is, can this lossage be avoided?  */
-      adr = build (ADDR_EXPR, TYPE_POINTER_TO (TREE_TYPE (dt)), exp);
-      mark_addressable (exp);
-      TREE_LITERAL (adr) = staticp (exp);
-      TREE_VOLATILE (adr) = 0;   /* Default would be, same as EXP.  */
-      return adr;
+      if (TREE_CODE (exp) == VAR_DECL)
+	{
+	  /* ??? This is not really quite correct
+	     in that the type of the operand of ADDR_EXPR
+	     is not the target type of the type of the ADDR_EXPR itself.
+	     Question is, can this lossage be avoided?  */
+	  adr = build (ADDR_EXPR, TYPE_POINTER_TO (TREE_TYPE (dt)), exp);
+	  mark_addressable (exp);
+	  TREE_LITERAL (adr) = staticp (exp);
+	  TREE_VOLATILE (adr) = 0;   /* Default would be, same as EXP.  */
+	  return adr;
+	}
+      /* This way is better for a COMPONENT_REF since it can
+	 simplify the offset for a component.  */
+      adr = build_unary_op (ADDR_EXPR, exp);
+      return convert (TYPE_POINTER_TO (TREE_TYPE (dt)), adr);
     }
   return exp;
 }

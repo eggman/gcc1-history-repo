@@ -8,6 +8,8 @@
 # Directory in which to store the results.
 LIB=/usr/local/lib/gcc-include
 
+mkdir $LIB > /dev/null 2>&1
+
 echo 'Finding header files:'
 cd /usr/include
 files=`find . -print`

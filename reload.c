@@ -308,6 +308,31 @@ push_reload (in, out, inloc, outloc, class,
 	     && (in == 0 || reload_in[i] == 0 || MATCHES (reload_in[i], in)))))
       break;
 
+  /* Reloading a plain reg for input can match a reload to postincrement
+     that reg, since the postincrement's value is the right value.
+     Likewise, it can match a preincrement reload, since we regard
+     the preincrementation as happening before any ref in this insn
+     to that register.  */
+  if (i == n_reloads)
+    for (i = 0; i < n_reloads; i++)
+      if (reload_reg_class[i] == class
+	  && reload_strict_low[i] == strict_low
+	  && out == 0 && reload_out[i] == 0
+	  && ((GET_CODE (in) == REG
+	       && (GET_CODE (reload_in[i]) == POST_INC
+		   || GET_CODE (reload_in[i]) == POST_DEC
+		   || GET_CODE (reload_in[i]) == PRE_INC
+		   || GET_CODE (reload_in[i]) == PRE_DEC)
+	       && MATCHES (XEXP (reload_in[i], 0), in))
+	      ||
+	      (GET_CODE (reload_in[i]) == REG
+	       && (GET_CODE (in) == POST_INC
+		   || GET_CODE (in) == POST_DEC
+		   || GET_CODE (in) == PRE_INC
+		   || GET_CODE (in) == PRE_DEC)
+	       && MATCHES (XEXP (in, 0), reload_in[i]))))
+	break;
+
   if (i == n_reloads)
     {
       /* We found no existing reload suitable for re-use.

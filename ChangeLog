@@ -1,3 +1,114 @@
+Thu Oct 13 14:19:17 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stupid.c (stupid_life_analysis): Init last_call_suid with
+	largest possible value, not 0.
+
+Wed Oct 12 04:40:18 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* output-i386.c (output_asm_insn_double_reg_op): Compensate for
+	assembler bug that interchanges fsub and fsubr.
+
+	* reload1.c (order_regs_for_reload): Undo 29 Sept change.
+	It breaks the 386.
+
+	* varasm.c (decode_rtx_const): Don't example value->addr
+	if what was stored in was value->d.
+
+	* toplev.c (set_float_handler): New fn, specify where to jump
+	on floating exception signal.
+	* fold-const.c (combine): Use that to handle overflow in arithmetic.
+
+	* c-decl.c (grokdeclarator): Don't clear CONSTP, VOLATILEP
+	when making an array type.
+
+	* dbxout.c (dbxout_symbol): Ignore VAR_DECLs in memory whose
+	addresses we can't represent.
+
+	* fold-const.c (fold): don't convert >= to > if both args are constant.
+	When converting >= to >, don't fail to change CODE.
+
+Tue Oct 11 04:13:40 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* vax.md (movhi): Error in truncating mcomw, addh3 args to 16 bits.
+
+	* final.c: Better error checking for %-specs in templates.
+	(output_operand_lossage): new fn to report errors.
+	(insn_noperands): new var: # operands in current fn.
+	(this_insn_asm_operands): new var: 1 for `asm', 0 otherwise.
+	(output_asm_insn): Check for operand # out of range.
+	(output_asm_label, output_operand): Call new fn to report errors.
+
+	* reload.c (push_reloads): An input reload for (REG N) can match one
+	for (POST_INC (REG N)) or (PRE_INC (REG N)), since the value
+	reloaded is the same in any case.
+
+Mon Oct 10 06:19:05 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* recog.c (next_insns_test_no_inequality): Like next_insn_tests...
+	but check all insns that follow this one and can use it's cc's.
+	* output-m68k.c (output_btst): Use that.
+
+	* vax.md (movsf, movdf): Undo last change; movq/movl set the cc wrong.
+
+	* expr.c (expand_call): Set current_function_calls_setjmp if appro.
+	* stmt.c (setjmp_protect): New fn: move all vars into stack
+	unless declared `register'.
+	* c-decl.c (finish_function): Call it if -traditional and setjmp used.
+
+	* cccp.c (main): Open output after the input.
+	Handle `-o -'.
+
+Sun Oct  9 00:28:06 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-sun3.h (CPP_SPEC): Define __HAVE_FPA__ if appropriate.
+
+	* c-decl.c (pushdecl): After duplicate_decls, maybe warn about
+	"declared extern and later static".
+
+	* expmed.c (store_bit_field): In insv case, avoid turning
+	VALUE into a subreg of a subreg.
+
+	* loop.c (move_movables): When moving a libcall,
+	un-cse the function address; put it into the call insn.
+
+Sat Oct  8 01:48:03 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (equiv_constant): Subroutine to find the constant equivalent
+	of a reg.  Now handles SUBREGs too.
+	(fold_rtx, fold_cc0): Use that function.
+	Don't handle SUBREGs like arithmetic.
+
+	* reload1.c (choose_reload_targets): Don't call reg_overlap_mentioned_p
+	if arg is 0.
+
+Fri Oct  7 01:00:19 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* assert.h: Typo declaring __eprintf.
+
+	* config.gcc: New file for making the links.
+	Fixed bugs for sun-[23]-os4.  Added sun-[234] for sunos 3.
+	Added sequent-i386.
+
+	* emit-rtl.c (gen_rtx): Return const0_rtx for 0 in DImode.
+	* varasm.c (immed_double_const): Don't be confused by this.
+
+	* expmed.c (negate_rtx): New 1st arg MODE.
+	* expr.c (push_block): Calls changed.
+	* m68k.md, ns32k.md, vax.md: Calls changed.
+
+	* c-decl.c (duplicate_decls): Don't discard DECL_BLOCK_SYMTAB_ADDRESS.
+
+	* tree.c (staticp): INDIRECT_REF with constant address is static.
+	COMPONENT_REF may not be, if component offset isn't constant.
+
+	* c-typeck.c (default_conversion): Converting array to ptr, if array
+	isn't a VAR_DECL, go through build_unary_op so that COMPONENT_REFs
+	will be simplified away.
+
+	* ns32k.md (tbitd patterns): op 0 constraint: reject constants.
+	* ns32k.md (extzv for SImode and HImode):
+	Use adj_offsetable_operand; plus_constant was the wrong thing.
+
 Thu Oct  6 00:10:41 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 
 	* Version 1.29 released.

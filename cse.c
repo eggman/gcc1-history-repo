@@ -397,6 +397,7 @@ int refers_to_mem_p ();
 static void invalidate_from_clobbers ();
 static int safe_hash ();
 static int canon_hash ();
+static rtx equiv_constant ();
 static int get_integer_term ();
 static rtx get_related_value ();
 static void note_mem_written ();
@@ -1788,17 +1789,7 @@ fold_rtx (x, copyflag)
 	   is constant or equivalent to a constant.  */
 	if (i < 3)
 	  {
-	    rtx tem1;
-	    rtx const_arg = 0;
-
-	    if (CONSTANT_P (tem))
-	      const_arg = tem;
-	    else if (GET_CODE (tem) == REG
-		     && qty_const[reg_qty[REGNO (tem)]] != 0
-		     /* Make sure it is really a constant */
-		     && ((tem1 = qty_const[reg_qty[REGNO (tem)]]),
-			 GET_CODE (tem1) != REG && GET_CODE (tem1) != PLUS))
-	      const_arg = qty_const[reg_qty[REGNO (tem)]];
+	    rtx const_arg = equiv_constant (tem);
 
 	    switch (i)
 	      {
@@ -2080,25 +2071,6 @@ fold_rtx (x, copyflag)
 	      if (const_arg1 == const0_rtx)
 		return XEXP (x, 0);
 	      break;
-
-	    case SUBREG:
-	  /* If integer truncation is being done with SUBREG,
-	 	  we can compute the result.  */
-	      if (SUBREG_WORD (x) == 0
-		  && const_arg0 != 0
-		  && GET_CODE (const_arg0) == CONST_INT
-		  && GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (GET_MODE (SUBREG_REG (x)))
-		  && (GET_MODE (x) == QImode || GET_MODE (x) == HImode
-		      || GET_MODE (x) == SImode))
-		{
-		  arg0 = INTVAL (const_arg0);
-		  if (GET_MODE_BITSIZE (GET_MODE (x)) != 32)
-		    arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
-		  if (arg0 == INTVAL (const_arg0))
-		    new = const_arg0;
-		  else
-		    new = gen_rtx (CONST_INT, VOIDmode, arg0);
-		}
 	    }
 
 	  if (new != 0 && LEGITIMATE_CONSTANT_P (new))
@@ -2326,7 +2298,45 @@ fold_rtx (x, copyflag)
     return LEGITIMATE_CONSTANT_P (new) ? new : x;
   }
 }
+
+/* Return a constant value currently equivalent to X.
+   Return 0 if we don't know one.  */
 
+static rtx
+equiv_constant (x)
+     rtx x;
+{
+  rtx tem1;
+
+  if (CONSTANT_P (x))
+    return x;
+  else if (GET_CODE (x) == REG
+	   && (tem1 = qty_const[reg_qty[REGNO (x)]]) != 0
+	   /* Make sure it is really a constant */
+	   && GET_CODE (tem1) != REG && GET_CODE (tem1) != PLUS)
+    return tem1;
+  /* If integer truncation is being done with SUBREG,
+     we can compute the result.  */
+  else if (GET_CODE (x) == SUBREG && SUBREG_WORD (x) == 0
+	   && (tem1 = qty_const[reg_qty[REGNO (SUBREG_REG (x))]]) != 0
+	   /* Make sure it is a known integer.  */
+	   && GET_CODE (tem1) == CONST_INT
+	   && GET_MODE_SIZE (GET_MODE (x)) <= HOST_BITS_PER_INT
+	   /* Make sure this SUBREG is truncation.  */
+	   && GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (GET_MODE (SUBREG_REG (x))))
+    {
+      int value = INTVAL (tem1);
+      if (GET_MODE_BITSIZE (GET_MODE (x)) != HOST_BITS_PER_INT)
+	value &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
+
+      if (value == INTVAL (tem1))
+	return tem1;
+      else
+	return gen_rtx (CONST_INT, VOIDmode, value);
+    }
+  return 0;
+}
+
 /* Given an expression X which is used to set CC0,
    return an integer recording (in the encoding used for prev_insn_cc0)
    how the condition codes would be set by that expression.
@@ -2343,6 +2353,7 @@ fold_cc0 (x)
       rtx y1 = fold_rtx (XEXP (x, 1), 0);
       int u0, u1, s0, s1;
       enum machine_mode m;
+      rtx tem;
 
       m = GET_MODE (y0);
       if (m == VOIDmode)
@@ -2350,14 +2361,16 @@ fold_cc0 (x)
       if (m == VOIDmode)
 	return 0;
 
-      if (GET_CODE (y0) == REG)
-	y0 = qty_const[reg_qty[REGNO (y0)]];
+      tem = equiv_constant (y0);
+      if (tem != 0)
+	y0 = tem;
 
       if (y0 == 0 || GET_CODE (y0) != CONST_INT)
 	return 0;
 
-      if (GET_CODE (y1) == REG)
-	y1 = qty_const[reg_qty[REGNO (y1)]];
+      tem = equiv_constant (y1);
+      if (tem != 0)
+	y1 = tem;
 
       if (y1 == 0 || GET_CODE (y1) != CONST_INT)
 	return 0;

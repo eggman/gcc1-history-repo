@@ -89,6 +89,31 @@ next_insn_tests_no_inequality (insn)
 	  && ! inequality_comparisons_p (PATTERN (next)));
 }
 
+/* Return 1 if the CC value set up by INSN is not used.  */
+
+int
+next_insns_test_no_inequality (insn)
+     rtx insn;
+{
+  register rtx next = NEXT_INSN (insn);
+
+  for (;; next = NEXT_INSN (next))
+    {
+      if (GET_CODE (next) == CODE_LABEL
+	  || GET_CODE (next) == BARRIER)
+	return 1;
+      if (GET_CODE (next) == NOTE)
+	continue;
+      if (inequality_comparisons_p (PATTERN (next)))
+	return 0;
+      if (GET_CODE (PATTERN (next)) == SET
+	  && SET_DEST (PATTERN (next)) == cc0_rtx)
+	return 1;
+      if (! reg_mentioned_p (cc0_rtx, PATTERN (next)))
+	return 1;
+    }
+}
+
 static int
 inequality_comparisons_p (x)
      rtx x;

@@ -126,8 +126,6 @@
 {
   if (operands[1] == dconst0_rtx)
     return \"clr%# %0\";
-  if (GET_CODE (operands[1]) != CONST_DOUBLE)
-    return \"movq %1,%0\";
   return \"mov%# %1,%0\";
 }")
 
@@ -139,8 +137,6 @@
 {
   if (operands[1] == fconst0_rtx)
     return \"clrf %0\";
-  if (GET_CODE (operands[1]) != CONST_DOUBLE)
-    return \"movl %1,%0\";
   return \"movf %1,%0\";
 }")
 
@@ -234,15 +230,15 @@
       && (unsigned) INTVAL (operands[1]) >= 64)
     {
       int i = INTVAL (operands[1]);
-      if ((unsigned)(~i & 0xffff) < 64)
+      if ((unsigned)((~i) & 0xffff) < 64)
 	{
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, ~i);
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, (~i) & 0xffff);
 	  return \"mcomw %1,%0\";
 	}
       if ((unsigned)(i & 0xffff) < 127)
 	{
 	   operands[1] = gen_rtx (CONST_INT, VOIDmode, 63);
-	   operands[2] = gen_rtx (CONST_INT, VOIDmode, i-63);
+	   operands[2] = gen_rtx (CONST_INT, VOIDmode, (i-63) & 0xffff);
 	   return \"addw3 %2,%1,%0\";
 	}
       /* this is a lot slower, and only saves 1 measly byte! */
@@ -1120,8 +1116,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (QImode, operands[2]);
 }")
 
 (define_insn "ashlsi3"
@@ -1155,8 +1150,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (QImode, operands[2]);
 }")
 
 (define_insn "ashldi3"
@@ -1174,8 +1168,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (QImode, operands[2]);
 }")
 
 (define_insn "rotlsi3"

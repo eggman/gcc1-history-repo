@@ -698,6 +698,9 @@ duplicate_decls (new, old)
 	  && DECL_INITIAL (new) == 0)
 	DECL_SET_FUNCTION_CODE (new, DECL_FUNCTION_CODE (old));
 
+      /* Don't lose track of having output OLD as GDB symbol.  */
+      DECL_BLOCK_SYMTAB_ADDRESS (new) = DECL_BLOCK_SYMTAB_ADDRESS (old);
+
       bcopy ((char *) new + sizeof (struct tree_common),
 	     (char *) old + sizeof (struct tree_common),
 	     sizeof (struct tree_decl) - sizeof (struct tree_common));
@@ -736,7 +739,22 @@ pushdecl (x)
 	}
 
       if (t && duplicate_decls (x, t))
-	return t;
+	{
+	  /* If this decl is `static' and an `extern' was seen previously,
+	     that is erroneous.  */
+	  if (TREE_PUBLIC (name)
+	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x))
+	    {
+	      if (IDENTIFIER_IMPLICIT_DECL (name))
+		warning ("`%s' was declared implicitly `extern' and later `static'",
+			 IDENTIFIER_POINTER (name));
+	      else
+		warning ("`%s' was declared `extern' and later `static'",
+			 IDENTIFIER_POINTER (name));
+	      warning_with_decl (t, "previous declaration of `%s'");
+	    }
+	  return t;
+	}
 
       /* If declaring a type as a typedef, and the type has no known
 	 typedef name, install this TYPE_DECL as its typedef name.  */
@@ -756,10 +774,9 @@ pushdecl (x)
 	{
 	  /* Install a global value.  */
 	  
-	  /* If the first global decl is external, warn if we later see
-	     static one.  */
-	  if (IDENTIFIER_GLOBAL_VALUE (name) == 0
-	      && TREE_EXTERNAL (x))
+	  /* If the first global decl has external linkage,
+	     warn if we later see static one.  */
+	  if (IDENTIFIER_GLOBAL_VALUE (name) == 0 && TREE_PUBLIC (x))
 	    TREE_PUBLIC (name) = 1;
 
 	  IDENTIFIER_GLOBAL_VALUE (name) = x;
@@ -808,7 +825,7 @@ pushdecl (x)
 	    }
 	  /* If we have a local external declaration,
 	     and no file-scope declaration has yet been seen,
-	     then if we later have a file-scope decl it may not be static.  */
+	     then if we later have a file-scope decl it must not be static.  */
 	  if (oldlocal == 0
 	      && IDENTIFIER_GLOBAL_VALUE (name) == 0
 	      && TREE_EXTERNAL (x))
@@ -2084,8 +2101,12 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 
 	  if (constp || volatilep)
 	    type = build_type_variant (type, constp, volatilep);
+
+#if 0	/* don't clear these; leave them set so that the array type
+	   or the variable is itself const or volatile.  */
 	  constp = 0;
 	  volatilep = 0;
+#endif
 
 	  type = build_array_type (type, itype);
 	}
@@ -3279,6 +3300,10 @@ finish_function ()
   /* Must mark the RESULT_DECL as being in this function.  */
 
   DECL_CONTEXT (DECL_RESULT (fndecl)) = DECL_INITIAL (fndecl);
+
+  /* Obey `register' declarations if `setjmp' is called in this fn.  */
+  if (flag_traditional && current_function_calls_setjmp)
+    setjmp_protect (DECL_INITIAL (fndecl));
 
   /* Generate rtl for function exit.  */
   expand_function_end (input_filename, lineno);

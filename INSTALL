@@ -23,7 +23,12 @@ Here is the procedure for installing GNU CC on a Unix system.
 
   2. On a Sequent system, go to the Berkeley universe.
 
-  3. Choose configuration files.
+  3. Choose configuration files.  The easy way to do this is to run
+     the command file `config.gcc' with a single argument, which is
+     the name of the machine as it appears in the `tm-MACHINE.h' file
+     name.
+
+     Here we spell out what files you need to set up:
 
         * Make a symbolic link named `config.h' to the top-level
           config file for the machine you are using (*note
@@ -92,7 +97,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           For the vax, use `tm-vax.h' on BSD Unix, `tm-vaxv.h' on
           system V, or `tm-vms.h' on VMS.
 
-          For the SPARC (Sun 4), use `tm-sparc.h'.
+          For the SPARC (Sun 4), use `tm-sparc.h'.  Note that SPARC
+          support currenty *does not work*.  It will probably be
+          fixed for version 1.31.
 
           For the Motorola 88000, use `tm-m88k.h'.  The support for
           the 88000 has a few unfinished spots because there was no
@@ -116,7 +123,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           Note that Encore systems are supported only under BSD.
 
         * Make a symbolic link named `md' to the machine description
-          pattern file (its name should be `MACHINE.md').
+          pattern file.  Its name should be `MACHINE.md', but MACHINE
+          is often not the same as the name used in the `tm.h' file
+          because the `md' files are more general.
 
         * Make a symbolic link named `aux-output.c' to the output
           subroutine file for your machine (its name should be
@@ -137,6 +146,12 @@ Here is the procedure for installing GNU CC on a Unix system.
      without special pains.
 
   6. Build the compiler.  Just type `make' in the compiler directory.
+
+     Ignore any warnings you may see about ``statement not reached''
+     in the `insn-emit.c'; they are normal.  Any other compilation
+     errors may represent bugs in the port to your machine or
+     operating system, and should be investigated and reported (*note
+     Bugs::.).
 
   7. Move the first-stage object files and executables into a
      subdirectory with this command:
@@ -209,10 +224,10 @@ Here is the procedure for installing GNU CC on a Unix system.
      correct the include files by running the shell script
      `fixincludes'.  This installs modified, corrected copies of the
      files `ioctl.h', `ttychars.h' and many others, in a special
-     directory where only GNU CC will normally look for them.
-
-     See the file `fixincludes' for a list of all the files we know
-     to require correction.
+     directory where only GNU CC will normally look for them.  This
+     script will work on various systems because it choose the files
+     by searching all the system headers for the problem cases that
+     we know about.
 
 If you cannot install the compiler's passes and run-time support in
 `/usr/local/lib', you can alternatively use the `-B' option to
@@ -225,7 +240,7 @@ Also, you can specify an alternative default directory for these
 files by setting the Make variable `libdir' when you make GNU CC.
 
 
-
+
 File: gcc.info,  Node: VMS Install,  Prev: Installation,  Up: Installation
 
 Installing GNU CC on VMS

@@ -88,6 +88,13 @@ extern int sdb_begin_function_line;
 /* Line number of last NOTE.  */
 static int last_linenum;
 
+/* Nonzero while outputting an `asm' with operands.
+   This means that inconsistencies are the user's fault, so don't abort.  */
+static int this_is_asm_operands;
+
+/* Number of operands of this insn, for an `asm' with operands.  */
+static int insn_noperands;
+
 /* Indexed by hard register, the name of the register for assembler code.  */
 
 static char *reg_name[] = REGISTER_NAMES;
@@ -239,6 +246,8 @@ final_start_function (first, file, write_symbols, optimize)
      int optimize;
 {
   block_depth = 0;
+
+  this_is_asm_operands = 0;
 
   /* Record beginning of the symbol-block that's the entire function.  */
 
@@ -556,8 +565,12 @@ final (first, file, write_symbols, optimize, prescan)
 
 		/* Get out the operand values.  */
 		string = decode_asm_operands (body, ops, 0, 0, 0);
+		/* Inhibit aborts on what would otherwise be compiler bugs.  */
+		insn_noperands = noperands;
+		this_is_asm_operands = 1;
 		/* Output the insn using them.  */
 		output_asm_insn (string, ops);
+		this_is_asm_operands = 0;
 		free (ops);
 		break;
 	      }
@@ -1071,6 +1084,22 @@ alter_cond (cond)
   return value;
 }
 
+/* Report inconsistency between the assembler template and the operands.
+   In an `asm', it's the user's fault; otherwise, the compiler's fault.  */
+
+static void
+output_operand_lossage (str)
+     char *str;
+{
+  if (this_is_asm_operands)
+    {
+      error ("invalid `asm' above: %s", str);
+      fprintf (asm_out_file, "!!error here!!");
+    }
+  else
+    abort ();
+}
+
 /* Output of assembler code from a template, and its subroutines.  */
 
 /* Output text from TEMPLATE to the assembler output file,
@@ -1145,7 +1174,10 @@ output_asm_insn (template, operands)
 	      int letter = *p++;
 	      c = atoi (p);
 
-	      if (letter == 'l')
+	      if (this_is_asm_operands
+		  && c >= (unsigned) insn_noperands && *p >= '0' && *p <= '9')
+		output_operand_lossage ("operand number out of range");
+	      else if (letter == 'l')
 		output_asm_label (operands[c]);
 	      else if (letter == 'a')
 		output_address (operands[c]);
@@ -1178,7 +1210,10 @@ output_asm_insn (template, operands)
 	  else if (*p >= '0' && *p <= '9')
 	    {
 	      c = atoi (p);
-	      output_operand (operands[c], 0);
+	      if (this_is_asm_operands && c >= (unsigned) insn_noperands)
+		output_operand_lossage ("operand number out of range");
+	      else
+		output_operand (operands[c], 0);
 	      while ((c = *p) >= '0' && c <= '9') p++;
 	    }
 	  /* % followed by punctuation: output something for that
@@ -1191,7 +1226,7 @@ output_asm_insn (template, operands)
 
   putc ('\n', asm_out_file);
 }
-
+
 /* Output a LABEL_REF, or a bare CODE_LABEL, as an assembler symbol.  */
 
 void
@@ -1205,7 +1240,7 @@ output_asm_label (x)
   else if (GET_CODE (x) == CODE_LABEL)
     ASM_GENERATE_INTERNAL_LABEL (buf, "L", CODE_LABEL_NUMBER (x));
   else
-    abort ();
+    output_operand_lossage ("`%l' operand isn't a label");
 
   assemble_name (asm_out_file, buf);
 }
@@ -1290,7 +1325,7 @@ output_addr_const (file, x)
       else
 	/* We can't handle floating point constants;
 	   PRINT_OPERAND must handle them.  */
-	abort ();
+	output_operand_lossage ("floating constant misused");
       break;
 
     case PLUS:
@@ -1316,6 +1351,6 @@ output_addr_const (file, x)
       break;
 
     default:
-      abort ();
+      output_operand_lossage ("invalid expression as operand");
     }
 }

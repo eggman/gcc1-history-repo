@@ -137,9 +137,17 @@ output_asm_insn_double_reg_op (op, rev, insn)
   fputc ('\t', asm_out_file);
   if (top_dead_p (insn))
     {
+      /* Here we want the "reversed" insn, fsubr or fdivr.
+	 But there is an assembler bug in all 80386 assemblers
+	 which exchanges the meanings of fsubr and fsub, and of fdivr and fdiv!
+	 So use the "unreversed" opcode (which will assemble into
+	 the "reversed" insn).  */
+      rev = op;
+
       while (*rev && *rev != '%')
 	fputc (*rev++, asm_out_file);
       /* fp_pop_level--; */
+
       fprintf (asm_out_file, AS2 (p,%sst,%sst(1)), RP, RP);
     }
   else
@@ -721,7 +729,7 @@ output_movdf (to, from)
 /* does move of FROM to TO where the mode is the minimum of the
 two */
 
-void
+static void
 output_movf (to, from)
      rtx to, from;
 {

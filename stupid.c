@@ -140,7 +140,7 @@ stupid_life_analysis (f, nregs, file)
       INSN_SUID (insn) = ++i;
     }
 
-  last_call_suid = 0;
+  last_call_suid = i + 1;
 
   max_regno = nregs;
 

@@ -922,7 +922,11 @@ staticp (arg)
     return 1;
 
   if (code == COMPONENT_REF)
-    return staticp (TREE_OPERAND (arg, 0));
+    return (DECL_VOFFSET (TREE_OPERAND (arg, 1)) == 0
+	    && staticp (TREE_OPERAND (arg, 0)));
+
+  if (code == INDIRECT_REF)
+    return TREE_LITERAL (TREE_OPERAND (arg, 0));
 
   if (code == ARRAY_REF)
     {

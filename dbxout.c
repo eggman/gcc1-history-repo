@@ -649,10 +649,6 @@ dbxout_symbol (decl, local)
 	      || REGNO (DECL_RTL (decl)) >= FIRST_PSEUDO_REGISTER))
 	break;
 
-      /* Ok, start a symtab entry and output the variable name.  */
-      fprintf (asmfile, ".stabs \"%s:",
-	       IDENTIFIER_POINTER (DECL_NAME (decl)));
-
       /* The kind-of-variable letter depends on where
 	 the variable is and on the scope of its name:
 	 G and N_GSYM for static storage and global scope,
@@ -723,19 +719,29 @@ dbxout_symbol (decl, local)
 	  type = build_pointer_type (TREE_TYPE (decl));
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
-	       && XEXP (DECL_RTL (decl), 0) != const0_rtx)
-	/* const0_rtx is used as the address for a variable that
-	   is a dummy due to an erroneous declaration.
-	   Ignore such vars.  */
+	       && GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
 	{
 	  current_sym_code = N_LSYM;
-	  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
-	    current_sym_value = 0;
-	  else
-	    /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...)))
-	       We want the value of that CONST_INT.  */
-	    current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1));
+	  current_sym_value = 0;
 	}
+      else if (GET_CODE (DECL_RTL (decl)) == MEM
+	       && GET_CODE (XEXP (DECL_RTL (decl), 0)) == PLUS
+	       && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 1)) == CONST_INT)
+	{
+	  current_sym_code = N_LSYM;
+	  /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...)))
+	     We want the value of that CONST_INT.  */
+	  current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1));
+	}
+      else
+	/* Address might be a MEM, when DECL is a variable-sized object.
+	   Or it might be const0_rtx, meaning previous passes
+	   want us to ignore this variable.  */
+	break;
+
+      /* Ok, start a symtab entry and output the variable name.  */
+      fprintf (asmfile, ".stabs \"%s:",
+	       IDENTIFIER_POINTER (DECL_NAME (decl)));
       if (letter) putc (letter, asmfile);
       dbxout_type (type, 0);
       dbxout_finish_symbol ();

@@ -200,6 +200,8 @@ gen_rtx (va_alist)
 	    return dconst0_rtx;
 	  if (mode == SFmode)
 	    return fconst0_rtx;
+	  if (mode == DImode)
+	    return const0_rtx;
 	}
       rt_val = rtx_alloc (code);
       rt_val->mode = mode;
@@ -1462,7 +1464,7 @@ init_emit (write_symbols)
   
   /* Init the tables that describe all the pseudo regs.  */
 
-  regno_pointer_flag_length = 100;
+  regno_pointer_flag_length = FIRST_PSEUDO_REGISTER + 100;
 
   regno_pointer_flag 
     = (char *) oballoc (regno_pointer_flag_length);

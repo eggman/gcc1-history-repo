@@ -207,7 +207,7 @@ struct tree_common
    of the whole expression could produce a different value.
    This is set if any subexpression is a function call, a side effect
    or a reference to a volatile variable.
-   In a ..._DECL, this is set only of the declaration said `volatile'.
+   In a ..._DECL, this is set only if the declaration said `volatile'.
    In a ..._TYPE, nonzero means the type is volatile-qualified.  */
 #define TREE_VOLATILE(NODE) ((NODE)->common.volatile_attr)
 
@@ -390,7 +390,8 @@ struct tree_exp
 
 /* Define fields and accessors for nodes representing data types.  */
 
-/* See tree.def for documentation of the use of these fields.  */
+/* See tree.def for documentation of the use of these fields.
+   Look at the documentation of the various ..._TYPE tree codes.  */
 
 #define TYPE_SIZE(NODE) ((NODE)->type.size)
 #define TYPE_SIZE_UNIT(NODE) ((NODE)->type.size_unit)
@@ -778,21 +779,21 @@ extern tree get_narrower ();
 /* Given PRECISION and UNSIGNEDP, return a suitable type-tree
    for an integer type with at least that precision.
    The definition of this resides in language-specific code
-   as the repertoir of available types may vary.  */
+   as the repertoire of available types may vary.  */
 
 extern tree type_for_size ();
 
 /* Given an integer type T, return a type like T but unsigned.
    If T is unsigned, the value is T.
    The definition of this resides in language-specific code
-   as the repertoir of available types may vary.  */
+   as the repertoire of available types may vary.  */
 
 extern tree unsigned_type ();
 
 /* Given an integer type T, return a type like T but signed.
    If T is signed, the value is T.
    The definition of this resides in language-specific code
-   as the repertoir of available types may vary.  */
+   as the repertoire of available types may vary.  */
 
 extern tree signed_type ();
 
@@ -855,6 +856,10 @@ extern int immediate_size_expand;
 /* Points to the FUNCTION_DECL of the function whose body we are reading. */
 
 extern tree current_function_decl;
+
+/* Nonzero if function being compiled can call setjmp.  */
+
+extern int current_function_calls_setjmp;
 
 /* Nonzero means all ..._TYPE nodes should be allocated permanently.  */
 

@@ -8,15 +8,30 @@
    This will control the use of inline 68881 insns in certain macros.
    Also inform the program which CPU this is for.  */
 
-#if TARGET_DEFAULT & 0102
-/* m68881 or mfpa is the default */
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} \
+#if TARGET_DEFAULT & 02
+
+/* -m68881 is the default */
+#define CPP_SPEC "%{mfpa:-D__HAVE_FPA__ }%{!msoft-float:-D__HAVE_68881__ }\
 %{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}"
+
 #else
-/* msoft-float is the default */
-#define CPP_SPEC "%{m68881:-D__HAVE_68881__} %{mfpa:-D__HAVE_68881__} \
+#if TARGET_DEFAULT & 0100
+
+/* -mfpa is the default */
+#define CPP_SPEC \
+"%{!msoft-float:-D__HAVE_68881__ %{!m68881:-D__HAVE_FPA__ }}\
 %{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}"
+
+#else
+
+/* -msoft-float is the default */
+#define CPP_SPEC \
+"%{m68881:-D__HAVE_68881__ }%{mfpa:-D__HAVE_FPA__ -D__HAVE_68881__ }\
+%{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}"
+
 #endif
+#endif
+
 
 /* -m68000 requires special flags to the assembler.  */
 

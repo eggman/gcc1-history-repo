@@ -35,14 +35,23 @@ static rtx extract_fixed_bit_field ();
 static void store_split_bit_field ();
 static void store_fixed_bit_field ();
 
-/* Return an rtx representing minus the value of X.  */
+/* Return an rtx representing minus the value of X.
+   MODE is the intended mode of the result,
+   useful if X is a CONST_INT.  */
 
 rtx
-negate_rtx (x)
+negate_rtx (mode, x)
+     enum machine_mode mode;
      rtx x;
 {
   if (GET_CODE (x) == CONST_INT)
-    return gen_rtx (CONST_INT, VOIDmode, - INTVAL (x));
+    {
+      int val = - INTVAL (x);
+      /* Avoid setting an extraneous bits.  */
+      if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+	val &= (1 << GET_MODE_BITSIZE (mode)) - 1;
+      return gen_rtx (CONST_INT, VOIDmode, val);
+    }
   else
     return expand_unop (GET_MODE (x), neg_optab, x, 0, 0);
 }
@@ -177,10 +186,13 @@ store_bit_field (str_rtx, bitsize, bitnum, fieldmode, value)
 	{
 	  if (GET_MODE_BITSIZE (GET_MODE (value)) >= bitsize)
 	    {
+	      /* Avoid making subreg of a subreg.  */
+	      if (GET_CODE (value1) == SUBREG)
+		value1 = copy_to_reg (value1);
 	      /* Optimization: Don't bother really extending VALUE
 		 if it has all the bits we will actually use.  */
 	      value1 = gen_rtx (SUBREG, SImode, value1, 0);
-	      if (GET_CODE (value) != REG)
+	      if (GET_CODE (SUBREG_REG (value1)) != REG)
 		value1 = copy_to_reg (value1);
 	    }
 	  else if (!CONSTANT_P (value))

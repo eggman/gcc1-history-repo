@@ -1375,8 +1375,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "ashrhi3"
@@ -1386,8 +1385,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "ashrqi3"
@@ -1397,8 +1395,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 ;; logical shift instructions
@@ -1440,8 +1437,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "lshrhi3"
@@ -1451,8 +1447,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "lshrqi3"
@@ -1462,8 +1457,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 ;; Rotate instructions
@@ -1497,8 +1491,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "rotrhi3"
@@ -1508,8 +1501,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 (define_expand "rotrqi3"
@@ -1519,8 +1511,7 @@
   ""
   "
 {
-  extern rtx negate_rtx ();
-  operands[2] = negate_rtx (operands[2]);
+  operands[2] = negate_rtx (SImode, operands[2]);
 }")
 
 ;;- load or push effective address 
@@ -1691,7 +1682,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(zero_extract (match_operand:SI 0 "general_operand" "rmn")
+	(zero_extract (match_operand:SI 0 "general_operand" "rm")
 		      (const_int 1)
 		      (match_operand:SI 1 "general_operand" "rmn")))]
   ""
@@ -1702,7 +1693,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(minus (zero_extract (match_operand:SI 0 "general_operand" "rmn")
+	(minus (zero_extract (match_operand:SI 0 "general_operand" "rm")
 			     (const_int 1)
 			     (match_operand:SI 1 "general_operand" "rmn"))
 	       (const_int 1)))]
@@ -1760,7 +1751,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(and:SI (match_operand:SI 0 "general_operand" "rmn")
+	(and:SI (match_operand:SI 0 "general_operand" "rm")
 		(match_operand:SI 1 "immediate_operand" "i")))]
   "GET_CODE (operands[1]) == CONST_INT
    && exact_log2 (INTVAL (operands[1])) >= 0"
@@ -1836,7 +1827,8 @@
 { if (GET_CODE (operands[3]) == CONST_INT)
     {
       if (INTVAL (operands[3]) >= 8)
-	operands[1] = plus_constant (operands[1], INTVAL (operands[3]) >> 3);
+	operands[1] = adj_offsetable_operand (operands[1],
+					      INTVAL (operands[3]) >> 3);
       return \"extsd %1,%0,%3,%2\";
     }
   else return \"extd %3,%1,%0,%2\";
@@ -1852,7 +1844,8 @@
 { if (GET_CODE (operands[3]) == CONST_INT)
     {
       if (INTVAL (operands[3]) >= 8)
-	operands[1] = plus_constant (operands[1], INTVAL (operands[3]) >> 3);
+	operands[1] = adj_offsetable_operand (operands[1],
+					      INTVAL (operands[3]) >> 3);
       return \"extsd %1,%0,%3,%2\";
     }
   else return \"extd %3,%1,%0,%2\";

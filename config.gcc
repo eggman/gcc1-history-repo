@@ -62,30 +62,51 @@ case $# in
 		configuration_file=config-${machine}.h
 		target_machine=tm-${machine}.h
 		;;
-	vaxv)					# for vaxen running system V
+	vax-sysv | vaxv)			# for vaxen running system V
 		cpu_type=vax
-		configuration_file=config-${machine}.h
-		target_machine=tm-${machine}.h
+		configuration_file=config-vaxv.h
+		target_machine=tm-vaxv.h
 		;;
-	i386v)				# for Intel 80386's running system V
+	sequent-i386)			# for Intel 80386's on Sequent Symmetry
+		cpu_type=i386
+		configuration_file=config-i386.h
+		target_machine=tm-seq386.h
+		;;
+	i386-sysv | i386v)		# for Intel 80386's running system V
+		machine=i386v
 		cpu_type=i386
 		configuration_file=config-${machine}.h
 		target_machine=tm-${machine}.h
 		;;
-	sun-4-os4)
+	sun4 | sun-4)
+		cpu_type=sparc
+		configuration_file=config-sparc.h
+		target_machine=tm-${cpu_type}.h
+		;;
+	sun3 | sun-3)
+		cpu_type=m68k
+		configuration_file=config-m68k.h
+		target_machine=tm-sun3.h
+		;;
+	sun2 | sun-2)
+		cpu_type=m68k
+		configuration_file=config-m68k.h
+		target_machine=tm-sun2.h
+		;;
+	sun4-os4 | sun-4-os4)
 		cpu_type=sparc
 		configuration_file=config-sun4.h
 		target_machine=tm-${cpu_type}.h
 		;;
-	sun-3-os4)
+	sun3-os4 | sun-3-os4)
 		cpu_type=m68k
 		configuration_file=config-sun4.h
-		target_machine=tm-${cpu_type}.h
+		target_machine=tm-sun3.h
 		;;
-	sun-2-os4)
+	sun2-os4 |sun-2-os4)
 		cpu_type=m68k
 		configuration_file=config-sun4.h
-		target_machine=tm-${cpu_type}.h
+		target_machine=tm-sun2.h
 		;;
 	hp9k320)			# HP 9000 series 300 with gcc alone
 		cpu_type=m68k
@@ -94,16 +115,6 @@ case $# in
 	hp9k320g)			#    with gnu as, ld and gdb
 		cpu_type=m68k
 		configuration_file=config-hp9k3.h
-		;;
-	sun-4)
-		cpu_type=sparc
-		target_machine=tm-${cpu_type}.h
-		;;
-	sun-3)
-		cpu_type=m68k
-		;;
-	sun-2)
-		cpu_type=m68k
 		;;
 	isi68)
 		cpu_type=m68k
@@ -114,7 +125,7 @@ case $# in
 	3b1)
 		cpu_type=m68k
 		;;
-	sequent)
+	sequent-ns32k | sequent)
 		cpu_type=ns32k
 		aux_output=output-ns32k.c
 		;;

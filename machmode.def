@@ -36,7 +36,7 @@ and this notice must be preserved on all copies.  */
    By convention these are in UPPER_CASE, except for the word  "mode".
 
    The second argument  is the name of the machine mode in the
-   external ASCII format read by for both the rtl and tree.
+   external ASCII format used for reading and printing RTL and trees.
    By convention these names in UPPER_CASE.
 
    Third argument states the kind of representation:

@@ -49,13 +49,13 @@ output_btst (operands, countop, dataop, insn, signpos)
 	cc_status.flags = CC_NOT_NEGATIVE | CC_Z_IN_NOT_N;
 
       if (count == 31
-	  && next_insn_tests_no_inequality (insn))
+	  && next_insns_test_no_inequality (insn))
 	return "tst%.l %1";
       if (count == 15
-	  && next_insn_tests_no_inequality (insn))
+	  && next_insns_test_no_inequality (insn))
 	return "tst%.w %1";
       if (count == 7
-	  && next_insn_tests_no_inequality (insn))
+	  && next_insns_test_no_inequality (insn))
 	return "tst%.b %1";
 
       cc_status.flags = CC_NOT_NEGATIVE;

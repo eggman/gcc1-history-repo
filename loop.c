@@ -175,6 +175,7 @@ static int loop_reg_used_before_p ();
 static void constant_high_bytes ();
 static void scan_loop ();
 static rtx replace_regs ();
+static void replace_call_address ();
 static void move_movables ();
 static int may_trap_p ();
 static void strength_reduce ();
@@ -810,11 +811,38 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 		     handled in the normal manner.  */
 		  if (temp = find_reg_note (p, REG_RETVAL, 0))
 		    {
+		      rtx fn_address = 0;
+		      rtx fn_reg = 0;
 		      first = 0;
 		      for (temp = XEXP (temp, 0); temp != p;
 			   temp = NEXT_INSN (temp))
 			{
-			  i1 = emit_insn_before (PATTERN (temp), loop_start);
+			  rtx body = PATTERN (temp);
+			  rtx n;
+			  /* Extract the function address from the insn
+			     that loads it into a register.
+			     If this insn was cse'd, we get incorrect code.
+			     So delete it and stick the fn address right
+			     into the call insn.  Since the moved insns
+			     won't be cse'd, that does no harm.  */
+			  if (GET_CODE (NEXT_INSN (temp)) == CALL_INSN
+			      && GET_CODE (body) == SET
+			      && GET_CODE (SET_DEST (body)) == REG
+			      && (n = find_reg_note (temp, REG_EQUIV, 0)))
+			    {
+			      fn_reg = SET_SRC (body);
+			      if (GET_CODE (fn_reg) != REG)
+				fn_reg = SET_DEST (body);
+			      fn_address = XEXP (n, 0);
+			      continue;
+			    }
+			  /* We have the call insn.
+			     Substitute the fn address for the reg
+			     that we believe this insn will use.  */
+			  if (GET_CODE (temp) == CALL_INSN
+			      && fn_address != 0)
+			    replace_call_address (body, fn_reg, fn_address);
+			  i1 = emit_insn_before (body, loop_start);
 			  if (first == 0)
 			    first = i1;
 			  REG_NOTES (i1) = REG_NOTES (temp);
@@ -1021,6 +1049,62 @@ replace_regs (x, reg_map, nregs)
 	}
     }
   return x;
+}
+
+/* Scan X and replace the address of any MEM in it with ADDR.
+   REG is the address that MEM should have before the replacement.  */
+
+static void
+replace_call_address (x, reg, addr)
+     rtx x, reg, addr;
+{
+  register RTX_CODE code = GET_CODE (x);
+  register int i;
+  register char *fmt;
+
+  switch (code)
+    {
+    case PC:
+    case CC0:
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case CONST:
+    case SYMBOL_REF:
+    case LABEL_REF:
+    case REG:
+      return;
+
+    case SET:
+      /* Short cut for very common case.  */
+      replace_call_address (XEXP (x, 1), reg, addr);
+      return;
+
+    case CALL:
+      /* Short cut for very common case.  */
+      replace_call_address (XEXP (x, 0), reg, addr);
+      return;
+
+    case MEM:
+      /* If this MEM uses a reg other than the one we expected,
+	 something is wrong.  */
+      if (XEXP (x, 0) != reg)
+	abort ();
+      XEXP (x, 0) = addr;
+      return;
+    }
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	replace_call_address (XEXP (x, i), reg, addr);
+      if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = 0; j < XVECLEN (x, i); j++)
+	    replace_call_address (XVECEXP (x, i, j), reg, addr);
+	}
+    }
 }
 
 #if 0

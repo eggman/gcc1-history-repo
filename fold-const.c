@@ -40,6 +40,7 @@ and this notice must be preserved on all copies.  */
    also as a tree.  */
    
 #include <stdio.h>
+#include <setjmp.h>
 #include "config.h"
 #include "tree.h"
 
@@ -729,6 +730,9 @@ split_tree (in, code, varp, conp, varsignp)
    We assume ARG1 and ARG2 have the same data type,
    or at least are the same kind of constant and the same machine mode.  */
 
+/* Handle floating overflow for `combine'.  */
+static jmp_buf combine_error;
+
 tree
 combine (code, arg1, arg2)
      enum tree_code code;
@@ -845,6 +849,10 @@ combine (code, arg1, arg2)
       register double d2 = TREE_REAL_CST (arg2);
       register double value;
 
+      if (setjmp (combine_error))
+	return build (code, TREE_TYPE (arg1), arg1, arg2);
+      set_float_handler (combine_error);
+
       switch (code)
 	{
 	case PLUS_EXPR:
@@ -877,6 +885,7 @@ combine (code, arg1, arg2)
 	default:
 	  abort ();
 	}
+      set_float_handler (0);
       return build_real (TREE_TYPE (arg1), value);
     }
   if (TREE_CODE (arg1) == COMPLEX_CST)
@@ -1466,18 +1475,19 @@ fold (expr)
 
       /* Change X >= CST to X > (CST - 1) if CST is positive.  */
       if (TREE_CODE (arg1) == INTEGER_CST
+	  && TREE_CODE (arg0) != INTEGER_CST
 	  && ! tree_int_cst_lt (arg1, integer_one_node))
 	{
 	  switch (TREE_CODE (t))
 	    {
 	    case GE_EXPR:
-	      TREE_CODE (t) = GT_EXPR;
+	      TREE_CODE (t) = code = GT_EXPR;
 	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
 	      TREE_OPERAND (t, 1) = arg1;
 	      break;
 
 	    case LT_EXPR:
-	      TREE_CODE (t) = LE_EXPR;
+	      TREE_CODE (t) = code = LE_EXPR;
 	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
 	      TREE_OPERAND (t, 1) = arg1;
 	    }

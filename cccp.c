@@ -628,11 +628,9 @@ main (argc, argv)
     if (argv[i][0] != '-') {
       if (out_fname != NULL)
 	fatal ("Usage: %s [switches] input output\n", argv[0]);
-      else if (in_fname != NULL) {
+      else if (in_fname != NULL)
 	out_fname = argv[i];
-	if (! freopen (out_fname, "w", stdout))
-	  pfatal_with_name (out_fname);
-      } else
+      else
 	in_fname = argv[i];
     } else {
       switch (argv[i][1]) {
@@ -648,8 +646,8 @@ main (argc, argv)
 	if (out_fname != NULL)
 	  fatal ("Output filename specified twice\n");
 	out_fname = argv[++i];
-	if (! freopen (out_fname, "w", stdout))
-	  pfatal_with_name (out_fname);
+	if (!strcmp (out_fname, "-"))
+	  out_fname = "";
 	break;
 
       case 'p':
@@ -786,7 +784,7 @@ main (argc, argv)
 	  in_fname = "";
 	  break;
 	} else if (out_fname == NULL) {
-	  out_fname = "stdout";
+	  out_fname = "";
 	  break;
 	}	/* else fall through into error */
 
@@ -955,7 +953,7 @@ main (argc, argv)
   }
   fp->bufp = fp->buf;
   fp->if_stack = if_stack;
-
+  
   /* Unless inhibited, convert trigraphs in the input.  */
 
   if (!no_trigraphs)
@@ -966,6 +964,13 @@ main (argc, argv)
   if (fp->length > 0 && fp->buf[fp->length-1] != '\n')
     fp->buf[fp->length++] = '\n';
   fp->buf[fp->length] = '\0';
+
+  /* Now that we know the input file is valid, open the output.  */
+
+  if (out_fname && !strcmp (out_fname, ""))
+    out_fname = "stdout";
+  else if (! freopen (out_fname, "w", stdout))
+    pfatal_with_name (out_fname);
 
   output_line_command (fp, &outbuf, 0);
 

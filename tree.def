@@ -1,5 +1,5 @@
 /* This file contains the definitions and documentation for the
-   machine modes used in the the GNU compiler.
+   tree codes used in the GNU C compiler.
    Copyright (C) 1987 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -29,6 +29,10 @@ and this notice must be preserved on all copies.  */
    "d" for codes for declarations (also serving as variable refs).
    "r" for codes for references to storage.
    "e" for codes for other kinds of expressions.  */
+
+/* For `r', `e' and `x' nodes,
+   the 4th element is the number of argument slots to allocate.
+   This determines the size of the tree node object.  */
 
 /* Any erroneous construct is parsed into a node of this type.
    This type of node is accepted without complaint in all contexts
@@ -523,7 +527,7 @@ DEFTREECODE (SAVE_EXPR, "save_expr", "e", 2)
 
 /* Represents something whose RTL has already been expanded
    as a sequence which should be emitted when this expression is expanded.
-   The first operand is the-the RTL to emit (which is a SEQUENCE).
+   The first operand is the RTL to emit.  It is the first of a chain of insns.
    The second is the RTL expression for the result.  */
 DEFTREECODE (RTL_EXPR, "rtl_expr", "e", 2)
 

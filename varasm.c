@@ -410,6 +410,12 @@ immed_double_const (i0, i1, mode)
   /* No; make a new one and add it to the chain.  */
 
   r = gen_rtx (CONST_DOUBLE, mode, i0, i1, 0);
+
+  /* If a one-word int was allocated for the value,
+     just return it.  */
+  if (GET_CODE (r) == CONST_INT)
+    return r;
+
   XEXP (r, 3) = real_constant_chain;
   real_constant_chain = r;
 
@@ -1018,7 +1024,7 @@ decode_rtx_const (mode, x, value)
       abort ();
     }
 
-  if (value->un.addr.base != 0)
+  if (value->kind == RTX_INT && value->un.addr.base != 0)
     switch (GET_CODE (value->un.addr.base))
       {
       case SYMBOL_REF:

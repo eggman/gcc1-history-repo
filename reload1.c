@@ -1222,6 +1222,7 @@ order_regs_for_reload ()
 {
   register int i;
   register int o = 0;
+  int large = 0;
 
   struct hard_reg_n_uses hard_reg_n_uses[FIRST_PSEUDO_REGISTER];
 
@@ -1241,7 +1242,17 @@ order_regs_for_reload ()
     {
       if (reg_renumber[i] >= 0)
 	hard_reg_n_uses[reg_renumber[i]].uses += reg_n_refs[i];
+      large += reg_n_refs[i];
     }
+
+  /* Now fixed registers (which cannot safely be used for reloading)
+     get a very high use count so they will be considered least desirable.
+     Likewise registers used explicitly in the rtl code.  */
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (fixed_regs[i] || regs_explicitly_used[i])
+      hard_reg_n_uses[i].uses = large;
+  hard_reg_n_uses[FRAME_POINTER_REGNUM].uses = large;
 
   qsort (hard_reg_n_uses, FIRST_PSEUDO_REGISTER,
 	 sizeof hard_reg_n_uses[0], hard_reg_use_compare);
@@ -1277,14 +1288,18 @@ order_regs_for_reload ()
      preferring those used less often.  */
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    {
-      int r = hard_reg_n_uses[i].regno;
-      if (regs_ever_live[r] != 0
-	  && r != FRAME_POINTER_REGNUM
-	  && ! fixed_regs[r]
-	  && ! regs_explicitly_used[r])
-	potential_reload_regs[o++] = r;
-    }
+    if (regs_ever_live[hard_reg_n_uses[i].regno] != 0)
+      potential_reload_regs[o++] = hard_reg_n_uses[i].regno;
+
+#if 0
+  /* For regs that are used, don't prefer those not preserved by calls
+     because those are likely to contain high priority things
+     that are live for short periods of time.  */
+
+  for (i = FIRST_PSEUDO_REGISTER - 1; i >= 0; i--)
+    if (regs_ever_live[i] != 0 && ! call_used_regs[i])
+      potential_reload_regs[o++] = i;
+#endif
 }
 
 /* Reload pseudo-registers into hard regs around each insn as needed.
@@ -1635,13 +1650,14 @@ choose_reload_targets (insn)
 	     of the current insn, just mark it as a place to reload from
 	     since we can't use it as the reload register itself.  */
 
-	  for (i = 0; i < n_earlyclobbers; i++)
-	    if (reg_overlap_mentioned_p (equiv, reload_earlyclobbers[i]))
-	      {
-		reload_in[r] = equiv;
-		equiv = 0;
-		break;
-	      }
+	  if (equiv != 0)
+	    for (i = 0; i < n_earlyclobbers; i++)
+	      if (reg_overlap_mentioned_p (equiv, reload_earlyclobbers[i]))
+		{
+		  reload_in[r] = equiv;
+		  equiv = 0;
+		  break;
+		}
 
 	  /* If we found an equivalent reg, say no code need be generated
 	     to load it, and use it as our reload reg.  */

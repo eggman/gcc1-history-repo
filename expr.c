@@ -1066,7 +1066,7 @@ push_block (size)
 #else
   temp = gen_rtx (PLUS, Pmode,
 		  stack_pointer_rtx,
-		  negate_rtx (size));
+		  negate_rtx (Pmode, size));
   if (GET_CODE (size) != CONST_INT)
     temp = force_operand (temp, 0);
 #endif
@@ -4061,7 +4061,10 @@ expand_call (exp, target, ignore)
      if nonvolatile values are live.  */
 
   if (is_setjmp)
-    emit_note (IDENTIFIER_POINTER (DECL_NAME (fndecl)), NOTE_INSN_SETJMP);
+    {
+      emit_note (IDENTIFIER_POINTER (DECL_NAME (fndecl)), NOTE_INSN_SETJMP);
+      current_function_calls_setjmp = 1;
+    }
 
   /* For calls to __builtin_new, note that it can never return 0.
      This is because a new handler will be called, and 0 it not

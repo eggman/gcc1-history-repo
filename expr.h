@@ -202,6 +202,10 @@ rtx expand_binop ();
 /* Expand a unary arithmetic operation given optab rtx operand.  */
 rtx expand_unop ();
 
+/* Arguments MODE, RTX: return an rtx for the negation of that value.
+   May emit insns.  */
+rtx negate_rtx ();
+
 /* Initialize the tables that control conversion between fixed and
    floating values.  */
 void init_fixtab ();

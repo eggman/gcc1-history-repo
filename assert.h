@@ -10,7 +10,7 @@
 #define assert(expression)  \
   ((expression) ? 0 : __assert (#expression, __FILE__, __LINE__))
 
-void _eprintf ();		/* Defined in gnulib */
+void __eprintf ();		/* Defined in gnulib */
 
 #ifdef __STDC__
 

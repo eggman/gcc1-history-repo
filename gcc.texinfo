@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 3 October 1988
+@center last updated 13 October 1988
 @sp 1
-@center for version 1.29
+@center for version 1.30
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -434,6 +434,11 @@ to @code{unsigned int}.
 Out-of-range floating point literals are not an error.
 
 @item
+All automatic variables not declared @code{register} are preserved by
+@code{longjmp}.  Ordinarily, GNU C follows ANSI C: automatic variables
+not declared @code{volatile} may be clobbered.
+
+@item
 In the preprocessor, comments convert to nothing at all, rather than
 to a space.  This allows traditional token concatenation.
 
@@ -497,9 +502,9 @@ GNU assembler and linker in order to work.
 This feature will probably be eliminated.  It was intended to enable
 GDB to read the symbol table faster, but it doesn't result in enough
 of a speedup to be worth the larger object files and executables.  We
-are working on other ways of making GDB start faster, which work with
-DBX format debugging information and could be made to work with SDB
-format.
+are working on other ways of making GDB start even faster, which work
+with DBX format debugging information and could be made to work with
+SDB format.
 
 @item -w
 Inhibit all warning messages.
@@ -1012,7 +1017,12 @@ the file.
 On a Sequent system, go to the Berkeley universe.
 
 @item
-Choose configuration files.
+Choose configuration files.  The easy way to do this is to run the
+command file @file{config.gcc} with a single argument, which is the
+name of the machine as it appears in the @file{tm-@var{machine}.h}
+file name.
+
+Here we spell out what files you need to set up:
 
 @itemize @bullet
 @item
@@ -1075,12 +1085,14 @@ instructions will appear here in the future.@refill
 For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
 system V, or @file{tm-vms.h} on VMS.@refill
 
-For the SPARC (Sun 4), use @file{tm-sparc.h}.
+For the SPARC (Sun 4), use @file{tm-sparc.h}.  Note that SPARC support
+currenty @strong{does not work}.  It will probably be fixed for
+version 1.31.
 
 For the Motorola 88000, use @file{tm-m88k.h}.  The support for the
 88000 has a few unfinished spots because there was no way to run the
-output.  Bugs are suspected in handling of branch-tables and in
-the function prologue and epilogue.
+output.  Bugs are suspected in handling of branch-tables and in the
+function prologue and epilogue.
 
 For the 80386, don't use @file{tm-i386.h} directly.  Use
 @file{tm-i386v.h} if the target machine is running system V,
@@ -1100,7 +1112,9 @@ Note that Encore systems are supported only under BSD.
 
 @item
 Make a symbolic link named @file{md} to the machine description
-pattern file (its name should be @file{@var{machine}.md}).
+pattern file.  Its name should be @file{@var{machine}.md}, but
+@var{machine} is often not the same as the name used in the
+@file{tm.h} file because the @file{md} files are more general.
 
 @item
 Make a symbolic link named @file{aux-output.c} to the output
@@ -1126,6 +1140,11 @@ properly without special pains.
 
 @item
 Build the compiler.  Just type @samp{make} in the compiler directory.
+
+Ignore any warnings you may see about ``statement not reached'' in the
+@file{insn-emit.c}; they are normal.  Any other compilation errors may
+represent bugs in the port to your machine or operating system, and
+should be investigated and reported (@pxref{Bugs}).
 
 @item
 Move the first-stage object files and executables into a subdirectory
@@ -1213,10 +1232,9 @@ Alternatively, on Sun systems and 4.3BSD at least, you can correct the
 include files by running the shell script @file{fixincludes}.  This
 installs modified, corrected copies of the files @file{ioctl.h},
 @file{ttychars.h} and many others, in a special directory where only
-GNU CC will normally look for them.
-
-See the file @file{fixincludes} for a list of all the files we know to
-require correction.
+GNU CC will normally look for them.  This script will work on various
+systems because it choose the files by searching all the system
+headers for the problem cases that we know about.
 @end enumerate
 
 If you cannot install the compiler's passes and run-time support in
@@ -1322,6 +1340,55 @@ DBX rejects some files produced by GNU CC, though it accepts similar
 constructs in output from PCC.  Until someone can supply a coherent
 description of what is valid DBX input and what is not, there is
 nothing I can do about these problems.  You are on your own.
+
+@item
+Users often think it is a bug when GNU CC reports an error for code
+like this:
+
+@example
+int foo (short);
+
+int foo (x)
+     short x;
+@{@dots{}@}
+@end example
+
+This code really is erroneous, because the old-style non-prototype
+definition passes subword integers in their promoted types.  In other
+words, the argument is really an @code{int}, not a @code{short}.  The
+correct prototype is this:
+
+@example
+int foo (int);
+@end example
+
+@item
+Users often think it is a bug when GNU CC reports an error for code
+like this:
+
+@example
+int foo (struct mumble *);
+
+struct mumble @{ @dots{} @};
+
+int foo (struct mumble *x)
+@{ @dots{} @}
+@end example
+
+This code really is erroneous, because the scope of @code{struct
+mumble} the prototype is limited to the argument list containing it.
+It does not refer to the @code{struct mumble} defined with file scope
+immediately below---they are two unrelated types with similar names in
+different scopes.
+
+But in the definition of @code{foo}, the file-scope type is used
+because that is available to be inherited.  Thus, the definition and
+the prototype do not match, and you get an error.
+
+This behavior may seem silly, but it's what the ANSI standard
+specifies.  It is easy enough for you to make your code work by moving
+the definition of @code{struct mumble} above the prototype.  I don't
+think it's worth being incompatible for.
 @end itemize
 
 @node Incompatibilities, Extensions, Trouble, Top
@@ -1399,6 +1466,11 @@ in it.
 
 If you use the @samp{-W} option with the @samp{-O} option, you will
 get a warning when GNU CC thinks such a problem might be possible.
+
+The @samp{-traditional} option directs GNU C to put variables in
+the stack by default, rather than in registers, in functions that
+call @code{setjmp}.  This results in the behavior found in
+traditional C compilers.
 
 @item
 Declarations of external variables and functions within a block apply

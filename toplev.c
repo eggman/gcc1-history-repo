@@ -27,6 +27,7 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include <stdio.h>
 #include <signal.h>
+#include <setjmp.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -626,6 +627,33 @@ floor_log2 (x)
     if ((x & ((-1) << log)) == 0)
       return log - 1;
   return HOST_BITS_PER_INT - 1;
+}
+
+int float_handled;
+jmp_buf float_handler;
+
+/* Specify where to longjmp to when a floating arithmetic error happens.
+   If HANDLER is 0, it means don't handle the errors any more.  */
+
+void
+set_float_handler (handler)
+     jmp_buf handler;
+{
+  float_handled = (handler != 0);
+  if (handler)
+    bcopy (handler, float_handler, sizeof (float_handler));
+}
+
+/* Signals actually come here.  */
+
+static void
+float_signal ()
+{
+  if (float_handled == 0)
+    abort ();
+  warning ("floating overflow in constant folding");
+  float_handled = 0;
+  longjmp (float_handler, 1);
 }
 
 /* Compile an entire file of output from cpp, named NAME.
@@ -1393,6 +1421,8 @@ main (argc, argv, envp)
     setrlimit (RLIMIT_STACK, &rlim);
   }
 #endif /* RLIMIT_STACK */
+
+  signal (SIGFPE, float_signal);
 
   /* Initialize whether `char' is signed.  */
   flag_signed_char = DEFAULT_SIGNED_CHAR;
