@@ -61,6 +61,10 @@ extern int insn_n_dups[];
 extern INSN_MACHINE_INFO insn_machine_info[];
 #endif
 
+/* Indexed by insn code number, gives # of constraint alternatives.  */
+
+extern int insn_n_alternatives[];
+
 /* These are two-dimensional arrays indexed first by the insn-code
    and second by the operand number.  Details in genoutput.c.  */
 

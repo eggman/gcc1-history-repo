@@ -107,7 +107,7 @@ static rtx last_insn = NULL;
    This looks like
    (INSN_LIST saved-first-insn
               (INSN_LIST saved-last-insn ...more saved sequences...)).
-   The main insn-chain is saved in the last two link of the chain,
+   The main insn-chain is saved in the last two links of the chain,
    unless the chain is empty.  */
 
 rtx sequence_stack = 0;
@@ -564,6 +564,8 @@ void
 unshare_all_rtl (insn)
      register rtx insn;
 {
+  extern rtx stack_slot_list;
+
   for (; insn; insn = NEXT_INSN (insn))
     if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	|| GET_CODE (insn) == CALL_INSN)
@@ -572,6 +574,11 @@ unshare_all_rtl (insn)
 	REG_NOTES (insn) = copy_rtx_if_shared (REG_NOTES (insn));
 	LOG_LINKS (insn) = copy_rtx_if_shared (LOG_LINKS (insn));
       }
+
+  /* Make sure the addresses of stack slots are not shared
+     with anything in the insn chain.  That could happen if
+     the stack slot is referenced only by its address.  */
+  copy_rtx_if_shared (stack_slot_list);
 }
 
 /* Mark ORIG as in use, and return a copy of it if it was already in use.
@@ -748,6 +755,22 @@ int
 get_max_uid ()
 {
   return cur_insn_uid;
+}
+
+rtx
+next_insn (insn)
+     rtx insn;
+{
+  if (insn) return NEXT_INSN (insn);
+  return 0;
+}
+
+rtx
+previous_insn (insn)
+     rtx insn;
+{
+  if (insn) return PREV_INSN (insn);
+  return 0;
 }
 
 /* Make and return an INSN rtx, initializing all its slots.

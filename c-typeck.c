@@ -672,7 +672,7 @@ default_conversion (exp)
 	}
       /* This way is better for a COMPONENT_REF since it can
 	 simplify the offset for a component.  */
-      adr = build_unary_op (ADDR_EXPR, exp);
+      adr = build_unary_op (ADDR_EXPR, exp, 1);
       return convert (TYPE_POINTER_TO (TREE_TYPE (dt)), adr);
     }
   return exp;
@@ -759,8 +759,7 @@ build_indirect_ref (ptr, errorstring)
 
 	TREE_READONLY (ref) = TREE_READONLY (t);
 	TREE_VOLATILE (ref) = TREE_VOLATILE (t) || TREE_VOLATILE (pointer);
-	TREE_THIS_VOLATILE (ref)
-	  = TREE_VOLATILE (t) || flag_volatile;
+	TREE_THIS_VOLATILE (ref) = TREE_VOLATILE (t);
 	return ref;
       }
   else if (TREE_CODE (pointer) != ERROR_MARK)
@@ -3371,9 +3370,11 @@ process_init_constructor (type, init, elts)
    Arguments are same as for expand_asm_operands.  */
 
 void
-c_expand_asm_operands (string, outputs, inputs, clobbers, vol)
+c_expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
      tree string, outputs, inputs, clobbers;
      int vol;
+     char *filename;
+     int line;
 {
   int noutputs = list_length (outputs);
   register int i;
@@ -3388,13 +3389,16 @@ c_expand_asm_operands (string, outputs, inputs, clobbers, vol)
   /* Generate the ASM_OPERANDS insn;
      store into the TREE_VALUEs of OUTPUTS some trees for
      where the values were actually stored.  */
-  expand_asm_operands (string, outputs, inputs, clobbers, vol);
+  expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line);
 
   /* Copy all the intermediate outputs into the specified outputs.  */
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
     if (o[i] != TREE_VALUE (tail))
       expand_expr (build_modify_expr (o[i], NOP_EXPR, TREE_VALUE (tail)),
 		   0, VOIDmode, 0);
+
+  /* Those MODIFY_EXPRs could do autoincrements.  */
+  emit_queue ();
 }
 
 /* Expand a C `return' statement.

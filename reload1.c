@@ -291,7 +291,7 @@ reload (first, global, dumpfile)
 		    else
 		      reg_equiv_address[i] = XEXP (x, 0);
 		  }
-		else if (immediate_operand (x))
+		else if (immediate_operand (x, VOIDmode))
 		  reg_equiv_constant[i] = x;
 		else
 		  continue;
@@ -1384,7 +1384,7 @@ reload_as_needed (first, live_known)
 		 reusing reload regs from previous insns, or else output
 		 load insns to reload them.  Maybe output store insns too.
 		 Record the choices of reload reg in reload_reg_rtx.  */
-	      choose_reload_targets (insn, n_spills);
+	      choose_reload_targets (insn);
 	      /* Substitute the chosen reload regs from reload_reg_rtx
 		 into the insn's body (or perhaps into the bodies of other
 		 load and store insn that we just made for reloading
@@ -1845,7 +1845,7 @@ choose_reload_targets (insn)
       /* Detect when the reload reg can't hold the reload mode.  */
       if (! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]), reload_mode))
 	{
-	  if (! asm_noperands (PATTERN (insn)))
+	  if (asm_noperands (PATTERN (insn)) < 0)
 	    /* It's the compiler's fault.  */
 	    abort ();
 	  /* It's the user's fault; the operand's mode and constraint

@@ -1123,7 +1123,7 @@ a = (b & c + sizeof (int) - 1) / sizeof (int);
 
 @noindent
 which does not do what is intended.  The operator-precedence rules of
-C make it equivalent to this:	
+C make it equivalent to this:
 
 @example
 a = (b & (c + sizeof (int) - 1)) / sizeof (int);

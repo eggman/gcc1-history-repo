@@ -1,6 +1,6 @@
 /* Config file for ns32k running system V.  */
 
-#include "config-ns32k.h"
+#include "xm-ns32k.h"
 
 #define USG
 

@@ -21,21 +21,45 @@ It is probably not hard to handle cse from the end of a loop
 around to the beginning, and a few loops would be greatly sped
 up by this.
 
-* Iteration variables and strength reduction.
+* Support more general tail-recursion among different functions.
 
-The red dragon book describes standard techniques for these kinds
-of loop optimization.  But be careful!  These optimization techniques
-don't always make the code better.  You need to avoid performing
-the standard transformations unless they are greatly worth while.
+This might be possible under certain circumstances, such as when
+the argument lists of the functions have the same lengths.
+Perhaps it could be done with a special declaration.
 
-In many common cases it is possible to deduce that an iteration
-variable is always positive during the loop.  This information
-may make it possible to use decrement-and-branch instructions
-whose branch conditions are inconvenient.  For example, the 68000
-`dbra' instruction branches if the value was not equal to zero.
-Therefore, it is not applicable to `for (i = 10; i >= 0; i--)'
-unless the compiler can know that I will never be negative
-before it is decremented.
+You would need to verify in the calling function that it does not
+use the addresses of any local variables and does not use setjmp.
+
+* Put short statics vars at low addresses and use short addressing mode?
+Useful on the 68000/68020 and perhaps on the 32000 series,
+provided one has a linker that works with the feature.
+This is said to make a 15% speedup on the 68000.
+This brings to mind Hayes' changes for Stanford MIPS.
+
+* Detect dead stores into memory?
+
+A store into memory is dead if it is followed by another store into
+the same location; and, in between, there is no reference to
+that anything that might be that location (including no reference
+to a variable address).
+
+* Loop optimization.
+
+Strength reduction and iteration variable elimination could be
+smarter.  They should know how to decide which iteration variables are
+not worth making explicit because they can be computed as part of an
+address calculation.  Based on this information, they should decide
+when it is desirable to eliminate one iteration iable and create
+another in its place.
+
+It should be possible to compute what the value of an iteration
+variable will be at the end of the loop, and eliminate the variable
+within the loop by computing that value at the loop end.
+
+When a loop has a simple increment that adds 1,
+instead of jumping in after the increment,
+decrement the loop count and jump to the increment.
+This allows aob insns to be used.
 
 * Using constraints on values.
 
@@ -79,11 +103,16 @@ all the places that use it.
 It might be possible to make better code by paying attention
 to the order in which to generate code for subexpressions of an expression.
 
-* Better code for switch statements.
+* More code motion.
 
-If a switch statement has only a few cases, a sequence of conditional
-branches is generated for it, rather than a jump table.  It would
-be better to output a binary tree of branches.
+Consider hoisting common code up past conditional branches or
+tablejumps.
+
+* Trace scheduling.
+
+This technique is said to be able to figure out which way a jump
+will usually go, and rearrange the code to make that path the
+faster one.
 
 * Distributive law.
 
@@ -91,6 +120,8 @@ The C expression *(X + 4 * (Y + C)) compiles better on certain
 machines if rewritten as *(X + 4*C + 4*Y) because of known addressing
 modes.  It may be tricky to determine when, and for which machines, to
 use each alternative.
+
+Some work has been done on this, in combine.c.
 
 * Jump-execute-next.
 
@@ -115,6 +146,18 @@ requires knowing which functional units each kind of instruction executes
 in and how long the functional unit stays busy with it.  Then the
 goal is to reorder the instructions to keep many functional units
 busy but never feed them so fast they must wait.
+
+* Can optimize by changing if (x) y; else z; into z; if (x) y;
+if z and x do not interfere and z has no effects not undone by y.
+This is desirable if z is faster than jumping.
+
+* For a two-insn loop on the 68020, such as
+  foo:	movb	a2@+,a3@+
+	jne	foo
+it is better to insert dbeq d0,foo before the jne.
+d0 can be a junk register.  The challenge is to fit this into
+a portable framework: when can you detect this situation and
+still be able to allocate a junk register?
 
 2. Simpler porting.
 
@@ -153,3 +196,72 @@ where static data needs to be addressed using base registers.
 Some machines have two stacks in different areas of memory, one used
 for scalars and another for large objects.  The compiler does not
 now have a way to understand this.
+
+5. Precompilation of header files.
+
+In the future, many programs will use thousands of lines of header files.
+Compiling the headers might be slower than compiling the guts of any one
+source file.  Here is a scheme for precompiling header files to make
+compilation faster for a sequence of headers which is often used.
+
+A precompiled header corresponds to a sequence of header files.  The
+preprocessor recognizes when the input starts with a sequence of
+`#include' commands and searches a data base for a precompiled header
+corresponding to that sequence.  The modtimes of all these files are
+stored in the data base so that one can tell whether the precompiled
+header is still valid.
+
+For robustness, each directory should have its own collection of
+precompiled headers and its own data base of them.  Probably each
+precompiled header would be a file and the data base would be one
+more file.
+
+The data base records the entire collection of predefined macros and
+their definitions, except for __FILE__, __LINE__ and __DATE__, for
+each precompiled header.  If this collection does not match the setup
+at the start of the current compilation (including the results of -D
+and -U switches), the precompiled header is inapplicable.  It might
+be possible to have distinct precompiled headers for the same sequence
+of header files but different collections of predefined macros.
+
+The state of any option that affects macro processing, such as -ansi
+or -traditional, must also be recorded, and the precompiled header is
+valid only if these options match.
+
+The precompiled header contains an ordered series of strings.  Some
+strings are marked "unconditional"; these must be compiled each time
+the precompiled header is used.  Other strings are have keys, which
+are identifiers.  A string with keys must be compiled if at least one
+of its keys is mentioned in the input.  The order these strings appear
+in the precompiled header is called their intrinsic order.
+
+The C preprocessor reads in the precompiled header file and scan all
+the strings, making for each key an entry in the same symbol table
+used for macros, pointing at a list of all the strings for which it is
+a key.  Each string must have a flag (one flag per string, not one per
+key per string).  The same code in `rescan' that detects references to
+macros would detect a reference to a key and flag all of the strings
+that it belongs to as needing to be output.
+
+Each of these strings is immediately recursively macroexpanded (i.e.
+`rescan' is called), but the output from this is discarded.  The
+expansion is to detect any other keys mentioned in the string, and to
+define any macros for which the string contains a #define.  The key's
+symbol table entry is be deleted to save time if the key is
+encountered again, and to avoid an infinite recursion.
+
+The unconditional strings are macroexpanded with `rescan' (but the
+output is discarded) at some time before anything is actually output.
+
+At the end of compilation, before any of the actual input text is
+output, the list of strings is scanned in the intrinsic order, and
+each string that is unconditional or flagged is output verbatim,
+except that any #define lines are discarded.
+
+Precompiled headers would be constructed by explicit request with a
+special tool.  The first step is to run cpp on the sequence of header
+files' contents.  This would use a new option that would cause all
+#define lines to be output unchanged as well as defining the macro.
+The second step is to divide the output into strings, some keyed and
+some unconditional.  This division is done without changing the order
+of the text being divided up.

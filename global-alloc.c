@@ -163,8 +163,15 @@ static int *allocnos_live;
 #define CLEAR_ALLOCNO_LIVE(I) \
   (allocnos_live[(I) / INT_BITS] &= ~(1 << ((I) % INT_BITS)))
 
+/* Record all regs that are set in any one insn.
+   Communication from mark_reg_{store,clobber} and global_conflicts.  */
+
+static rtx *regs_set;
+static int n_regs_set;
+
 static int allocno_compare ();
 static void mark_reg_store ();
+static void mark_reg_clobber ();
 static void mark_reg_live_nc ();
 static void mark_reg_death ();
 static void dump_conflicts ();
@@ -402,11 +409,18 @@ global_conflicts ()
 	{
 	  register RTX_CODE code = GET_CODE (insn);
 	  register rtx link;
-	  rtx *regs_set = (rtx *) alloca (max_parallel * sizeof (rtx));
-	  int n_regs_set = 0;
+
+	  /* Make a vector that mark_reg_{store,clobber} will store in.  */
+	  regs_set = (rtx *) alloca (max_parallel * sizeof (rtx));
+	  n_regs_set = 0;
 
 	  if (code == INSN || code == CALL_INSN || code == JUMP_INSN)
 	    {
+	      /* Mark any registers clobbered INSN as live,
+		 so they conflict with the inputs.  */
+
+	      note_stores (PATTERN (insn), mark_reg_clobber);
+
 	      /* Mark any registers dead after INSN as dead now.  */
 
 	      for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
@@ -416,56 +430,7 @@ global_conflicts ()
 	      /* Mark any registers set in INSN as live,
 		 and mark them as conflicting with all other live regs.  */
 
-	      if ((GET_CODE (PATTERN (insn)) == SET
-		   || GET_CODE (PATTERN (insn)) == CLOBBER)
-		  && GET_CODE (SET_DEST (PATTERN (insn))) == REG)
-		{
-		  register rtx z = SET_DEST (PATTERN (insn));
-		  regs_set[n_regs_set++] = z;
-		  mark_reg_store (z, 0);
-		  if (GET_CODE (PATTERN (insn)) == SET)
-		    set_preference (z, SET_SRC (PATTERN (insn)));
-		}
-	      if ((GET_CODE (PATTERN (insn)) == SET
-		   || GET_CODE (PATTERN (insn)) == CLOBBER)
-		  && GET_CODE (SET_DEST (PATTERN (insn))) == SUBREG)
-		{
-		  register rtx z = SUBREG_REG (SET_DEST (PATTERN (insn)));
-		  if (GET_CODE (z) == REG)
-		    {
-		      regs_set[n_regs_set++] = z;
-		      mark_reg_store (z, SUBREG_WORD (SET_DEST (PATTERN (insn))));
-		      if (GET_CODE (PATTERN (insn)) == SET)
-			set_preference (SET_DEST (PATTERN (insn)),
-					SET_SRC (PATTERN (insn)));
-		    }
-		}
-	      else if (GET_CODE (PATTERN (insn)) == PARALLEL)
-		{
-		  register rtx y = PATTERN (insn);
-		  for (i = XVECLEN (y, 0) - 1;
-		       i >= 0; i--)
-		    if (GET_CODE (XVECEXP (y, 0, i)) == SET
-			|| GET_CODE (XVECEXP (y, 0, i)) == CLOBBER)
-		      {
-			rtx z = SET_DEST (XVECEXP (y, 0, i));
-			if (GET_CODE (z) == REG)
-			  {
-			    regs_set[n_regs_set++] = z;
-			    mark_reg_store (z, 0);
-			    if (GET_CODE (XVECEXP (y, 0, i)) == SET)
-			      set_preference (z, SET_SRC (XVECEXP (y, 0, i)));
-			  }
-			if (GET_CODE (z) == SUBREG
-			    && GET_CODE (SUBREG_REG (z)) == REG)
-			  {
-			    regs_set[n_regs_set++] = SUBREG_REG (z);
-			    mark_reg_store (SUBREG_REG (z), SUBREG_WORD (z));
-			    if (GET_CODE (XVECEXP (y, 0, i)) == SET)
-			      set_preference (z, SET_SRC (XVECEXP (y, 0, i)));
-			  }
-		      }
-		}
+	      note_stores (PATTERN (insn), mark_reg_store);
 
 	      /* Mark any registers both set and dead after INSN as dead.
 		 This is not redundant!
@@ -785,17 +750,40 @@ record_conflicts (allocno_vec, len)
    REG and any other regs set in this insn that really do live.
    This is because those other regs could be considered after this.
 
-   WORD is which word of a multi-register group is being stored.
-   For the case where the store is actually into a SUBREG of REG.
-   Except we don't use it; I believe the entire REG needs to be
-   made live.  */
+   REG might actually be something other than a register;
+   if so, we do nothing.  Also ignore CLOBBERs; they are
+   processed at a different time using mark_reg_clobber
+   and we don't want to do them twice.  */
 
 static void
-mark_reg_store (reg, word)
-     rtx reg;
-     int word;
+mark_reg_store (reg, setter)
+     rtx reg, setter;
 {
-  register int regno = REGNO (reg);
+  register int regno;
+
+  /* WORD is which word of a multi-register group is being stored.
+     For the case where the store is actually into a SUBREG of REG.
+     Except we don't use it; I believe the entire REG needs to be
+     made live.  */
+  int word = 0;
+
+  if (GET_CODE (setter) != SET)
+    return;
+
+  if (GET_CODE (reg) == SUBREG)
+    {
+      word = SUBREG_WORD (reg);
+      reg = SUBREG_REG (reg);
+    }
+
+  if (GET_CODE (reg) != REG)
+    return;
+
+  regs_set[n_regs_set++] = reg;
+
+  set_preference (reg, SET_SRC (setter));
+
+  regno = REGNO (reg);
 
   if (reg_renumber[regno] >= 0)
     regno = reg_renumber[regno] /* + word */;
@@ -822,7 +810,63 @@ mark_reg_store (reg, word)
 	}
     }
 }
+
+/* Like mark_reg_set except notice just CLOBBERs; ignore SETs.  */
 
+static void
+mark_reg_clobber (reg, setter)
+     rtx reg, setter;
+{
+  register int regno;
+
+  /* WORD is which word of a multi-register group is being stored.
+     For the case where the store is actually into a SUBREG of REG.
+     Except we don't use it; I believe the entire REG needs to be
+     made live.  */
+  int word = 0;
+
+  if (GET_CODE (setter) != CLOBBER)
+    return;
+
+  if (GET_CODE (reg) == SUBREG)
+    {
+      word = SUBREG_WORD (reg);
+      reg = SUBREG_REG (reg);
+    }
+
+  if (GET_CODE (reg) != REG)
+    return;
+
+  regs_set[n_regs_set++] = reg;
+
+  regno = REGNO (reg);
+
+  if (reg_renumber[regno] >= 0)
+    regno = reg_renumber[regno] /* + word */;
+
+  /* Either this is one of the max_allocno pseudo regs not allocated,
+     or it is or has a hardware reg.  First handle the pseudo-regs.  */
+  if (regno >= FIRST_PSEUDO_REGISTER)
+    {
+      if (reg_allocno[regno] >= 0)
+	{
+	  SET_ALLOCNO_LIVE (reg_allocno[regno]);
+	  record_one_conflict (regno);
+	}
+    }
+  /* Handle hardware regs (and pseudos allocated to hard regs).  */
+  else if (! fixed_regs[regno])
+    {
+      register int last = regno + HARD_REGNO_NREGS (regno, GET_MODE (reg));
+      while (regno < last)
+	{
+	  record_one_conflict (regno);
+	  SET_HARD_REG_BIT (hard_regs_live, regno);
+	  regno++;
+	}
+    }
+}
+
 /* Mark REG as being dead (following the insn being scanned now).
    Store a 0 in regs_live or allocnos_live for this register.  */
 

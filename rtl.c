@@ -489,6 +489,9 @@ reg_overlap_mentioned_p (reg, x)
   return refers_to_regno_p (regno, endregno, x, 0);
 }
 
+/* This is 1 until after reload pass.  */
+int rtx_equal_function_value_matters;
+
 /* Return 1 if X and Y are identical-looking rtx's.
    This is the Lisp function EQUAL for rtx arguments.  */
 
@@ -515,13 +518,15 @@ rtx_equal_p (x, y)
     return 0;
 
   /* These three types of rtx's can be compared nonrecursively.  */
-  /* Don't consider the a reference to the return register of the current
+  /* Until the end of reload,
+     don't consider the a reference to the return register of the current
      function the same as the return from a called function.  This eases
      the job of function integration.  Once the distinction no longer
      matters, the insn will be deleted.  */
   if (code == REG)
     return (REGNO (x) == REGNO (y)
-	    && REG_FUNCTION_VALUE_P (x) == REG_FUNCTION_VALUE_P (y));
+	    && (! rtx_equal_function_value_matters
+		|| REG_FUNCTION_VALUE_P (x) == REG_FUNCTION_VALUE_P (y)));
   if (code == LABEL_REF)
     return XEXP (x, 0) == XEXP (y, 0);
   if (code == SYMBOL_REF)
@@ -592,7 +597,7 @@ note_stores (x, fun)
 	     || GET_CODE (dest) == SIGN_EXTRACT
 	     || GET_CODE (dest) == STRICT_LOW_PART)
 	dest = XEXP (dest, 0);
-      (*fun) (dest, GET_CODE (x) == CLOBBER);
+      (*fun) (dest, x);
     }
   else if (GET_CODE (x) == PARALLEL)
     {
@@ -608,7 +613,7 @@ note_stores (x, fun)
 		     || GET_CODE (dest) == SIGN_EXTRACT
 		     || GET_CODE (dest) == STRICT_LOW_PART)
 		dest = XEXP (dest, 0);
-	      (*fun) (dest, GET_CODE (y) == CLOBBER);
+	      (*fun) (dest, XVECEXP (x, 0, i));
 	    }
 	}
     }

@@ -1,6 +1,6 @@
 /* This file contains the definitions and documentation for the
    tree codes used in the GNU C compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -47,6 +47,10 @@ DEFTREECODE (ERROR_MARK, "error_mark", "x", 0)
    Use `get_identifier' to get it (or create it, the first time).  */
 DEFTREECODE (IDENTIFIER_NODE, "identifier_node", "x", 6)
 
+/* Used to hold information to identify an operator (or combination
+   of two operators) considered as a `noun' rather than a `verb'.  */
+DEFTREECODE (OP_IDENTIFIER, "op_identifier", "x", 2)
+
 /* Has the TREE_VALUE and TREE_PURPOSE fields.  */
 /* These nodes are made into lists by chaining through the
    TREE_CHAIN field.  The elements of the list live in the
@@ -66,6 +70,10 @@ DEFTREECODE (TREE_LIST, "tree_list", "x", 2)
      that are variants made by type modifiers such as "const" and "volatile".
    The TYPE_MAIN_VARIANT field, in any member of such a chain,
      points to the start of the chain.
+   The TYPE_NONCOPIED_PARTS field is a list specifying which parts
+     of an object of this type should *not* be copied by assignment.
+     The TREE_PURPOSE of each element is the offset of the part
+     and the TREE_VALUE is the size in bits of the part.
    The TYPE_NAME field contains info on the name used in the program
      for this type (for GDB symbol table output).  It is either a
      TYPE_DECL node, for types that are typedefs, or an IDENTIFIER_NODE
@@ -119,7 +127,8 @@ DEFTREECODE (CHAR_TYPE, "char_type", "t", 0)
 DEFTREECODE (POINTER_TYPE, "pointer_type", "t", 0)
 
 /* An offset is a pointer relative to an object.
-   The TREE_TYPE points to the node for the type of object
+   The TREE_TYPE field is the type of the object at the offset.
+   The TYPE_OFFSET_BASETYPE points to the node for the type of object
    that the offset is relative to.  */
 DEFTREECODE (OFFSET_TYPE, "offset_type", "t", 0)
 
@@ -129,9 +138,8 @@ DEFTREECODE (REFERENCE_TYPE, "reference_type", "t", 0)
 
 /* METHOD_TYPE is the type of a function which takes an extra first
    argument for "self", which is not present in the declared argument list.
-   The TREE_TYPE is a FUNCTION_TYPE node for the type with which
-   the function was declared.  The TYPE_METHOD_CLASS is the type of "self".
-   TYPE_ARG_TYPES is the real argument list, which
+   The TREE_TYPE is the return type of the method.  The TYPE_METHOD_BASETYPE
+   is the type of "self".  TYPE_ARG_TYPES is the real argument list, which
    includes the hidden argument for "self".  */
 DEFTREECODE (METHOD_TYPE, "method_type", "t", 0)
 
@@ -180,6 +188,12 @@ DEFTREECODE (UNION_TYPE, "union_type", "t", 0)	/* C union type */
    have code FUNCTION_TYPE also, but then TREE_TYPE is zero or void type.  */
 DEFTREECODE (FUNCTION_TYPE, "function_type", "t", 0)
 
+/* This is a language-specific kind of type.
+   Its meaning is defined by the language front end.
+   layout_type does not know how to lay this out,
+   so the front-end must do so manually.  */
+DEFTREECODE (LANG_TYPE, "lang_type", "t", 0)
+
 /* All statement types have fields STMT_SOURCE_FILE and STMT_SOURCE_LINE.  */
 /* Consecutive statements within a compound statement are chained together
    through the TREE_CHAIN field.  */
@@ -306,6 +320,11 @@ DEFTREECODE (STRING_CST, "string_cst", "c", 3)
    DECL_RESULT holds a RESULT_DECL node for the value of a function,
     or it is 0 for a function that returns no value.
     (C functions returning void have zero here.)
+   DECL_RESULT_TYPE holds the type in which the result is actually
+    returned.  This is usually the same as the type of DECL_RESULT,
+    but (1) it may be a wider integer type and
+    (2) it remains valid, for the sake of inlining, even after the
+    function's compilation is done.
    DECL_FUNCTION_CODE is a code number that is nonzero for
     built-in functions.  Its value is an enum built_in_function
     that says which built-in function it is.
@@ -402,6 +421,16 @@ DEFTREECODE (CALL_EXPR, "call_expr", "e", 3)
    Operand 1 is the expression for "self".
    Operand 2 is the list of explicit arguments.  */
 DEFTREECODE (METHOD_CALL_EXPR, "method_call_expr", "e", 4)
+
+/* Specify a value to compute along with its corresponding cleanup.
+   Operand 0 argument is an expression whose value needs a cleanup.
+   Operand 1 is an RTL_EXPR which will eventually represent that value.
+   Operand 2 is the cleanup expression for the object.
+     The RTL_EXPR is used in this expression, which is how the expression
+     manages to act on the proper value.
+   The cleanup is executed when the value is no longer needed,
+   which is not at precisely the same time that this value is computed.  */
+DEFTREECODE (WITH_CLEANUP_EXPR, "with_call_expr", "e", 3)
 
 /* Simple arithmetic.  Operands must have the same machine mode
    and the value shares that mode.  */

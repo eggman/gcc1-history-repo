@@ -70,6 +70,12 @@ walk_insn_part (part)
 	register_constraint_flag = 1;
       return;
 
+    case MATCH_OPERATOR:
+      if (XINT (part, 0) > max_recog_operands_flag)
+	max_recog_operands_flag = XINT (part, 0);
+      /* Now scan the rtl'x in the vector inside the match_operator.  */
+      break;
+
     case LABEL_REF:
       if (GET_CODE (XEXP (part, 0)) == MATCH_OPERAND)
 	break;

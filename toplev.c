@@ -53,6 +53,7 @@ extern int yydebug;
 extern FILE *finput;
 
 extern int reload_completed;
+extern int rtx_equal_function_value_matters;
 
 extern void init_lex ();
 extern void init_decl_processing ();
@@ -228,6 +229,14 @@ int flag_inline_functions;
 
 int flag_keep_inline_functions;
 
+/* Nonzero if we are only using compiler to check syntax errors.  */
+
+int flag_syntax_only;
+
+/* Nonzero means make the text shared if supported.  */
+
+int flag_shared_data;
+
 /* Name for output file of assembly code, specified with -o.  */
 
 char *asm_file_name;
@@ -235,6 +244,31 @@ char *asm_file_name;
 /* Name for output file of GDB symbol segment, specified with -symout.  */
 
 char *sym_file_name;
+
+/* Table of language-independent -f options.
+   STRING is the option name.  VARIABLE is the address of the variable.
+   ON_VALUE is the value to store in VARIABLE
+    if `-fSTRING' is seen as an option.
+   (If `-fno-STRING' is seen as an option, the opposite value is stored.)  */
+
+struct { char *string; int *variable; int on_value;} f_options[] =
+{
+  {"float-store", &flag_float_store, 1},
+  {"volatile", &flag_volatile, 1},
+  {"defer-pop", &flag_defer_pop, 1},
+  {"omit-frame-pointer", &flag_omit_frame_pointer, 1},
+  {"strength-reduce", &flag_strength_reduce, 1},
+  {"writable-strings", &flag_writable_strings, 1},
+  {"peephole", &flag_no_peephole, 0},
+  {"force-mem", &flag_force_mem, 1},
+  {"force-addr", &flag_force_addr, 1},
+  {"combine-regs", &flag_combine_regs, 1},
+  {"function-cse", &flag_no_function_cse, 0},
+  {"inline-functions", &flag_inline_functions, 1},
+  {"keep-inline-functions", &flag_keep_inline_functions, 1},
+  {"syntax-only", &flag_syntax_only, 1},
+  {"shared-data", &flag_shared_data, 1}
+};
 
 /* Output files for assembler code (real compiler output)
    and debugging dumps.  */
@@ -450,12 +484,13 @@ error_with_file_and_line (file, line, s, v, v2)
 }
 
 /* Report an error at the declaration DECL.
-   S is string which uses %s to substitute the declaration name.  */
+   S and V are a string and an arg which uses %s to substitute the declaration name.  */
 
 void
-error_with_decl (decl, s)
+error_with_decl (decl, s, v)
      tree decl;
      char *s;
+     int v;
 {
   count_error (0);
 
@@ -465,9 +500,9 @@ error_with_decl (decl, s)
 	   DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
 
   if (DECL_NAME (decl))
-    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)));
+    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)), v);
   else
-    fprintf (stderr, s, "((anonymous))");
+    fprintf (stderr, s, "((anonymous))", v);
   fprintf (stderr, "\n");
 }
 
@@ -483,12 +518,18 @@ error_for_asm (insn, s, v, v2)
      int v;			/* @@also used as pointer */
      int v2;			/* @@also used as pointer */
 {
-  rtx temp = insn;
-  while (GET_CODE (temp) != NOTE || NOTE_LINE_NUMBER (temp) <= 0)
-    temp = PREV_INSN (temp);
-    
-  error_with_file_and_line (NOTE_SOURCE_FILE (temp), NOTE_LINE_NUMBER (temp),
-			    s, v, v2);
+  rtx temp;
+  char *filename;
+  int line;
+
+  temp = find_reg_note (insn, REG_ASM_FILE, 0);
+  if (temp == 0)
+    abort ();
+  filename = XSTR (XEXP (temp, 0), 0);
+  temp = find_reg_note (insn, REG_ASM_LINE, 0);
+  line = INTVAL (XEXP (temp, 0));
+  
+  error_with_file_and_line (filename, line, s, v, v2);
 }
 
 /* Report a warning at line LINE.
@@ -533,9 +574,10 @@ warning (s, v, v2)
    S is string which uses %s to substitute the declaration name.  */
 
 void
-warning_with_decl (decl, s)
+warning_with_decl (decl, s, v)
      tree decl;
      char *s;
+     int v;
 {
   if (count_error (1) == 0)
     return;
@@ -547,9 +589,9 @@ warning_with_decl (decl, s)
 
   fprintf (stderr, "warning: ");
   if (DECL_NAME (decl))
-    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)));
+    fprintf (stderr, s, IDENTIFIER_POINTER (DECL_NAME (decl)), v);
   else
-    fprintf (stderr, s, "((anonymous))");
+    fprintf (stderr, s, "((anonymous))", v);
   fprintf (stderr, "\n");
 }
 
@@ -873,6 +915,13 @@ compile_file (name)
 
   ASM_FILE_START (asm_out_file);
 
+  /* Output something to inform GDB that this compilation was by GCC.  */
+#ifndef ASM_IDENTIFY_GCC
+  fprintf (asm_out_file, "gcc_compiled.:\n");
+#else
+  ASM_IDENTIFY_GCC (asm_out_file);
+#endif
+
   /* If GDB symbol table desired, open the GDB symbol output file.  */
   if (write_symbols == GDB_DEBUG)
     {
@@ -1053,8 +1102,14 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
   if (TREE_STATIC (decl) || TREE_EXTERNAL (decl))
     TIMEVAR (varconst_time,
 	     {
-	       assemble_variable (decl, asmspec, top_level,
-				  write_symbols, at_end);
+	       make_decl_rtl (decl, asmspec, top_level);
+	       /* Don't output anything
+		  when a tentative file-scope definition is seen.
+		  But at end of compilation, do output code for them.  */
+	       if (! (! at_end && top_level
+		      && (DECL_INITIAL (decl) == 0
+			  || DECL_INITIAL (decl) == error_mark_node)))
+		 assemble_variable (decl, top_level, write_symbols, at_end);
 	     });
 #ifdef DBX_DEBUGGING_INFO
   else if (write_symbols == DBX_DEBUG && TREE_CODE (decl) == TYPE_DECL)
@@ -1346,6 +1401,7 @@ rest_of_compilation (decl)
 	       fflush (global_reg_dump_file);
 	     });
 
+  rtx_equal_function_value_matters = 1;
   reload_completed = 1;
 
   /* One more attempt to remove jumps to .+1
@@ -1410,6 +1466,7 @@ rest_of_compilation (decl)
 
  exit_rest_of_compilation:
 
+  rtx_equal_function_value_matters = 0;
   reload_completed = 0;
 
   /* Clear out the real_constant_chain before some of the rtx's
@@ -1519,43 +1576,41 @@ main (argc, argv, envp)
 	  }
 	else if (str[0] == 'f')
 	  {
+	    int j;
 	    register char *p = &str[1];
-	    if (!strcmp (p, "float-store"))
-	      flag_float_store = 1;
-	    else if (!strcmp (p, "volatile"))
-	      flag_volatile = 1;
-	    else if (!strcmp (p, "defer-pop"))
-	      flag_defer_pop = 1;
-	    else if (!strcmp (p, "no-defer-pop"))
-	      flag_defer_pop = 0;
-	    else if (!strcmp (p, "omit-frame-pointer"))
-	      flag_omit_frame_pointer = 1;
-	    else if (!strcmp (p, "no-omit-frame-pointer"))
-	      flag_omit_frame_pointer = 0;
-	    else if (!strcmp (p, "strength-reduce"))
-	      flag_strength_reduce = 1;
-	    else if (!strcmp (p, "writable-strings"))
-	      flag_writable_strings = 1;
-	    else if (!strcmp (p, "no-peephole"))
-	      flag_no_peephole = 1;
-	    else if (!strcmp (p, "force-mem"))
-	      flag_force_mem = 1;
-	    else if (!strcmp (p, "force-addr"))
-	      flag_force_addr = 1;
-	    else if (!strcmp (p, "combine-regs"))
-	      flag_combine_regs = 1;
-	    else if (!strcmp (p, "no-function-cse"))
-	      flag_no_function_cse = 1;
+	    int found = 0;
+
+	    /* Some kind of -f option.
+	       P's value is the option sans `-f'.
+	       Search for it in the table of options.  */
+
+	    for (j = 0;
+		 !found && j < sizeof (f_options) / sizeof (f_options[0]);
+		 j++)
+	      {
+		if (!strcmp (p, f_options[j].string))
+		  {
+		    *f_options[j].variable = f_options[j].on_value;
+		    /* A goto here would be cleaner,
+		       but breaks the vax pcc.  */
+		    found = 1;
+		  }
+		if (p[0] == 'n' && p[1] == 'o' && p[3] == '-'
+		    && ! strcmp (p+3, f_options[j].string))
+		  {
+		    *f_options[j].variable = ! f_options[j].on_value;
+		    found = 1;
+		  }
+	      }
+
+	    if (found)
+	      ;
 	    else if (!strncmp (p, "fixed-", 6))
 	      fix_register (&p[6], 1, 1);
 	    else if (!strncmp (p, "call-used-", 10))
 	      fix_register (&p[10], 0, 1);
 	    else if (!strncmp (p, "call-saved-", 11))
 	      fix_register (&p[11], 0, 0);
-	    else if (!strcmp (p, "inline-functions"))
-	      flag_inline_functions = 1;
-	    else if (!strcmp (p, "keep-inline-functions"))
-	      flag_keep_inline_functions = 1;
 	    else if (! lang_decode_option (argv[i]))
 	      error ("Invalid option `%s'", argv[i]);	      
 	  }
@@ -1574,7 +1629,7 @@ main (argc, argv, envp)
 	else if (!strcmp (str, "version"))
 	  {
 	    extern char *version_string, *language_string;
-	    printf ("%s version %s", language_string, version_string);
+	    fprintf (stderr, "%s version %s", language_string, version_string);
 #ifdef TARGET_VERSION
 	    TARGET_VERSION;
 #endif
@@ -1582,9 +1637,9 @@ main (argc, argv, envp)
 #ifndef __VERSION__
 #define __VERSION__ "[unknown]"
 #endif
-	    printf (" compiled by GNU C version %s.\n", __VERSION__);
+	    fprintf (stderr, " compiled by GNU C version %s.\n", __VERSION__);
 #else
-	    printf (" compiled by CC.\n");
+	    fprintf (stderr, " compiled by CC.\n");
 #endif
 	  }
 	else if (!strcmp (str, "w"))

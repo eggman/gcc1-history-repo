@@ -197,6 +197,7 @@ static void emit_iv_inc ();
 static int can_eliminate_biv_p ();
 static void eliminate_biv ();
 static rtx final_biv_value ();
+static int last_use_this_basic_block ();
 
 /* Entry point of this file.  Perform loop optimization
    on the current function.  F is the first insn of the function
@@ -455,19 +456,21 @@ scan_loop (loop_start, end, nregs)
 	  && ! may_not_move[REGNO (SET_DEST (PATTERN (p)))])
 	{
 	  int tem1 = 0;
+	  /* Don't try to optimize a register that was made
+	     by loop-optimization for an inner loop.
+	     We don't know its life-span, so we can't compute the benefit.  */
+	  if (REGNO (SET_DEST (PATTERN (p))) >= old_max_reg)
+	    ;
 	  /* If this register is used or set outside the loop,
 	     then we can move it only if we know this insn is
 	     executed exactly once per iteration,
 	     and we can check all the insns executed before it
 	     to make sure none of them used the value that
 	     was lying around at entry to the loop.  */
-	  /* Make sure that regscan info exists for this register;
-	     it must be less than old_max_reg.  */
-	  if ((REGNO (SET_DEST (PATTERN (p))) >= old_max_reg
-	       || uid_luid[regno_last_uid[REGNO (SET_DEST (PATTERN (p)))]] > INSN_LUID (end)
-	       || uid_luid[regno_first_uid[REGNO (SET_DEST (PATTERN (p)))]] < INSN_LUID (loop_start))
-	      && (maybe_never
-		  || loop_reg_used_before_p (p, loop_start, scan_start, end)))
+	  else if ((uid_luid[regno_last_uid[REGNO (SET_DEST (PATTERN (p)))]] > INSN_LUID (end)
+		    || uid_luid[regno_first_uid[REGNO (SET_DEST (PATTERN (p)))]] < INSN_LUID (loop_start))
+		   && (maybe_never
+		       || loop_reg_used_before_p (p, loop_start, scan_start, end)))
 	    ;
 	  else if (((tem = invariant_p (SET_SRC (PATTERN (p))))
 		    || ((temp = find_reg_note (p, REG_EQUAL, 0)) 
@@ -1233,6 +1236,11 @@ verify_loop (f, start)
 		  break;
 		}
 	    }
+	  /* Don't optimize loops containing setjmps.
+	     On some machines, longjmp does not restore the reg
+	     values as of the time of the setjmp.  */
+	  else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
+	    return 0;
 	}
       else if (GET_CODE (insn) == CALL_INSN)
 	{
@@ -1555,7 +1563,7 @@ consec_sets_invariant_p (reg, n_sets, insn)
       if (code == INSN && GET_CODE (PATTERN (p)) == SET
 	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
 	  && REGNO (SET_DEST (PATTERN (p))) == regno
-	  && (tem |= invariant_p (SET_SRC (PATTERN (p)))
+	  && ((tem |= invariant_p (SET_SRC (PATTERN (p))))
 	      || ((temp = find_reg_note (p, REG_EQUAL, 0))
 		  && (tem |= invariant_p (XEXP (temp, 0))))))
 	count--;
@@ -2254,6 +2262,9 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 						     &src_regno,
 						     &add_val, &mult_val,
 						     &forces, &forces2))))
+	      /* Don't try to handle any regs made by loop optimization.
+		 We have nothing on them in regno_first_uid, etc.  */
+	      && dest_regno < old_max_reg
 	      /* Don't recognize a BASIC_INDUCT_VAR here.  */
 	      && dest_regno != src_regno
 	      /* This must be the only place where the register is set.  */
@@ -2506,8 +2517,13 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 	  struct induction *tv;
 	  if (! v->ignore)
 	    {
-	      rtx new_reg = gen_reg_rtx (v->giv_type == DEST_ADDR ? Pmode
-					 : GET_MODE (SET_DEST (PATTERN (v->insn))));
+	      rtx new_reg;
+
+	      /* Note Iris compiler dies if ?: is used inside gen_reg_rtx. */
+	      if (v->giv_type == DEST_ADDR)
+	        new_reg = gen_reg_rtx (Pmode);
+	      else
+	        new_reg = gen_reg_rtx (GET_MODE (SET_DEST (PATTERN (v->insn))));
 
 	      /* For each place where the biv is incremented,
 		 add an insn to increment the new, reduced reg for the giv.
@@ -2564,7 +2580,9 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 		    }
 		  else
 		    {
-		      emit_insn_before (gen_rtx (SET, VOIDmode,
+		      /* Put new insn after, not before, in case
+			 tv->insn is the end of a libcall.  */
+		      emit_insn_after (gen_rtx (SET, VOIDmode,
 						SET_DEST (PATTERN (tv->insn)),
 						new_reg),
 				       tv->insn);
@@ -2842,14 +2860,18 @@ record_giv (v, insn, src_regno, dest_regno, mult_val, add_val, benefit,
   else
     {
       /* The giv can be replaced outright by the reduced register if
- 	 - the insn that sets the giv is always executed,
+ 	 - the insn that sets the giv is always executed on any iteration
+	   on which the giv is used at all
+	   (there are two ways to deduce this:
+	    either the insn is executed on every iteration,
+	    or all uses follow that insn in the same basic block),
  	 - the giv is not used before the insn that sets it,
  	    i.e. no definition outside loop reaches into loop
 	 - no assignments to the biv occur during the giv's lifetime.  */
 
-      if (!maybe_never
-	  /* This always fails if INSN was moved by loop opt.  */
-	  && (regno_first_uid[dest_regno] == INSN_UID (insn)))
+      if (regno_first_uid[dest_regno] == INSN_UID (insn)
+	  /* Previous line always fails if INSN was moved by loop opt.  */
+	  && (!maybe_never || last_use_this_basic_block (dest_regno, insn)))
  	{
 	  v->replaceable = 1;
 	  for (b = bl->biv; b; b = b->family)
@@ -4593,5 +4615,24 @@ final_biv_value (bl, loop_end)
      rtx loop_end;
 {
   /* wimpy, but guaranteed to work */
+  return 0;
+}
+
+/* Return nonzero if the last use of reg REGNO
+   is in an insn following INSN in the same basic block.  */
+
+static int
+last_use_this_basic_block (regno, insn)
+     int regno;
+     rtx insn;
+{
+  rtx n;
+  for (n = insn;
+       n && GET_CODE (n) != CODE_LABEL && GET_CODE (n) != JUMP_INSN;
+       n = NEXT_INSN (n))
+    {
+      if (regno_last_uid[regno] == INSN_UID (n))
+	return 1;
+    }
   return 0;
 }

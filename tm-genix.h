@@ -1,3 +1,23 @@
+/* Definitions of target machine for GNU compiler.  Genix ns32000 version.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
+
+This file is part of GNU CC.
+
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY.  No author or distributor
+accepts responsibility to anyone for the consequences of using it
+or for whether it serves any particular purpose or works at all,
+unless he says so in writing.  Refer to the GNU CC General Public
+License for full details.
+
+Everyone is granted permission to copy, modify and redistribute
+GNU CC, but only under the conditions described in the
+GNU CC General Public License.   A copy of this license is
+supposed to have been given to you along with GNU CC so you
+can know your rights and responsibilities.  It should be in a
+file named COPYING.  Among other things, the copyright notice
+and this notice must be preserved on all copies.  */
+
 #include "tm-encore.h"
 
 /* The following defines override ones in tm-ns32k.h and prevent any attempts
@@ -49,32 +69,29 @@
 	goto ADDR;							\
 }
 
-/* The following define is made moot by the preceeding ones.  */
-#if 0
-/* Mention `(sb)' explicitly in indirect addresses.  */
-#define SEQUENT_BASE_REGS
-#endif
+/* A bug in the GNX 3.X assembler causes references to external symbols to
+   be mishandled if the symbol is also used as the name of a function-local
+   variable or as the name of a struct or union field.  The problem only
+   appears when you are also using the -g option so that SDB debugging
+   directives are also being produced by GCC.  In such cases, the assembler
+   gets the external entity confused with the local entity and addressing
+   havoc ensues.  The solution is to get GCC to produce .global directives
+   for all external entities which are actually referenced within the current
+   source file.  The following macro does this.  */
 
-/*  A bug in the GNX 3.0 linker prevents symbol-table entries with a storage-
+#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME)				\
+    ASM_GLOBALIZE_LABEL(FILE,NAME);
+
+/*  A bug in the GNX 3.X linker prevents symbol-table entries with a storage-
     class field of C_EFCN (-1) from being accepted. */
+
 #ifdef PUT_SDB_EPILOGUE_END
 #undef PUT_SDB_EPILOGUE_END
 #endif
 #define PUT_SDB_EPILOGUE_END(NAME)
 
 #undef TARGET_VERSION
-#define TARGET_VERSION printf (" (32000, National syntax)");
-
-/* Output code needed at the start of `main',
-   which really ought to be in crt0.o but isn't.  */
-
-#define MAIN_FUNCTION_PROLOGUE						\
-{ extern char *current_function_name;					\
-  if (!strcmp ("main", current_function_name))				\
-    { fprintf (FILE, "\taddr start,r0\n");				\
-      fprintf (FILE, "\tsubd $32,r0\n");				\
-      fprintf (FILE, "\tlprw mod,r0\n");				\
-      fprintf (FILE, "\tlprd sb,$0\n"); }}
+#define TARGET_VERSION fprintf (stderr, " (32000, National syntax)");
 
 /* Same as the tm-encore definition except
    * Different syntax for double constants.
@@ -101,11 +118,12 @@
 			  reg_name [REGNO (XEXP (xfoo, 0))]);		\
 	  else								\
 	    {								\
+	      extern int paren_base_reg_printed;			\
 	      fprintf (FILE, "0(");					\
 	      paren_base_reg_printed = 0;				\
 	      output_address (xfoo);					\
 	      if (!paren_base_reg_printed)				\
-		fprintf (file, "(sb)");					\
+		fprintf (FILE, "(sb)");					\
 	      putc (')', FILE);						\
 	    }								\
 	  break;							\

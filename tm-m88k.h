@@ -29,7 +29,7 @@ and this notice must be preserved on all copies.  */
 #define CPP_PREDEFINES "-Dm88000 -Dm88k"
 
 /* Print subsidiary information on the compiler version in use.  */
-#define TARGET_VERSION ;
+#define TARGET_VERSION fprintf (stderr, " (88k)");
 
 /* Run-time compilation parameters selecting different hardware subsets.
 

@@ -176,9 +176,19 @@ exp	:	'-' exp    %prec UNARY
 exp	:	exp '*' exp
 			{ $$ = $1 * $3; }
 	|	exp '/' exp
-			{ $$ = $1 / $3; }
+			{ if ($3 == 0)
+			    {
+			      error ("division by zero in #if");
+			      $3 = 1;
+			    }
+			  $$ = $1 / $3; }
 	|	exp '%' exp
-			{ $$ = $1 % $3; }
+			{ if ($3 == 0)
+			    {
+			      error ("division by zero in #if");
+			      $3 = 1;
+			    }
+			  $$ = $1 % $3; }
 	|	exp '+' exp
 			{ $$ = $1 + $3; }
 	|	exp '-' exp
@@ -240,7 +250,6 @@ parse_number (olen)
   register int c;
   register int base = 10;
   register len = olen;
-  char *err_copy;
 
   extern double atof ();
 

@@ -238,7 +238,7 @@ add_to_sequence (pattern, last, position)
       break;
     }
 
-  new->code = code = GET_CODE (pattern);;
+  new->code = code = GET_CODE (pattern);
 
   switch (code)
     {
@@ -251,6 +251,20 @@ add_to_sequence (pattern, last, position)
       new->reg_class = XSTR (pattern, 2);
       if (*new->reg_class == 0)
 	new->reg_class = 0;
+      return new;
+
+    case MATCH_OPERATOR:
+      new->opno = XINT (pattern, 0);
+      new->code = UNKNOWN;
+      new->tests = XSTR (pattern, 1);
+      if (*new->tests == 0)
+	new->tests = 0;
+      for (i = 0; i < XVECLEN (pattern, 2); i++)
+	{
+	  newpos[depth] = i + '0';
+	  new = add_to_sequence (XVECEXP (pattern, 2, i), new, newpos);
+	}
+      this->success->enforce_mode = 0;
       return new;
 
     case MATCH_DUP:
@@ -459,11 +473,13 @@ try_merge_2 (old, add)
 	  /* If enforce_mode, segregate the modes in numerical order.  */
 	  if (p->enforce_mode && (int) add->mode < (int) p->mode)
 	    break;
+#if 0
 	  /* Keep explicit decompositions before those that test predicates.
 	     If enforce_mode, do this separately within each mode.  */
 	  if (! p->enforce_mode || p->mode == add->mode)
 	    if (!operand && p->tests)
 	      break;
+#endif
 	}
       /* If this is past the end of the decisions at the same place as ADD,
 	 stop looking now; add ADD before here.  */

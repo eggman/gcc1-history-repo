@@ -270,13 +270,15 @@ typedef struct rtvec_def{
    The REG_WAS_0 note is actually an INSN_LIST, not an EXPR_LIST.
      REG_NONNEG means that the register is always nonnegative during
    the containing loop.  This is used in branches so that decrement and
-   branch instructions terminating on zero can be matched.  */
+   branch instructions terminating on zero can be matched.
+     REG_ASM_LINE describes the source line number of an `asm' insn.
+     REG_ASM_FILE describes the source file name of an `asm' insn.  */
 
 #define REG_NOTES(INSN)	((INSN)->fld[6].rtx)
 
 enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 		REG_EQUAL = 5, REG_RETVAL = 6, REG_LIBCALL = 7,
-		REG_NONNEG = 8 };
+		REG_NONNEG = 8, REG_ASM_LINE = 9, REG_ASM_FILE = 10 };
 
 /* Extract the reg-note kind from an EXPR_LIST.  */
 #define REG_NOTE_KIND(LINK) ((enum reg_note) GET_MODE (LINK))

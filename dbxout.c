@@ -193,8 +193,8 @@ dbxout_init (asm_file, input_file_name)
   /* Make sure that types `int' and `char' have numbers 1 and 2.
      Definitions of other integer types will refer to those numbers.  */
 
-  dbxout_symbol (TYPE_NAME (integer_type_node));
-  dbxout_symbol (TYPE_NAME (char_type_node));
+  dbxout_symbol (TYPE_NAME (integer_type_node), 0);
+  dbxout_symbol (TYPE_NAME (char_type_node), 0);
 
   /* Get all permanent types not yet gotten, and output them.  */
 
@@ -365,11 +365,13 @@ dbxout_type (type, full)
 	     and let the definition come when the name is defined.  */
 	  fprintf (asmfile, (TREE_CODE (type) == RECORD_TYPE) ? "xs" : "xu");
 	  CHARS (3);
+#if 0	  /* This assertion is legitimately false in C++.  */
 	  /* We shouldn't be outputting a reference to a type before its
 	     definition unless the type has a tag name.
 	     A typedef name without a tag name should be impossible.  */
 	  if (TREE_CODE (TYPE_NAME (type)) != IDENTIFIER_NODE)
 	    abort ();
+#endif
 	  dbxout_type_name (type);
 	  fprintf (asmfile, ":");
 	  typevec[TYPE_SYMTAB_ADDRESS (type)] = TYPE_XREF;
@@ -493,7 +495,24 @@ dbxout_type (type, full)
 	{
 	  putc ('@', asmfile);
 	  CHARS (1);
-	  dbxout_type (TYPE_METHOD_CLASS (type), 0);
+	  dbxout_type (TYPE_METHOD_BASETYPE (type), 0);
+	  putc (',', asmfile);
+	  CHARS (1);
+	  dbxout_type (TREE_TYPE (type), 0);
+	}
+      else
+	{
+	  /* Treat it as a function type.  */
+	  dbxout_type (TREE_TYPE (type), 0);
+	}
+      break;
+
+    case OFFSET_TYPE:
+      if (use_gdb_dbx_extensions)
+	{
+	  putc ('@', asmfile);
+	  CHARS (1);
+	  dbxout_type (TYPE_OFFSET_BASETYPE (type), 0);
 	  putc (',', asmfile);
 	  CHARS (1);
 	  dbxout_type (TREE_TYPE (type), 0);

@@ -35,10 +35,10 @@ and this notice must be preserved on all copies.  */
 
 #define TARGET_DEFAULT 7
 
-/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+/* Define __HAVE_68881__ in preprocessor, unless -msoft-float is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__}"
 
 /* Names to predefine in the preprocessor for this target machine.  */
 

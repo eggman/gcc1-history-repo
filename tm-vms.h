@@ -34,7 +34,7 @@ and this notice must be preserved on all copies.  */
 #define DOLLARS_IN_IDENTIFIERS 1
 
 #define TARGET_DEFAULT 1
-#define TARGET_VERSION printf ("(vax vms)");
+#define TARGET_VERSION fprintf (stderr, " (vax vms)");
 
 #define CALL_USED_REGISTERS {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1}
 

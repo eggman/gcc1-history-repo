@@ -241,6 +241,30 @@ prtypeinfo (node)
       fputs ("used", outfile);
       first = 0;
     }
+  if (TREE_LANG_FLAG_1 (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("lang_flag_1", outfile);
+      first = 0;
+    }
+  if (TREE_LANG_FLAG_2 (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("lang_flag_2", outfile);
+      first = 0;
+    }
+  if (TREE_LANG_FLAG_3 (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("lang_flag_3", outfile);
+      first = 0;
+    }
+  if (TREE_LANG_FLAG_4 (node))
+    {
+      if (!first) putc (' ', outfile);
+      fputs ("lang_flag_4", outfile);
+      first = 0;
+    }
   fputs ("] ", outfile);
 }
 
@@ -397,6 +421,10 @@ dump (node, indent)
 	{
 	  part ("arg_types", TYPE_ARG_TYPES (node));
 	}
+      else if (code == METHOD_TYPE)
+	{
+	  part ("arg_types", TYPE_ARG_TYPES (node));
+	}
 #ifdef PRINT_LANG_TYPE
       walk_lang_type (node);
 #endif
@@ -426,6 +454,13 @@ dump (node, indent)
 	  break;
 	case CALL_EXPR:
 	  first_rtl = 2;
+	  break;
+	case METHOD_CALL_EXPR:
+	  first_rtl = 3;
+	  break;
+	case WITH_CLEANUP_EXPR:
+	  /* Should be defined to be 2.  */
+	  first_rtl = 1;
 	  break;
 	case RTL_EXPR:
 	  first_rtl = 0;
@@ -559,6 +594,17 @@ dump (node, indent)
 	  prtypeinfo (node);
 	  part ("purpose", TREE_PURPOSE (node));
 	  part ("value", TREE_VALUE (node));
+	  part ("chain", TREE_CHAIN (node));
+	  fputc ('\n', outfile);
+	  walk (TREE_TYPE (node), node, indent);
+	  walk (TREE_PURPOSE (node), node, indent);
+	  walk (TREE_VALUE (node), node, indent);
+	}
+      else if (code == OP_IDENTIFIER)
+	{
+	  prtypeinfo (node);
+	  part ("op1", TREE_PURPOSE (node));
+	  part ("op2", TREE_VALUE (node));
 	  part ("chain", TREE_CHAIN (node));
 	  fputc ('\n', outfile);
 	  walk (TREE_TYPE (node), node, indent);

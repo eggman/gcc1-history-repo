@@ -25,7 +25,7 @@ and this notice must be preserved on all copies.  */
 
 /* Print subsidiary information on the compiler version in use.  */
 
-#define TARGET_VERSION printf (" (vax)");
+#define TARGET_VERSION fprintf (stderr, " (vax)");
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
@@ -758,11 +758,13 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 	  cc_status.value1 = SET_DEST (EXP);			\
 	  cc_status.value2 = SET_SRC (EXP); } }			\
   else if (GET_CODE (EXP) == PARALLEL				\
-	   && GET_CODE (XVECEXP (EXP, 0, 0)) == SET)		\
-    { if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) != PC)	\
-	{ cc_status.flags = 0;					\
-	  cc_status.value1 = SET_DEST (XVECEXP (EXP, 0, 0));	\
-	  cc_status.value2 = SET_SRC (XVECEXP (EXP, 0, 0)); } }	\
+	   && GET_CODE (XVECEXP (EXP, 0, 0)) == SET		\
+	   && GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) != PC)	\
+    { cc_status.flags = 0;					\
+      cc_status.value1 = SET_DEST (XVECEXP (EXP, 0, 0));	\
+      cc_status.value2 = SET_SRC (XVECEXP (EXP, 0, 0)); }	\
+  /* PARALLELs whose first element sets the PC are aob, sob insns.	\
+     They do change the cc's.  So drop through and forget the cc's.  */ \
   else CC_STATUS_INIT;						\
   if (cc_status.value1 && GET_CODE (cc_status.value1) == REG	\
       && cc_status.value2					\
@@ -915,7 +917,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    It need not be very fast code.  */
 
 #define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
-  fprintf (FILE, "\tpopl %s\n", reg_names[REGNO])
+  fprintf (FILE, "\tmovl (sp)+,%s\n", reg_names[REGNO])
 
 /* This is how to output an element of a case-vector that is absolute.
    (The Vax does not use such vectors,

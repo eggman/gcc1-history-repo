@@ -29,9 +29,9 @@ and this notice must be preserved on all copies.  */
 
 /* Print subsidiary information on the compiler version in use.  */
 #ifdef MOTOROLA
-#define TARGET_VERSION printf (" (68k, Motorola syntax)");
+#define TARGET_VERSION fprintf (stderr, " (68k, Motorola syntax)");
 #else
-#define TARGET_VERSION printf (" (68k, MIT syntax)");
+#define TARGET_VERSION fprintf (stderr, " (68k, MIT syntax)");
 #endif
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
@@ -240,11 +240,10 @@ extern int target_flags;
    if 68881 use is disabled.  However, the Sun FPA register can
    (apparently) hold whatever you feel like putting in them.  */
 #define HARD_REGNO_MODE_OK(REGNO, MODE) \
-  (((REGNO) < 16 &&						\
-    (!TARGET_FPA || (MODE) != DFmode || (REGNO) != 7))		\
-   || ((REGNO) < 24						\
-       ? TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)	\
-       : ((REGNO) < 56						\
+  ((REGNO) < 16								\
+   || ((REGNO) < 24							\
+       ? TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)		\
+       : ((REGNO) < 56							\
 	  ? TARGET_FPA : 0)))
 
 /* Value is 1 if it is a good idea to tie two pseudo registers
@@ -319,9 +318,9 @@ extern int target_flags;
  *   4) Defined ALL_REGS as FPA_OR_FP_OR_GENERAL_REGS.
  *   4) Left in everything else.
  */
-enum reg_class { NO_REGS, LO_FPA_REGS, FPA_REGS, FP_REGS,
-  FP_OR_FPA_REGS, DATA_REGS, DATA_OR_FPA_REGS, DATA_OR_FP_REGS,
-  DATA_OR_FP_OR_FPA_REGS, ADDR_REGS, GENERAL_REGS,
+enum reg_class { NO_REGS, LO_FPA_REGS, FPA_REGS, FP_REGS, 
+  FP_OR_FPA_REGS, DATA_REGS, DATA_OR_FPA_REGS, DATA_OR_FP_REGS, 
+  DATA_OR_FP_OR_FPA_REGS, ADDR_REGS, GENERAL_REGS, 
   GENERAL_OR_FPA_REGS, GENERAL_OR_FP_REGS, ALL_REGS,
   LIM_REG_CLASSES };
 
@@ -369,7 +368,7 @@ extern enum reg_class regno_reg_class[];
 
 #define INDEX_REG_CLASS GENERAL_REGS
 #define BASE_REG_CLASS ADDR_REGS
-
+  
 /* Get reg_class from a letter such as appears in the machine description.
    We do a trick here to modify the effective constraints on the
    machine description; we zorch the constraint letters that aren't
@@ -417,7 +416,7 @@ extern enum reg_class regno_reg_class[];
 
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)  \
   ((C) == 'G' ? ! (TARGET_68881 && standard_68881_constant_p (VALUE)) : \
-   (C) == 'H' ? (TARGET_FPA && standard_SunFPA_constant_p (VALUE)) : 0)
+   (C) == 'H' ? (TARGET_FPA && standard_sun_fpa_constant_p (VALUE)) : 0)
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.
@@ -1164,7 +1163,8 @@ extern enum reg_class regno_reg_class[];
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START(FILE) fprintf (FILE, "#NO_APP\n");
+#define ASM_FILE_START(FILE)	\
+  fprintf (FILE, "#NO_APP\n");
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */
@@ -1347,6 +1347,16 @@ do { union { float f; long l;} tem;			\
 #define TARGET_FF 014
 #define TARGET_CR 015
 
+/* Output a float value (represented as a C double) as an immediate operand.
+   This macro is a 68k-specific macro.  */
+#define ASM_OUTPUT_FLOAT_OPERAND(FILE,VALUE)				\
+  fprintf (FILE, "#0r%.9g", (VALUE))
+
+/* Output a double value (represented as a C double) as an immediate operand.
+   This macro is a 68k-specific macro.  */
+#define ASM_OUTPUT_DOUBLE_OPERAND(FILE,VALUE)				\
+  fprintf (FILE, "#0r%.20g", (VALUE))
+
 /* Print operand X (an rtx) in assembler syntax to file FILE.
    CODE is a letter or dot (`z' in `%z0') or 0 if no letter was specified.
    For `%' followed by punctuation, CODE is the punctuation and X is null.
@@ -1391,21 +1401,21 @@ do { union { float f; long l;} tem;			\
     output_address (XEXP (X, 0));					\
   else if ((CODE == 'y' || CODE == 'w')					\
 	   && GET_CODE(X) == CONST_DOUBLE				\
-	   && (i = standard_SunFPA_constant_p (X)))			\
-    fprintf(FILE, "%%%d", i & 0x1ff);					\
+	   && (i = standard_sun_fpa_constant_p (X)))			\
+    fprintf (FILE, "%%%d", i & 0x1ff);					\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
       u1.f = u.d;							\
       if (CODE == 'f')							\
-        fprintf (FILE, "#0r%.9g", u1.f);				\
+	ASM_OUTPUT_FLOAT_OPERAND (FILE, u1.f);				\
       else								\
         fprintf (FILE, "#0x%x", u1.i); }				\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
-      fprintf (FILE, "#0r%.20g", u.d); }				\
+      ASM_OUTPUT_DOUBLE_OPERAND (FILE, u.d); }				\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
 
 /* Note that this contains a kludge that knows that the only reason

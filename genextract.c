@@ -147,6 +147,20 @@ walk_rtx (x, path)
       dup_count++;
       break;
 
+    case MATCH_OPERATOR:
+      printf ("  recog_operand[%d] = *(recog_operand_loc[%d]\n    = &",
+	      XINT (x, 0), XINT (x, 0));
+      print_path (path);
+      printf (");\n");
+      link.next = path;
+      link.vecelt = -1;
+      for (i = XVECLEN (x, 2) - 1; i >= 0; i--)
+	{
+	  link.pos = i;
+	  walk_rtx (XVECEXP (x, 2, i), &link);
+	}
+      return;
+
     case ADDRESS:
       walk_rtx (XEXP (x, 0), path);
       return;

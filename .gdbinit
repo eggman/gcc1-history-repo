@@ -1,7 +1,3 @@
-# Don't let abort actually run, as it will make
-# stdio stop working and therefore the `pr' command below as well.
-b abort
-
 define pr
 set debug_rtx ($)
 end
@@ -56,3 +52,7 @@ end
 document pi
 Print the fields of an instruction that is $.
 end
+
+# Don't let abort actually run, as it will make
+# stdio stop working and therefore the `pr' command below as well.
+b abort

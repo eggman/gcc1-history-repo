@@ -28,7 +28,7 @@ and this notice must be preserved on all copies.  */
 
 /* Print subsidiary information on the compiler version in use.  */
 
-#define TARGET_VERSION printf (" (sparc)");
+#define TARGET_VERSION fprintf (stderr, " (sparc)");
 
 /* Generate DBX debugging information.  */
 
@@ -776,13 +776,19 @@ extern union tree_node *current_function_decl;
    On SPARC, the actual legitimate addresses must be REG+REG or REG+SMALLINT.
    But we can treat a SYMBOL_REF as legitimate if it is part of this
    function's constant-pool, because such addresses can actually
-   be output as REG+SMALLINT.  */
+   be output as REG+SMALLINT.
+
+   Try making SYMBOL_REF a legitimate address, regardless.  Because the
+   only insns which can use memory are load or store insns, the
+   added hair in the machine description is not that bad.  It should
+   also speed up the compiler by halving the number of insns it must
+   manage for each (MEM (SYMBOL_REF ...)) involved.  */
 
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
 { if (GET_CODE (X) == REG				\
       && REG_OK_FOR_BASE_P (X))				\
     goto ADDR;						\
-  if (GET_CODE (X) == SYMBOL_REF && CONSTANT_POOL_ADDRESS_P(X))	\
+  if (GET_CODE (X) == SYMBOL_REF /* && CONSTANT_POOL_ADDRESS_P(X) */)	\
     goto ADDR;						\
   if (GET_CODE (X) == PLUS)				\
     if (GET_CODE (XEXP (X, 0)) == REG			\
@@ -927,6 +933,11 @@ extern union tree_node *current_function_decl;
 /* Here we define machine-dependent flags and fields in cc_status
    (see `conditions.h').  */
 
+/* This holds the value sourcing %hi(%g1).  We keep this info
+   around so that mem/mem ops, such as increment and decrement,
+   etc, can be performed reasonably.  */
+#define CC_STATUS_MDEP rtx
+
 /* Nonzero if the results of the previous comparison are
    in the floating point condition code register.  */
 
@@ -941,6 +952,11 @@ extern union tree_node *current_function_decl;
    (f1) contains the value 0.  */
 #define CC_F0_IS_0 020000
 #define CC_F1_IS_0 040000
+
+/* Nonzero if we know the value of %hi(%g1).  */
+#define CC_KNOW_HI_G1 0100000
+
+#define CC_STATUS_MDEP_INIT (cc_status.mdep = 0)
 
 /* Store in cc_status the expressions
    that the condition codes will describe
@@ -973,7 +989,7 @@ extern union tree_node *current_function_decl;
 	  cc_status.value1 = SET_DEST (XVECEXP (EXP, 0, 0));	\
 	  cc_status.value2 = SET_SRC (XVECEXP (EXP, 0, 0));	\
 	}							\
-      else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == CALL) \
+      else if (GET_CODE (SET_SRC (XVECEXP (EXP, 0, 0))) == CALL) \
 	{ /* all bets are off */ CC_STATUS_INIT; }		\
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == REG) \
 	{ if (cc_status.value1					\
@@ -1083,13 +1099,17 @@ extern union tree_node *current_function_decl;
 
 /* This is how to output an assembler line defining a `double' constant.  */
 
-#define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-  fprintf (FILE, "\t.double 0r%.20e\n", (VALUE))
+#define ASM_OUTPUT_DOUBLE(FILE,VALUE)					\
+  (isinf ((VALUE))							\
+   ? fprintf (FILE, "\t.double 0r%s99e999\n", ((VALUE) > 0 ? "" : "-")) \
+   : fprintf (FILE, "\t.double 0r%.20e\n", (VALUE)))
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
-#define ASM_OUTPUT_FLOAT(FILE,VALUE)  \
-  fprintf (FILE, "\t.single 0r%.12e\n", (VALUE))
+#define ASM_OUTPUT_FLOAT(FILE,VALUE)					\
+  (isinf ((VALUE))							\
+   ? fprintf (FILE, "\t.single 0r%s99e999\n", ((VALUE) > 0 ? "" : "-")) \
+   : fprintf (FILE, "\t.single 0r%.20e\n", (VALUE)))
 
 /* This is how to output an assembler line defining an `int' constant.  */
 
@@ -1189,6 +1209,8 @@ extern union tree_node *current_function_decl;
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (GET_CODE (X) == REG)					\
     fprintf (FILE, "%s", reg_name [REGNO (X)]);			\
+  else if ((CODE) == 'm')					\
+    output_address (XEXP (X, 0));				\
   else if (GET_CODE (X) == MEM)					\
     {								\
       fputc ('[', FILE);					\

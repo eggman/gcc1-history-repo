@@ -1824,9 +1824,10 @@ fold_rtx (x, copyflag)
     case XOR:
     case NE:
     case EQ:
-      if ((const_arg0 && ! const_arg1)
-	  || (const_arg0 && const_arg1 && GET_CODE (const_arg0) == CONST_INT
-	      && GET_CODE (const_arg1) != CONST_INT))
+      if (const_arg0 && const_arg0 == XEXP (x, 0)
+	  && (! (const_arg1 && const_arg1 == XEXP (x, 1))
+	      || (GET_CODE (const_arg0) == CONST_INT
+		  && GET_CODE (const_arg1) != CONST_INT)))
 	{
 	  register rtx tem;
 
@@ -2456,7 +2457,12 @@ predecide_loop_entry (insn)
   /* Find the label at the top of the loop.  */
   while (GET_CODE (loop_top_label) == BARRIER
 	 || GET_CODE (loop_top_label) == NOTE)
-    loop_top_label = NEXT_INSN (loop_top_label);
+    {
+      loop_top_label = NEXT_INSN (loop_top_label);
+      /* No label?  Give up.  */
+      if (loop_top_label == 0)
+	return;
+    }
   if (GET_CODE (loop_top_label) != CODE_LABEL)
     abort ();
 
@@ -2963,7 +2969,7 @@ cse_insn (insn)
 	      || (GET_CODE (addr) == REG
 		  && (hash = REGNO (addr),
 		      hash == FRAME_POINTER_REGNUM || hash == ARG_POINTER_REGNUM)))
-	    sets[i].dest_hash_code = ((int)MEM + canon_hash (addr)) % NBUCKETS;
+	    sets[i].dest_hash_code = ((int)MEM + canon_hash (addr, GET_MODE (dest))) % NBUCKETS;
 	  else
 	    {
 	      /* Look for a simpler equivalent for the destination address.  */
@@ -3165,7 +3171,8 @@ cse_insn (insn)
 	  if (insert_regs (dest, sets[i].src_elt, 1))
 	    /* If `insert_regs' changes something, the hash code must be
 	       recalculated.  */
-	    sets[i].dest_hash_code = canon_hash (dest) % NBUCKETS;
+	    sets[i].dest_hash_code
+	      = canon_hash (dest, GET_MODE (dest)) % NBUCKETS;
 
 	elt = insert (dest, sets[i].src_elt, sets[i].dest_hash_code, GET_MODE (dest));
 	elt->in_memory = GET_CODE (sets[i].inner_dest) == MEM;
@@ -3406,6 +3413,13 @@ cse_main (f, nregs)
 	     if loop and cse are made to work alternatingly.  */
 	  if (GET_CODE (p) == NOTE
 	      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
+	    break;
+
+	  /* Don't cse over a call to setjmp; on some machines (eg vax)
+	     the regs restored by the longjmp come from
+	     a later time than the setjmp.  */
+	  if (GET_CODE (p) == NOTE
+	      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_SETJMP)
 	    break;
 
 	  /* A PARALLEL can have lots of SETs in it,

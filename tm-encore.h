@@ -48,7 +48,7 @@ and this notice must be preserved on all copies.  */
 
 
 #define TARGET_DEFAULT 1
-#define TARGET_VERSION printf (" (32000, Encore syntax)");
+#define TARGET_VERSION fprintf (stderr, " (32000, Encore syntax)");
 /* Note Encore does not standardly do -Dencore.  */
 /* budd: should have a -ns32332 (or -apc) switch! but no harm for now */
 #define CPP_PREDEFINES "-Dns32000 -Dn16 -Dns16000 -Dns32332 -Dunix"

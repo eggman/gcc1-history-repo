@@ -88,7 +88,7 @@ rtx next_label ();
 
 static void mark_jump_label ();
 static void delete_jump ();
-static void invert_exp ();
+void invert_exp ();
 static void redirect_exp ();
 static rtx follow_jumps ();
 static int tension_vector_labels ();
@@ -770,7 +770,7 @@ static int
 jump_back_p (insn, target)
      rtx insn, target;
 {
-  rtx cinsn, ctarget;
+  rtx cinsn, ctarget, prev;
   enum rtx_code codei, codet;
 
   if (simplejump_p (insn) || ! condjump_p (insn)
@@ -779,12 +779,25 @@ jump_back_p (insn, target)
   if (target != prev_real_insn (JUMP_LABEL (insn)))
     return 0;
 
+  /* Verify that the condition code was based on a fixed-point computation.
+     Using reverse_condition is invalid for IEEE floating point with nans.  */
+  prev = prev_real_insn (insn);
+  if (! (GET_CODE (prev) == INSN
+	 && GET_CODE (PATTERN (prev)) == SET
+	 && SET_DEST (PATTERN (prev)) == cc0_rtx
+	 && (GET_MODE_CLASS (GET_MODE (SET_SRC (PATTERN (prev)))) == MODE_INT
+	     || (GET_CODE (SET_SRC (PATTERN (prev))) == MINUS
+		 && (GET_MODE_CLASS (GET_MODE (XEXP (SET_SRC (PATTERN (prev)), 0)))
+		     == MODE_INT)))))
+    return 0;
+
   cinsn = XEXP (SET_SRC (PATTERN (insn)), 0);
   ctarget = XEXP (SET_SRC (PATTERN (target)), 0);
 
   codei = GET_CODE (cinsn);
   codet = GET_CODE (ctarget);
   if (XEXP (SET_SRC (PATTERN (insn)), 1) == pc_rtx)
+
     codei = reverse_condition (codei);
   if (XEXP (SET_SRC (PATTERN (target)), 2) == pc_rtx)
     codet = reverse_condition (codet);
@@ -794,7 +807,10 @@ jump_back_p (insn, target)
 }
 
 /* Given an rtx-code for a comparison, return the code
-   for the negated comparison.  */
+   for the negated comparison.
+   WATCH OUT!  reverse_condition is not safe to use on a jump
+   that might be acting on the results of an IEEE floating point comparison,
+   because of the special treatment of non-signaling nans in comparisons.  */
 
 static enum rtx_code
 reverse_condition (code)
@@ -1269,9 +1285,10 @@ invert_jump (jump, nlabel)
 }
 
 /* Invert the jump condition of rtx X,
-   and replace OLABEL with NLABEL throughout.  */
+   and replace OLABEL with NLABEL throughout.
+   This is used in do_jump as well as in this file.  */
 
-static void
+void
 invert_exp (x, olabel, nlabel)
      rtx x;
      rtx olabel, nlabel;

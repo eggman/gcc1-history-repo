@@ -1,6 +1,6 @@
 /* Config file for Vax running system V.  */
 
-#include "config-vax.h"
+#include "xm-vax.h"
 
 #define USG
 

@@ -52,7 +52,12 @@ extern rtx *basic_block_end;
 extern regset *basic_block_live_at_start;
 
 /* Indexed by n, gives number of basic block that  (REG n) is used in.
-   Or gives -2 if (REG n) is used in more than one basic block.
-   Or -1 if it has not yet been seen so no basic block is known.  */
+   If the value is REG_BLOCK_GLOBAL (-2),
+   it means (REG n) is used in more than one basic block.
+   REG_BLOCK_UNKNOWN (-1) means it hasn't been seen yet so we don't know.
+   This information remains valid for the rest of the compilation
+   of the current function; it is used to control register allocation.  */
 
+#define REG_BLOCK_UNKNOWN -1
+#define REG_BLOCK_GLOBAL -2
 extern short *reg_basic_block;

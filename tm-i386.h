@@ -376,12 +376,11 @@ enum reg_class {
 
 /* If we generate an insn to push BYTES bytes,
    this says how many the stack pointer really advances by.
-   on 386 pushw decrements by exactly 2 no matter what the position was
-   it does not try to align things.
-   there is no push of single byte.
-   */
+   On 386 pushw decrements by exactly 2 no matter what the position was.
+   On the 386 there is no pushb; we use pushw instead, and this
+   has the effect of rounding up to 2.  */
 
-#define PUSH_ROUNDING(BYTES) BYTES
+#define PUSH_ROUNDING(BYTES) (((BYTES) + 1) & (-2))
 
 /* Offset of first parameter from the argument pointer register value.  */
 #define FIRST_PARM_OFFSET(FNDECL) 8
@@ -805,6 +804,12 @@ enum reg_class {
    is a byte address (for indexing purposes)
    so give the MEM rtx a byte's mode.  */
 #define FUNCTION_MODE QImode
+
+/* Define this if addresses of constant functions
+   shouldn't be put through pseudo regs where they can be cse'd.
+   Desirable on the 386 because a CALL with a constant address is
+   not much slower than one with a register address.  */
+#define NO_FUNCTION_CSE
 
 /* Compute the cost of computing a constant rtl expression RTX
    whose rtx-code is CODE.  The body of this macro is a portion

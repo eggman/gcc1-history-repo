@@ -429,7 +429,7 @@ indirect_operand (op, mode)
 
 /* If BODY is an insn body that uses ASM_OPERANDS,
    return the number of operands (both input and output) in the insn.
-   Otherwise return 0.  */
+   Otherwise return -1.  */
 
 int
 asm_noperands (body)
@@ -446,27 +446,53 @@ asm_noperands (body)
 	   && GET_CODE (SET_SRC (XVECEXP (body, 0, 0))) == ASM_OPERANDS)
     {
       /* Multiple output operands, or 1 output plus some clobbers:
-	 body is [(set OUTPUT (asm_operands ...))... (clobber (reg ...))...].
-	 Count backwards through CLOBBERs to determine number of SETs.  */
+	 body is [(set OUTPUT (asm_operands ...))... (clobber (reg ...))...].  */
       int i;
+      int n_sets;
 
-      for (i = XVECLEN (body, 0) - 1; i > 0; i--)
+      /* Count backwards through CLOBBERs to determine number of SETs.  */
+      for (i = XVECLEN (body, 0); i > 0; i--)
 	if (GET_CODE (XVECEXP (body, 0, i - 1)) == SET)
 	  break;
 
-      /* I is now number of output operands.  */
+      /* N_SETS is now number of output operands.  */
+      n_sets = i;
 
-      return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + i;
+      /* Verify that all the SETs we have
+	 came from a single original asm_operands insn
+	 (so that invalid combinations are blocked).  */
+      for (i = 0; i < n_sets; i++)
+	{
+	  rtx elt = XVECEXP (body, 0, i);
+	  if (GET_CODE (elt) != SET)
+	    return -1;
+	  if (GET_CODE (SET_SRC (elt)) != ASM_OPERANDS)
+	    return -1;
+	  /* If these ASM_OPERANDS rtx's came from different original insns
+	     then they aren't allowed together.  */
+	  if (XVEC (SET_SRC (elt), 3)
+	      != XVEC (SET_SRC (XVECEXP (body, 0, 0)), 3))
+	    return -1;
+	}
+      return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + n_sets;
     }
   else if (GET_CODE (body) == PARALLEL
 	   && GET_CODE (XVECEXP (body, 0, 0)) == ASM_OPERANDS)
     {
       /* 0 outputs, but some clobbers:
 	 body is [(asm_operands ...) (clobber (reg ...))...].  */
+      int i;
+      int n_sets;
+
+      /* Make sure all the other parallel things really are clobbers.  */
+      for (i = XVECLEN (body, 0) - 1; i > 0; i--)
+	if (GET_CODE (XVECEXP (body, 0, i - 1)) != CLOBBER)
+	  return -1;
+
       return XVECLEN (XVECEXP (body, 0, 0), 3);
     }
   else
-    return 0;
+    return -1;
 }
 
 /* Assuming BODY is an insn body that uses ASM_OPERANDS,
@@ -596,7 +622,6 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
       /* No outputs, but some CLOBBERs.  */
 
       rtx asmop = XVECEXP (body, 0, 0);
-      int nparallel = XVECLEN (body, 0); /* Includes CLOBBERs.  */
       int nin = XVECLEN (asmop, 3);
 
       /* The input operands are found in the 1st element vector.  */
@@ -854,7 +879,7 @@ constrain_operands (insn_code_num)
 
   which_alternative = 0;
 
-  while (*constraints[0])
+  while (which_alternative < insn_n_alternatives[insn_code_num])
     {
       register int opno;
       int lose = 0;
@@ -871,6 +896,11 @@ constrain_operands (insn_code_num)
 	     that appears at the level of an operand.  */
 	  while (GET_CODE (op) == SUBREG)
 	    abort ();
+
+	  /* An empty constraint or empty alternative
+	     allows anything which matched the pattern.  */
+	  if (*p == 0 || *p == ',')
+	    win = 1;
 
 	  while (*p && (c = *p++) != ',')
 	    switch (c)

@@ -704,7 +704,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
       /* (Possibly wider) machine mode it actually computes
 	 (for the sake of callers that fail to declare it right).  */
       enum machine_mode arriving_mode
-	= TYPE_MODE (TREE_TYPE (DECL_RESULT (fndecl)));
+	= TYPE_MODE (DECL_RESULT_TYPE (fndecl));
 
       /* Don't use MEMs as direct targets because on some machines
 	 substituting a MEM for a REG makes invalid insns.
@@ -910,7 +910,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   /* End the scope containing the copied formal parameter variables.  */
 
-  expand_end_bindings (getdecls (), 1);
+  expand_end_bindings (getdecls (), 1, 1);
   poplevel (1, 1, 0);
 
   reg_map = NULL;
@@ -1206,13 +1206,48 @@ copy_rtx_and_substitute (orig)
 
 		  if (reg == arg_pointer_rtx && c >= first_parm_offset)
 		    {
-		      copy = parm_map[c / UNITS_PER_WORD];
+		      int index = c / UNITS_PER_WORD;
+		      int offset = c % UNITS_PER_WORD;
+
+		      /* If we are referring to the middle of a multiword parm,
+			 find the beginning of that parm.
+			 OFFSET gets the offset of the reference from
+			 the beginning of the parm.  */
+
+		      while (parm_map[index] == 0)
+			{
+			  index--;
+			  if (index < first_parm_offset / UNITS_PER_WORD)
+			    /* If this abort happens, it means we need
+			       to handle "decrementing" INDEX back far
+			       enough to start looking among the reg parms
+			       instead of the stack parms.  What a mess!  */
+			    abort ();
+			  offset += UNITS_PER_WORD;
+			}
+
+		      copy = parm_map[index];
+
+#ifdef BITS_BIG_ENDIAN
+		      /* Subtract from OFFSET the offset of where
+			 the actual parm value would start.  */
+		      if (GET_MODE_SIZE (GET_MODE (copy)) < UNITS_PER_WORD)
+			offset
+			  -= (UNITS_PER_WORD
+			      - GET_MODE_SIZE (GET_MODE (copy)));
+#endif
 
 		      /* If the MEM is only some of the bytes in the parm,
-			 truncate the parm value to the desired mode.  */
-		      if (GET_MODE (copy) != mode
-			  && GET_MODE (copy) != VOIDmode)
-			return convert_to_mode (mode, copy, 0);
+			 effectively perform a SUBREG of the actual parm.  */
+		      if ((GET_MODE (copy) != mode
+			   && GET_MODE (copy) != VOIDmode))
+			{
+			  if (GET_CODE (copy) != MEM)
+			    abort ();
+			  return change_address (copy, mode,
+						 plus_constant (XEXP (copy, 0),
+								offset));
+			}
 		      return copy;
 		    }
 		  temp = gen_rtx (PLUS, Pmode,
@@ -1670,7 +1705,7 @@ output_inline_function (fndecl)
 
   restore_reg_data (FIRST_PARM_INSN (head));
 
-  expand_function_end (fndecl);
+  expand_function_end (DECL_SOURCE_FILE (fndecl), DECL_SOURCE_LINE (fndecl));
 
   for (last = head; NEXT_INSN (last); last = NEXT_INSN (last))
     ;

@@ -101,7 +101,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.17}
+\def\texinfoversion{1.18}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -419,7 +419,10 @@
 %% Try out Computer Modern fonts at \magstephalf
 \font\tenrm=cmr10 scaled \magstephalf
 \font\tentt=cmtt10 scaled \magstephalf
-\font\tenbf=cmb10 scaled \magstephalf
+% Instead of cmb10, you many want to use cmbx10.
+% cmbx10 is a prettier font on its own, but cmb10
+% looks better when embedded in a line with cmr10.
+\font\tenbf=cmb10 scaled \magstephalf 
 \font\tenit=cmti10 scaled \magstephalf
 \font\tensl=cmsl10 scaled \magstephalf
 \font\tensf=cmss10 scaled \magstephalf

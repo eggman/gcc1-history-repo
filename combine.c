@@ -150,6 +150,12 @@ struct undo
   rtx old_contents;
 };
 
+struct undo_int
+{
+  int *where;
+  int old_contents;
+};
+
 /* Record a bunch of changes to be undone, up to MAX_UNDO of them.
    num_undo says how many are currently recorded.
    storage is nonzero if we must undo the allocation of new storage.
@@ -187,6 +193,7 @@ static void remove_links ();
 static void add_incs ();
 static int insn_has_inc_p ();
 static int adjacent_insns_p ();
+static int check_asm_operands ();
 static rtx simplify_and_const_int ();
 static rtx gen_lowpart_for_combine ();
 static void simplify_set_cc0_and ();
@@ -277,7 +284,7 @@ combine_instructions (f, nregs)
 	      && GET_CODE (SET_DEST (PATTERN (prev))) == CC0)
 	    {
 	      if (try_combine (insn, prev, 0))
-		  goto retry;
+		goto retry;
 
 	      if (GET_CODE (prev) != NOTE)
 		for (nextlinks = LOG_LINKS (prev); nextlinks;
@@ -361,6 +368,7 @@ try_combine (i3, i2, i1)
   rtx i2dest, i2src;
   rtx i1dest, i1src;
   int maxreg;
+  rtx temp;
 
   combine_attempts++;
 
@@ -463,6 +471,24 @@ try_combine (i3, i2, i1)
 	      || reg_mentioned_p (XEXP (link, 0), i3)))
 	return 0;
 
+  /* Don't combine an insn I1 or I2 that follows a CC0-setting insn.
+     An insn that uses CC0 must not be separated from the one that sets it.
+     It would be more logical to test whether CC0 occurs inside I1 or I2,
+     but that would be much slower, and this ought to be equivalent.  */
+  temp = PREV_INSN (i2);
+  while (temp && GET_CODE (temp) == NOTE)
+    temp = PREV_INSN (temp);
+  if (temp && GET_CODE (temp) == INSN && sets_cc0_p (PATTERN (temp)))
+    return 0;
+  if (i1)
+    {
+      temp = PREV_INSN (i2);
+      while (temp && GET_CODE (temp) == NOTE)
+	temp = PREV_INSN (temp);
+      if (temp && GET_CODE (temp) == INSN && sets_cc0_p (PATTERN (temp)))
+	return 0;
+    }
+
   /* See if the SETs in i1 or i2 need to be kept around in the merged
      instruction: whenever the value set there is still needed past i3.  */
   added_sets_2 = (GET_CODE (i2dest) != CC0
@@ -563,7 +589,9 @@ try_combine (i3, i2, i1)
   /* Is the result of combination a valid instruction?  */
   insn_code_number = recog (newpat, i3);
 
-  if (insn_code_number >= 0)
+  if (insn_code_number >= 0
+      /* Is the result a reasonable ASM_OPERANDS?  */
+      || check_asm_operands (newpat))
     {
       /* Yes.  Install it.  */
       register int regno;
@@ -722,6 +750,16 @@ subst (x, from, to)
 	}								\
       undobuf.num_undo++; } while (0)
 
+#define SUBST_INT(INTO, NEWVAL)  \
+ do { if (undobuf.num_undo < MAX_UNDO)					\
+	{								\
+	  struct undo_int *u = (struct undo_int *)&undobuf.undo[undobuf.num_undo];\
+	  u->where = &INTO;						\
+	  u->old_contents = INTO;					\
+	  INTO = NEWVAL;						\
+	}								\
+      undobuf.num_undo++; } while (0)
+
 /* FAKE_EXTEND_SAFE_P (MODE, FROM) is 1 if (subreg:MODE FROM 0) is a safe
    replacement for (zero_extend:MODE FROM) or (sign_extend:MODE FROM).
    If it is 0, that cannot be done.  We can now do this for any MEM
@@ -820,13 +858,14 @@ subst (x, from, to)
       /* Changing mode twice with SUBREG => just change it once,
 	 or not at all if changing back to starting mode.  */
       if (SUBREG_REG (x) == to
-	  && GET_CODE (to) == SUBREG
-	  && SUBREG_WORD (x) == 0
-	  && SUBREG_WORD (to) == 0)
+	  && GET_CODE (to) == SUBREG)
 	{
 	  if (GET_MODE (x) == GET_MODE (SUBREG_REG (to)))
-	    return SUBREG_REG (to);
+	    if (SUBREG_WORD (x) == 0 && SUBREG_WORD (to) == 0)
+	      return SUBREG_REG (to);
 	  SUBST (SUBREG_REG (x), SUBREG_REG (to));
+	  if (SUBREG_WORD (to) != 0)
+	    SUBST_INT (SUBREG_WORD (x), SUBREG_WORD (x) + SUBREG_WORD (to));
 	}
       /* (subreg (sign_extend X)) is X, if it has same mode as X.  */
       if (SUBREG_REG (x) == to
@@ -834,6 +873,20 @@ subst (x, from, to)
 	  && SUBREG_WORD (x) == 0
 	  && GET_MODE (x) == GET_MODE (XEXP (to, 0)))
 	return XEXP (to, 0);
+      /* (subreg:A (mem:B X) N) becomes a modified MEM.
+	 This avoids producing any (subreg (mem))s except in the special
+	 paradoxical case where gen_lowpart_for_combine makes them.  */
+      if (SUBREG_REG (x) == to
+	  && GET_CODE (to) == MEM)
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  /* Note if the plus_constant doesn't make a valid address
+	     then this combination won't be accepted.  */
+	  return gen_rtx (MEM, GET_MODE (x),
+			  plus_constant (XEXP (to, 0),
+					 SUBREG_WORD (x) * UNITS_PER_WORD));
+	}
       break;
 
     case NOT:
@@ -841,7 +894,11 @@ subst (x, from, to)
       if (was_replaced[0]
 	  && ((GET_CODE (to) == PLUS && INTVAL (XEXP (to, 1)) == -1)
 	      || (GET_CODE (to) == MINUS && XEXP (to, 1) == const1_rtx)))
-	return gen_rtx (NEG, GET_MODE (to), XEXP (to, 0));
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  return gen_rtx (NEG, GET_MODE (to), XEXP (to, 0));
+	}
       /* Don't let substitution introduce double-negatives.  */
       if (was_replaced[0]
           && GET_CODE (to) == code)
@@ -851,8 +908,12 @@ subst (x, from, to)
     case NEG:
       /* (neg (minus X Y)) can become (minus Y X).  */
       if (was_replaced[0] && GET_CODE (to) == MINUS)
+	{
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
           return gen_rtx (MINUS, GET_MODE (to),
                           XEXP (to, 1), XEXP (to, 0));
+	}
       /* Don't let substitution introduce double-negatives.  */
       if (was_replaced[0]
 	  && GET_CODE (to) == code)
@@ -1936,6 +1997,32 @@ adjacent_insns_p (i, j)
   return 1;
 }
 
+/* Check that X is an insn-body for an `asm' with operands
+   and that the operands mentioned in it are legitimate.  */
+
+static int
+check_asm_operands (x)
+     rtx x;
+{
+  int noperands = asm_noperands (x);
+  rtx *operands;
+  int i;
+
+  if (noperands < 0)
+    return 0;
+  if (noperands == 0)
+    return 1;
+
+  operands = (rtx *) alloca (noperands * sizeof (rtx));
+  decode_asm_operands (x, operands, 0, 0, 0);
+
+  for (i = 0; i < noperands; i++)
+    if (!general_operand (operands[i], VOIDmode))
+      return 0;
+
+  return 1;
+}
+
 /* Concatenate the list of logical links of OINSN
    into INSN's list of logical links.
    Modifies OINSN destructively.

@@ -57,7 +57,7 @@ max_operand_1 (x)
 
   if (code == MATCH_OPERAND && XSTR (x, 2) != 0)
     register_constraints = 1;
-  if (code == MATCH_OPERAND)
+  if (code == MATCH_OPERAND || code == MATCH_OPERATOR)
     max_opno = max (max_opno, XINT (x, 0));
   if (code == MATCH_DUP)
     max_dup_opno = max (max_dup_opno, XINT (x, 0));
@@ -133,6 +133,17 @@ gen_exp (x)
     case MATCH_OPERAND:
     case MATCH_DUP:
       printf ("operand%d", XINT (x, 0));
+      return;
+
+    case MATCH_OPERATOR:
+      printf ("gen_rtx (GET_CODE (operand%d)", XINT (x, 0));
+      printf (", %smode", GET_MODE_NAME (GET_MODE (x)));
+      for (i = 0; i < XVECLEN (x, 2); i++)
+	{
+	  printf (",\n\t\t");
+	  gen_exp (XVECEXP (x, 2, i));
+	}
+      printf (")");
       return;
 
     case ADDRESS:
@@ -331,6 +342,7 @@ gen_expand (expand)
       else if (GET_CODE (next) == CODE_LABEL)
 	printf ("  emit_label (");
       else if (GET_CODE (next) == MATCH_OPERAND
+	       || GET_CODE (next) == MATCH_OPERATOR
 	       || GET_CODE (next) == MATCH_DUP
 	       || GET_CODE (next) == PARALLEL)
 	printf ("  emit (");

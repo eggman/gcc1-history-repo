@@ -153,7 +153,7 @@ case $# in
 #		;;
 	esac
 
-		# if cput_type is not set, define cpu_type to machine.
+		# if cpu_type is not set, define cpu_type to machine.
 		#
 	cpu_type=${cpu_type=$machine}
 	configuration_file=${configuration_file=xm-$cpu_type.h}

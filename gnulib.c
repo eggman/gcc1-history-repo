@@ -3,7 +3,15 @@
 
 #include "config.h"
 
-/* These definitions work for machines where an SF value is
+/* Define the C data type to use for an SImode value.  */
+
+#ifndef SItype
+#define SItype long int
+#endif
+
+/* Define the type to be used for returning an SF mode value
+   and the method for turning a float into that type.
+   These definitions work for machines where an SF value is
    returned in the same register as an int.  */
 
 #ifndef SFVALUE  
@@ -16,6 +24,9 @@
 
 union double_di { double d; int i[2]; };
 union flt_or_int { int i; float f; };
+
+union longlong { int i[2]; unsigned int ui[2]; };
+
 
 #ifdef WORDS_BIG_ENDIAN
 #define HIGH 0
@@ -39,88 +50,132 @@ __eprintf (string, line, filename)
 #endif
 
 #ifdef L_umulsi3
-_umulsi3 (a, b)
-     unsigned a, b;
+SItype
+__umulsi3 (a, b)
+     unsigned SItype a, b;
 {
   return a * b;
 }
 #endif
 
 #ifdef L_mulsi3
-_mulsi3 (a, b)
-     int a, b;
+SItype
+__mulsi3 (a, b)
+     SItype a, b;
 {
   return a * b;
 }
 #endif
 
 #ifdef L_udivsi3
-_udivsi3 (a, b)
-     unsigned a, b;
+SItype
+__udivsi3 (a, b)
+     unsigned SItype a, b;
 {
   return a / b;
 }
 #endif
 
 #ifdef L_divsi3
-_divsi3 (a, b)
-     int a, b;
+SItype
+__divsi3 (a, b)
+     SItype a, b;
 {
   return a / b;
 }
 #endif
 
 #ifdef L_umodsi3
-_umodsi3 (a, b)
-     unsigned a, b;
+SItype
+__umodsi3 (a, b)
+     unsigned SItype a, b;
 {
   return a % b;
 }
 #endif
 
 #ifdef L_modsi3
-_modsi3 (a, b)
-     int a, b;
+SItype
+__modsi3 (a, b)
+     SItype a, b;
 {
   return a % b;
 }
 #endif
 
 #ifdef L_lshrsi3
-_lshrsi3 (a, b)
-     unsigned a, b;
+SItype
+__lshrsi3 (a, b)
+     unsigned SItype a, b;
 {
   return a >> b;
 }
 #endif
 
 #ifdef L_lshlsi3
-_lshlsi3 (a, b)
-     unsigned a, b;
+SItype
+__lshlsi3 (a, b)
+     unsigned SItype a, b;
 {
   return a << b;
 }
 #endif
 
 #ifdef L_ashrsi3
-_ashrsi3 (a, b)
-     int a, b;
+SItype
+__ashrsi3 (a, b)
+     SItype a, b;
 {
   return a >> b;
 }
 #endif
 
 #ifdef L_ashlsi3
-_ashlsi3 (a, b)
-     int a, b;
+SItype
+__ashlsi3 (a, b)
+     SItype a, b;
 {
   return a << b;
+}
+#endif
+
+#ifdef L_cmpdi2
+SItype
+__cmpdi2 (a, b)
+     union longlong a, b;
+{
+  if (a.i[HIGH] < b.i[HIGH])
+    return 0;
+  else if (a.i[HIGH] > b.i[HIGH])
+    return 2;
+  if (a.ui[LOW] < b.ui[LOW])
+    return 0;
+  else if (a.ui[LOW] > b.ui[LOW])
+    return 2;
+  return 1;
+}
+#endif
+
+#ifdef L_ucmpdi2
+SItype
+__ucmpdi2 (a, b)
+     union longlong a, b;
+{
+  if (a.ui[HIGH] < b.ui[HIGH])
+    return 0;
+  else if (a.ui[HIGH] > b.ui[HIGH])
+    return 2;
+  if (a.ui[LOW] < b.ui[LOW])
+    return 0;
+  else if (a.ui[LOW] > b.ui[LOW])
+    return 2;
+  return 1;
 }
 #endif
 
 #ifdef L_divdf3
 double
-_divdf3 (a, b)
+__divdf3 (a, b)
      double a, b;
 {
   return a / b;
@@ -129,7 +184,7 @@ _divdf3 (a, b)
 
 #ifdef L_muldf3
 double
-_muldf3 (a, b)
+__muldf3 (a, b)
      double a, b;
 {
   return a * b;
@@ -138,7 +193,7 @@ _muldf3 (a, b)
 
 #ifdef L_negdf2
 double
-_negdf2 (a)
+__negdf2 (a)
      double a;
 {
   return -a;
@@ -147,7 +202,7 @@ _negdf2 (a)
 
 #ifdef L_adddf3
 double
-_adddf3 (a, b)
+__adddf3 (a, b)
      double a, b;
 {
   return a + b;
@@ -156,7 +211,7 @@ _adddf3 (a, b)
 
 #ifdef L_subdf3
 double
-_subdf3 (a, b)
+__subdf3 (a, b)
      double a, b;
 {
   return a - b;
@@ -164,8 +219,8 @@ _subdf3 (a, b)
 #endif
 
 #ifdef L_cmpdf2
-int
-_cmpdf2 (a, b)
+SItype
+__cmpdf2 (a, b)
      double a, b;
 {
   if (a > b)
@@ -177,16 +232,17 @@ _cmpdf2 (a, b)
 #endif
 
 #ifdef L_fixunsdfsi
-_fixunsdfsi (a)
+SItype
+__fixunsdfsi (a)
      double a;
 {
-  return (unsigned int) a;
+  return (unsigned SItype) a;
 }
 #endif
 
 #ifdef L_fixunsdfdi
 double
-_fixunsdfdi (a)
+__fixunsdfdi (a)
      double a;
 {
   union double_di u;
@@ -197,16 +253,17 @@ _fixunsdfdi (a)
 #endif
 
 #ifdef L_fixdfsi
-_fixdfsi (a)
+SItype
+__fixdfsi (a)
      double a;
 {
-  return (int) a;
+  return (SItype) a;
 }
 #endif
 
 #ifdef L_fixdfdi
 double
-_fixdfdi (a)
+__fixdfdi (a)
      double a;
 {
   union double_di u;
@@ -218,8 +275,8 @@ _fixdfdi (a)
 
 #ifdef L_floatsidf
 double
-_floatsidf (a)
-     int a;
+__floatsidf (a)
+     SItype a;
 {
   return (double) a;
 }
@@ -227,7 +284,7 @@ _floatsidf (a)
 
 #ifdef L_floatdidf
 double
-_floatdidf (u)
+__floatdidf (u)
      union double_di u;
 {
   register double hi
@@ -239,7 +296,7 @@ _floatdidf (u)
 
 #ifdef L_addsf3
 SFVALUE
-_addsf3 (a, b)
+__addsf3 (a, b)
      union flt_or_int a, b;
 {
   union flt_or_int intify;
@@ -249,7 +306,7 @@ _addsf3 (a, b)
 
 #ifdef L_negsf2
 SFVALUE
-_negsf2 (a)
+__negsf2 (a)
      union flt_or_int a;
 {
   union flt_or_int intify;
@@ -259,7 +316,7 @@ _negsf2 (a)
 
 #ifdef L_subsf3
 SFVALUE
-_subsf3 (a, b)
+__subsf3 (a, b)
      union flt_or_int a, b;
 {
   union flt_or_int intify;
@@ -268,11 +325,10 @@ _subsf3 (a, b)
 #endif
 
 #ifdef L_cmpsf2
-int
-_cmpsf2 (a, b)
+SItype
+__cmpsf2 (a, b)
      union flt_or_int a, b;
 {
-  union flt_or_int intify;
   if (a.f > b.f)
     return 1;
   else if (a.f < b.f)
@@ -283,7 +339,7 @@ _cmpsf2 (a, b)
 
 #ifdef L_mulsf3
 SFVALUE
-_mulsf3 (a, b)
+__mulsf3 (a, b)
      union flt_or_int a, b;
 {
   union flt_or_int intify;
@@ -293,7 +349,7 @@ _mulsf3 (a, b)
 
 #ifdef L_divsf3
 SFVALUE
-_divsf3 (a, b)
+__divsf3 (a, b)
      union flt_or_int a, b;
 {
   union flt_or_int intify;
@@ -303,7 +359,7 @@ _divsf3 (a, b)
 
 #ifdef L_truncdfsf2
 SFVALUE
-_truncdfsf2 (a)
+__truncdfsf2 (a)
      double a;
 {
   union flt_or_int intify;
@@ -313,7 +369,7 @@ _truncdfsf2 (a)
 
 #ifdef L_extendsfdf2
 double
-_extendsfdf2 (a)
+__extendsfdf2 (a)
      union flt_or_int a;
 {
   union flt_or_int intify;
@@ -332,5 +388,127 @@ _extendsfdf2 (a)
 	asm ("st %i4,[%fp+84]");
 	asm ("retl");
 	asm ("st %i5,[%fp+88]");
+#else
+__builtin_saveregs ()
+{
+  abort ();
+}
 #endif
 #endif
+
+/* frills for C++ */
+
+#ifdef L_builtin_new
+typedef void (*vfp)();
+
+extern vfp __new_handler;
+
+char *
+__builtin_new (sz)
+     long sz;
+{
+  char *p;
+
+  p = (char *)malloc (sz);
+  if (p == 0)
+    (*__new_handler) ();
+  return p;
+}
+#endif
+
+#ifdef L_builtin_New
+typedef void (*vfp)();
+
+static void
+default_new_handler ();
+
+vfp __new_handler = default_new_handler;
+
+char *
+__builtin_vec_new (p, maxindex, size, ctor)
+     char *p;
+     int maxindex, size;
+     void (*ctor)();
+{
+  int i, nelts = maxindex + 1;
+  char *rval;
+
+  if (p == 0)
+    p = (char *)__builtin_new (nelts * size);
+
+  rval = p;
+
+  for (i = 0; i < nelts; i++)
+    {
+      ctor (p);
+      p += size;
+    }
+
+  return rval;
+}
+
+vfp
+__set_new_handler (handler)
+     vfp handler;
+{
+  vfp prev_handler;
+
+  prev_handler = __new_handler;
+  if (handler == 0) handler = default_new_handler;
+  __new_handler = handler;
+  return prev_handler;
+}
+
+vfp
+set_new_handler (handler)
+     vfp handler;
+{
+  return __set_new_handler (handler);
+}
+
+static void
+default_new_handler ()
+{
+  /* don't use fprintf (stderr, ...) because it may need to call malloc.  */
+  write (2, "default_new_handler: out of memory... aaaiiiiiieeeeeeeeeeeeee!\n", 65);
+  /* don't call exit () because that may call global destructors which
+     may cause a loop.  */
+  _exit (-1);
+}
+#endif
+
+#ifdef L_builtin_del
+typedef void (*vfp)();
+
+void
+__builtin_delete (ptr)
+     char *ptr;
+{
+  if (ptr)
+    free (ptr);
+}
+
+void
+__builtin_vec_delete (ptr, maxindex, size, dtor, auto_delete_vec, auto_delete)
+     char *ptr;
+     int maxindex, size;
+     void (*dtor)();
+     int auto_delete;
+{
+  int i, nelts = maxindex + 1;
+  char *p = ptr;
+
+  ptr += nelts * size;
+
+  for (i = 0; i < nelts; i++)
+    {
+      ptr -= size;
+      dtor (ptr, auto_delete);
+    }
+
+  if (auto_delete_vec)
+    free (p);
+}
+
+#endif
+

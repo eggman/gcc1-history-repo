@@ -30,22 +30,23 @@ $ genconfig md
 $!
 $ gcc/debug/cc1_options="-mpcc-alignment" toplev.c
 $!
-$ t1:='f$search("PARSE_TAB.C")'
+$ t1:='f$search("C-PARSE_TAB.C")'
 $ if "''t1'" .eqs. "" then goto 10$
-$ t1:='f$file_attributes("PARSE.Y","RDT")'
+$ t1:='f$file_attributes("C-PARSE.Y","RDT")'
 $ t1:='f$cvtime(t1)'
-$ t2:='f$file_attributes("PARSE_TAB.C","RDT")'
+$ t2:='f$file_attributes("C-PARSE_TAB.C","RDT")'
 $ t2:='f$cvtime(t2)'
 $ if t1 .les. t2 then goto 20$
 $ 10$:
-$ bison /verbose parse.y
+$ bison /verbose c-parse.y
 $ 20$:
 $!
-$ gcc/debug/cc1_options="-mpcc-alignment" parse_tab.c
+$ gcc/debug/cc1_options="-mpcc-alignment" c-parse_tab.c
 $ gcc/debug/cc1_options="-mpcc-alignment" tree.c
 $ gcc/debug/cc1_options="-mpcc-alignment" print-tree.c
-$ gcc/debug/cc1_options="-mpcc-alignment" decl.c
-$ gcc/debug/cc1_options="-mpcc-alignment" typecheck.c
+$ gcc/debug/cc1_options="-mpcc-alignment" c-decl.c
+$ gcc/debug/cc1_options="-mpcc-alignment" c-typeck.c
+$ gcc/debug/cc1_options="-mpcc-alignment" c-convert.c
 $ gcc/debug/cc1_options="-mpcc-alignment" stor-layout.c
 $ gcc/debug/cc1_options="-mpcc-alignment" fold-const.c
 $ gcc/debug/cc1_options="-mpcc-alignment" varasm.c
@@ -119,7 +120,7 @@ $ link/nomap/exe=gcc-cc1 sys$input:/opt
 !
 !	"CC1" Linker options file
 !
-toplev,parse_tab,tree,print-tree,decl,typecheck,stor-layout,fold-const,-
+toplev,c-parse_tab,tree,print-tree,c-decl,c-typeck,c-convert,stor-layout,fold-const,-
 varasm,rtl,expr,stmt,expmed,explow,optabs,symout,dbxout,emit-rtl,insn-emit,-
 jump,cse,loop,flow,stupid,combine,regclass,local-alloc,global-alloc,reload,-
 reload1,insn-peep,final,recog,insn-recog,insn-extract,insn-output,obstack,-

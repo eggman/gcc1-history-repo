@@ -180,6 +180,17 @@ match_rtx (x, path, fail_label)
 	      XINT (x, 0), fail_label);
       return;
 
+    case MATCH_OPERATOR:
+      printf ("  x = (rtx)");
+      print_path (path);
+      printf (";\n");
+
+      printf ("  operands[%d] = x;\n", XINT (x, 0));
+      if (XSTR (x, 1) && XSTR (x, 1)[0])
+	printf ("  if (! %s (x, %smode)) goto L%d;\n",
+		XSTR (x, 1), GET_MODE_NAME (GET_MODE (x)), fail_label);
+      return;
+
     case ADDRESS:
       match_rtx (XEXP (x, 0), path, fail_label);
       return;

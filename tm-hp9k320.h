@@ -47,8 +47,19 @@ and this notice must be preserved on all copies.  */
    know which assembler is being used so that the correct `asm'
    instructions can be used. */
 #define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} -D__HPUX_ASM__"
+#define ASM_SPEC "%{m68000:+X}"
 #else
 #define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__}"
+
+/* -m68000 requires special flags to gas  */
+#define ASM_SPEC \
+ "%{m68000:-mc68000}%{mc68000:-mc68000}%{!mc68000:%{!m68000:-mc68020}}"
+
+/* special directory for gnu libs on hp-ux system */
+#ifndef STANDARD_STARTFILE_PREFIX
+#define STANDARD_STARTFILE_PREFIX "/usr/local/lib/gnu/"
+#endif
+
 #endif
 
 /* Names to predefine in the preprocessor for this target machine
@@ -105,9 +116,7 @@ and this notice must be preserved on all copies.  */
 #undef ASM_GLOBALIZE_LABEL
 #undef ASM_OUTPUT_INTERNAL_LABEL
 
-#define TARGET_VERSION printf (" (68k, SGS/hpux syntax)");
-
-#define ASM_SPEC "%{m68000:+X}"
+#define TARGET_VERSION fprintf (stderr, " (68k, SGS/hpux syntax)");
 
 #define REGISTER_NAMES \
 {"%d0", "%d1", "%d2", "%d3", "%d4", "%d5", "%d6", "%d7",	\
@@ -121,8 +130,10 @@ and this notice must be preserved on all copies.  */
   extern char call_used_regs[];					\
   int fsize = (SIZE);						\
   if (frame_pointer_needed)					\
-    { if (TARGET_68020 || fsize < 0x8000)			\
+    { if (fsize < 0x8000)					\
         fprintf (FILE, "\tlink.w %%a6,&%d\n", -fsize);		\
+      else if (TARGET_68020)					\
+        fprintf (FILE, "\tlink.l %%a6,&%d\n", -fsize);		\
       else							\
 	fprintf (FILE, "\tlink.w %%a6,&0\n\tsub.l &%d,%%sp\n", fsize); }  \
   for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\

@@ -1567,7 +1567,7 @@ fold (expr)
       TREE_TYPE (t) = TREE_TYPE (expr);
       return t;
 
-    COND_EXPR:
+    case COND_EXPR:
       if (TREE_LITERAL (arg0))
 	return TREE_OPERAND (expr, (integer_zerop (arg0) ? 2 : 1));
       return t;

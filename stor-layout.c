@@ -483,6 +483,22 @@ layout_record (rec)
       DECL_VOFFSET (field) = var_size;
       DECL_VOFFSET_UNIT (field) = size_unit;
 
+      /* If this field is an anonymous union,
+	 give each union-member the same offset as the union has.  */
+
+      if (DECL_NAME (field) == 0
+	  && TREE_CODE (TREE_TYPE (field)) == UNION_TYPE)
+	{
+	  tree uelt = TYPE_FIELDS (TREE_TYPE (field));
+	  for (; uelt; uelt = TREE_CHAIN (uelt))
+	    {
+	      DECL_FIELD_CONTEXT (uelt) = DECL_FIELD_CONTEXT (field);
+	      DECL_OFFSET (uelt) = DECL_OFFSET (field);
+	      DECL_VOFFSET (uelt) = DECL_VOFFSET (field);
+	      DECL_VOFFSET_UNIT (uelt) = DECL_VOFFSET_UNIT (field);
+	    }
+	}
+
       /* Now add size of this field to the size of the record.  */
 
       {
@@ -536,7 +552,7 @@ layout_record (rec)
      because their type may use the record's type.  */
 
   for (field = pending_statics; field; field = TREE_CHAIN (field))
-    layout_decl (TREE_VALUE (field));
+    layout_decl (TREE_VALUE (field), 0);
 }
 
 /* Lay out a UNION_TYPE type.
@@ -562,8 +578,21 @@ layout_union (rec)
   register int const_size = 0;
   register tree var_size = 0;
 
+  if (TYPE_BASETYPES (rec))
+    {
+      TYPE_BASETYPES (rec) = 0;
+      error ("base class specified for union type");
+    }
+
   for (field = TYPE_FIELDS (rec); field; field = TREE_CHAIN (field))
     {
+      if (TREE_STATIC (field))
+	{
+	  error ("field `%s' declared static in union",
+		 IDENTIFIER_POINTER (DECL_NAME (field)));
+	  TREE_STATIC (field) = 0;
+	}
+ 
       layout_decl (field, 0);
       DECL_OFFSET (field) = 0;
       DECL_VOFFSET (field) = 0;
@@ -649,6 +678,11 @@ layout_type (type)
 
   switch (TREE_CODE (type))
     {
+    case LANG_TYPE:
+      /* This kind of type is the responsibility
+	 of the languge-specific code.  */
+      abort ();
+
     case VOID_TYPE:
       TYPE_SIZE (type) = size_zero_node;
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;

@@ -1189,8 +1189,7 @@ expand_mult (mode, op0, op1, target, unsignedp)
 				build_int_2 (foo, 0),
 				target, 0);
 	  return (negate
-		  ? expand_unop (mode, neg_optab, tem, target,
-				 0, OPTAB_LIB_WIDEN)
+		  ? expand_unop (mode, neg_optab, tem, target, 0)
 		  : tem);
 	}
       /* Is multiplier a sum of two powers of 2, or minus that?  */
@@ -1202,16 +1201,16 @@ expand_mult (mode, op0, op1, target, unsignedp)
 	    force_operand (gen_rtx (PLUS, mode,
 				    expand_shift (LSHIFT_EXPR, mode, op0,
 				   		  build_int_2 (bar - foo, 0),
-				   		  0, 0), op0),
-			   foo == 0 && ! negate ? target : 0);
+				   		  0, 0),
+				    op0),
+			   ((foo == 0 && ! negate) ? target : 0));
 
 	  if (foo != 0)
 	    tem = expand_shift (LSHIFT_EXPR, mode, tem,
 				build_int_2 (foo, 0),
 				negate ? 0 : target, 0);
 
-	  return negate ? expand_unop (mode, neg_optab, tem, target,
-				       0, OPTAB_LIB_WIDEN) : tem;
+	  return negate ? expand_unop (mode, neg_optab, tem, target, 0) : tem;
 	}
     }
   /* This used to use umul_optab if unsigned,
@@ -1249,7 +1248,6 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
      register rtx op0, op1, target;
      int unsignedp;
 {
-  register rtx label;
   register rtx temp;
   int log = -1;
   int can_clobber_op0;
@@ -1290,7 +1288,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
     case TRUNC_DIV_EXPR:
       if (log >= 0 && ! unsignedp)
 	{
-	  label = gen_label_rtx ();
+	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
 	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
 	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
@@ -1305,7 +1303,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
     case FLOOR_MOD_EXPR:
       if (log < 0 && ! unsignedp)
 	{
-	  label = gen_label_rtx ();
+	  rtx label = gen_label_rtx ();
 	  if (! can_clobber_op0)
 	    adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
 	  emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
@@ -1323,6 +1321,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	adjusted_op0 = copy_to_suggested_reg (adjusted_op0, target);
       if (log < 0)
 	{
+	  rtx label = 0;
 	  if (! unsignedp)
 	    {
 	      label = gen_label_rtx ();
@@ -1352,7 +1351,7 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
 	  op1 = expand_shift (RSHIFT_EXPR, mode, op1, integer_one_node, 0, 0);
 	  if (! unsignedp)
 	    {
-	      label = gen_label_rtx ();
+	      rtx label = gen_label_rtx ();
 	      emit_cmp_insn (adjusted_op0, const0_rtx, 0, 0);
 	      emit_jump_insn (gen_bge (label));
 	      expand_unop (mode, neg_optab, op1, op1, 0);

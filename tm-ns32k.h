@@ -29,7 +29,7 @@ and this notice must be preserved on all copies.  */
 #define CPP_PREDEFINES "-Dns32000 -Dunix"
 
 /* Print subsidiary information on the compiler version in use.  */
-#define TARGET_VERSION printf (" (32000, National syntax)");
+#define TARGET_VERSION fprintf (stderr, " (32000, National syntax)");
 
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
@@ -446,28 +446,34 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 #define FUNCTION_PROLOGUE(FILE, SIZE)     \
 { register int regno;						\
-  register int nregs;						\
-  char used_regs_buf[32], *bufp = used_regs_buf;		\
+  int used_regs_buf[8], *bufp = used_regs_buf;			\
   int used_fregs_buf[8], *fbufp = used_fregs_buf;		\
   extern char call_used_regs[];					\
   MAIN_FUNCTION_PROLOGUE;					\
-  for (regno = 0, nregs = 0; regno < 8; regno++)		\
+  for (regno = 0; regno < 8; regno++)				\
     if (regs_ever_live[regno] && !call_used_regs[regno]) {	\
-       nregs += 1;						\
-       *bufp++ = 'r'; *bufp++ = regno+'0'; *bufp++ = ',';	\
+      *bufp++ = regno;						\
     }								\
+  *bufp = -1;							\
   for (; regno < 16; regno++)					\
     if (regs_ever_live[regno] && !call_used_regs[regno]) {	\
-       *fbufp++ = regno;					\
+      *fbufp++ = regno;						\
     }								\
-  if (bufp > used_regs_buf) --bufp;				\
-  *bufp = '\0';							\
-  if (frame_pointer_needed)					\
-    fprintf (FILE, "\tenter [%s],%d\n", used_regs_buf,SIZE);	\
-  else if (nregs == 1)						\
-    fprintf (FILE, "\tmovd %s,tos\n", used_regs_buf);		\
-  else if (nregs) fprintf (FILE, "\tsave [%s]\n", used_regs_buf); \
   *fbufp = -1;							\
+  bufp = used_regs_buf;						\
+  if (frame_pointer_needed)					\
+    {								\
+      fprintf (FILE, "\tenter [");				\
+      while (*bufp >= 0)					\
+	{							\
+	  fprintf (FILE, "r%d", *bufp++);			\
+	  if (*bufp >= 0)					\
+	    fputc (',', FILE);					\
+	}							\
+      fprintf (FILE, "],%d\n", SIZE);				\
+    }
+  else while (*bufp >= 0)					\
+    fprintf (FILE, "\tmovd r%d,tos\n", *bufp++);		\
   fbufp = used_fregs_buf;					\
   while (*fbufp >= 0)						\
     {								\
@@ -510,8 +516,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 { extern int current_function_pops_args;			\
   extern int current_function_args_size;			\
   register int regno;						\
-  register int nregs;						\
-  char used_regs_buf[32], *bufp = used_regs_buf;		\
+  int used_regs_buf[8], *bufp = used_regs_buf;			\
   int used_fregs_buf[8], *fbufp = used_fregs_buf;		\
   extern char call_used_regs[];					\
   *fbufp++ = -2;						\
@@ -529,19 +534,25 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 	}							\
       else fprintf (FILE, "\tmovf tos,f%d\n", *fbufp-- - 8);	\
     }								\
-  for (regno = 0, nregs = 0; regno < 8; regno++)		\
-    if (regs_ever_live[regno] && ! call_used_regs[regno]) {	\
-        nregs++;						\
-       *bufp++ = 'r'; *bufp++ = regno+'0'; *bufp++ = ',';	\
-    }								\
-  if (bufp > used_regs_buf) --bufp;				\
-  *bufp = '\0';							\
+  for (regno = 0; regno < 8; regno++)				\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+      *bufp++ = regno;						\
   if (frame_pointer_needed)					\
-    fprintf (FILE, "\texit [%s]\n", used_regs_buf);		\
-  else if (nregs == 1)						\
-    fprintf (FILE, "\tmovd tos,%s\n", used_regs_buf);		\
-  else if (nregs)						\
-    fprintf (FILE, "\trestore [%s]\n", used_regs_buf);		\
+    {								\
+      fprintf (FILE, "\texit [");				\
+      while (bufp > used_regs_buf)				\
+        {							\
+	  fprintf (FILE, "r%d", *--bufp);			\
+	  if (bufp > used_regs_buf)				\
+	    fputc (',', FILE);					\
+	}							\
+      fprintf (FILE, "]\n");					\
+    }								\
+  else								\
+    {								\
+      while (bufp > used_regs_buf)				\
+	fprintf (FILE, "\tmovd tos,r%d\n", *--bufp);		\
+    }								\
   if (current_function_pops_args && current_function_args_size)	\
     fprintf (FILE, "\tret %d\n", current_function_args_size);	\
   else fprintf (FILE, "\tret 0\n"); }
@@ -1055,6 +1066,11 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL,PREFIX,NUM)	\
   sprintf (LABEL, "*%s%d", PREFIX, NUM)
+
+/* This is how to align the code that follows an unconditional branch.  */
+
+#define ASM_OUTPUT_ALIGN_CODE(FILE)
+  fprintf (FILE, "\t.align 4\n")
 
 /* This is how to output an assembler line defining a `double' constant.  */
 

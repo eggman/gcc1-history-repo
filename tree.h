@@ -25,9 +25,15 @@ and this notice must be preserved on all copies.  */
 
 enum tree_code {
 #include "tree.def"
+
+  LAST_AND_UNUSED_TREE_CODE	/* A convienent way to get a value for
+				   NUM_TREE_CODE.  */
 };
 
 #undef DEFTREECODE
+
+/* Number of tree codes.  */
+#define NUM_TREE_CODE ((int)LAST_AND_UNUSED_TREE_CODE)
 
 /* Indexed by enum tree_code, contains a character which is
    `e' for an expression, `r' for a reference, `c' for a constant,
@@ -140,6 +146,11 @@ struct tree_common
   unsigned asm_written_attr: 1;
   unsigned inline_attr : 1;
   unsigned used_attr : 1;
+  unsigned lang_flag_1 : 1;
+  unsigned lang_flag_2 : 1;
+  unsigned lang_flag_3 : 1;
+  unsigned lang_flag_4 : 1;
+  /* There is room for four more attributes.  */
 };
 
 /* Define accessors for the fields that all tree nodes have
@@ -261,6 +272,11 @@ struct tree_common
 
 /* Nonzero in a _DECL if the name is used in its scope.  */
 #define TREE_USED(NODE) ((NODE)->common.used_attr)
+
+#define TREE_LANG_FLAG_1(NODE) ((NODE)->common.lang_flag_1)
+#define TREE_LANG_FLAG_2(NODE) ((NODE)->common.lang_flag_2)
+#define TREE_LANG_FLAG_3(NODE) ((NODE)->common.lang_flag_3)
+#define TREE_LANG_FLAG_4(NODE) ((NODE)->common.lang_flag_4)
 
 /* Define additional fields and accessors for nodes representing constants.  */
 
@@ -401,7 +417,8 @@ struct tree_exp
 #define TYPE_DOMAIN(NODE) ((NODE)->type.values)
 #define TYPE_FIELDS(NODE) ((NODE)->type.values)
 #define TYPE_ARG_TYPES(NODE) ((NODE)->type.values)
-#define TYPE_METHOD_CLASS(NODE) ((NODE)->type.max)
+#define TYPE_METHOD_BASETYPE(NODE) ((NODE)->type.max)
+#define TYPE_OFFSET_BASETYPE(NODE) ((NODE)->type.max)
 #define TYPE_SEP(NODE) ((NODE)->type.sep)
 #define TYPE_SEP_UNIT(NODE) ((NODE)->type.sep_unit)
 #define TYPE_POINTER_TO(NODE) ((NODE)->type.pointer_to)
@@ -415,6 +432,7 @@ struct tree_exp
 #define TYPE_NEXT_VARIANT(NODE) ((NODE)->type.next_variant)
 #define TYPE_MAIN_VARIANT(NODE) ((NODE)->type.main_variant)
 #define TYPE_BASETYPES(NODE) ((NODE)->type.basetypes)
+#define TYPE_NONCOPIED_PARTS(NODE) ((NODE)->type.noncopied_parts)
 #define TYPE_LANG_SPECIFIC(NODE) ((NODE)->type.lang_specific)
 
 struct tree_type
@@ -438,21 +456,24 @@ struct tree_type
   union tree_node *next_variant;
   union tree_node *main_variant;
   union tree_node *basetypes;
+  union tree_node *noncopied_parts;
   /* Points to a structure whose details depend on the language in use.  */
-  struct lang_type *language_specific;
+  struct lang_type *lang_specific;
 };
 
 /* Define fields and accessors for nodes representing declared names.  */
 
-#define DECL_VOFFSET(NODE) ((NODE)->decl.voffset)
+#define DECL_VOFFSET(NODE) ((NODE)->decl.voffset)  /* In FIELD_DECLs and maybe PARM_DECLs.  */
+#define DECL_RESULT_TYPE(NODE) ((NODE)->decl.voffset) /* In FUNCTION_DECLs.  */
 #define DECL_VOFFSET_UNIT(NODE) ((NODE)->decl.voffset_unit)
 #define DECL_OFFSET(NODE) ((NODE)->decl.offset)
 #define DECL_FUNCTION_CODE(NODE) ((enum built_in_function) (NODE)->decl.offset)
 #define DECL_SET_FUNCTION_CODE(NODE,VAL) ((NODE)->decl.offset = (int) (VAL))
 #define DECL_NAME(NODE) ((NODE)->decl.name)
 #define DECL_CONTEXT(NODE) ((NODE)->decl.context)
-#define DECL_ARGUMENTS(NODE) ((NODE)->decl.arguments)
-#define DECL_ARG_TYPE(NODE) ((NODE)->decl.arguments)
+#define DECL_FIELD_CONTEXT(NODE) ((NODE)->decl.context)
+#define DECL_ARGUMENTS(NODE) ((NODE)->decl.arguments)  /* In FUNCTION_DECL.  */
+#define DECL_ARG_TYPE(NODE) ((NODE)->decl.arguments)   /* In PARM_DECL.  */
 #define DECL_RESULT(NODE) ((NODE)->decl.result)
 #define DECL_INITIAL(NODE) ((NODE)->decl.initial)
 #define DECL_SOURCE_FILE(NODE) ((NODE)->decl.filename)
@@ -616,6 +637,7 @@ extern tree build_string ();
 extern tree build ();
 extern tree build_nt ();
 extern tree build_tree_list ();
+extern tree build_op_identifier ();
 extern tree build_decl ();
 extern tree build_let ();
 
@@ -630,7 +652,8 @@ extern tree build_index_type ();
 extern tree build_array_type ();
 extern tree build_function_type ();
 extern tree build_method_type ();
-extern tree type_nelts ();
+extern tree build_offset_type ();
+extern tree array_type_nelts ();
 
 /* Construct expressions, performing type checking.  */
 

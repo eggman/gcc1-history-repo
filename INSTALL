@@ -19,42 +19,113 @@ Here is the procedure for installing GNU CC on a Unix system.
 
   1. Edit `Makefile'.  If you are using HPUX, or any form of system
      V, you must make a few changes described in comments at the
-     beginning of the file.
+     beginning of the file.  Genix requires changes also.
 
   2. On a Sequent system, go to the Berkeley universe.
 
   3. Choose configuration files.  The easy way to do this is to run
      the command file `config.gcc' with a single argument, which is
-     the name of the machine as it appears in the `tm-MACHINE.h' file
-     name.
+     the name of the machine (and operating system, in some cases).
 
-     Here we spell out what files you need to set up:
+     Here is a list of the possible arguments:
+
+    `vax'
+          Vaxes running BSD.
+
+    `vms'
+          Vaxes running VMS.
+
+    `vax-sysv'
+          Vaxes running system V.
+
+    `i386-sysv'
+          Intel 386 PCs running system V.
+
+    `sequent-386'
+          Sequent with Intel 386 processors.
+
+    `sun2'
+          Sun 2 running system version 2 or 3.
+
+    `sun3'
+          Sun 3 running system version 2 or 3.
+
+    `sun4'
+          Sun 4 running system version 2 or 3.
+
+    `sun2-os4'
+          Sun 2 running system version 4.
+
+    `sun3-os4'
+          Sun 3 running system version 4.
+
+    `sun4-os4'
+          Sun 4 running system version 4.
+
+    `sun386'
+          Sun 386 (``roadrunner'').
+
+    `hp9k320'
+          HP 9000 series 300 using HPUX assembler.
+
+    `kp9k320g'
+          HP 9000 series 300 using GNU assembler, linker and debugger.
+          This requires the HP-adapt package which is or will soon be
+          available in the same places as GNU CC.
+
+    `isi68'
+          ISI 68000 or 68020 system.
+
+    `news800'
+          Sony NEWS 68020 system.
+
+    `3b1'
+          AT&T 3b1, a.k.a. 7300 PC.
+
+    `sequent-ns32k'
+          Sequent containing ns32000 processors.
+
+    `encore'
+          Encore ns32000 system.
+
+    `genix'
+          National Semiconductor ns32000 system.
+
+    `88000'
+          Motorola 88000 processor.  This port is not finished.
+
+     Here we spell out what files need to be set up:
 
         * Make a symbolic link named `config.h' to the top-level
           config file for the machine you are using (*note
           Config::.).  This file is responsible for defining
           information about the host machine.  It includes `tm.h'.
 
-          The file's name should be `config-MACHINE.h', with these
+          The file's name should be `xm-MACHINE.h', with these
           exceptions:
 
-         `config-vms.h'
+         `xm-vms.h'
                for vaxen running VMS.
 
-         `config-vaxv.h'
+         `xm-vaxv.h'
                for vaxen running system V.
 
-         `config-i386v.h'
+         `xm-i386v.h'
                for Intel 80386's running system V.
 
-         `config-sun4.h'
+         `xm-sunos4.h'
                for Suns (model 2, 3 or 4) running *operating system*
-               version 4.
+               version 4.  (Use `xm-m68k.h' or `xm-sparc.h' for
+               version 3.)
 
-         `config-hp9k3.h'
+         `xm-sun386i.h'
+               for Sun roadrunner running any version of the
+               operating system.
+
+         `xm-hp9k320.h'
                for the HP 9000 series 300.
 
-         `config-gnx.h'
+         `xm-genix.h'
                for the ns32000 running Genix
 
           If your system does not support symbolic links, you might
@@ -78,7 +149,8 @@ Here is the procedure for installing GNU CC on a Unix system.
                for AT&T 3b1 (aka 7300 Unix PC).
 
          `tm-isi68.h'
-               for Integrated Solutions systems.
+               for Integrated Solutions systems.  This file assumes
+               you use the GNU assembler.
 
          `tm-news800.h'
                for SONY News systems.
@@ -97,10 +169,6 @@ Here is the procedure for installing GNU CC on a Unix system.
           For the vax, use `tm-vax.h' on BSD Unix, `tm-vaxv.h' on
           system V, or `tm-vms.h' on VMS.
 
-          For the SPARC (Sun 4), use `tm-sparc.h'.  Note that SPARC
-          support currenty *does not work*.  It will probably be
-          fixed for version 1.31.
-
           For the Motorola 88000, use `tm-m88k.h'.  The support for
           the 88000 has a few unfinished spots because there was no
           way to run the output.  Bugs are suspected in handling of
@@ -109,11 +177,11 @@ Here is the procedure for installing GNU CC on a Unix system.
           For the 80386, don't use `tm-i386.h' directly.  Use
           `tm-i386v.h' if the target machine is running system V,
           `tm-seq386.h' for a Sequent 386 system, or `tm-compaq.h'
-          for a Compaq.
+          for a Compaq, or `tm-sun386i.h' for a Sun 386 system.
 
           For the 32000, use `tm-sequent.h' if you are using a
           Sequent machine, or `tm-encore.h' for an Encore machine, or
-          `tm-gnx.h' if you are using Genix version 3; otherwise,
+          `tm-genix.h' if you are using Genix version 3; otherwise,
           perhaps `tm-ns32k.h' will work for you.
 
           Note that Genix has bugs in `alloca' and `malloc'; you must
@@ -240,29 +308,21 @@ Also, you can specify an alternative default directory for these
 files by setting the Make variable `libdir' when you make GNU CC.
 
 
-
 File: gcc.info,  Node: VMS Install,  Prev: Installation,  Up: Installation
 
 Installing GNU CC on VMS
 ========================
 
-The VMS version of GNU CC is distributed in an unusual tape format
-which consists of several tape files.  The first is a command file;
-the second is an executable program which reads Unix tar format; the
-third is another command file which uses this program to read the
-remainder of the tape.
+The VMS version of GNU CC is distributed in a backup saveset
+containing both source code and precompiled binaries.
 
-To load the tape, it suffices to mount it `/foreign' and then do
-`@mta0:' to execute the command file at the beginning of the tape.
-
-The tape contains executables and object files as well as sources, so
-no compilation is necessary unless you change the sources.  (This is
-a good thing, since you probably don't have any other C compiler.) 
+Sometimes the binaries will be from an older version that the
+sources, because we don't always have time to update them.  In this
+case, you should use the binaries you get to recompile the sources. 
 If you must recompile, here is how:
 
-  1. Copy the file `tm-vms.h' to `tm.h', `config-vms.h' to
-     `config.h', `vax.md' to `md.' and `output-vax.c' to
-     `aux-output.c'.
+  1. Copy the file `tm-vms.h' to `tm.h', `xm-vms.h' to `config.h',
+     `vax.md' to `md.' and `output-vax.c' to `aux-output.c'.
 
   2. Type `@make' to do recompile everything.
 

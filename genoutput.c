@@ -71,6 +71,9 @@ and this notice must be preserved on all copies.  */
    10. An array of structures, `insn_machine_info', that gives machine-specific
    information about the insn.
 
+   11. An array of ints, `insn_n_alternatives', that gives the number
+   of alternatives in the constraints of each pattern.
+
 The code number of an insn is simply its position in the machine description;
 code numbers are assigned sequentially to entries in the description,
 starting with code number 0.
@@ -127,8 +130,11 @@ struct data
   char *template;		/* string such as "movl %1,%0" */
   int n_operands;		/* Number of operands this insn recognizes */
   int n_dups;			/* Number times match_dup appears in pattern */
+  int n_alternatives;		/* Number of alternatives in each constraint */
   struct data *next;
   char *constraints[MAX_MAX_OPERANDS];
+  /* Number of alternatives in constraints of operand N.  */
+  int op_n_alternatives[MAX_MAX_OPERANDS];
   char *predicates[MAX_MAX_OPERANDS];
   char address_p[MAX_MAX_OPERANDS];
   enum machine_mode modes[MAX_MAX_OPERANDS];
@@ -233,8 +239,24 @@ output_epilogue ()
       printf ("\nchar *const insn_operand_constraint[][MAX_RECOG_OPERANDS] =\n  {\n");
       for (d = insn_data; d; d = d->next)
 	{
-	  register int i;
+	  register int i, n = 0, start;
 	  printf ("    {");
+	  /* Make sure all the operands have the same number of
+	     alternatives in their constraints.
+	     Let N be that number.  */
+	  for (start = 0; start < d->n_operands; start++)
+	    if (d->op_n_alternatives[start] > 0)
+	      {
+		if (n == 0)
+		  n = d->op_n_alternatives[start];
+		else if (n != d->op_n_alternatives[start])
+		  fatal ("wrong number of alternatives in operand %d of insn number %d",
+			 start, d->code_number);
+		break;
+	      }
+	  /* Record the insn's overall number of alternatives.  */
+	  d->n_alternatives = n;
+
 	  for (i = 0; i < d->n_operands; i++)
 	    {
 	      if (d->constraints[i] == 0)
@@ -313,6 +335,16 @@ output_epilogue ()
 	printf("     {0},\n");
     }
   printf("  };\n");
+
+  printf ("\nconst int insn_n_alternatives[] =\n  {\n");
+  for (d = insn_data; d; d = d->next)
+    {
+      if (d->n_alternatives)
+	printf ("    %d,\n", d->n_alternatives);
+      else
+	printf("     0,\n");
+    }
+  printf("  };\n");
 }
 
 /* scan_operands (X) stores in max_opno the largest operand
@@ -326,6 +358,7 @@ output_epilogue ()
 int max_opno;
 int num_dups;
 char *constraints[MAX_MAX_OPERANDS];
+int op_n_alternatives[MAX_MAX_OPERANDS];
 char *predicates[MAX_MAX_OPERANDS];
 char address_p[MAX_MAX_OPERANDS];
 enum machine_mode modes[MAX_MAX_OPERANDS];
@@ -359,8 +392,29 @@ scan_operands (part, this_address_p, this_strict_low)
       predicates[opno] = XSTR (part, 1);
       constraints[opno] = XSTR (part, 2);
       if (XSTR (part, 2) != 0 && *XSTR (part, 2) != 0)
-	have_constraints = 1;
+	{
+	  op_n_alternatives[opno] = n_occurrences (',', XSTR (part, 2)) + 1;
+	  have_constraints = 1;
+	}
       address_p[opno] = this_address_p;
+      return;
+    }
+
+  if (code == MATCH_OPERATOR)
+    {
+      int opno = XINT (part, 0);
+      if (opno > max_opno)
+	max_opno = opno;
+      if (max_opno >= MAX_MAX_OPERANDS)
+	fatal ("Too many operands (%d) in one instruction pattern.\n",
+	       max_opno + 1);
+      modes[opno] = GET_MODE (part);
+      strict_low[opno] = 0;
+      predicates[opno] = XSTR (part, 1);
+      constraints[opno] = 0;
+      address_p[opno] = 0;
+      for (i = 0; i < XVECLEN (part, 2); i++)
+	scan_operands (XVECEXP (part, 2, i), 0, 0);
       return;
     }
 
@@ -429,6 +483,7 @@ gen_insn (insn)
   num_dups = 0;
 
   mybzero (constraints, sizeof constraints);
+  mybzero (op_n_alternatives, sizeof op_n_alternatives);
   mybzero (predicates, sizeof predicates);
   mybzero (address_p, sizeof address_p);
   mybzero (modes, sizeof modes);
@@ -438,6 +493,7 @@ gen_insn (insn)
   d->n_operands = max_opno + 1;
   d->n_dups = num_dups;
   mybcopy (constraints, d->constraints, sizeof constraints);
+  mybcopy (op_n_alternatives, d->op_n_alternatives, sizeof op_n_alternatives);
   mybcopy (predicates, d->predicates, sizeof predicates);
   mybcopy (address_p, d->address_p, sizeof address_p);
   mybcopy (modes, d->modes, sizeof modes);
@@ -501,6 +557,7 @@ gen_peephole (peep)
 
   max_opno = -1;
   mybzero (constraints, sizeof constraints);
+  mybzero (op_n_alternatives, sizeof op_n_alternatives);
 
   /* Get the number of operands by scanning all the
      patterns of the peephole optimizer.
@@ -511,6 +568,7 @@ gen_peephole (peep)
   d->n_operands = max_opno + 1;
   d->n_dups = 0;
   mybcopy (constraints, d->constraints, sizeof constraints);
+  mybcopy (op_n_alternatives, d->op_n_alternatives, sizeof op_n_alternatives);
   mybzero (d->predicates, sizeof predicates);
   mybzero (d->address_p, sizeof address_p);
   mybzero (d->modes, sizeof modes);
@@ -583,6 +641,7 @@ gen_expand (insn)
   mybcopy (modes, d->modes, sizeof modes);
 
   mybzero (d->constraints, sizeof constraints);
+  mybzero (d->op_n_alternatives, sizeof op_n_alternatives);
   mybzero (d->address_p, sizeof address_p);
   mybzero (d->strict_low, sizeof strict_low);
 
@@ -691,4 +750,15 @@ main (argc, argv)
 
   fflush (stdout);
   exit (ferror (stdout) != 0 ? FATAL_EXIT_CODE : SUCCESS_EXIT_CODE);
+}
+
+int
+n_occurrences (c, s)
+     char c;
+     char *s;
+{
+  int n = 0;
+  while (*s)
+    n += (*s++ == c);
+  return n;
 }

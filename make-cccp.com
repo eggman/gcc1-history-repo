@@ -2,7 +2,8 @@ $!
 $!	Build the GNU "C" pre-processor on VMS
 $!
 $ if "''p1'" .eqs. "LINK" then goto Link
-$ gcc/debug cccp.c
+! $ gcc /define=("GCC_INCLUDE_DIR=""gnu_cc:[000000]""",-
+!           "GPLUSPLUS_INCLUDE_DIR=""gnu_cc:[000000]""","IDENT_DIRECTIVE") cccp.c
 $ t1:='f$search("CEXP.C")'
 $ if "''t1'" .eqs. "" then goto 10$
 $ t1:='f$file_attributes("CEXP.Y","RDT")'
@@ -18,7 +19,7 @@ $ rename cexp_tab.c cexp.c
 $ gcc/debug cexp.c
 $ gcc/debug version.c
 $ Link:
-$ link/exe=gcc-cpp sys$input:/opt
+$ link/exe=gcc-cpp/nomap sys$input:/opt
 !
 !	Linker options file for linking the GNU "C" pre-processor
 !

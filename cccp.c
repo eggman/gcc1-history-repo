@@ -315,6 +315,7 @@ struct directory_stack include_defaults[] =
   {
 #ifndef VMS
     { &include_defaults[1], GCC_INCLUDE_DIR },
+    { &include_defaults[2], "/usr/local/include" },
     { 0, "/usr/include" }
 #else
     { &include_defaults[1], "GNU_CC_INCLUDE:" },       /* GNU includes */
@@ -745,7 +746,7 @@ main (argc, argv)
 	  struct directory_stack *dirtmp;
 
 	  if (! ignore_srcdir && !strcmp (argv[i] + 2, "-"))
-	    ignore_srcdir;
+	    ignore_srcdir = 1;
 	  else {
 	    dirtmp = (struct directory_stack *)
 	      xmalloc (sizeof (struct directory_stack));
@@ -2173,8 +2174,8 @@ handle_directive (ip, op)
   return 0;
 }
 
-static char *monthnames[] = {"jan", "feb", "mar", "apr", "may", "jun",
-			     "jul", "aug", "sep", "oct", "nov", "dec",
+static char *monthnames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+			     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 			    };
 
 /*
@@ -2186,6 +2187,7 @@ special_symbol (hp, op)
      FILE_BUF *op;
 {
   char *buf;
+  long t;
   int i, len;
   FILE_BUF *ip = NULL;
   static struct tm *timebuf = NULL;
@@ -2227,8 +2229,8 @@ special_symbol (hp, op)
   case T_DATE:
   case T_TIME:
     if (timebuf == NULL) {
-      i = time (0);
-      timebuf = localtime (&i);
+      t = time (0);
+      timebuf = localtime (&t);
     }
     buf = (char *) alloca (20);
     if (hp->type == T_DATE)
@@ -2458,33 +2460,70 @@ finclude (f, fname, op)
      char *fname;
      FILE_BUF *op;
 {
+  int st_mode;
   long st_size;
   long i;
   FILE_BUF *fp;			/* For input stack frame */
   int success = 0;
 
-  if (file_size_and_mode (f, (int *)0, &st_size) < 0)
+  if (file_size_and_mode (f, &st_mode, &st_size) < 0)
     goto nope;		/* Impossible? */
 
   fp = &instack[indepth + 1];
   bzero (fp, sizeof (FILE_BUF));
-  fp->buf = (U_CHAR *) alloca (st_size + 2);
   fp->fname = fname;
   fp->length = 0;
   fp->lineno = 1;
-  fp->bufp = fp->buf;
   fp->if_stack = if_stack;
-  
-  /* Read the file contents, knowing that st_size is an upper bound
-     on the number of bytes we can read.  */
-  while (st_size > 0) {
-    i = read (f, fp->buf + fp->length, st_size);
-    if (i <= 0) {
-      if (i == 0) break;
-      goto nope;
+
+  if (st_mode & S_IFREG) {
+    fp->buf = (U_CHAR *) alloca (st_size + 2);
+    fp->bufp = fp->buf;
+
+    /* Read the file contents, knowing that st_size is an upper bound
+       on the number of bytes we can read.  */
+    while (st_size > 0) {
+      i = read (f, fp->buf + fp->length, st_size);
+      if (i <= 0) {
+	if (i == 0) break;
+	goto nope;
+      }
+      fp->length += i;
+      st_size -= i;
     }
-    fp->length += i;
-    st_size -= i;
+  }
+  else {
+    /* Cannot count its file size before reading.
+       First read the entire file into heap and
+       copy them into buffer on stack. */
+
+    U_CHAR *bufp;
+    U_CHAR *basep;
+    int bsize = 2000;
+
+    st_size = 0;
+    basep = (U_CHAR *) xmalloc (bsize + 2);
+    bufp = basep;
+
+    for (;;) {
+      i = read (f, bufp, bsize - st_size);
+      if (i < 0)
+	goto nope;      /* error! */
+      if (i == 0)
+	break;	/* End of file */
+      st_size += i;
+      bufp += i;
+      if (bsize == st_size) {	/* Buffer is full! */
+	  bsize *= 2;
+	  basep = (U_CHAR *) xrealloc (basep, bsize + 2);
+	  bufp = basep + st_size;	/* May have moved */
+	}
+    }
+    fp->buf = (U_CHAR *) alloca (st_size + 2);
+    fp->bufp = fp->buf;
+    bcopy (basep, fp->buf, st_size);
+    fp->length = st_size;
+    free (basep);
   }
 
   if (!no_trigraphs)

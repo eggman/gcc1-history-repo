@@ -297,65 +297,6 @@
   ""
   "movc3 %2,%1,%0")
 
-;;- load or push effective address 
-;; These come after the move patterns
-;; because we don't want pushl $1 turned into pushad 1.
-
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:QI 1 "address_operand" "p"))]
-  ""
-  "*
-{
-  if (push_operand (operands[0], SImode))
-    return \"pushab %a1\";
-  return \"movab %a1,%0\";
-}")
-
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:HI 1 "address_operand" "p"))]
-  ""
-  "*
-{
-  if (push_operand (operands[0], SImode))
-    return \"pushaw %a1\";
-  return \"movaw %a1,%0\";
-}")
-
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:SI 1 "address_operand" "p"))]
-  ""
-  "*
-{
-  if (push_operand (operands[0], SImode))
-    return \"pushal %a1\";
-  return \"moval %a1,%0\";
-}")
-
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:SF 1 "address_operand" "p"))]
-  ""
-  "*
-{
-  if (push_operand (operands[0], SImode))
-    return \"pushaf %a1\";
-  return \"movaf %a1,%0\";
-}")
-
-(define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:DF 1 "address_operand" "p"))]
-  ""
-  "*
-{
-  if (push_operand (operands[0], SImode))
-    return \"pushad %a1\";
-  return \"movad %a1,%0\";
-}")
-
 ;; Extension and truncation insns.
 ;; Those for integer source operand
 ;; are ordered widest source type first.
@@ -2046,6 +1987,66 @@
 		      (pc)))]
   ""
   "casel %0,$0,%1")
+
+;;- load or push effective address 
+;; These come after the move and add/sub patterns
+;; because we don't want pushl $1 turned into pushad 1.
+;; or addl3 r1,r2,r3 turned into movab 0(r1)[r2],r3.
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:QI 1 "address_operand" "p"))]
+  ""
+  "*
+{
+  if (push_operand (operands[0], SImode))
+    return \"pushab %a1\";
+  return \"movab %a1,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:HI 1 "address_operand" "p"))]
+  ""
+  "*
+{
+  if (push_operand (operands[0], SImode))
+    return \"pushaw %a1\";
+  return \"movaw %a1,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:SI 1 "address_operand" "p"))]
+  ""
+  "*
+{
+  if (push_operand (operands[0], SImode))
+    return \"pushal %a1\";
+  return \"moval %a1,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:SF 1 "address_operand" "p"))]
+  ""
+  "*
+{
+  if (push_operand (operands[0], SImode))
+    return \"pushaf %a1\";
+  return \"movaf %a1,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:DF 1 "address_operand" "p"))]
+  ""
+  "*
+{
+  if (push_operand (operands[0], SImode))
+    return \"pushad %a1\";
+  return \"movad %a1,%0\";
+}")
 
 ;; Optimize   extzv ...,z;    andl2 ...,z
 ;; with other operands constant.

@@ -18,7 +18,7 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
-/* Some output-actions in m68000.md need these.  */
+/* Some output-actions in ns32k.md need these.  */
 #include <stdio.h>
 extern FILE *asm_out_file;
 
@@ -401,12 +401,15 @@ print_operand_address (file, addr)
 	{
 	  if (CONSTANT_P (addr) && reg1)
 	    {
+	      /* OFFSET comes second, to prevent outputting
+		 operands of the form INT+SYMBOL+INT.
+		 The Genix assembler dies on them.  */
+	      output_addr_const (file, addr);
 	      if (offset != const0_rtx)
 		{
-		  output_addr_const (file, offset);
 		  putc ('+', file);
+		  output_addr_const (file, offset);
 		}
-	      output_addr_const (file, addr);
 	      ireg = reg1;
 	      goto print_index;
 	    }

@@ -48,3 +48,10 @@ and this notice must be preserved on all copies.  */
 /* 1 if N is a possible register number for a function value. */
 
 #define FUNCTION_VALUE_REGNO_P(N) ((N) == 0 || (N)== FIRST_FLOAT_REG)
+
+/* Output assembler code to FILE to increment profiler label # LABELNO
+   for profiling a function entry. */
+
+#undef FUNCTION_PROFILER
+#define FUNCTION_PROFILER(FILE, LABELNO)  \
+   fprintf (FILE, "\tmovl $LP%d,%%eax\n\tcall mcount\n", (LABELNO));

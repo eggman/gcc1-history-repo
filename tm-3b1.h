@@ -67,6 +67,10 @@ and this notice must be preserved on all copies.  */
 #undef ASM_FILE_START
 #define ASM_FILE_START(FILE) sdbout_filename ((FILE), main_input_filename)
 
+/* Don't try to define `gcc_compiled.' since the assembler might not
+   accept symbols with periods and GDB doesn't run on this machine anyway.  */
+#define ASM_IDENTIFY_GCC(FILE)
+
 /* Define __HAVE_68881__ in preprocessor if -m68881 is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
@@ -115,7 +119,7 @@ and this notice must be preserved on all copies.  */
 #undef ASM_OUTPUT_LABELREF
 #undef ASM_OUTPUT_ASCII
 
-#define TARGET_VERSION printf (" (68k, SGS/AT&T unixpc syntax)");
+#define TARGET_VERSION fprintf (stderr, " (68k, SGS/AT&T unixpc syntax)");
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -282,6 +286,12 @@ do { union { float f; long l;} tem;			\
 	  if (scale != 1) fprintf (FILE, ":%d", scale);			\
 	  fprintf (FILE, ")");						\
 	  break; }							\
+      if (breg != 0 && ireg == 0 && GET_CODE (addr) == LABEL_REF)	\
+        { fprintf (FILE, "LD%%%d(%%pc,%s.l",				\
+		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+		   reg_name[REGNO (breg)]);				\
+	  putc (')', FILE);						\
+	  break; }							\
       if (ireg != 0 || breg != 0)					\
 	{ int scale = 1;						\
 	  if (breg == 0)						\
@@ -335,11 +345,17 @@ do { union { float f; long l;} tem;			\
 /* ihnp4!lmayk!lgm says that `short 0' triggers assembler bug;
    `short L%nn-L%nn' supposedly works.  */
 #define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)			\
+  if (RTX_INTEGRATED_P (TABLE))						\
+    fprintf (FILE, "\tswbeg &%d\n%s%%%d:\n",				\
+	     XVECLEN (PATTERN (TABLE), 1), (PREFIX), (NUM))
+  else
     fprintf (FILE, "\tswbeg &%d\n%s%%%d:\n\tshort %s%%%d-%s%%%d\n",	\
 	     XVECLEN (PATTERN (TABLE), 1) + 1, (PREFIX), (NUM),		\
 	     (PREFIX), (NUM), (PREFIX), (NUM))
 
+/* At end of a switch table, define LD%n iff the symbol LI%n was defined.  */
 #define ASM_OUTPUT_CASE_END(FILE,NUM,TABLE)		\
+  if (RTX_INTEGRATED_P (TABLE))				\
     fprintf (FILE, "\tset LD%%%d,L%%%d-LI%%%d\n", (NUM), (NUM), (NUM))
 
 #define ASM_OUTPUT_OPCODE(FILE, PTR)			\

@@ -263,6 +263,13 @@
   ""
   "* return output_move_double (operands); ")
 
+;; This special case must precede movsi.
+(define_insn ""
+  [(set (reg:SI 17)
+	(match_operand:SI 0 "general_operand" "rmn"))]
+  ""
+  "lprd sp,%0")
+
 (define_insn "movsi"
   [(set (match_operand:SI 0 "general_operand" "=g<")
 	(match_operand:SI 1 "general_operand" "gx"))]
@@ -368,12 +375,6 @@
     return \"movqb %1,%0\";
   return \"movb %1,%0\";
 }")
-
-(define_insn ""
-  [(set (reg:SI 17)
-	(match_operand:SI 0 "general_operand" "rmn"))]
-  ""
-  "lprd sp,%0")
 
 ;; The definition of this insn does not really explain what it does,
 ;; but it should suffice
@@ -704,12 +705,14 @@
   "addr %c1(sp),%0")
 
 (define_insn "addsi3"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(plus:SI (match_operand:SI 1 "general_operand" "%0")
-		 (match_operand:SI 2 "general_operand" "rmn")))]
+  [(set (match_operand:SI 0 "general_operand" "=g,=g<")
+	(plus:SI (match_operand:SI 1 "general_operand" "%0,%r")
+		 (match_operand:SI 2 "general_operand" "rmn,n")))]
   ""
   "*
 {
+  if (which_alternative == 1)
+    return \"addr %c2(%1),%0\";
   if (GET_CODE (operands[2]) == CONST_INT)
     {
       int i = INTVAL (operands[2]);
@@ -1080,21 +1083,31 @@
   ""
   "*
 {
-  if (GET_CODE (operands[2]) == CONST_INT) {
-    if ((INTVAL (operands[2]) | 0xff) == 0xffffffff)
-      if (INTVAL (operands[2]) == 0xffffff00)
-        return \"movqb %$0,%0\";
-      else {
-        INTVAL (operands[2]) &= 0xff;
-        return \"andb %2,%0\";
-      }
-    if ((INTVAL (operands[2]) | 0xffff) == 0xffffffff)
-      if (INTVAL (operands[2]) == 0xffff0000)
-        return \"movqw %$0,%0\";
-      else {
-        INTVAL (operands[2]) &= 0xffff;
-        return \"andw %2,%0\";
-      }
+  if (GET_CODE (operands[2]) == CONST_INT)
+    {
+      if ((INTVAL (operands[2]) | 0xff) == 0xffffffff)
+	{
+	  if (INTVAL (operands[2]) == 0xffffff00)
+	    return \"movqb %$0,%0\";
+	  else
+	    {
+	      operands[2] = gen_rtx (CONST_INT, VOIDmode,
+				     INTVAL (operands[2]) & 0xff);
+	      return \"andb %2,%0\";
+	    }
+	}
+      if ((INTVAL (operands[2]) | 0xffff) == 0xffffffff)
+        {
+	  if (INTVAL (operands[2]) == 0xffff0000)
+	    return \"movqw %$0,%0\";
+	  else
+	    {
+	      operands[2] = gen_rtx (CONST_INT, VOIDmode,
+				     INTVAL (operands[2]) & 0xffff);
+	      return \"andw %2,%0\";
+	    }
+	}
+    }
   }
   return \"andd %2,%0\";
 }")
@@ -1108,11 +1121,15 @@
 {
   if (GET_CODE (operands[2]) == CONST_INT
       && (INTVAL (operands[2]) | 0xff) == 0xffffffff)
-    if (INTVAL (operands[2]) == 0xffffff00)
-      return \"movqb %$0,%0\";
-    else {
-      INTVAL (operands[2]) &= 0xff;
-      return \"andb %2,%0\";
+    {
+      if (INTVAL (operands[2]) == 0xffffff00)
+	return \"movqb %$0,%0\";
+      else
+	{
+	  operands[2] = gen_rtx (CONST_INT, VOIDmode,
+				 INTVAL (operands[2]) & 0xff);
+	  return \"andb %2,%0\";
+	}
     }
   return \"andw %2,%0\";
 }")

@@ -381,20 +381,29 @@ stupid_mark_refs (x, insn)
 		  /* The following line is for unused outputs;
 		     they do get stored even though never used again.  */
 		  MARK_LIVE_AFTER (insn, regno);
+		  /* When a hard reg is clobbered, mark it in use
+		     just before this insn, so it is live all through.  */
+		  if (code == CLOBBER)
+		    SET_HARD_REG_BIT (after_insn_hard_regs[INSN_SUID (insn)],
+				      regno);
 		}
 	    }
 	  /* For pseudo regs, record where born, where dead, number of
 	     times used, and whether live across a call.  */
 	  else
 	    {
-	      /* Update the life-interval bounds of this reg.  */
-	      reg_where_born[regno] = INSN_SUID (insn);
+	      /* Update the life-interval bounds of this pseudo reg.  */
 
+	      /* When a pseudo-reg is CLOBBERed, it is born just before
+		 the clobbering insn.  When setting, just after.  */
+	      int where_born = INSN_SUID (insn) - (code == CLOBBER);
+
+	      reg_where_born[regno] = where_born;
 	      /* The reg must live at least one insn even
-		 if it is never again used--because it has to go
+		 in it is never again used--because it has to go
 		 in SOME hard reg.  */
-	      if (reg_where_dead[regno] < INSN_SUID (insn) + 1)
-		reg_where_dead[regno] = INSN_SUID (insn) + 1;
+	      if (reg_where_dead[regno] < where_born + 1)
+		reg_where_dead[regno] = where_born + 1;
 
 	      /* Count the refs of this reg.  */
 	      reg_n_refs[regno]++;

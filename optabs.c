@@ -72,7 +72,19 @@ optab one_cmpl_optab;
 optab ffs_optab;
 
 optab cmp_optab;
+optab ucmp_optab;  /* Used only for libcalls for unsigned comparisons.  */
 optab tst_optab;
+
+/* Indexed by the rtx-code for a conditional (eg. EQ, LT,...)
+   gives the gen_function to make a branch to test that condition.  */
+
+rtxfun bcc_gen_fctn[NUM_RTX_CODE];
+
+/* Indexed by the rtx-code for a conditional (eg. EQ, LT,...)
+   gives the gen_function to make a store-condition insn
+   to test that condition.  */
+
+rtxfun setcc_gen_fctn[NUM_RTX_CODE];
 
 /* Generate code to perform an operation specified by BINOPTAB
    on operands OP0 and OP1, with result having machine-mode MODE.
@@ -200,7 +212,9 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 			    binoptab->handlers[(int) mode].lib_call);
 
       /* Pass the address through a pseudoreg, if desired,
-	 before the "beginning" of the library call (for deletion).  */
+	 before the "beginning" of the library call.
+	 So this insn isn't "part of" the library call, in case that
+	 is deleted, or cse'd.  */
 #ifndef NO_FUNCTION_CSE
       if (! flag_no_function_cse)
 	funexp = copy_to_mode_reg (Pmode, funexp);
@@ -731,26 +745,22 @@ emit_cmp_insn (x, y, size, unsignedp)
     }
   else if (cmp_optab->handlers[(int) mode].lib_call)
     {
-      emit_library_call (gen_rtx (SYMBOL_REF, Pmode,
-				  cmp_optab->handlers[(int) mode].lib_call),
+      char *string = cmp_optab->handlers[(int) mode].lib_call;
+      /* If we want unsigned, and this mode has a distinct unsigned
+	 comparison routine, use that.  */
+      if (unsignedp && ucmp_optab->handlers[(int) mode].lib_call)
+	string = ucmp_optab->handlers[(int) mode].lib_call;
+
+      emit_library_call (gen_rtx (SYMBOL_REF, Pmode, string),
 			 SImode, 2, x, mode, y, mode);
-      emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0);
-    }
-  else if ((mode == QImode || mode == HImode)
-	   && (cmp_optab->handlers[(int) SImode].insn_code != CODE_FOR_nothing
-	       || cmp_optab->handlers[(int) SImode].lib_call != 0))
-    {
-      x = convert_to_mode (SImode, x, unsignedp);
-      y = convert_to_mode (SImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
-    }
-  else if ((mode == QImode || mode == HImode || mode == SImode)
-	   && (cmp_optab->handlers[(int) DImode].insn_code != CODE_FOR_nothing
-	       || cmp_optab->handlers[(int) DImode].lib_call != 0))
-    {
-      x = convert_to_mode (DImode, x, unsignedp);
-      y = convert_to_mode (DImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp);
+
+      /* Integer comparison returns a result that must be compared against 1,
+	 so that even if we do an unsigned compare afterward,
+	 there is still a value that can represent the result "less than".  */
+      if (GET_MODE_CLASS (mode) == MODE_INT)
+	emit_cmp_insn (hard_libcall_value (SImode), const1_rtx, 0, unsignedp);
+      else
+	emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0);
     }
   else if (mode == SFmode
 	   && (cmp_optab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing
@@ -1088,8 +1098,8 @@ expand_float (real_to, from, unsignedp)
 	  unsignedp = 0;
 	}
       emit_library_call (gen_rtx (SYMBOL_REF, Pmode,
-				  (GET_MODE (from) == SImode ? "_floatsidf"
-				   : "_floatdidf")),
+				  (GET_MODE (from) == SImode ? "__floatsidf"
+				   : "__floatdidf")),
 			 DFmode, 1, from, GET_MODE (from));
       to = copy_to_reg (hard_libcall_value (DFmode));
     }
@@ -1195,16 +1205,16 @@ expand_fix (to, from, unsignedp)
   if (GET_MODE (to) != DImode)
     {
       emit_library_call (gen_rtx (SYMBOL_REF, Pmode,
-				  unsignedp ? "_fixunsdfsi"
-				  : "_fixdfsi"),
+				  unsignedp ? "__fixunsdfsi"
+				  : "__fixdfsi"),
 			 SImode, 1, from, DFmode);
       target = hard_libcall_value (SImode);
     }
   else
     {
       emit_library_call (gen_rtx (SYMBOL_REF, Pmode,
-				  unsignedp ? "_fixunsdfdi"
-				  : "_fixdfdi"),
+				  unsignedp ? "__fixunsdfdi"
+				  : "__fixdfdi"),
 			 DImode, 1, from, DFmode);
       target = hard_libcall_value (DImode);
     }
@@ -1268,6 +1278,7 @@ init_optabs ()
   mov_optab = init_optab (UNKNOWN);
   movstrict_optab = init_optab (UNKNOWN);
   cmp_optab = init_optab (UNKNOWN);
+  ucmp_optab = init_optab (UNKNOWN);
   tst_optab = init_optab (UNKNOWN);
   neg_optab = init_optab (NEG);
   abs_optab = init_optab (ABS);
@@ -1298,9 +1309,9 @@ init_optabs ()
   if (HAVE_adddf3)
     add_optab->handlers[(int) DFmode].insn_code = CODE_FOR_adddf3;
 #endif
-  add_optab->handlers[(int) DImode].lib_call = "_adddi3";
-  add_optab->handlers[(int) SFmode].lib_call = "_addsf3";
-  add_optab->handlers[(int) DFmode].lib_call = "_adddf3";
+  add_optab->handlers[(int) DImode].lib_call = "__adddi3";
+  add_optab->handlers[(int) SFmode].lib_call = "__addsf3";
+  add_optab->handlers[(int) DFmode].lib_call = "__adddf3";
 
 #ifdef HAVE_subqi3
   if (HAVE_subqi3)
@@ -1326,9 +1337,9 @@ init_optabs ()
   if (HAVE_subdf3)
     sub_optab->handlers[(int) DFmode].insn_code = CODE_FOR_subdf3;
 #endif
-  sub_optab->handlers[(int) DImode].lib_call = "_subdi3";
-  sub_optab->handlers[(int) SFmode].lib_call = "_subsf3";
-  sub_optab->handlers[(int) DFmode].lib_call = "_subdf3";
+  sub_optab->handlers[(int) DImode].lib_call = "__subdi3";
+  sub_optab->handlers[(int) SFmode].lib_call = "__subsf3";
+  sub_optab->handlers[(int) DFmode].lib_call = "__subdf3";
 
 #ifdef HAVE_mulqi3
   if (HAVE_mulqi3)
@@ -1354,10 +1365,10 @@ init_optabs ()
   if (HAVE_muldf3)
     smul_optab->handlers[(int) DFmode].insn_code = CODE_FOR_muldf3;
 #endif
-  smul_optab->handlers[(int) SImode].lib_call = "_mulsi3";
-  smul_optab->handlers[(int) DImode].lib_call = "_muldi3";
-  smul_optab->handlers[(int) SFmode].lib_call = "_mulsf3";
-  smul_optab->handlers[(int) DFmode].lib_call = "_muldf3";
+  smul_optab->handlers[(int) SImode].lib_call = "__mulsi3";
+  smul_optab->handlers[(int) DImode].lib_call = "__muldi3";
+  smul_optab->handlers[(int) SFmode].lib_call = "__mulsf3";
+  smul_optab->handlers[(int) DFmode].lib_call = "__muldf3";
 
 #ifdef HAVE_mulqihi3
   if (HAVE_mulqihi3)
@@ -1396,10 +1407,10 @@ init_optabs ()
   if (HAVE_umuldf3)
     umul_optab->handlers[(int) DFmode].insn_code = CODE_FOR_umuldf3;
 #endif
-  umul_optab->handlers[(int) SImode].lib_call = "_umulsi3";
-  umul_optab->handlers[(int) DImode].lib_call = "_umuldi3";
-  umul_optab->handlers[(int) SFmode].lib_call = "_umulsf3";
-  umul_optab->handlers[(int) DFmode].lib_call = "_umuldf3";
+  umul_optab->handlers[(int) SImode].lib_call = "__umulsi3";
+  umul_optab->handlers[(int) DImode].lib_call = "__umuldi3";
+  umul_optab->handlers[(int) SFmode].lib_call = "__umulsf3";
+  umul_optab->handlers[(int) DFmode].lib_call = "__umuldf3";
 
 #ifdef HAVE_umulqihi3
   if (HAVE_umulqihi3)
@@ -1430,8 +1441,8 @@ init_optabs ()
   if (HAVE_divdi3)
     sdiv_optab->handlers[(int) DImode].insn_code = CODE_FOR_divdi3;
 #endif
-  sdiv_optab->handlers[(int) SImode].lib_call = "_divsi3";
-  sdiv_optab->handlers[(int) DImode].lib_call = "_divdi3";
+  sdiv_optab->handlers[(int) SImode].lib_call = "__divsi3";
+  sdiv_optab->handlers[(int) DImode].lib_call = "__divdi3";
 
 #ifdef HAVE_udivqi3
   if (HAVE_udivqi3)
@@ -1452,9 +1463,9 @@ init_optabs ()
 #ifdef UDIVSI3_LIBCALL
   udiv_optab->handlers[(int) SImode].lib_call = UDIVSI3_LIBCALL;
 #else
-  udiv_optab->handlers[(int) SImode].lib_call = "_udivsi3";
+  udiv_optab->handlers[(int) SImode].lib_call = "__udivsi3";
 #endif
-  udiv_optab->handlers[(int) DImode].lib_call = "_udivdi3";
+  udiv_optab->handlers[(int) DImode].lib_call = "__udivdi3";
 
 #ifdef HAVE_divmodqi4
   if (HAVE_divmodqi4)
@@ -1506,8 +1517,8 @@ init_optabs ()
   if (HAVE_moddi3)
     smod_optab->handlers[(int) DImode].insn_code = CODE_FOR_moddi3;
 #endif
-  smod_optab->handlers[(int) SImode].lib_call = "_modsi3";
-  smod_optab->handlers[(int) DImode].lib_call = "_moddi3";
+  smod_optab->handlers[(int) SImode].lib_call = "__modsi3";
+  smod_optab->handlers[(int) DImode].lib_call = "__moddi3";
 
 #ifdef HAVE_umodqi3
   if (HAVE_umodqi3)
@@ -1528,9 +1539,9 @@ init_optabs ()
 #ifdef UMODSI3_LIBCALL
   umod_optab->handlers[(int) SImode].lib_call = UMODSI3_LIBCALL;
 #else
-  umod_optab->handlers[(int) SImode].lib_call = "_umodsi3";
+  umod_optab->handlers[(int) SImode].lib_call = "__umodsi3";
 #endif
-  umod_optab->handlers[(int) DImode].lib_call = "_umoddi3";
+  umod_optab->handlers[(int) DImode].lib_call = "__umoddi3";
 
 #ifdef HAVE_divsf3
   if (HAVE_divsf3)
@@ -1540,8 +1551,8 @@ init_optabs ()
   if (HAVE_divdf3)
     flodiv_optab->handlers[(int) DFmode].insn_code = CODE_FOR_divdf3;
 #endif
-  flodiv_optab->handlers[(int) SFmode].lib_call = "_divsf3";
-  flodiv_optab->handlers[(int) DFmode].lib_call = "_divdf3";
+  flodiv_optab->handlers[(int) SFmode].lib_call = "__divsf3";
+  flodiv_optab->handlers[(int) DFmode].lib_call = "__divdf3";
 
 #ifdef HAVE_ftruncsf2
   if (HAVE_ftruncsf2)
@@ -1551,8 +1562,6 @@ init_optabs ()
   if (HAVE_ftruncdf2)
     ftrunc_optab->handlers[(int) DFmode].insn_code = CODE_FOR_ftruncdf2;
 #endif
-  ftrunc_optab->handlers[(int) SFmode].lib_call = "_ftruncsf2";
-  ftrunc_optab->handlers[(int) DFmode].lib_call = "_ftruncsf2";
 
 #ifdef HAVE_andqi3
   if (HAVE_andqi3)
@@ -1570,7 +1579,7 @@ init_optabs ()
   if (HAVE_anddi3)
     and_optab->handlers[(int) DImode].insn_code = CODE_FOR_anddi3;
 #endif
-  and_optab->handlers[(int) DImode].lib_call = "_anddi3";
+  and_optab->handlers[(int) DImode].lib_call = "__anddi3";
 
 #ifdef HAVE_andcbqi3
   if (HAVE_andcbqi3)
@@ -1588,7 +1597,7 @@ init_optabs ()
   if (HAVE_andcbdi3)
     andcb_optab->handlers[(int) DImode].insn_code = CODE_FOR_andcbdi3;
 #endif
-  andcb_optab->handlers[(int) DImode].lib_call = "_andcbdi3";
+  andcb_optab->handlers[(int) DImode].lib_call = "__andcbdi3";
 
 #ifdef HAVE_iorqi3
   if (HAVE_iorqi3)
@@ -1606,7 +1615,7 @@ init_optabs ()
   if (HAVE_iordi3)
     ior_optab->handlers[(int) DImode].insn_code = CODE_FOR_iordi3;
 #endif
-  ior_optab->handlers[(int) DImode].lib_call = "_iordi3";
+  ior_optab->handlers[(int) DImode].lib_call = "__iordi3";
 
 #ifdef HAVE_xorqi3
   if (HAVE_xorqi3)
@@ -1624,7 +1633,7 @@ init_optabs ()
   if (HAVE_xordi3)
     xor_optab->handlers[(int) DImode].insn_code = CODE_FOR_xordi3;
 #endif
-  xor_optab->handlers[(int) DImode].lib_call = "_xordi3";
+  xor_optab->handlers[(int) DImode].lib_call = "__xordi3";
 
 #ifdef HAVE_ashlqi3
   if (HAVE_ashlqi3)
@@ -1642,8 +1651,8 @@ init_optabs ()
   if (HAVE_ashldi3)
     ashl_optab->handlers[(int) DImode].insn_code = CODE_FOR_ashldi3;
 #endif
-  ashl_optab->handlers[(int) SImode].lib_call = "_ashlsi3";
-  ashl_optab->handlers[(int) DImode].lib_call = "_ashldi3";
+  ashl_optab->handlers[(int) SImode].lib_call = "__ashlsi3";
+  ashl_optab->handlers[(int) DImode].lib_call = "__ashldi3";
 
 #ifdef HAVE_ashrqi3
   if (HAVE_ashrqi3)
@@ -1661,8 +1670,8 @@ init_optabs ()
   if (HAVE_ashrdi3)
     ashr_optab->handlers[(int) DImode].insn_code = CODE_FOR_ashrdi3;
 #endif
-  ashr_optab->handlers[(int) SImode].lib_call = "_ashrsi3";
-  ashr_optab->handlers[(int) DImode].lib_call = "_ashrdi3";
+  ashr_optab->handlers[(int) SImode].lib_call = "__ashrsi3";
+  ashr_optab->handlers[(int) DImode].lib_call = "__ashrdi3";
 
 #ifdef HAVE_lshlqi3
   if (HAVE_lshlqi3)
@@ -1680,8 +1689,8 @@ init_optabs ()
   if (HAVE_lshldi3)
     lshl_optab->handlers[(int) DImode].insn_code = CODE_FOR_lshldi3;
 #endif
-  lshl_optab->handlers[(int) SImode].lib_call = "_lshlsi3";
-  lshl_optab->handlers[(int) DImode].lib_call = "_lshldi3";
+  lshl_optab->handlers[(int) SImode].lib_call = "__lshlsi3";
+  lshl_optab->handlers[(int) DImode].lib_call = "__lshldi3";
 
 #ifdef HAVE_lshrqi3
   if (HAVE_lshrqi3)
@@ -1699,8 +1708,8 @@ init_optabs ()
   if (HAVE_lshrdi3)
     lshr_optab->handlers[(int) DImode].insn_code = CODE_FOR_lshrdi3;
 #endif
-  lshr_optab->handlers[(int) SImode].lib_call = "_lshrsi3";
-  lshr_optab->handlers[(int) DImode].lib_call = "_lshrdi3";
+  lshr_optab->handlers[(int) SImode].lib_call = "__lshrsi3";
+  lshr_optab->handlers[(int) DImode].lib_call = "__lshrdi3";
 
 #ifdef HAVE_rotlqi3
   if (HAVE_rotlqi3)
@@ -1718,8 +1727,8 @@ init_optabs ()
   if (HAVE_rotldi3)
     rotl_optab->handlers[(int) DImode].insn_code = CODE_FOR_rotldi3;
 #endif
-  rotl_optab->handlers[(int) SImode].lib_call = "_rotlsi3";
-  rotl_optab->handlers[(int) DImode].lib_call = "_rotldi3";
+  rotl_optab->handlers[(int) SImode].lib_call = "__rotlsi3";
+  rotl_optab->handlers[(int) DImode].lib_call = "__rotldi3";
 
 #ifdef HAVE_rotrqi3
   if (HAVE_rotrqi3)
@@ -1737,8 +1746,8 @@ init_optabs ()
   if (HAVE_rotrdi3)
     rotr_optab->handlers[(int) DImode].insn_code = CODE_FOR_rotrdi3;
 #endif
-  rotr_optab->handlers[(int) SImode].lib_call = "_rotrsi3";
-  rotr_optab->handlers[(int) DImode].lib_call = "_rotrdi3";
+  rotr_optab->handlers[(int) SImode].lib_call = "__rotrsi3";
+  rotr_optab->handlers[(int) DImode].lib_call = "__rotrdi3";
 
 #ifdef HAVE_negqi2
   if (HAVE_negqi2)
@@ -1764,10 +1773,10 @@ init_optabs ()
   if (HAVE_negdf2)
     neg_optab->handlers[(int) DFmode].insn_code = CODE_FOR_negdf2;
 #endif
-  neg_optab->handlers[(int) SImode].lib_call = "_negsi2"; 
-  neg_optab->handlers[(int) DImode].lib_call = "_negdi2";
-  neg_optab->handlers[(int) SFmode].lib_call = "_negsf2";
-  neg_optab->handlers[(int) DFmode].lib_call = "_negdf2";
+  neg_optab->handlers[(int) SImode].lib_call = "__negsi2"; 
+  neg_optab->handlers[(int) DImode].lib_call = "__negdi2";
+  neg_optab->handlers[(int) SFmode].lib_call = "__negsf2";
+  neg_optab->handlers[(int) DFmode].lib_call = "__negdf2";
 
 #ifdef HAVE_absqi2
   if (HAVE_absqi2)
@@ -1812,8 +1821,8 @@ init_optabs ()
   if (HAVE_one_cmpldi2)
     one_cmpl_optab->handlers[(int) DImode].insn_code = CODE_FOR_one_cmpldi2;
 #endif
-  one_cmpl_optab->handlers[(int) SImode].lib_call = "_one_cmplsi2"; 
-  one_cmpl_optab->handlers[(int) DImode].lib_call = "_one_cmpldi2";
+  one_cmpl_optab->handlers[(int) SImode].lib_call = "__one_cmplsi2"; 
+  one_cmpl_optab->handlers[(int) DImode].lib_call = "__one_cmpldi2";
 
 #ifdef HAVE_ffsqi2
   if (HAVE_ffsqi2)
@@ -1923,8 +1932,91 @@ init_optabs ()
   if (HAVE_tstdf)
     tst_optab->handlers[(int) DFmode].insn_code = CODE_FOR_tstdf;
 #endif
-  cmp_optab->handlers[(int) SImode].lib_call = "_cmpsi2"; 
-  cmp_optab->handlers[(int) DImode].lib_call = "_cmpdi2";
-  cmp_optab->handlers[(int) SFmode].lib_call = "_cmpsf2";
-  cmp_optab->handlers[(int) DFmode].lib_call = "_cmpdf2";
+  /* Comparison libcalls for integers MUST come in pairs, signed/unsigned.  */
+  cmp_optab->handlers[(int) DImode].lib_call = "__cmpdi2";
+  ucmp_optab->handlers[(int) DImode].lib_call = "__ucmpdi2";
+  cmp_optab->handlers[(int) SFmode].lib_call = "__cmpsf2";
+  cmp_optab->handlers[(int) DFmode].lib_call = "__cmpdf2";
+
+#if HAVE_beq
+  if (HAVE_beq)
+    bcc_gen_fctn[(int) EQ] = gen_beq;
+#endif
+#if HAVE_bne
+  if (HAVE_bne)
+    bcc_gen_fctn[(int) NE] = gen_bne;
+#endif
+#if HAVE_bgt
+  if (HAVE_bgt)
+    bcc_gen_fctn[(int) GT] = gen_bgt;
+#endif
+#if HAVE_bge
+  if (HAVE_bge)
+    bcc_gen_fctn[(int) GE] = gen_bge;
+#endif
+#if HAVE_bgtu
+  if (HAVE_bgtu)
+    bcc_gen_fctn[(int) GTU] = gen_bgtu;
+#endif
+#if HAVE_bgeu
+  if (HAVE_bgeu)
+    bcc_gen_fctn[(int) GEU] = gen_bgeu;
+#endif
+#if HAVE_blt
+  if (HAVE_blt)
+    bcc_gen_fctn[(int) LT] = gen_blt;
+#endif
+#if HAVE_ble
+  if (HAVE_ble)
+    bcc_gen_fctn[(int) LE] = gen_ble;
+#endif
+#if HAVE_bltu
+  if (HAVE_bltu)
+    bcc_gen_fctn[(int) LTU] = gen_bltu;
+#endif
+#if HAVE_bleu
+  if (HAVE_bleu)
+    bcc_gen_fctn[(int) LEU] = gen_bleu;
+#endif
+
+#if HAVE_seq
+  if (HAVE_seq)
+    setcc_gen_fctn[(int) EQ] = gen_seq;
+#endif
+#if HAVE_sne
+  if (HAVE_sne)
+    setcc_gen_fctn[(int) NE] = gen_sne;
+#endif
+#if HAVE_sgt
+  if (HAVE_sgt)
+    setcc_gen_fctn[(int) GT] = gen_sgt;
+#endif
+#if HAVE_sge
+  if (HAVE_sge)
+    setcc_gen_fctn[(int) GE] = gen_sge;
+#endif
+#if HAVE_sgtu
+  if (HAVE_sgtu)
+    setcc_gen_fctn[(int) GTU] = gen_sgtu;
+#endif
+#if HAVE_sgeu
+  if (HAVE_sgeu)
+    setcc_gen_fctn[(int) GEU] = gen_sgeu;
+#endif
+#if HAVE_slt
+  if (HAVE_slt)
+    setcc_gen_fctn[(int) LT] = gen_slt;
+#endif
+#if HAVE_sle
+  if (HAVE_sle)
+    setcc_gen_fctn[(int) LE] = gen_sle;
+#endif
+#if HAVE_sltu
+  if (HAVE_sltu)
+    setcc_gen_fctn[(int) LTU] = gen_sltu;
+#endif
+#if HAVE_sleu
+  if (HAVE_sleu)
+    setcc_gen_fctn[(int) LEU] = gen_sleu;
+#endif
 }

@@ -337,7 +337,7 @@ regclass (f, nregs)
 	    && GET_CODE (PATTERN (insn)) != ADDR_DIFF_VEC)
 	|| GET_CODE (insn) == CALL_INSN)
       {
-	if (GET_CODE (insn) == INSN && asm_noperands (PATTERN (insn)) > 0)
+	if (GET_CODE (insn) == INSN && asm_noperands (PATTERN (insn)) >= 0)
 	  {
 	    int noperands = asm_noperands (PATTERN (insn));
 	    /* We don't use alloca because alloca would not free

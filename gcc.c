@@ -65,9 +65,13 @@ or with constant text in a single argument.
 	be linked.
  %p	substitutes the standard macro predefinitions for the
 	current target machine.  Use this when running cpp.
+ %P	like %p, but puts `__' before and after the name of each macro.
+	This is for ANSI C.
  %s     current argument is the name of a library or startup file of some sort.
         Search for that file in a standard list of directories
 	and substitute the full pathname found.
+ %eSTR  Print STR as an error message.  STR is terminated by a newline.
+        Use this when inconsistent options are detected.
  %a     process ASM_SPEC as a spec.
         This allows config.h to specify part of the spec for running as.
  %l     process LINK_SPEC as a spec.
@@ -206,25 +210,27 @@ struct compiler compilers[] =
 {
   {".c",
    "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
-        -undef -D__GNU__ -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p}\
+        -undef -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
     %{!M*:%{!E:cc1 %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
+		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
                       %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
   {".cc",
-   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
-        -undef -D__GNU__ -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p}\
+   "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
+        -undef -D__GNUC__ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
-    %{!M*:%{!E:c++ %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
-		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+    %{!M*:%{!E:cc1plus %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
+		   %{g} %{O} %{W*} %{w} %{pedantic} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
+		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
                       %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
@@ -366,7 +372,11 @@ char *user_exec_prefix = 0;
 char *standard_exec_prefix = STANDARD_EXEC_PREFIX;
 char *standard_exec_prefix_1 = "/usr/lib/gcc-";
 
-char *standard_startfile_prefix = "/lib/";
+#ifndef STANDARD_STARTFILE_PREFIX
+#define STANDARD_STARTFILE_PREFIX "/lib/"
+#endif /* !defined STANDARD_STARTFILE_PREFIX */
+
+char *standard_startfile_prefix = STANDARD_STARTFILE_PREFIX;
 char *standard_startfile_prefix_1 = "/usr/lib/";
 
 /* Clear out the vector of arguments (after a command is executed).  */
@@ -755,18 +765,27 @@ do_spec_1 (spec, inswitch)
 	  case 0:
 	    fatal ("Invalid specification!  Bug in cc.");
 
-	  case 'i':
-	    obstack_grow (&obstack, input_filename, input_filename_length);
-	    arg_going = 1;
-	    break;
-
 	  case 'b':
 	    obstack_grow (&obstack, input_basename, basename_length);
 	    arg_going = 1;
 	    break;
 
-	  case 'p':
-	    do_spec_1 (CPP_PREDEFINES, 0);
+	  case 'd':
+	    delete_this_arg = 2;
+	    break;
+
+	  case 'e':
+	    /* {...:%efoo} means report an error with `foo' as error message
+	       and don't execute any more commands for this file.  */
+	    {
+	      char *q = p;
+	      char *buf;
+	      while (*p != 0 && *p != '\n') p++;
+	      buf = (char *) alloca (p - q + 1);
+	      strncpy (buf, q, p - q);
+	      error ("%s", buf);
+	      return -1;
+	    }
 	    break;
 
 	  case 'g':
@@ -775,16 +794,9 @@ do_spec_1 (spec, inswitch)
 	    arg_going = 1;
 	    break;
 
-	  case 'd':
-	    delete_this_arg = 2;
-	    break;
-
-	  case 'w':
-	    this_is_output_file = 1;
-	    break;
-
-	  case 's':
-	    this_is_library_file = 1;
+	  case 'i':
+	    obstack_grow (&obstack, input_filename, input_filename_length);
+	    arg_going = 1;
 	    break;
 
 	  case 'o':
@@ -793,6 +805,30 @@ do_spec_1 (spec, inswitch)
 	      for (f = 0; f < n_infiles; f++)
 		store_arg (outfiles[f], 0);
 	    }
+	    break;
+
+	  case 's':
+	    this_is_library_file = 1;
+	    break;
+
+	  case 'w':
+	    this_is_output_file = 1;
+	    break;
+
+	  case '{':
+	    p = handle_braces (p);
+	    if (p == 0)
+	      return -1;
+	    break;
+
+	  case '%':
+	    obstack_1grow (&obstack, '%');
+	    break;
+
+/*** The rest just process a certain constant string as a spec.  */
+
+	  case '1':
+	    do_spec_1 (CC1_SPEC, 0);
 	    break;
 
 	  case 'a':
@@ -807,10 +843,6 @@ do_spec_1 (spec, inswitch)
 	    do_spec_1 (CPP_SPEC, 0);
 	    break;
 
-	  case '1':
-	    do_spec_1 (CC1_SPEC, 0);
-	    break;
-
 	  case 'l':
 	    do_spec_1 (LINK_SPEC, 0);
 	    break;
@@ -819,18 +851,48 @@ do_spec_1 (spec, inswitch)
 	    do_spec_1 (LIB_SPEC, 0);
 	    break;
 
+	  case 'p':
+	    do_spec_1 (CPP_PREDEFINES, 0);
+	    break;
+
+	  case 'P':
+	    {
+	      char *x = (char *) alloca (strlen (CPP_PREDEFINES) * 2 + 1);
+	      char *buf = x;
+	      char *y = CPP_PREDEFINES;
+
+	      /* Copy all of CPP_PREDEFINES into BUF,
+		 but put __ after every -D and at the end of each arg,  */
+	      while (1)
+		{
+		  if (! strncmp (y, "-D", 2))
+		    {
+		      *x++ = '-';
+		      *x++ = 'D';
+		      *x++ = '_';
+		      *x++ = '_';
+		      y += 2;
+		    }
+		  else if (*y == ' ' || *y == 0)
+		    {
+		      *x++ = '_';
+		      *x++ = '_';
+		      if (*y == 0)
+			break;
+		      else
+			*x++ = *y++;
+		    }
+		  else
+		    *x++ = *y++;
+		}
+	      *x = 0;
+
+	      do_spec_1 (buf, 0);
+	    }
+	    break;
+
 	  case 'S':
 	    do_spec_1 (STARTFILE_SPEC, 0);
-	    break;
-
-	  case '{':
-	    p = handle_braces (p);
-	    if (p == 0)
-	      return -1;
-	    break;
-
-	  case '%':
-	    obstack_1grow (&obstack, '%');
 	    break;
 
 	  default:

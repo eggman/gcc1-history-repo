@@ -482,6 +482,9 @@ final (first, file, write_symbols, optimize, prescan)
 	  break;
 
 	case BARRIER:
+#ifdef ASM_OUTPUT_ALIGN_CODE
+	  ASM_OUTPUT_ALIGN_CODE (file);
+#endif
 	  break;
 
 	case CODE_LABEL:
@@ -543,7 +546,7 @@ final (first, file, write_symbols, optimize, prescan)
 	      }
 
 	    /* Detect `asm' construct with operands.  */
-	    if (asm_noperands (body) > 0)
+	    if (asm_noperands (body) >= 0)
 	      {
 		int noperands = asm_noperands (body);
 		rtx *ops;
@@ -556,7 +559,8 @@ final (first, file, write_symbols, optimize, prescan)
 
 		/* alloca won't do here, since only return from `final'
 		   would free it.  */
-		ops = (rtx *) malloc (noperands * sizeof (rtx));
+		if (noperands > 0)
+		  ops = (rtx *) xmalloc (noperands * sizeof (rtx));
 
 		if (! app_on)
 		  {
@@ -572,7 +576,8 @@ final (first, file, write_symbols, optimize, prescan)
 		/* Output the insn using them.  */
 		output_asm_insn (string, ops);
 		this_is_asm_operands = 0;
-		free (ops);
+		if (noperands > 0)
+		  free (ops);
 		break;
 	      }
 
@@ -738,8 +743,10 @@ final (first, file, write_symbols, optimize, prescan)
 	    insn_code_number = recog_memoized (insn);
 	    insn_extract (insn);
 	    for (i = 0; i < insn_n_operands[insn_code_number]; i++)
-	      if (GET_CODE (recog_operand[i]) == SUBREG)
-		recog_operand[i] = alter_subreg (recog_operand[i]);
+	      {
+		if (GET_CODE (recog_operand[i]) == SUBREG)
+		  recog_operand[i] = alter_subreg (recog_operand[i]);
+	      }
 
 #ifdef REGISTER_CONSTRAINTS
 	    if (! constrain_operands (insn_code_number))
@@ -758,10 +765,8 @@ final (first, file, write_symbols, optimize, prescan)
 
 	    /* Update `cc_status' for this instruction.
 	       The instruction's output routine may change it further.
-	       This should be a no-op for jump instructions
-	       because their output routines may need to examine `cc_status',
-	       below.  That's ok since jump insns don't normally alter
-	       the condition codes.  */
+	       If the output routine for a jump insn needs to depend
+	       on the cc status, it should look at cc_prev_status.  */
 
 	    NOTICE_UPDATE_CC (body, insn);
 
@@ -1095,10 +1100,7 @@ output_operand_lossage (str)
      char *str;
 {
   if (this_is_asm_operands)
-    {
-      error_for_asm (this_is_asm_operands, "invalid `asm' above: %s", str);
-      fprintf (asm_out_file, "!!error here!!");
-    }
+    error_for_asm (this_is_asm_operands, "invalid `asm': %s", str);
   else
     abort ();
 }
@@ -1336,13 +1338,15 @@ output_addr_const (file, x)
       if (GET_CODE (XEXP (x, 0)) == CONST_INT)
 	{
 	  output_addr_const (file, XEXP (x, 1));
-	  fprintf (file, "+");
+	  if (INTVAL (XEXP (x, 0)) >= 0)
+	    fprintf (file, "+");
 	  output_addr_const (file, XEXP (x, 0));
 	}
       else
 	{
 	  output_addr_const (file, XEXP (x, 0));
-	  fprintf (file, "+");
+	  if (INTVAL (XEXP (x, 1)) >= 0)
+	    fprintf (file, "+");
 	  output_addr_const (file, XEXP (x, 1));
 	}
       break;

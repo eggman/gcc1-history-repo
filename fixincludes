@@ -26,10 +26,14 @@ for file in $files; do
       ex ${LIB}/$file <<EOF
       g/[ 	]_IO[A-Z]*(/s/(\(.\),/('\1',/
       g/#define._IO/s/'x'/x/g
-      g/CTRL[ 	]*(/s/\(.\))/'\1')/
+      g/[^A-Z]CTRL[ 	]*(/s/\(.\))/'\1')/
       g/#define.CTRL/s/'c'/c/g
       wq
 EOF
+      if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+         echo Deleting ${LIB}/$file\; no fixes were needed.
+         rm ${LIB}/$file
+      fi
     fi
   fi
 done

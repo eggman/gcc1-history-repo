@@ -237,8 +237,16 @@ lang_decode_option (p)
     flag_signed_char = 1;
   else if (!strcmp (p, "-funsigned-char"))
     flag_signed_char = 0;
+  else if (!strcmp (p, "-fno-signed-char"))
+    flag_signed_char = 0;
+  else if (!strcmp (p, "-fno-unsigned-char"))
+    flag_signed_char = 1;
   else if (!strcmp (p, "-fcond-mismatch"))
     flag_cond_mismatch = 1;
+  else if (!strcmp (p, "-fno-cond-mismatch"))
+    flag_cond_mismatch = 0;
+  else if (!strcmp (p, "-fasm"))
+    flag_no_asm = 0;
   else if (!strcmp (p, "-fno-asm"))
     flag_no_asm = 1;
   else if (!strcmp (p, "-traditional"))
@@ -621,7 +629,21 @@ duplicate_decls (new, old)
       else if (!types_match)
 	{
 	  error_with_decl (new, "conflicting types for `%s'");
-	  error_with_decl (old, "previous declaration of `%s'");
+	  if (TREE_CODE (old) == FUNCTION_DECL
+	      && comptypes (TREE_TYPE (TREE_TYPE (old)),
+			    TREE_TYPE (TREE_TYPE (new)))
+	      && (TYPE_ARG_TYPES (TREE_TYPE (old)) == 0
+		  || TYPE_ARG_TYPES (TREE_TYPE (new)) == 0)
+	      && DECL_INITIAL (old) == 0 && DECL_INITIAL (new) == 0)
+	    {
+	      /* It's a parm type mismatch
+		 between a prototype and a non-prototype *declaration*.
+		 This is always due to an argument type 
+		 that doesn't self-promote.  */
+	      error ("an argument type that has a default promotion");
+	      error ("can't match an empty parameter list declaration");
+	    }
+	  error_with_decl (old, "here is the previous declaration of `%s'");
 	}
       else
 	{
@@ -629,7 +651,7 @@ duplicate_decls (new, old)
 	  if (errmsg)
 	    {
 	      error_with_decl (new, errmsg);
-	      error_with_decl (old, "previous declaration of `%s'");
+	      error_with_decl (old, "here is the previous declaration of `%s'");
 	    }
 	}
     }
@@ -654,7 +676,7 @@ duplicate_decls (new, old)
 	      if (TREE_CODE (new) != FUNCTION_DECL
 		  && TREE_CODE (new) != TYPE_DECL
 		  && TREE_CODE (new) != CONST_DECL)
-		layout_decl (new);
+		layout_decl (new, 0);
 	    }
 	  else
 	    {
@@ -700,6 +722,20 @@ duplicate_decls (new, old)
 
       /* Don't lose track of having output OLD as GDB symbol.  */
       DECL_BLOCK_SYMTAB_ADDRESS (new) = DECL_BLOCK_SYMTAB_ADDRESS (old);
+
+      /* If fn was already defined, don't lose its DECL_RESULT.  */
+      if (TREE_CODE (new) == FUNCTION_DECL
+          && DECL_RESULT (new) == 0)
+	DECL_RESULT (new) = DECL_RESULT (old);
+
+      /* If fn was already defined, don't lose its DECL_SAVED_INSNS.  */
+      if (TREE_CODE (new) == FUNCTION_DECL
+          && DECL_SAVED_INSNS (new) == 0)
+	{
+	  DECL_SAVED_INSNS (new) = DECL_SAVED_INSNS (old);
+	  DECL_RESULT_TYPE (new) = DECL_RESULT_TYPE (old);
+	  DECL_ARGUMENTS (new) = DECL_ARGUMENTS (old);
+	}
 
       bcopy ((char *) new + sizeof (struct tree_common),
 	     (char *) old + sizeof (struct tree_common),
@@ -751,8 +787,9 @@ pushdecl (x)
       if (t != 0 && duplicate_decls (x, t))
 	{
 	  /* If this decl is `static' and an `extern' was seen previously,
-	     that is erroneous.  */
-	  if (TREE_PUBLIC (name)
+	     that is erroneous.  But don't complain if -traditional,
+	     since traditional compilers don't complain.  */
+	  if (!flag_traditional && TREE_PUBLIC (name)
 	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x))
 	    {
 	      if (IDENTIFIER_IMPLICIT_DECL (name))
@@ -773,6 +810,22 @@ pushdecl (x)
       if (TREE_CODE (x) == TYPE_DECL)
 	if (TYPE_NAME (TREE_TYPE (x)) == 0)
 	  TYPE_NAME (TREE_TYPE (x)) = x;
+
+      /* Multiple external decls of the same identifier ought to match.  */
+
+      if (TREE_EXTERNAL (x) && IDENTIFIER_GLOBAL_VALUE (name) != 0
+	  && (TREE_EXTERNAL (IDENTIFIER_GLOBAL_VALUE (name))
+	      || TREE_PUBLIC (IDENTIFIER_GLOBAL_VALUE (name))))
+	{
+	  if (! comptypes (TREE_TYPE (x),
+			   TREE_TYPE (IDENTIFIER_GLOBAL_VALUE (name))))
+	    {
+	      warning_with_decl (x,
+				 "type mismatch with previous external decl");
+	      warning_with_decl (IDENTIFIER_GLOBAL_VALUE (name),
+				 "previous external decl of `%s'");
+	    }
+	}
 
       /* In PCC-compatibility mode, extern decls of vars with no current decl
 	 take effect at top level no matter where they are.  */
@@ -1366,8 +1419,11 @@ init_decl_processing ()
   builtin_function ("__builtin_fabs", double_ftype_double, BUILT_IN_FABS);
   builtin_function ("__builtin_labs", long_ftype_long, BUILT_IN_LABS);
   builtin_function ("__builtin_ffs", int_ftype_int, BUILT_IN_FFS);
-/*  builtin_function ("__builtin_div", default_ftype, BUILT_IN_DIV);
-  builtin_function ("__builtin_ldiv", default_ftype, BUILT_IN_LDIV); */
+#if 0
+  /* Support for these has not been written in either expand_builtin
+     or build_function_call.  */
+  builtin_function ("__builtin_div", default_ftype, BUILT_IN_DIV);
+  builtin_function ("__builtin_ldiv", default_ftype, BUILT_IN_LDIV);
   builtin_function ("__builtin_ffloor", double_ftype_double, BUILT_IN_FFLOOR);
   builtin_function ("__builtin_fceil", double_ftype_double, BUILT_IN_FCEIL);
   builtin_function ("__builtin_fmod", double_ftype_double_double, BUILT_IN_FMOD);
@@ -1378,6 +1434,7 @@ init_decl_processing ()
   builtin_function ("__builtin_fsqrt", double_ftype_double, BUILT_IN_FSQRT);
   builtin_function ("__builtin_getexp", double_ftype_double, BUILT_IN_GETEXP);
   builtin_function ("__builtin_getman", double_ftype_double, BUILT_IN_GETMAN);
+#endif
 }
 
 /* Make a definition for a builtin function named NAME and whose data type
@@ -1417,8 +1474,9 @@ shadow_tag (declspecs)
     {
       register tree value = TREE_VALUE (link);
       register enum tree_code code = TREE_CODE (value);
-      if ((code == RECORD_TYPE || code == UNION_TYPE || code == ENUMERAL_TYPE)
-	  && TYPE_SIZE (value) != 0)
+      if (code == RECORD_TYPE || code == UNION_TYPE || code == ENUMERAL_TYPE)
+	/* Used to test also that TYPE_SIZE (value) != 0.
+	   That caused warning for `struct foo;' at top level in the file.  */
 	{
 	  register tree name = lookup_tag_reverse (value);
 	  register tree t = lookup_tag (code, name, current_binding_level, 1);
@@ -2445,17 +2503,52 @@ grokparms (parms_info, funcdef_flag)
     }
   else
     {
-      tree t;
+      tree parm;
+      tree typelt;
+      /* We no longer test FUNCDEF_FLAG.
+	 If the arg types are incomplete in a declaration,
+	 they must include undefined tags.
+	 These tags can never be defined in the scope of the declaration,
+	 so the types can never be completed,
+	 and no call can be compiled successfully.  */
+#if 0
       /* In a fcn definition, arg types must be complete.  */
       if (funcdef_flag)
-	for (t = last_function_parms; t; t = TREE_CHAIN (t))
+#endif
+	for (parm = last_function_parms, typelt = first_parm;
+	     parm;
+	     parm = TREE_CHAIN (parm), typelt = TREE_CHAIN (typelt))
 	  {
-	    tree type = TREE_TYPE (t);
+	    /* Barf if the parameter itself has an incomplete type.  */
+	    tree type = TREE_VALUE (typelt);
 	    if (TYPE_SIZE (type) == 0)
 	      {
-		error ("parameter `%s' has incomplete type",
-			 IDENTIFIER_POINTER (DECL_NAME (t)));
-		TREE_TYPE (t) = error_mark_node;
+		TREE_VALUE (typelt) = error_mark_node;
+		if (parm != 0 && DECL_NAME (parm) != 0)
+		  error ("parameter `%s' has incomplete type",
+			 IDENTIFIER_POINTER (DECL_NAME (parm)));
+		else
+		  error ("parameter has incomplete type");
+		if (parm != 0)
+		  TREE_TYPE (parm) = error_mark_node;
+	      }
+	    else
+	      {
+		/* Now warn if is a pointer to an incomplete type.  */
+		while (TREE_CODE (type) == POINTER_TYPE
+		       || TREE_CODE (type) == REFERENCE_TYPE)
+		  type = TREE_TYPE (type);
+		if (TYPE_SIZE (type) == 0)
+		  {
+		    TREE_VALUE (typelt) = error_mark_node;
+		    if (parm != 0 && DECL_NAME (parm) != 0)
+		      warning ("parameter `%s' points to incomplete type",
+			       IDENTIFIER_POINTER (DECL_NAME (parm)));
+		    else
+		      warning ("parameter points to incomplete type");
+		    if (parm != 0)
+		      TREE_TYPE (parm) = error_mark_node;
+		  }
 	      }
 	  }
 
@@ -2804,7 +2897,7 @@ finish_struct (t, fieldlist)
 	    && TREE_CODE (decl) != TYPE_DECL)
 	  {
 	    int toplevel = global_binding_level == current_binding_level;
-	    layout_decl (decl);
+	    layout_decl (decl, 0);
 	    rest_of_decl_compilation (decl, 0, toplevel, 0);
 	    if (! toplevel)
 	      expand_decl (decl, NULL_TREE);
@@ -3046,22 +3139,18 @@ start_function (declspecs, declarator)
 
   make_function_rtl (current_function_decl);
 
-  /* Allocate further tree nodes temporarily during compilation
-     of this function only.  */
-  temporary_allocation ();
-
   restype = TREE_TYPE (TREE_TYPE (current_function_decl));
   /* Promote the value to int before returning it.  */
   if (TREE_CODE (restype) == INTEGER_TYPE
       && TYPE_PRECISION (restype) < TYPE_PRECISION (integer_type_node))
     restype = integer_type_node;
+  DECL_RESULT_TYPE (current_function_decl) = restype;
   DECL_RESULT (current_function_decl)
     = build_decl (RESULT_DECL, value_identifier, restype);
 
-  /* Make the FUNCTION_DECL's contents appear in a local tree dump
-     and make the FUNCTION_DECL itself not appear in the permanent dump.  */
-
-  TREE_PERMANENT (current_function_decl) = 0;
+  /* Allocate further tree nodes temporarily during compilation
+     of this function only.  */
+  temporary_allocation ();
 
   /* If this fcn was already referenced via a block-scope `extern' decl
      (or an implicit decl), propagate certain information about the usage.  */
@@ -3266,15 +3355,28 @@ store_parm_decls ()
 	      if (parm == 0 || type == 0
 		  || TREE_VALUE (type) == void_type_node)
 		{
-		  error ("argument decls of `%s' don't match prototype",
-			 IDENTIFIER_POINTER (DECL_NAME (fndecl)));
+		  error ("number of arguments doesn't match prototype");
 		  break;
 		}
 	      /* Type for passing arg must be consistent
 		 with that declared for the arg.  */
 	      if (! comptypes (DECL_ARG_TYPE (parm), TREE_VALUE (type)))
-		error ("argument `%s' doesn't match function prototype",
-		       IDENTIFIER_POINTER (DECL_NAME (parm)));
+		{
+		  error ("argument `%s' doesn't match function prototype",
+			 IDENTIFIER_POINTER (DECL_NAME (parm)));
+		  if (DECL_ARG_TYPE (parm) == integer_type_node
+		      && TREE_VALUE (type) == TREE_TYPE (parm))
+		    {
+		      error ("a formal parameter type that promotes to `int'");
+		      error ("can match only `int' in the prototype");
+		    }
+		  if (DECL_ARG_TYPE (parm) == double_type_node
+		      && TREE_VALUE (type) == TREE_TYPE (parm))
+		    {
+		      error ("a formal parameter type that promotes to `double'");
+		      error ("can match only `double' in the prototype");
+		    }
+		}
 	    }
 	}
     }
@@ -3350,7 +3452,6 @@ finish_function ()
 	 was an actual function definition.  */
       DECL_INITIAL (fndecl) = error_mark_node;
       DECL_ARGUMENTS (fndecl) = 0;
-      DECL_RESULT (fndecl) = 0;
     }
 
   /* Let the error reporting routines know that we're outside a function.  */

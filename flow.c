@@ -121,13 +121,12 @@ int n_basic_blocks;
 int max_regno;
 
 /* Indexed by n, gives number of basic block that  (REG n) is used in.
-   Or gives -2 if (REG n) is used in more than one basic block.
-   Or -1 if it has not yet been seen so no basic block is known.
+   If the value is REG_BLOCK_GLOBAL (-2),
+   it means (REG n) is used in more than one basic block.
+   REG_BLOCK_UNKNOWN (-1) means it hasn't been seen yet so we don't know.
    This information remains valid for the rest of the compilation
    of the current function; it is used to control register allocation.  */
 
-#define REG_BLOCK_UNKNOWN -1
-#define REG_BLOCK_GLOBAL -2
 short *reg_basic_block;
 
 /* Indexed by n, gives number of times (REG n) is used or set, each
@@ -253,6 +252,7 @@ static void propagate_block ();
 static void mark_set_regs ();
 static void mark_used_regs ();
 static int insn_dead_p ();
+static int libcall_dead_p ();
 static int try_pre_increment ();
 static int try_pre_increment_1 ();
 static rtx find_use_as_address ();
@@ -632,6 +632,9 @@ life_analysis (f, nregs)
 	    INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
 	}
       /* A SET that makes space on the stack cannot be dead.
+	 (Such SETs occur only for allocating variable-size data,
+	 so they will always have a PLUS or MINUS according to the
+	 direction of stack growth.)
 	 Even if this function never uses this stack pointer value,
 	 signal handlers do!  */
       else if (code1 == INSN && GET_CODE (PATTERN (insn)) == SET
@@ -982,12 +985,13 @@ propagate_block (old, first, last, final, significant, bnum)
 	      /* Don't delete something that refers to volatile storage!  */
 	      && ! INSN_VOLATILE (insn))
 	    {
+	      rtx oldpat = PATTERN (insn);
 	      PUT_CODE (insn, NOTE);
 	      NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
 	      NOTE_SOURCE_FILE (insn) = 0;
 	      /* If this insn is copying the return value from a library call,
 		 delete the entire library call.  */
-	      if (note)
+	      if (note && libcall_dead_p (oldpat, old))
 		{
 		  rtx first = XEXP (note, 0);
 		  rtx prev = insn;
@@ -1035,7 +1039,8 @@ propagate_block (old, first, last, final, significant, bnum)
 	     value of a library call and it's dead, don't scan the
 	     insns that perform the library call, so that the call's
 	     arguments are not marked live.  */
-	  if (note && insn_dead_p (PATTERN (insn), old, 1))
+	  if (note && insn_dead_p (PATTERN (insn), old, 1)
+	      && libcall_dead_p (PATTERN (insn), old))
 	    {
 	      /* Mark the dest reg as `significant'.  */
 	      mark_set_regs (old, dead, PATTERN (insn), 0, significant);
@@ -1048,7 +1053,10 @@ propagate_block (old, first, last, final, significant, bnum)
 		   && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
 		   && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx
 		   && GET_CODE (XEXP (SET_SRC (PATTERN (insn)), 1)) == CONST_INT)
-	    /* These insns, if not dead stores, have no effect on life.  */
+	    /* We have an insn to pop a constant amount off the stack.
+	       (Such insns use PLUS regardless of the direction of the stack,
+	       and any insn to adjust the stack by a constant is always a pop.)
+	       These insns, if not dead stores, have no effect on life.  */
 	    ;
 	  else
 	    {
@@ -1203,6 +1211,36 @@ insn_dead_p (x, needed, strict_low_ok)
      An insn consisting of just a CLOBBER or just a USE
      should not be deleted.  */
   return 0;
+}
+
+/* If X is the last insn in a libcall, and assuming X is dead,
+   return 1 if the entire library call is dead.
+   This is true if the source of X is a dead register
+   (as well as the destination, which we tested already).
+   If this insn doesn't just copy a register, then we don't
+   have an ordinary libcall.  In that case, cse could not have
+   managed to substitute the source for the dest later on,
+   so we can assume the libcall is dead.  */
+
+static int
+libcall_dead_p (x, needed)
+     rtx x;
+     regset needed;
+{
+  register RTX_CODE code = GET_CODE (x);
+
+  if (code == SET)
+    {
+      register rtx r = SET_SRC (x);
+      if (GET_CODE (r) == REG)
+	{
+	  register int regno = REGNO (r);
+	  register int offset = regno / REGSET_ELT_BITS;
+	  register int bit = 1 << (regno % REGSET_ELT_BITS);
+	  return (needed[offset] & bit) == 0;
+	}
+    }
+  return 1;
 }
 
 /* Return 1 if register REGNO was used before it was set.

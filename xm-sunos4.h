@@ -2,9 +2,9 @@
    This file is good for either a Sun 3 or a Sun 4 machine.  */
 
 #ifdef sparc 
-#include "config-sparc.h" 
+#include "xm-sparc.h" 
 #else 
-#include "config-m68k.h"
+#include "xm-m68k.h"
 #endif
 
 /* Provide required defaults for linker -e and -d switches.

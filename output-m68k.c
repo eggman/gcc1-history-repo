@@ -279,7 +279,7 @@ output_move_const_double (operands)
 {
   if (TARGET_FPA && FPA_REG_P(operands[0]))
     {
-      int code = standard_SunFPA_constant_p (operands[1]);
+      int code = standard_sun_fpa_constant_p (operands[1]);
 
       if (code != 0)
 	{
@@ -311,13 +311,13 @@ output_move_const_single (operands)
 {
   if (TARGET_FPA)
     {
-      int code = standard_SunFPA_constant_p (operands[1]);
+      int code = standard_sun_fpa_constant_p (operands[1]);
 
       if (code != 0)
 	{
 	  static char buf[40];
 
-	  sprintf (buf, "fpmove%%.s %%%d,%%0", code & 0x1ff);
+	  sprintf (buf, "fpmove%%.s %%%%%d,%%0", code & 0x1ff);
 	  return buf;
 	}
       return "fpmove%.s %1,%0";
@@ -399,7 +399,7 @@ standard_68881_constant_p (x)
 #define D_LOG10ofE (0.4342944819032518167)
 
 int
-standard_SunFPA_constant_p (x)
+standard_sun_fpa_constant_p (x)
      rtx x;
 {
   union {double d; int i[2];} u;

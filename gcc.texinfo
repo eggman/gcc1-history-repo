@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 18 November 1988
+@center last updated 21 December 1988
 @sp 1
-@center for version 1.31
+@center for version 1.32
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -58,7 +58,7 @@ distributed under the terms of a permission notice identical to this one.
 
 Permission is granted to copy and distribute translations of this manual
 into another language, under the above conditions for modified versions,
-except that the section entitled ``GNU CC General Public License'' and
+<except that the section entitled ``GNU CC General Public License'' and
 this permission notice may be included in translations approved by the
 Free Software Foundation instead of in the original English.
 @end titlepage
@@ -595,6 +595,9 @@ foo (a)
 Spurious warnings can occur because GNU CC does not realize that
 certain functions (including @code{abort} and @code{longjmp})
 will never return.
+
+@item
+An expression-statement contains no side effects.
 @end itemize
 
 In the future, other useful warnings may also be enabled by this
@@ -743,7 +746,11 @@ Output code for g-format floating point numbers instead of d-format.
 @end table
 
 @item -f@var{flag}
-Specify machine-independent flags.  These are the flags:
+Specify machine-independent flags.  Most flags have both positive and
+negative forms; the negative form of @samp{-ffoo} would be
+@samp{-fno-foo}.  In the table below, only one of the forms is
+listed---the one which is not the default.  You can figure out the
+other form by either removing @samp{no-} or adding it.
 
 @table @samp
 @item -ffloat-store
@@ -823,6 +830,10 @@ uniquize them.  This is for compatibility with old programs which
 assume they can write into string constants.  Writing into string
 constants is a very bad idea; ``constants'' should be constant.
 
+@item -fcond-mismatch
+Allow conditional expressions with mismatched types in the second and
+third arguments.  The value of such an expression is void.
+
 @item -fno-function-cse
 Do not put function addresses in registers; make each instruction
 that calls a constant function contain the function's address
@@ -835,9 +846,15 @@ optimizations performed when this option is not used.
 @item -fvolatile
 Consider all memory references through pointers to be volatile.
 
+@item -fshared-data
+Requests that the data and non-@code{const} variables of this
+compilation be shared data rather than private data.  The distinction
+makes sense only on certain operating systems, where shared data is
+shared between processes running the same program, while private data
+exists in one copy per process.
+
 @item -funsigned-char
-Let the type @code{char} be the unsigned, like @code{unsigned
-char}.
+Let the type @code{char} be the unsigned, like @code{unsigned char}.
 
 Each kind of machine has a default for what @code{char} should
 be.  It is either like @code{unsigned char} by default or like
@@ -848,8 +865,14 @@ The type @code{char} is always a distinct type from either
 @code{signed char} or @code{unsigned char}, even though its
 behavior is always just like one of those two.
 
+Note that this is equivalent to @samp{-fno-signed-char}, which is the
+negative form of @samp{-fsigned-char}.
+
 @item -fsigned-char
 Let the type @code{char} be signed, like @code{signed char}.
+
+Note that this is equivalent to @samp{-fno-unsigned-char}, which is
+the negative form of @samp{-funsigned-char}.
 
 @item -ffixed-@var{reg}
 Treat the register named @var{reg} as a fixed register; generated
@@ -861,6 +884,9 @@ accepted are machine-specific and are defined in the
 @code{REGISTER_NAMES} macro in the machine description macro
 file.
 
+This flag does not have a negative form, because it specifies a
+three-way choice.
+
 @item -fcall-used-@var{reg}
 Treat the register named @var{reg} as an allocatable register
 that is clobbered by function calls.  It may be allocated for
@@ -871,6 +897,9 @@ register @var{reg}.
 Use of this flag for a register that has a fixed pervasive role
 in the machine's execution model, such as the stack pointer or
 frame pointer, will produce disastrous results.
+
+This flag does not have a negative form, because it specifies a
+three-way choice.
 
 @item -fcall-saved-@var{reg}
 Treat the register named @var{reg} as an allocatable register
@@ -884,6 +913,9 @@ frame pointer, will produce disastrous results.
 
 A different sort of disaster will result from the use of this
 flag for a register in which function values may be returned.
+
+This flag does not have a negative form, because it specifies a
+three-way choice.
 @end table
 
 @item -d@var{letters}
@@ -1011,7 +1043,7 @@ Here is the procedure for installing GNU CC on a Unix system.
 @item
 Edit @file{Makefile}.  If you are using HPUX, or any form of system V,
 you must make a few changes described in comments at the beginning of
-the file.
+the file.  Genix requires changes also.
 
 @item
 On a Sequent system, go to the Berkeley universe.
@@ -1019,10 +1051,58 @@ On a Sequent system, go to the Berkeley universe.
 @item
 Choose configuration files.  The easy way to do this is to run the
 command file @file{config.gcc} with a single argument, which is the
-name of the machine as it appears in the @file{tm-@var{machine}.h}
-file name.
+name of the machine (and operating system, in some cases).
 
-Here we spell out what files you need to set up:
+Here is a list of the possible arguments:
+
+@table @samp
+@item vax
+Vaxes running BSD.
+@item vms
+Vaxes running VMS.
+@item vax-sysv
+Vaxes running system V.
+@item i386-sysv
+Intel 386 PCs running system V.
+@item sequent-386
+Sequent with Intel 386 processors.
+@item sun2
+Sun 2 running system version 2 or 3.
+@item sun3
+Sun 3 running system version 2 or 3.
+@item sun4
+Sun 4 running system version 2 or 3.
+@item sun2-os4
+Sun 2 running system version 4.
+@item sun3-os4
+Sun 3 running system version 4.
+@item sun4-os4
+Sun 4 running system version 4.
+@item sun386
+Sun 386 (``roadrunner'').
+@item hp9k320
+HP 9000 series 300 using HPUX assembler.
+@item kp9k320g
+HP 9000 series 300 using GNU assembler, linker and debugger.
+This requires the HP-adapt package which is or will soon be
+available in the same places as GNU CC.
+@item isi68
+ISI 68000 or 68020 system.
+@item news800
+Sony NEWS 68020 system.
+@item 3b1
+AT&T 3b1, a.k.a. 7300 PC.
+@item sequent-ns32k
+Sequent containing ns32000 processors.
+@item encore
+Encore ns32000 system.
+@item genix
+National Semiconductor ns32000 system.
+@item 88000
+Motorola 88000 processor.  This port is not finished.
+@end table
+
+Here we spell out what files need to be set up:
 
 @itemize @bullet
 @item
@@ -1048,7 +1128,7 @@ for Suns (model 2, 3 or 4) running @emph{operating system} version 4.
 for Sun roadrunner running any version of the operating system.
 @item xm-hp9k320.h
 for the HP 9000 series 300.
-@item xm-gnx.h
+@item xm-genix.h
 for the ns32000 running Genix
 @end table
 
@@ -1069,12 +1149,6 @@ directly.  Instead, use one of these files:
 for Sun 3 machines.
 @item tm-sun2.h
 for Sun 2 machines.
-@item tm-sun4os3.h
-for Sun 4 machines using operating system version 3.
-@item tm-sparc.h
-for Sun 4 machines using operating system version 4.
-@item tm-sun386i.h
-for Sun 386 machines.
 @item tm-3b1.h
 for AT&T 3b1 (aka 7300 Unix PC).
 @item tm-isi68.h
@@ -1107,7 +1181,7 @@ a Compaq, or @file{tm-sun386i.h} for a Sun 386 system.
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
 machine, or @file{tm-encore.h} for an Encore machine, or
-@file{tm-gnx.h} if you are using Genix version 3; otherwise, perhaps
+@file{tm-genix.h} if you are using Genix version 3; otherwise, perhaps
 @file{tm-ns32k.h} will work for you.
 
 Note that Genix has bugs in @code{alloca} and @code{malloc}; you must
@@ -1256,17 +1330,12 @@ by setting the Make variable @code{libdir} when you make GNU CC.
 @node VMS Install,, Installation, Installation
 @section Installing GNU CC on VMS
 
-The VMS version of GNU CC is distributed in an unusual tape format which
-consists of several tape files.  The first is a command file; the second is
-an executable program which reads Unix tar format; the third is another
-command file which uses this program to read the remainder of the tape.
+The VMS version of GNU CC is distributed in a backup saveset containing
+both source code and precompiled binaries.
 
-To load the tape, it suffices to mount it @samp{/foreign} and then do
-@samp{@@mta0:} to execute the command file at the beginning of the tape.
-
-The tape contains executables and object files as well as sources, so no
-compilation is necessary unless you change the sources.  (This is a good
-thing, since you probably don't have any other C compiler.)  If you must
+Sometimes the binaries will be from an older version that the sources,
+because we don't always have time to update them.  In this case, you
+should use the binaries you get to recompile the sources.  If you must
 recompile, here is how:
 
 @enumerate
@@ -1359,10 +1428,10 @@ int foo (x)
 @{@dots{}@}
 @end example
 
-This code really is erroneous, because the old-style non-prototype
-definition passes subword integers in their promoted types.  In other
-words, the argument is really an @code{int}, not a @code{short}.  The
-correct prototype is this:
+The error message is correct: this code really is erroneous, because the
+old-style non-prototype definition passes subword integers in their
+promoted types.  In other words, the argument is really an @code{int},
+not a @code{short}.  The correct prototype is this:
 
 @example
 int foo (int);
@@ -1420,7 +1489,7 @@ string its argument points to.
 Another consequence is that @code{sscanf} does not work on some
 systems when passed a string constant as its format control string.
 This is because @code{sscanf} incorrectly tries to write into the
-string constant.
+string constant.  Likewise @code{fscanf} and @code{scanf}.
 
 The best solution to these problems is to change the program to use
 @code{char}-array variables with initialization strings for these
@@ -2136,15 +2205,20 @@ asm ("fsinx %1,%0" : "=f" (result) : "f" (angle));
 Here @code{angle} is the C expression for the input operand while
 @code{result} is that of the output operand.  Each has @samp{"f"} as its
 operand constraint, saying that a floating-point register is required.  The
-constraints use the same language used in the machine description
-(@pxref{Constraints}).
+@samp{=} in @samp{=r} indicates that the operand is an output; all output
+operands' constraints must use @samp{=}.  The constraints use the same
+language used in the machine description (@pxref{Constraints}).
 
 Each operand is described by an operand-constraint string followed by the C
 expression in parentheses.  A colon separates the assembler template from
 the first output operand, and another separates the last output operand
 from the first input, if any.  Commas separate output operands and separate
-inputs.  The number of operands is limited to the maximum number of
+inputs.  The total number of operands is limited to the maximum number of
 operands in any instruction pattern in the machine description.
+
+If there are no output operands, and there are input operands, then there
+must be two consecutive colons surrounding the place where the output
+operands would go.
 
 Output operand expressions must be lvalues; the compiler can check this.
 The input operands need not be lvalues.  The compiler cannot check whether
@@ -2153,9 +2227,6 @@ executed.  It does not parse the assembler instruction template and does
 not know what it means, or whether it is valid assembler input.  The
 extended @code{asm} feature is most often used for machine instructions
 that the compiler itself does not know exist.
-
-If there are no output operands, and there are input operands, then you
-should write two colons in a row where the output operands would go.
 
 The output operands must be write-only; GNU CC will assume that the values
 in these operands before the instruction are dead and need not be
@@ -2201,15 +2272,31 @@ This assumption may be false if the assembler code actually consists of
 more than one instruction.  In such a case, use @samp{&} for each output
 operand that may not overlap an input.  @xref{Modifiers}.
 
-Some instructions clobber specific hard registers.  To describe this,
-write a third colon after the input operands, followed by the names of
-the clobbered hard registers (given as strings).  For example, on the vax,
+Some instructions clobber specific hard registers.  To describe this, write
+a third colon after the input operands, followed by the names of the
+clobbered hard registers (given as strings).  Here is a realistic example
+for the vax:
 
 @example
 asm volatile ("movc3 %0,%1,%2"
               : /* no outputs */
               : "g" (from), "g" (to), "g" (count)
               : "r0", "r1", "r2", "r3", "r4", "r5");
+@end example
+
+You can put multiple assembler instructions together in a single @code{asm}
+template, separated with semicolons.  The input operands are guaranteed not
+to use any of the clobbered registers, and neither will the output
+operands' addresses, so you can read and write the clobbered registers as
+many times as you like.  Here is an example of multiple instructions in a
+template; it assumes that the subroutine @code{_foo} accepts arguments in
+registers 9 and 10:
+
+@example
+asm ("movl %0,r9;movl %1,r10;call _foo"
+     : /* no outputs */
+     : "g" (from), "g" (to)
+     : "r9", "r10");
 @end example
 
 Usually the most convenient way to use these @code{asm} instructions is to
@@ -2235,14 +2322,15 @@ example, if the desired type were @code{int}, casting the argument to
 argument to an @code{int} variable named @code{__arg} would warn about
 using a pointer unless the caller explicitly casts it.
 
-GNU CC assumes for optimization purposes that these instructions have no
-side effects except to change the output operands.  This does not mean that
-instructions with a side effect cannot be used, but you must be careful,
-because the compiler may eliminate them if the output operands aren't used,
-or move them out of loops, or replace two with one if they constitute a
-common subexpression.  Also, if your instruction does have a side effect on
-a variable that otherwise appears not to change, the old value of the
-variable may be reused later if it happens to be found in a register.
+If an @code{asm} has output operands, GNU CC assumes for optimization
+purposes that the instruction has no side effects except to change the
+output operands.  This does not mean that instructions with a side effect
+cannot be used, but you must be careful, because the compiler may eliminate
+them if the output operands aren't used, or move them out of loops, or
+replace two with one if they constitute a common subexpression.  Also, if
+your instruction does have a side effect on a variable that otherwise
+appears not to change, the old value of the variable may be reused later if
+it happens to be found in a register.
 
 You can prevent an @code{asm} instruction from being deleted, moved or
 combined by writing the keyword @code{volatile} after the @code{asm}.  For
@@ -2252,6 +2340,9 @@ example:
 #define set_priority(x)  \
 asm volatile ("set_priority %0": /* no outputs */ : "g" (x))
 @end example
+
+If there are no output operands, the instruction will not be deleted or
+moved.
 
 It is a natural idea to look for a way to give access to the condition
 code left by the assembler instruction.  However, when we attempted to
@@ -3071,7 +3162,7 @@ but when they appear in C code they are written in upper case.  In this
 manual, they are shown as follows: @samp{const_int}.
 
 In a few contexts a null pointer is valid where an expression is normally
-wanted.  The written form of this is @samp{(nil)}.
+wanted.  The written form of this is @code{(nil)}.
 
 @node Accessors, Flags, RTL Objects, RTL
 @section Access to Operands
@@ -3364,6 +3455,39 @@ available machine modes machine-dependent and eliminate all assumptions
 about specific machine modes or their uses from the machine-independent
 code of the compiler.
 
+To help begin this process, the machine modes are divided into mode
+classes.  These are represented by the enumeration type @code{enum
+mode_class} defined in @file{rtl.h}.  The possible mode classes are:
+
+@table @code
+@item MODE_INT
+Integer modes.  By default these are @code{QImode}, @code{HImode},
+@code{SImode}, @code{DImode}, @code{TImode}, and also @code{BImode}.
+
+@item MODE_FLOAT
+Floating-point modes.  By default these are @code{QFmode},
+@code{HFmode}, @code{SFmode}, @code{DFmode} and @code{TFmode}, but the
+MC68881 also defines @code{XFmode} to be an 80-bit extended-precision
+floating-point mode.
+
+@item MODE_COMPLEX_INT
+Complex integer modes.  By default these are @code{CQImode},
+@code{CHImode}, @code{CSImode}, @code{CDImode} and @code{CTImode}.
+
+@item MODE_COMPLEX_FLOAT
+Complex floating-point modes.  By default these are @code{CQFmode},
+@code{CHFmode}, @code{CSFmode}, @code{CDFmode} and @code{CTFmode},
+
+@item MODE_FUNCTION
+Algol or Pascal function variables including a static chain.
+(These are not currently implemented).
+
+@item MODE_RANDOM
+This is a catchall mode class for modes which don't fit into the above
+classes.  Currently @code{VOIDmode}, @code{BLKmode} and @code{EPmode}
+are in @code{MODE_RANDOM}.
+@end table
+
 Here are some C macros that relate to machine modes:
 
 @table @code
@@ -3372,6 +3496,17 @@ Returns the machine mode of the RTX @var{x}.
 
 @item PUT_MODE (@var{x}, @var{newmode})
 Alters the machine mode of the RTX @var{x} to be @var{newmode}.
+
+@item NUM_MACHINE_MODES
+Stands for the number of machine modes available on the target
+machine.  This is one greater than the largest numeric value of any
+machine mode.
+
+@item GET_MODE_NAME (@var{m})
+Returns the name of mode @var{m} as a string.
+
+@item GET_MODE_CLASS (@var{m})
+Returns the mode class of mode @var{m}.
 
 @item GET_MODE_SIZE (@var{m})
 Returns the size in bytes of a datum of mode @var{m}.
@@ -3990,18 +4125,27 @@ default to clobber these registers, so there is no need to use
 @samp{clobber} expressions to indicate this fact.  Also, each function
 call is assumed to have the potential to alter any memory location.
 
+When a @samp{clobber} expression for a register appears inside a
+@samp{parallel} with other side effects, GNU CC guarantees that the
+register is unoccupied both before and after that insn.  Therefore, it
+is safe for the assembler code produced by the insn to use the
+register as a temporary.  You can clobber either a specific hard
+register or a pseudo register; in the latter case, GNU CC will
+allocate a hard register that is available there for use as a
+temporary.
+
 @item (use @var{x})
 Represents the use of the value of @var{x}.  It indicates that the
 value in @var{x} at this point in the program is needed, even though
 it may not be apparent why this is so.  Therefore, the compiler will
-not attempt to delete instructions whose only effect is to store a
-value in @var{x}.  @var{x} must be a @samp{reg} expression.
+not attempt to delete previous instructions whose only effect is to
+store a value in @var{x}.  @var{x} must be a @samp{reg} expression.
 
 @item (parallel [@var{x0} @var{x1} @dots{}])
 Represents several side effects performed in parallel.  The square
 brackets stand for a vector; the operand of @samp{parallel} is a
 vector of expressions.  @var{x0}, @var{x1} and so on are individual
-side effects---expressions of code @samp{set}, @samp{call},
+side effect expressions---expressions of code @samp{set}, @samp{call},
 @samp{return}, @samp{clobber} or @samp{use}.@refill
 
 ``In parallel'' means that first all the values used in the individual
@@ -4017,7 +4161,25 @@ performed.  For example,
 says unambiguously that the values of hard register 1 and the memory
 location addressed by it are interchanged.  In both places where
 @code{(reg:SI 1)} appears as a memory address it refers to the value
-in register 1 @emph{before} the execution of the instruction.
+in register 1 @emph{before} the execution of the insn.
+
+It follows that it is @emph{incorrect} to use @samp{parallel} and
+expect the result of one @samp{set} to be available for the next one.
+For example, people sometimes attempt to represent a jump-if-zero
+instruction this way:
+
+@example
+(parallel [(set (cc0) (reg:SI 34))
+	   (set (pc) (if_then_else
+			(eq (cc0) (const_int 0))
+			(label_ref @dots{})
+			(pc)))])
+@end example
+
+@noindent
+But this is incorrect, because it says that the jump condition depends
+on the condition code value @emph{before} this instruction, not on the
+new value that is set by this instruction.
 
 Peephole optimization, which takes place in the last jump-optimization
 pass, can produce insns whose patterns consist of a @samp{parallel}
@@ -4025,8 +4187,8 @@ whose elements are the operands needed to output the resulting
 assembler code--often @samp{reg}, @samp{mem} or constant expressions.
 This would not be well-formed RTL at any other stage in compilation,
 but it is ok then because no further optimization remains to be done.
-However, the definition of the macro @code{NOTICE_UPDATE_CC} may need
-to deal with such insns.
+However, the definition of the macro @code{NOTICE_UPDATE_CC} must
+deal with such insns if you define any peephole optimizations.
 
 @item (sequence [@var{insns} @dots{}])
 Represents a sequence of insns.  Each of the @var{insns} that appears
@@ -4714,6 +4876,73 @@ constructed.  But in matching, @samp{match_dup} behaves differently.
 It assumes that operand number @var{n} has already been determined by
 a @samp{match_operand} appearing earlier in the recognition template,
 and it matches only an identical-looking expression.
+
+@item (match_operator:@var{m} @var{n} "@var{predicate}" [@var{operands}@dots{}])
+This pattern is a kind of placeholder for a variable RTL expression
+code.
+
+When constructing an insn, it stands for an RTL expression whose
+expression code is taken from that of operand @var{n}, and whose
+operands are constructed from the patterns @var{operands}.
+
+When matching an expression, it matches an expression if the function
+@var{predicate} returns nonzero on that expression @emph{and} the
+patterns @var{operands} match the operands of the expression.
+
+Suppose that the function @code{commutative_operator} is defined as
+follows, to match any expression whose operator is one of the six
+commutative arithmetic operators of RTL and whose mode is @var{mode}:
+
+@example
+int
+commutative_operator (x, mode)
+     rtx x;
+     enum machine_mode mode;
+@{
+  enum rtx_code code = GET_CODE (x);
+  if (GET_MODE (x) != mode)
+    return 0;
+  return (code == PLUS || code == MULT || code == UMULT
+          || code == AND || code == IOR || code == XOR);
+@}
+@end example
+
+Then the following pattern will match any RTL expression consisting
+of a commutative operator applied to two general operands:
+
+@example
+(match_operator:SI 2 "commutative_operator"
+  [(match_operand:SI 3 "general_operand" "g")
+   (match_operand:SI 4 "general_operand" "g")])
+@end example
+
+Here the vector @code{[@var{operands}@dots{}]} contains two patterns
+because the expressions to be matched all contain two operands.
+
+When this pattern does match, the two operands of the commutative
+operator are recorded as operands 3 and 4 of the insn.  (This is done
+by the two instances of @samp{match_operator}.)  Operand 2 of the insn
+will be the entire commutative expression: use @code{GET_CODE
+(operands[2])} to see which commutative operator was used.
+
+The machine mode @var{m} of @samp{match_operator} works like that of
+@samp{match_operand}: it is passed as the second argument to the
+predicate function, and that function is solely responsible for
+deciding whether the expression to be matched ``has'' that mode.
+
+When constructing an insn, argument 2 of the gen-function will specify
+the operation (i.e. the expression code) for the expression to be
+made.  It should be an RTL expression, whose expression code is copied
+into a new expression whose operands are arguments 3 and 4 of the
+gen-function.  The subexpressions of argument 2 are not used;
+only its expression code matters.
+
+There is no way to specify constraints in @samp{match_operator}.  The
+operand of the insn which corresponds to the @samp{match_operator}
+never has any constraints because it is never reloaded as a whole.
+However, if parts of its @var{operands} are matched by
+@samp{match_operand} patterns, those parts may have constraints of
+their own.
 
 @item (address (match_operand:@var{m} @var{n} "address_operand" ""))
 This complex of expressions is a placeholder for an operand number
@@ -6165,11 +6394,20 @@ define the predefined macros that identify this machine and system.
 These macros will be predefined unless the @samp{-ansi} option is
 specified.
 
-For example, on the Sun, one can use the value
+In addition, a parallel set of macros are predefined, whose names are
+made by appending @samp{__} at the beginning and at the end.  These
+@samp{__} macros are permitted by the ANSI standard, so they are
+predefined regardless of whether @samp{-ansi} is specified.
+
+For example, on the Sun, one can use the following value:
 
 @example
 "-Dmc68000 -Dsun -Dunix"
 @end example
+
+The result is to define the macros @samp{__Dmc68000__}, @samp{__sun__}
+and @samp{__unix__} unconditionally, and the macros @samp{mc68000},
+@samp{sun} and @samp{unix} provided @samp{-ansi} is not specified.
 
 @item CPP_SPEC
 A C string constant that tells the GNU CC driver program options to
@@ -7559,6 +7797,11 @@ the very beginning of the command given to the linker.
 If this macro is not defined, a default is provided that loads the
 standard C startup file from the usual place.  See @file{gcc.c}.
 
+@item STANDARD_STARTFILE_PREFIX
+Define this macro as a C string constant if you wish to override the
+standard choice of @file{/lib/} as the default prefix for where to
+find the startup files such as @file{crt0.o}.
+
 @item ASM_FILE_START (@var{stream})
 A C expression which outputs to the stdio stream @var{stream}
 some appropriate text to go at the start of an assembler file.
@@ -7732,6 +7975,15 @@ insn, and @var{num} is the label-number of the preceding label.
 
 If this macro is not defined, nothing special is output at the end of
 the jump-table.
+
+@item ASM_OUTPUT_ALIGN_CODE (@var{file})
+A C expression to output text to align the location counter in the way
+that is desirable at a point in the code that is reached only by
+jumping.
+
+This macro need not be defined if you don't want any special alignment
+to be done at such a time.  Most machine descriptions do not currently
+define the macro.
 
 @item ASM_FORMAT_PRIVATE_NAME (@var{outvar}, @var{name}, @var{number})
 A C expression to assign to @var{outvar} (which is a variable of type

@@ -28,7 +28,7 @@ and this notice must be preserved on all copies.  */
 #define CPP_PREDEFINES "-Dspur"
 
 /* Print subsidiary information on the compiler version in use.  */
-#define TARGET_VERSION ;
+#define TARGET_VERSION fprintf (stderr, " (spur)");
 
 /* Run-time compilation parameters selecting different hardware subsets.
 

@@ -19,7 +19,7 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
-#define TARGET_VERSION printf (" (80386, ATT syntax)");
+#define TARGET_VERSION fprintf (stderr, " (80386, ATT syntax)");
 
 /* Define the syntax of instructions and addresses.  */
 

@@ -56,7 +56,7 @@ typedef
 
 #define	YYACCEPT	return(0)
 #define	YYABORT	return(1)
-#define	YYERROR	goto yyerrlab
+#define	YYERROR	return(1)
 #include <stdio.h>
 
 #ifndef __STDC__
@@ -366,7 +366,7 @@ int yydebug = 0;		/*  nonzero means print parse trace	*/
 #endif
 
 
-#line 167 "bison.simple"
+#line 165 "bison.simple"
 int
 yyparse()
 {
@@ -480,7 +480,7 @@ yynewstate:
 #endif
 
       if (yyssp >= yyss + yymaxdepth - 1)
-	YYABORT;
+	YYERROR;
     }
 
 #ifdef YYDEBUG
@@ -723,7 +723,7 @@ case 29:
     break;}
 }
    /* the action file gets copied in in place of this dollarsign */
-#line 408 "bison.simple"
+#line 303 "bison.simple"
 
   yyvsp -= yylen;
   yyssp -= yylen;
@@ -735,7 +735,7 @@ case 29:
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
-      fprintf (stderr, "state stack now");
+      fprintf (stderr, "state stack now", yyssp-yyss);
       while (ssp1 != yyssp)
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
@@ -791,7 +791,7 @@ yyerrlab:   /* here on detecting error */
 
       /* return failure if at end of input */
       if (yychar == YYEOF)
-	YYABORT;
+	YYERROR;
 
 #ifdef YYDEBUG
       if (yydebug)
@@ -819,7 +819,7 @@ yyerrdefault:  /* current state does not do anything special for the error token
 
 yyerrpop:   /* pop the current state because it cannot handle the error token */
 
-  if (yyssp == yyss) YYABORT;
+  if (yyssp == yyss) YYERROR;
   yyvsp--;
   yystate = *--yyssp;
 #ifdef YYLSP_NEEDED
@@ -830,7 +830,7 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
-      fprintf (stderr, "Error: state stack now");
+      fprintf (stderr, "Error: state stack now", yyssp-yyss);
       while (ssp1 != yyssp)
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");

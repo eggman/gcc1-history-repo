@@ -36,19 +36,23 @@ and this notice must be preserved on all copies.  */
 
 #define TARGET_DEFAULT 1
 
-#undef TARGET_VERSION
-#undef CPP_PREDEFINES
-#undef PRINT_OPERAND
-#undef PRINT_OPERAND_ADDRESS
-
 /* Print subsidiary information on the compiler version in use.  */
-#define TARGET_VERSION printf (" (32000, Sequent syntax)");
+#undef TARGET_VERSION
+#define TARGET_VERSION fprintf (stderr, " (32000, Sequent syntax)");
 
+#undef CPP_PREDEFINES
 #define CPP_PREDEFINES "-Dns32000 -Dsequent -Dunix"
+
+/* This is how to align the code that follows an unconditional branch.  */
+
+#undef ASM_OUTPUT_ALIGN_CODE
+#define ASM_OUTPUT_ALIGN_CODE(FILE)
+  fprintf (FILE, "\t.align 2\n")
 
 /* %$ means print the prefix for an immediate operand.
    On the sequent, no prefix is used for such.  */
 
+#undef PRINT_OPERAND
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (CODE == '$') ;							\
   else if (CODE == '?');						\
@@ -98,4 +102,5 @@ and this notice must be preserved on all copies.  */
 	   fprintf (FILE, "0f%.20e", u.d); }				\
   else output_addr_const (FILE, X); }
 
+#undef PRINT_OPERAND_ADDRESS
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  print_operand_address(FILE, ADDR)

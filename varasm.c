@@ -88,11 +88,94 @@ data_section ()
 {
   if (in_section != in_data)
     {
-      fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+      if (flag_shared_data)
+	{
+#ifdef SHARED_SECTION_ASM_OP
+	  fprintf (asm_out_file, "%s\n", SHARED_SECTION_ASM_OP);
+#else
+	  fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+#endif
+	}
+      else
+	fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+
       in_section = in_data;
     }
 }
 
+/* Create the rtl to represent a function, for a function definition.
+   DECL is a FUNCTION_DECL node which describes which function.
+   The rtl is stored into DECL.  */
+
+void
+make_function_rtl (decl)
+     tree decl;
+{
+  if (DECL_RTL (decl) == 0)
+    DECL_RTL (decl)
+      = gen_rtx (MEM, DECL_MODE (decl),
+		 gen_rtx (SYMBOL_REF, Pmode,
+			  IDENTIFIER_POINTER (DECL_NAME (decl))));
+}
+
+/* Create the DECL_RTL for a declaration (either variable or function).
+   ASMSPEC, if not 0, is the string
+   which the user specified as the assembler symbol name.
+   TOP_LEVEL is nonzero if this is a file-scope variable.  */
+
+void
+make_decl_rtl (decl, asmspec, top_level)
+     tree decl;
+     tree asmspec;
+     int top_level;
+{
+  register char *name = IDENTIFIER_POINTER (DECL_NAME (decl));
+
+  if (asmspec != 0)
+    {
+      if (TREE_CODE (asmspec) != STRING_CST)
+	abort ();
+      name = (char *) obstack_alloc (saveable_obstack,
+				     strlen (TREE_STRING_POINTER (asmspec)) + 2);
+      name[0] = '*';
+      strcpy (&name[1], TREE_STRING_POINTER (asmspec));
+    }
+
+  /* For a duplicate declaration, we can be called twice on the
+     same DECL node.  Don't alter the RTL already made
+     unless the old mode is wrong (which can happen when
+     the previous rtl was made when the type was incomplete).  */
+  if (DECL_RTL (decl) == 0
+      || GET_MODE (DECL_RTL (decl)) != DECL_MODE (decl))
+    {
+      if (DECL_RTL (decl) && asmspec == 0)
+	name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
+
+      /* Can't use just the variable's own name for a variable
+	 whose scope is less than the whole file.
+	 Concatenate a distinguishing number.  */
+      else if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
+	{
+	  char *label;
+
+	  ASM_FORMAT_PRIVATE_NAME (label, name, var_labelno);
+	  name = obstack_copy0 (saveable_obstack, label, strlen (label));
+	  var_labelno++;
+	}
+
+      DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
+				 gen_rtx (SYMBOL_REF, Pmode, name));
+      if (TREE_VOLATILE (decl))
+	MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
+      if (TREE_READONLY (decl))
+	RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
+      MEM_IN_STRUCT_P (DECL_RTL (decl))
+	= (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
+	   || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
+	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
+    }
+}
+
 /* Output a string of literal assembler code
    for an `asm' keyword used between functions.  */
 
@@ -169,27 +252,11 @@ assemble_integer_zero ()
 {
   ASM_OUTPUT_INT (asm_out_file, const0_rtx);
 }
-
-/* Create the rtx to represent a function in calls to it.
-   DECL is a FUNCTION_DECL node which describes which function.
-   The rtl is stored in DECL.  */
-
-void
-make_function_rtl (decl)
-     tree decl;
-{
-  if (DECL_RTL (decl) == 0)
-    DECL_RTL (decl)
-      = gen_rtx (MEM, DECL_MODE (decl),
-		 gen_rtx (SYMBOL_REF, Pmode,
-			  IDENTIFIER_POINTER (DECL_NAME (decl))));
-}
 
 /* Assemble everything that is needed for a variable or function declaration.
    Not used for automatic variables, and not used for function definitions.
    Should not be called for variables of incomplete structure type.
 
-   ASMSPEC is the user's specification of assembler symbol name to use.
    TOP_LEVEL is nonzero if this variable has file scope.
    WRITE_SYMBOLS is DBX_DEBUG if writing dbx symbol output.
    The dbx data for a file-scope variable is written here.
@@ -197,71 +264,20 @@ make_function_rtl (decl)
    to define things that have had only tentative definitions.  */
 
 void
-assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
+assemble_variable (decl, top_level, write_symbols, at_end)
      tree decl;
-     tree asmspec;
      int top_level;
      enum debugger write_symbols;
      int at_end;
 {
-  register char *name = IDENTIFIER_POINTER (DECL_NAME (decl));
+  register char *name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
   register int i;
-
-  if (asmspec != 0)
-    {
-      if (TREE_CODE (asmspec) != STRING_CST)
-	abort ();
-      name = (char *) obstack_alloc (saveable_obstack,
-				     strlen (TREE_STRING_POINTER (asmspec)) + 2);
-      name[0] = '*';
-      strcpy (&name[1], TREE_STRING_POINTER (asmspec));
-    }
-
-  /* For a duplicate declaration, we can be called twice on the
-     same DECL node.  Don't alter the RTL already made
-     unless the old mode is wrong (which can happen when
-     the previous rtl was made when the type was incomplete).  */
-  if (DECL_RTL (decl) == 0
-      || GET_MODE (DECL_RTL (decl)) != DECL_MODE (decl))
-    {
-      if (DECL_RTL (decl) && asmspec == 0)
-	name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
-
-      /* Can't use just the variable's own name for a variable
-	 whose scope is less than the whole file.
-	 Concatenate a distinguishing number.  */
-      else if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
-	{
-	  char *label;
-
-	  ASM_FORMAT_PRIVATE_NAME (label, name, var_labelno);
-	  name = obstack_copy0 (saveable_obstack, label, strlen (label));
-	  var_labelno++;
-	}
-
-      DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
-				 gen_rtx (SYMBOL_REF, Pmode, name));
-      if (TREE_VOLATILE (decl))
-	MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
-      if (TREE_READONLY (decl))
-	RTX_UNCHANGING_P (DECL_RTL (decl)) = 1;
-      MEM_IN_STRUCT_P (DECL_RTL (decl))
-	= (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
-	   || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
-	   || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE);
-    }
 
   /* Normally no need to say anything for external references,
      since assembler considers all undefined symbols external.  */
 
   if (TREE_EXTERNAL (decl))
-    {
-#ifdef ASM_OUTPUT_EXTERNAL
-      /* Some systems do require some output.  */
-      ASM_OUTPUT_EXTERNAL (asm_out_file, decl, name);
-#endif
-      return;
-    }
+    return;
 
   /* Output no assembler code for a function declaration.
      Only definitions of functions output anything.  */
@@ -269,17 +285,11 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
   if (TREE_CODE (decl) == FUNCTION_DECL)
     return;
 
-  /* Don't output anything when a tentative file-scope definition is seen.
-     But at end of compilation, do output code for them.  */
-  if (! at_end && top_level
-      && (DECL_INITIAL (decl) == 0 || DECL_INITIAL (decl) == error_mark_node))
-    return;
-
   /* If type was incomplete when the variable was declared,
      see if it is complete now.  */
 
   if (DECL_SIZE (decl) == 0)
-    layout_decl (decl);
+    layout_decl (decl, 0);
 
   /* Still incomplete => don't allocate it; treat the tentative defn
      (which is what it must have been) as an `extern' reference.  */
@@ -345,22 +355,67 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 
   /* Handle initialized definitions.  */
 
-  if (TREE_PUBLIC (decl))
+  /* First make the assembler name(s) global if appropriate.  */
+  if (TREE_PUBLIC (decl) && DECL_NAME (decl))
     ASM_GLOBALIZE_LABEL (asm_out_file, name);
+#if 0
+  for (d = equivalents; d; d = TREE_CHAIN (d))
+    {
+      tree e = TREE_VALUE (d);
+      if (TREE_PUBLIC (e) && DECL_NAME (e))
+	ASM_GLOBALIZE_LABEL (asm_out_file,
+			     XSTR (XEXP (DECL_RTL (e), 0), 0));
+    }
+#endif
 
-  output_addressed_constants (DECL_INITIAL (decl));
+  /* Output any data that we will need to use the address of.  */
+  if (DECL_INITIAL (decl))
+    output_addressed_constants (DECL_INITIAL (decl));
 
+  /* Switch to the proper section for this data.  */
   if (TREE_READONLY (decl) && ! TREE_VOLATILE (decl))
     text_section ();
   else
     data_section ();
 
+  /* Output the alignment of this data.  */
   for (i = 0; DECL_ALIGN (decl) >= BITS_PER_UNIT << (i + 1); i++);
-
   ASM_OUTPUT_ALIGN (asm_out_file, i);
 
+  /* Output the name(s) of this data.  */
   ASM_OUTPUT_LABEL (asm_out_file, name);
-  output_constant (DECL_INITIAL (decl), int_size_in_bytes (TREE_TYPE (decl)));
+#if 0
+  for (d = equivalents; d; d = TREE_CHAIN (d))
+    {
+      tree e = TREE_VALUE (d);
+      ASM_OUTPUT_LABEL (asm_out_file, XSTR (XEXP (DECL_RTL (e), 0), 0));
+    }
+#endif
+
+  if (DECL_INITIAL (decl))
+    /* Output the actual data.  */
+    output_constant (DECL_INITIAL (decl), int_size_in_bytes (TREE_TYPE (decl)));
+  else
+    /* Leave space for it.  */
+    ASM_OUTPUT_SKIP (asm_out_file, int_size_in_bytes (TREE_TYPE (decl)));
+}
+
+/* Output something to declare an external symbol to the assembler.
+   (Most assemblers don't need this, so we normally output nothing.)  */
+
+void
+assemble_external (decl)
+     tree decl;
+{
+  rtx rtl = DECL_RTL (decl);
+
+  if (GET_CODE (rtl) == MEM && GET_CODE (XEXP (rtl, 0)) == SYMBOL_REF)
+    {
+#ifdef ASM_OUTPUT_EXTERNAL
+      /* Some systems do require some output.  */
+      ASM_OUTPUT_EXTERNAL (asm_out_file, decl, XSTR (XEXP (rtl, 0), 0));
+#endif
+    }
 }
 
 /* Output to FILE a reference to the assembler name of a C-level name NAME.
@@ -915,6 +970,7 @@ output_constant_def (exp)
      tree exp;
 {
   register rtx def;
+  int temp_p = allocation_temporary_p ();
 
   if (TREE_CODE (exp) == INTEGER_CST)
     abort ();			/* No TREE_CST_RTL slot in these.  */
@@ -931,7 +987,7 @@ output_constant_def (exp)
     = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)), def);
   RTX_UNCHANGING_P (TREE_CST_RTL (exp)) = 1;
 
-  if (TREE_PERMANENT (exp))
+  if (temp_p && TREE_PERMANENT (exp))
     resume_temporary_allocation ();
 
   return TREE_CST_RTL (exp);
@@ -1170,10 +1226,23 @@ force_const_mem (mode, x)
 
 	  u.i[0] = XINT (x, 0);
 	  u.i[1] = XINT (x, 1);
-	  if (GET_MODE_SIZE (GET_MODE (x)) == GET_MODE_SIZE (DFmode))
-	    ASM_OUTPUT_DOUBLE (asm_out_file, u.d);
-	  else
-	    ASM_OUTPUT_FLOAT (asm_out_file, u.d);
+	  switch (mode)
+	    {
+	    case DImode:
+	      /* Output two ints.  */
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode, u.i[0]));
+	      ASM_OUTPUT_INT (asm_out_file,
+			      gen_rtx (CONST_INT, VOIDmode, u.i[1]));
+	      break;
+
+	    case DFmode:
+	      ASM_OUTPUT_DOUBLE (asm_out_file, u.d);
+	      break;
+
+	    case SFmode:
+	      ASM_OUTPUT_FLOAT (asm_out_file, u.d);
+	    }
 	}
       else
 	switch (mode)
@@ -1298,6 +1367,8 @@ output_constant (exp, size)
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
     case POINTER_TYPE:
+    case REFERENCE_TYPE:
+      /* ??? What about       (int)((float)(int)&foo + 4)    */
       while (TREE_CODE (exp) == NOP_EXPR || TREE_CODE (exp) == CONVERT_EXPR)
 	exp = TREE_OPERAND (exp, 0);
 

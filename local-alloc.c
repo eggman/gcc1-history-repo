@@ -495,7 +495,7 @@ block_alloc (b)
 			 as well not to allocate it.  */
 		      if (! CONSTANT_P (SET_SRC (PATTERN (insn))))
 			{
-			  reg_basic_block[i] = -2;
+			  reg_basic_block[i] = REG_BLOCK_GLOBAL;
 			  reg_qty[i] = -1;
 			}
 		    }
@@ -881,11 +881,12 @@ update_qty_class (qty, reg)
    carry info from `block_alloc'.  */
 
 static void
-reg_is_set (reg, clobber_flag)
+reg_is_set (reg, setter)
      rtx reg;
-     int clobber_flag;
+     rtx setter;
 {
   register int regno;
+  int clobber_flag = GET_CODE (setter) == CLOBBER;
 
   if (reg == 0 || GET_CODE (reg) != REG)
     return;
@@ -896,12 +897,18 @@ reg_is_set (reg, clobber_flag)
     {
       /* A hard reg is set or clobbered.
 	 Mark it as live at the moment immediately following this insn
-	 so that no pseudo can live here at that time.  */
+	 so that no pseudo can live here at that time.
+	 For a CLOBBER, mark it as live before this insn,
+	 to make sure it is free during the entire insn.  */
 
       register int lim = regno + HARD_REGNO_NREGS (regno, GET_MODE (reg));
       register int i;
       for (i = regno; i < lim; i++)
-	SET_HARD_REG_BIT (regs_live_at[this_insn_number], i);
+	{
+	  SET_HARD_REG_BIT (regs_live_at[this_insn_number], i);
+	  if (clobber_flag)
+	    SET_HARD_REG_BIT (regs_live_at[this_insn_number - 1], i);
+	}
 
       /* If the hard reg is given a useful value
 	 and it does not die in this insn,

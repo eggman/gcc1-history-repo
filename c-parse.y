@@ -363,7 +363,11 @@ primary:
 		      if (yychar == YYEMPTY)
 			yychar = YYLEX;
 		      if (yychar == '(')
-			$$ = implicitly_declare ($1);
+			{
+			  $$ = implicitly_declare ($1);
+			  assemble_external ($$);
+			  TREE_USED ($$) = 1;
+			}
 		      else
 			{
 			  if (IDENTIFIER_GLOBAL_VALUE ($1) != error_mark_node)
@@ -374,8 +378,12 @@ primary:
 			  IDENTIFIER_GLOBAL_VALUE ($1) = error_mark_node;
 			}
 		    }
-		  else
-		    TREE_USED ($$) = 1;
+		  else if (! TREE_USED ($$))
+		    {
+		      if (TREE_EXTERNAL ($$))
+			assemble_external ($$);
+		      TREE_USED ($$) = 1;
+		    }
 		  if (TREE_CODE ($$) == CONST_DECL)
 		    $$ = DECL_INITIAL ($$);
 		}
@@ -993,18 +1001,21 @@ stmt:
 	| ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, NULL_TREE, NULL_TREE,
-					 $2 == ridpointers[(int)RID_VOLATILE]); }
+					 $2 == ridpointers[(int)RID_VOLATILE],
+					 input_filename, lineno); }
 	/* This is the case with input operands as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, $8, NULL_TREE,
-					 $2 == ridpointers[(int)RID_VOLATILE]); }
+					 $2 == ridpointers[(int)RID_VOLATILE],
+					 input_filename, lineno); }
 	/* This is the case with clobbered registers as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':'
   	  asm_operands ':' asm_clobbers ')' ';'
 		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, $8, $10,
-					 $2 == ridpointers[(int)RID_VOLATILE]); }
+					 $2 == ridpointers[(int)RID_VOLATILE],
+					 input_filename, lineno); }
 	| GOTO identifier ';'
 		{ tree decl;
 		  emit_line_note (input_filename, lineno);
@@ -1024,14 +1035,11 @@ maybe_type_qual:
 	/* empty */
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  /* We use emit_note rather than emit_line_note
-		     so that this note is emitted even if line #s
-		     are not generally wanted.  */
-		  emit_note (input_filename, lineno); }
+		  emit_line_note (input_filename, lineno); }
 	| TYPE_QUAL
 		{ if (pedantic)
 		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_note (input_filename, lineno); }
+		  emit_line_note (input_filename, lineno); }
 	;
 
 xexpr:
@@ -1254,9 +1262,14 @@ FILE *finput;			/* input file.
 
 /* lexical analyzer */
 
-static int maxtoken;		/* Current nominal length of token buffer */
+static int maxtoken;		/* Current nominal length of token buffer.  */
 static char *token_buffer;	/* Pointer to token buffer.
 				   Actual allocated length is maxtoken + 2.  */
+static int max_wide;		/* Current nominal length of wide_buffer.  */
+static int *wide_buffer;	/* Pointer to wide-string buffer.
+				   Actual allocated length is max_wide + 1.  */
+
+/* Nonzero if end-of-file has been seen on input.  */
 static int end_of_file;
 
 #define MIN_WORD_SIZE       2      /* minimum size for C keyword */
@@ -1391,14 +1404,15 @@ is_reserved_word (str,len)
 void
 init_lex ()
 {
-  extern char *malloc ();
-
   /* Start it at 0, because check_newline is called at the very beginning
      and will increment it to 1.  */
   lineno = 0;
 
   maxtoken = 40;
-  token_buffer = malloc (maxtoken + 2);
+  token_buffer = (char *) xmalloc (maxtoken + 2);
+  max_wide = 40;
+  wide_buffer = (int *) xmalloc (max_wide + 1);
+
   ridpointers[(int) RID_INT] = get_identifier ("int");
   ridpointers[(int) RID_CHAR] = get_identifier ("char");
   ridpointers[(int) RID_VOID] = get_identifier ("void");
@@ -1430,7 +1444,9 @@ static int
 skip_white_space (c)
      register int c;
 {
+#if 0
   register int inside;
+#endif
 
   for (;;)
     {
@@ -1521,9 +1537,7 @@ extend_token_buffer (p)
   int offset = p - token_buffer;
 
   maxtoken = maxtoken * 2 + 10;
-  token_buffer = (char *) realloc (token_buffer, maxtoken + 2);
-  if (token_buffer == 0)
-    fatal ("virtual memory exceeded");
+  token_buffer = (char *) xrealloc (token_buffer, maxtoken + 2);
 
   return token_buffer + offset;
 }
@@ -1718,6 +1732,7 @@ readescape ()
 {
   register int c = getc (finput);
   register int count, code;
+  int firstdig;
 
   switch (c)
     {
@@ -1741,10 +1756,16 @@ readescape ()
 	    code += c - 'A' + 10;
 	  if (c >= '0' && c <= '9')
 	    code += c - '0';
+	  if (count == 0)
+	    firstdig = code;
 	  count++;
 	}
       if (count == 0)
 	error ("\\x used with no following hex digits");
+      if ((count - 1) * 4 >= TYPE_PRECISION (integer_type_node)
+	  || ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4))
+	      <= firstdig))
+	warning ("hex escape out of range");
       return code;
 
     case '0':  case '1':  case '2':  case '3':  case '4':
@@ -1822,6 +1843,8 @@ yyerror (string)
     strcat (buf, " before string constant");
   else if (token_buffer[0] == '\'')
     strcat (buf, " before character constant");
+  else if (token_buffer[0] < 040 || token_buffer[0] >= 0177)
+    sprintf (buf + strlen (buf), " before character 0%o", token_buffer[0]);
   else
     strcat (buf, " before `%s'");
 
@@ -2291,6 +2314,8 @@ yylex ()
 	    c = readescape ();
 	    if (c < 0)
 	      goto tryagain;
+	    if (!wide_flag && c >= (1 << BITS_PER_UNIT))
+	      warning ("escape sequence out of range for character");
 	  }
 	else if (c == '\n')
 	  {
@@ -2309,11 +2334,16 @@ yylex ()
 	  error ("malformatted character constant");
 
 	/* If char type is signed, sign-extend the constant.  */
-	if (TREE_UNSIGNED (char_type_node)
-	    || ((code >> (BITS_PER_UNIT - 1)) & 1) == 0)
-	  yylval.ttype = build_int_2 (code & ((1 << BITS_PER_UNIT) - 1), 0);
+	if (! wide_flag)
+	  {
+	    if (TREE_UNSIGNED (char_type_node)
+		|| ((code >> (BITS_PER_UNIT - 1)) & 1) == 0)
+	      yylval.ttype = build_int_2 (code & ((1 << BITS_PER_UNIT) - 1), 0);
+	    else
+	      yylval.ttype = build_int_2 (code | ((-1) << BITS_PER_UNIT), -1);
+	  }
 	else
-	  yylval.ttype = build_int_2 (code | ((-1) << BITS_PER_UNIT), -1);
+	  yylval.ttype = build_int_2 (code, 0);
 
 	TREE_TYPE (yylval.ttype) = integer_type_node;
 	value = CONSTANT; break;
@@ -2322,8 +2352,13 @@ yylex ()
     case '"':
     string_constant:
       {
+	int *widep;
+
 	c = getc (finput);
 	p = token_buffer + 1;
+
+	if (wide_flag)
+	  widep = wide_buffer;
 
 	while (c != '"')
 	  {
@@ -2332,6 +2367,8 @@ yylex ()
 		c = readescape ();
 		if (c < 0)
 		  goto skipnewline;
+		if (!wide_flag && c >= (1 << BITS_PER_UNIT))
+		  warning ("escape sequence out of range for character");
 	      }
 	    else if (c == '\n')
 	      {
@@ -2340,30 +2377,50 @@ yylex ()
 		lineno++;
 	      }
 
-	    if (p == token_buffer + maxtoken)
-	      p = extend_token_buffer (p);
-	    *p++ = c;
+	    /* Store the char in C into the appropriate buffer.  */
+
+	    if (wide_flag)
+	      {
+		if (widep == wide_buffer + max_wide)
+		  {
+		    int n = widep - wide_buffer;
+		    max_wide *= 2;
+		    wide_buffer = (int *) xrealloc (wide_buffer, max_wide + 1);
+		    widep = wide_buffer + n;
+		  }
+		*widep++ = c;
+	      }
+	    else
+	      {
+		if (p == token_buffer + maxtoken)
+		  p = extend_token_buffer (p);
+		*p++ = c;
+	      }
 
 	  skipnewline:
 	    c = getc (finput);
 	  }
 
-	*p = 0;
+	/* We have read the entire constant.
+	   Construct a STRING_CST for the result.  */
 
 	if (wide_flag)
 	  {
-	    /* If this is a L"..." wide-string, convert each char
-	       to an int, making a vector of ints.  */
-	    int *widebuf = (int *) alloca (p - token_buffer);
-	    char *p1 = token_buffer + 1;
-	    for (; p1 != p; p1++)
-	      widebuf[p1 - token_buffer - 1] = *p1;
-	    yylval.ttype = build_string ((p - token_buffer) * sizeof (int),
-					 widebuf);
+	    /* If this is a L"..." wide-string, make a vector
+	       of the ints in wide_buffer.  */
+	    *widep = 0;
+	    /* We have not implemented the case where `int'
+	       on the target and on the execution machine differ in size.  */
+	    if (TYPE_PRECISION (integer_type_node)
+		!= sizeof (int) * BITS_PER_UNIT)
+	      abort ();
+	    yylval.ttype = build_string ((widep - wide_buffer) * sizeof (int),
+					 wide_buffer);
 	    TREE_TYPE (yylval.ttype) = int_array_type_node;
 	  }
 	else
 	  {
+	    *p = 0;
 	    yylval.ttype = build_string (p - token_buffer, token_buffer + 1);
 	    TREE_TYPE (yylval.ttype) = char_array_type_node;
 	  }

@@ -1,5 +1,5 @@
 /* Compilation switch flag definitions for GNU CC.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -142,3 +142,11 @@ extern int flag_inline_functions;
    purposes.  */
 
 extern int flag_keep_inline_functions;
+
+/* Nonzero if we are only using compiler to check syntax errors.  */
+
+extern int flag_syntax_only;
+
+/* Nonzero means make the text shared if supported.  */
+
+extern int flag_shared_data;

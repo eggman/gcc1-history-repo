@@ -22,7 +22,7 @@ and this notice must be preserved on all copies.  */
 
 /* Use the Sequent Symmetry assembler syntax.  */
 
-#define TARGET_VERSION printf (" (80386, BSD syntax)");
+#define TARGET_VERSION fprintf (stderr, " (80386, BSD syntax)");
 
 /* Define some concatenation macros to concatenate an opcode
    and one, two or three operands.  In other assembler syntaxes
@@ -109,7 +109,7 @@ and this notice must be preserved on all copies.  */
    ??? I am skeptical of this -- RMS.  */
 
 #define ASM_FILE_START(FILE) \
-  fprintf(FILE, "\t.file\t\"%s\"\n", dump_base_name);
+  fprintf (FILE, "\t.file\t\"%s\"\n", dump_base_name);
 
 /* This was suggested, but it shouldn't be right for DBX output. -- RMS
    #define ASM_OUTPUT_SOURCE_FILENAME(FILE, NAME) */

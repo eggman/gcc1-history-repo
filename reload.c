@@ -172,6 +172,10 @@ static short *static_reload_reg_p;
 /* Set to 1 in subst_reg_equivs if it changes anything.  */
 static int subst_reg_equivs_changed;
 
+/* On return from push_reload, holds the reload-number for the OUT
+   operand, which can be different for that from the input operand.  */
+static int output_reloadnum;
+
 static int alternative_allows_memconst ();
 static rtx find_dummy_reload ();
 static rtx find_reloads_toplev ();
@@ -184,7 +188,7 @@ static rtx subst_indexed_address ();
 rtx find_equiv_reg ();
 static int find_inc_amount ();
 
-/* Record one reload that needs to be performed.
+/* Record one (sometimes two) reload that needs to be performed.
    IN is an rtx saying where the data are to be found before this instruction.
    OUT says where they must be stored after the instruction.
    (IN is zero for data not read, and OUT is zero for data not written.)
@@ -200,8 +204,18 @@ static int find_inc_amount ();
    STRICT_LOW is the 1 if there is a containing STRICT_LOW_PART rtx.
 
    OPTIONAL nonzero means this reload does not need to be performed:
-   it can be discarded if that is more convenient.  */
-   
+   it can be discarded if that is more convenient.
+
+   The return value is the reload-number for this reload.
+
+   If both IN and OUT are nonzero, in some rare cases we might
+   want to make two separate reloads.  (Actually we never do this now.)
+   Therefore, the reload-number for OUT is stored in
+   output_reloadnum when we return; the return value applies to IN.
+   Usually (presently always), when IN and OUT are nonzero,
+   these two values are equal, but the caller should be careful to
+   distinguish them.  */
+
 static int
 push_reload (in, out, inloc, outloc, class,
 	     inmode, outmode, strict_low, optional)
@@ -217,6 +231,14 @@ push_reload (in, out, inloc, outloc, class,
 
   /* Compare two RTX's.  */
 #define MATCHES(x, y) (x == y || (x != 0 && GET_CODE (x) != REG && rtx_equal_p (x, y)))
+
+  /* INMODE and/or OUTMODE could be VOIDmode if no mode
+     has been specified for the operand.  In that case,
+     use the operand's mode as the mode to reload.  */
+  if (inmode == VOIDmode && in != 0)
+    inmode = GET_MODE (in);
+  if (outmode == VOIDmode && out != 0)
+    outmode = GET_MODE (out);
 
   /* If IN is a pseudo register everywhere-equivalent to a constant, and 
      it is not in a hard register, reload straight from the constant,
@@ -433,6 +455,9 @@ push_reload (in, out, inloc, outloc, class,
 				  static_reload_reg_p, i, inmode))
 	reload_in[i] = out;
     }
+
+  if (out)
+    output_reloadnum = i;
 
   return i;
 }
@@ -741,6 +766,9 @@ operands_match_p (x, y)
      things when this happens.  */
   if (GET_CODE (y) == PRE_DEC || GET_CODE (y) == PRE_INC)
     return operands_match_p (x, XEXP (y, 0)) ? 2 : 0;
+
+ slow:
+
   /* Now we have disposed of all the cases 
      in which different rtx codes can match.  */
   if (code != GET_CODE (y))
@@ -750,7 +778,6 @@ operands_match_p (x, y)
   if (code == SYMBOL_REF)
     return XSTR (x, 0) == XSTR (y, 0);
 
- slow:
   /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.  */
 
   if (GET_MODE (x) != GET_MODE (y))
@@ -794,6 +821,19 @@ operands_match_p (x, y)
   return 1 + success_2;
 }
 
+/* Return the number of times character C occurs in string S.  */
+
+static int
+n_occurrences (c, s)
+     char c;
+     char *s;
+{
+  int n = 0;
+  while (*s)
+    n += (*s++ == c);
+  return n;
+}
+
 /* Main entry point of this file: search the body of INSN
    for values that need reloading and record them with push_reload.
    REPLACE nonzero means record also where the values occur
@@ -829,6 +869,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
   /* These start out as the constraints for the insn
      and they are chewed up as we consider alternatives.  */
   char *constraints[MAX_RECOG_OPERANDS];
+  int n_alternatives;
   int this_alternative[MAX_RECOG_OPERANDS];
   char this_alternative_win[MAX_RECOG_OPERANDS];
   char this_alternative_offmemok[MAX_RECOG_OPERANDS];
@@ -891,7 +932,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
     case PARALLEL:
     case ASM_OPERANDS:
       noperands = asm_noperands (body);
-      if (noperands > 0)
+      if (noperands >= 0)
 	{
 	  /* This insn is an `asm' with operands.  */
 
@@ -905,7 +946,20 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 
 	  decode_asm_operands (body, recog_operand, recog_operand_loc,
 			       constraints, operand_mode);
-	  bcopy (constraints, constraints1, noperands * sizeof (char *));
+	  if (noperands > 0)
+	    {
+	      bcopy (constraints, constraints1, noperands * sizeof (char *));
+	      n_alternatives = n_occurrences (',', constraints[0]) + 1;
+	      for (i = 1; i < noperands; i++)
+		if (n_alternatives != n_occurrences (',', constraints[0]) + 1)
+		  {
+		    error_for_asm (insn, "operand constraints differ in number of alternatives");
+		    /* Avoid further trouble with this insn.  */
+		    PATTERN (insn) = gen_rtx (USE, VOIDmode, const0_rtx);
+		    n_reloads = 0;
+		    return;
+		  }
+	    }
 	  break;
 	}
 
@@ -915,6 +969,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 
       insn_code_number = recog_memoized (insn);
       noperands = insn_n_operands[insn_code_number];
+      n_alternatives = insn_n_alternatives[insn_code_number];
       insn_extract (insn);
       {
 	/* Nonzero if some operand has a nonnull constraint.
@@ -1050,7 +1105,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 
   swapped = 0;
  try_swapped:
-  this_alternative_number = 0;
+
   /* The constraints are made of several alternatives.
      Each operand's constraint looks like foo,bar,... with commas
      separating the alternatives.  The first alternatives for all
@@ -1058,7 +1113,9 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 
      First loop over alternatives.  */
 
-  while (*constraints[0])
+  for (this_alternative_number = 0;
+       this_alternative_number < n_alternatives;
+       this_alternative_number++)
     {
       /* Loop over operands for one constraint alternative.  */
       /* LOSERS counts those that don't fit this alternative
@@ -1079,7 +1136,10 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	{
 	  register char *p = constraints[i];
 	  register int win = 0;
+	  /* 0 => this operand can be reloaded somehow for this alternative */
 	  int badop = 1;
+	  /* 0 => this operand can be reloaded if the alternative allows regs.  */
+	  int winreg = 0;
 	  int c;
 	  register rtx operand = recog_operand[i];
 	  int offset = 0;
@@ -1107,10 +1167,17 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  this_alternative_earlyclobber[i] = 0;
 	  this_alternative_matches[i] = -1;
 
+	  /* An empty constraint or empty alternative
+	     allows anything which matched the pattern.  */
+	  if (*p == 0 || *p == ',')
+	    win = 1, badop = 0;
+
 	  /* Scan this alternative's specs for this operand;
 	     set WIN if the operand fits any letter in this alternative.
 	     Otherwise, clear BADOP if this operand could
-	     fit some letter after reloads. */
+	     fit some letter after reloads,
+	     or set WINREG if this operand could fit after reloads
+	     provided the constraint allows some registers.  */
 
 	  while (*p && (c = *p++) != ',')
 	    switch (c)
@@ -1311,14 +1378,20 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		  = (int) reg_class_subunion[this_alternative[i]][(int) REG_CLASS_FROM_LETTER (c)];
 		
 	      reg:
-		badop = 0;
+		winreg = 1;
 		if (GET_CODE (operand) == REG
 		    && reg_fits_class_p (operand, this_alternative[i],
 					 offset, GET_MODE (recog_operand[i])))
 		  win = 1;
 		break;
 	      }
+
 	  constraints[i] = p;
+
+	  /* If this operand could be handled with a reg,
+	     and some reg is allowed, then this operand can be handled.  */
+	  if (winreg && this_alternative[i] != (int) NO_REGS)
+	    badop = 0;
 
 	  /* Record which operands fit this alternative.  */
 	  this_alternative_earlyclobber[i] = earlyclobber;
@@ -1430,7 +1503,6 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  goal_alternative_number = this_alternative_number;
 	  goal_earlyclobber = this_earlyclobber;
 	}
-      this_alternative_number++;
     }
 
   /* If insn is commutative (it's safe to exchange a certain pair of operands)
@@ -1471,6 +1543,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       if (insn_code_number >= 0)
 	abort ();
       error_for_asm (insn, "inconsistent operand constraints in an `asm'");
+      /* Avoid further trouble with this insn.  */
+      PATTERN (insn) = gen_rtx (USE, VOIDmode, const0_rtx);
       n_reloads = 0;
       return;
     }
@@ -1578,28 +1652,32 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	   Pass the input operand as IN and the other as OUT.  */
 	else if (modified[i] == RELOAD_READ
 		 && modified[goal_alternative_matched[i]] == RELOAD_WRITE)
-	  operand_reloadnum[goal_alternative_matched[i]]
-	    = operand_reloadnum[i]
-	    = push_reload (recog_operand[i],
-			   recog_operand[goal_alternative_matched[i]],
-			   recog_operand_loc[i],
-			   recog_operand_loc[goal_alternative_matched[i]],
-			   (enum reg_class) goal_alternative[i],
-			   operand_mode[i],
-			   operand_mode[goal_alternative_matched[i]],
-			   VOIDmode, 0);
+	  {
+	    operand_reloadnum[i]
+	      = push_reload (recog_operand[i],
+			     recog_operand[goal_alternative_matched[i]],
+			     recog_operand_loc[i],
+			     recog_operand_loc[goal_alternative_matched[i]],
+			     (enum reg_class) goal_alternative[i],
+			     operand_mode[i],
+			     operand_mode[goal_alternative_matched[i]],
+			     VOIDmode, 0);
+	    operand_reloadnum[goal_alternative_matched[i]] = output_reloadnum;
+	  }
 	else if (modified[i] == RELOAD_WRITE
 		 && modified[goal_alternative_matched[i]] == RELOAD_READ)
-	  operand_reloadnum[goal_alternative_matched[i]]
-	    = operand_reloadnum[i]
-	    = push_reload (recog_operand[goal_alternative_matched[i]],
-			   recog_operand[i],
-			   recog_operand_loc[goal_alternative_matched[i]],
-			   recog_operand_loc[i],
-			   (enum reg_class) goal_alternative[i],
-			   operand_mode[goal_alternative_matched[i]],
-			   operand_mode[i],
-			   VOIDmode, 0);
+	  {
+	    operand_reloadnum[goal_alternative_matched[i]]
+	      = push_reload (recog_operand[goal_alternative_matched[i]],
+			     recog_operand[i],
+			     recog_operand_loc[goal_alternative_matched[i]],
+			     recog_operand_loc[i],
+			     (enum reg_class) goal_alternative[i],
+			     operand_mode[goal_alternative_matched[i]],
+			     operand_mode[i],
+			     VOIDmode, 0);
+	    operand_reloadnum[i] = output_reloadnum;
+	  }
 	else abort ();
       }
     else if (goal_alternative_matched[i] < 0
@@ -1731,7 +1809,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
     case PARALLEL:
     case SET:
       noperands = asm_noperands (body);
-      if (noperands > 0)
+      if (noperands >= 0)
 	{
 	  /* This insn is an `asm' with operands.
 	     First, find out how many operands, and allocate space.  */
@@ -2038,7 +2116,7 @@ find_reloads_address (mode, memrefloc, ad, loc)
     {
       push_reload (ad, 0, loc, 0,
 		   BASE_REG_CLASS,
-		   GET_MODE (ad), 0, VOIDmode, 0);
+		   Pmode, 0, VOIDmode, 0);
       return;
     }
 

@@ -1149,6 +1149,16 @@ build_nt (va_alist)
   va_end (p);
   return t;
 }
+
+tree
+build_op_identifier (op1, op2)
+     tree op1, op2;
+{
+  register tree t = make_node (OP_IDENTIFIER);
+  TREE_PURPOSE (t) = op1;
+  TREE_VALUE (t) = op2;
+  return t;
+}
 
 /* Create a DECL_... node of code CODE, name NAME and data type TYPE.
    We do NOT enter this node in any sort of symbol table.
@@ -1822,14 +1832,42 @@ build_method_type (basetype, type)
   if (TREE_CODE (type) != FUNCTION_TYPE)
     abort ();
 
-  TYPE_METHOD_CLASS (t) == basetype;
-  TREE_TYPE (t) = type;
+  TYPE_METHOD_BASETYPE (t) = basetype;
+  TREE_TYPE (t) = TREE_TYPE (type);
 
   /* The actual arglist for this function includes a "hidden" argument
      which is "this".  Put it into the list of argument types.  */
 
   TYPE_ARG_TYPES (t)
     = tree_cons (NULL, build_pointer_type (basetype), TYPE_ARG_TYPES (type));
+
+  /* If we already have such a type, use the old one and free this one.  */
+  hashcode = TYPE_HASH (basetype) + TYPE_HASH (type);
+  t = type_hash_canon (hashcode, t);
+
+  if (TYPE_SIZE (t) == 0)
+    layout_type (t);
+
+  return t;
+}
+
+/* Construct, lay out and return the type of methods belonging to class
+   BASETYPE and whose arguments and values are described by TYPE.
+   If that type exists already, reuse it.
+   TYPE must be a FUNCTION_TYPE node.  */
+
+tree
+build_offset_type (basetype, type)
+     tree basetype, type;
+{
+  register tree t;
+  int hashcode;
+
+  /* Make a node of the sort we want.  */
+  t = make_node (OFFSET_TYPE);
+
+  TYPE_OFFSET_BASETYPE (t) = basetype;
+  TREE_TYPE (t) = type;
 
   /* If we already have such a type, use the old one and free this one.  */
   hashcode = TYPE_HASH (basetype) + TYPE_HASH (type);

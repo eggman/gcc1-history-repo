@@ -136,7 +136,7 @@ symout_init (filename, asm_file, sourcename)
 
   symfile = fopen (filename, "w");
   if (symfile == 0)
-    pfatal_with_name (symfile);
+    pfatal_with_name (filename);
   symfile_name = (char *) malloc (strlen (filename) + 1);
   strcpy (symfile_name, filename);
 

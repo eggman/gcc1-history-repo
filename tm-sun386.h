@@ -19,7 +19,7 @@ file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
 
-#define TARGET_VERSION printf (" (80386, Sun syntax)");
+#define TARGET_VERSION fprintf (stderr, " (80386, Sun syntax)");
 
 /* Define the syntax of instructions and addresses.  */
 
@@ -109,12 +109,23 @@ and this notice must be preserved on all copies.  */
 
 #undef ASM_FILE_START
 #define ASM_FILE_START(FILE) \
-  do { \
-    extern char *version_string, *language_string; \
-    fprintf(FILE, "\t.file\t\"%s\"\n", dump_base_name); \
-    fprintf(FILE, "\t.version\t\"%s %s\"\n", \
-	    language_string, version_string); \
-    if (optimize) ASM_FILE_START_1 (FILE); \
+  do {							\
+    extern char *version_string, *language_string;	\
+    {							\
+      int len = strlen (dump_base_name);		\
+      char *na = dump_base_name + len;			\
+      /* NA gets DUMP_BASE_NAME sans directory names.  */\
+      while (na > dump_base_name)			\
+	{						\
+	  if (na[-1] == '/')				\
+	    break;					\
+	  na--;						\
+	}						\
+      fprintf (FILE, "\t.file\t\"%s\"\n", na);		\
+    }							\
+    fprintf (FILE, "\t.version\t\"%s %s\"\n",		\
+	     language_string, version_string);		\
+    if (optimize) ASM_FILE_START_1 (FILE);		\
   } while (0)
 
 #define ASM_FILE_START_1(FILE) fprintf (FILE, "\t.optim\n")

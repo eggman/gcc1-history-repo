@@ -111,6 +111,13 @@ DEF_RTL_EXPR(MATCH_OPERAND, "match_operand", "iss")
    at the index specified by the argument.  */
 DEF_RTL_EXPR(MATCH_DUP, "match_dup", "i")
 
+/* Apply a predicate, AND match recursively the operands of the rtx.
+   Operand 0 is the operand-number, as in match_operand.
+   Operand 1 is a predicate to apply (as a string, a function name).
+   Operand 2 is a vector of expressions, each of which must match
+   one subexpression of the rtx this construct is matching.  */
+DEF_RTL_EXPR(MATCH_OPERATOR, "match_operator", "isE")
+
 /* Appears only in machine descriptions.
    Defines the pattern for one kind of instruction.
    Operand:

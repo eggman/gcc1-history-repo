@@ -1,4 +1,4 @@
-/* Language-indepednent node constructors for parse phase of GNU compiler.
+/* Language-level data type conversion for GNU C.
    Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -20,7 +20,9 @@ and this notice must be preserved on all copies.  */
 
 
 /* This file contains the functions for converting C expressions
-   to different data types.  */
+   to different data types.  The only entry point is `convert'.
+   Every language front end must have a `convert' function
+   but what kind of conversions it does will depend on the language.  */
 
 #include "config.h"
 #include "tree.h"
