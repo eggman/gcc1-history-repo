@@ -693,22 +693,11 @@ subst (x, from, to)
 
 /* FAKE_EXTEND_SAFE_P (MODE, FROM) is 1 if (subreg:MODE FROM 0) is a safe
    replacement for (zero_extend:MODE FROM) or (sign_extend:MODE FROM).
-   If it is 0, that cannot be done because it might cause a badly aligned
-   memory reference.  */
+   If it is 0, that cannot be done.  We can now do this for any MEM
+   because (SUBREG (MEM...)) is guaranteed to cause the MEM to be reloaded.
+   If not for that, MEM's would very rarely be safe.  */
 
-/* Now we never do this for memory refs, because of the danger of
-   turning a reference to the last byte on a page into a page-crossing
-   reference that could get a spurious fault.  It could be done safely
-   for certain cases but it's hard to check for them.  */
-#if 0
-#define FAKE_EXTEND_SAFE_P(MODE, FROM)  \
-   (GET_CODE (FROM) == REG ||				\
-    (GET_CODE (FROM) == MEM				\
-     && offsetable_address_p ((MODE), XEXP ((FROM), 0))	\
-     && ! mode_dependent_address_p ((XEXP ((FROM), 0)))))
-#else
-#define FAKE_EXTEND_SAFE_P(MODE, FROM) (GET_CODE (FROM) == REG)
-#endif
+#define FAKE_EXTEND_SAFE_P(MODE, FROM) (GET_CODE (FROM) == REG || GET_CODE (FROM) == MEM)
 
   if (x == from)
     return to;

@@ -2,6 +2,12 @@
 /* Use the system's macros with the system's compiler.  */
 #include <varargs.h>
 #else
+#ifdef sparc
+#include "va-sparc.h"
+#else
+#ifdef spur
+#include "va-spur.h"
+#else
 
 /* These macros implement traditional (non-ANSI) varargs
    for GNU C.  */
@@ -20,4 +26,6 @@
  (AP += _va_rounded_size (TYPE),					\
   *((TYPE *) (AP - _va_rounded_size (TYPE))))
 
-#endif
+#endif /* not spur */
+#endif /* not sparc */
+#endif /* __GNUC__ */

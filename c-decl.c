@@ -30,7 +30,7 @@ and this notice must be preserved on all copies.  */
 #include "tree.h"
 #include "flags.h"
 #include "c-tree.h"
-#include "parse.h"
+#include "c-parse.h"
 
 /* In grokdeclarator, distinguish syntactic contexts of declarators.  */
 enum decl_context
@@ -180,6 +180,79 @@ int current_function_returns_null;
    whose return type is defaulted, if warnings for this are desired.  */
 
 static int warn_about_return_type;
+
+/* C-specific option variables.  */
+
+/* Nonzero means `char' should be signed.  */
+
+int flag_signed_char;
+
+/* Nonzero means allow type mismatches in conditional expressions;
+   just make their values `void'.   */
+
+int flag_cond_mismatch;
+
+/* Nonzero means don't recognize the keyword `asm'.  */
+
+int flag_no_asm;
+
+/* Nonzero means do some things the same way PCC does.  */
+
+int flag_traditional;
+
+/* Nonzero means warn about implicit declarations.  */
+
+int warn_implicit;
+
+/* Nonzero means warn about function definitions that default the return type
+   or that use a null return and have a return-type other than void.  */
+
+int warn_return_type;
+
+/* Nonzero means `$' can be in an identifier.
+   See cccp.c for reasons why this breaks some obscure ANSI C programs.  */
+
+#ifndef DOLLARS_IN_IDENTIFIERS
+#define DOLLARS_IN_IDENTIFIERS 0
+#endif
+int dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
+
+char *language_string = "GNU C";
+
+/* Decode the string P as a language-specific option.
+   Return 1 if it is recognized (and handle it);
+   return 0 if not recognized.  */
+   
+lang_decode_option (p)
+     char *p;
+{
+  if (!strcmp (p, "-ftraditional"))
+    flag_traditional = 1, dollars_in_ident = 1;
+  else if (!strcmp (p, "-fsigned-char"))
+    flag_signed_char = 1;
+  else if (!strcmp (p, "-funsigned-char"))
+    flag_signed_char = 0;
+  else if (!strcmp (p, "-fcond-mismatch"))
+    flag_cond_mismatch = 1;
+  else if (!strcmp (p, "-fno-asm"))
+    flag_no_asm = 1;
+  else if (!strcmp (p, "-traditional"))
+    flag_traditional = 1, dollars_in_ident = 1;
+  else if (!strcmp (p, "-ansi"))
+    flag_no_asm = 1, dollars_in_ident = 0;
+  else if (!strcmp (p, "-Wimplicit"))
+    warn_implicit = 1;
+  else if (!strcmp (p, "-Wreturn-type"))
+    warn_return_type = 1;
+  else if (!strcmp (p, "-Wcomment"))
+    ; /* cpp handles this one.  */
+  else if (!strcmp (p, "-Wtrigraphs"))
+    ; /* cpp handles this one.  */
+  else
+    return 0;
+
+  return 1;
+}
 
 /* For each binding contour we allocate a binding_level structure
  * which records the names defined in that contour.
@@ -620,6 +693,7 @@ pushdecl (x)
     {
       t = lookup_name_current_level (name);
       if (t != 0 && t == error_mark_node)
+	/* error_mark_node is 0 for a while during initialization!  */
 	{
 	  t = 0;
 	  error_with_decl (x, "`%s' used prior to declaration");
@@ -1469,8 +1543,7 @@ finish_decl (decl, init, asmspec)
 			      integer_zero_node))
 	error_with_decl (decl, "zero-size array `%s'");
 
-      if (TREE_CODE (decl) != TYPE_DECL)
-	layout_decl (decl, 0);
+      layout_decl (decl, 0);
     }
 
   if (TREE_CODE (decl) == VAR_DECL)
@@ -1518,7 +1591,7 @@ finish_decl (decl, init, asmspec)
       if (TYPE_SIZE (TREE_TYPE (decl)) != 0
 	  || TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE)
 	if (current_binding_level != global_binding_level)
-	  expand_decl (decl);
+	  expand_decl (decl, NULL_TREE);
     }
 
   if (TREE_CODE (decl) == TYPE_DECL)
@@ -2193,7 +2266,7 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 	    if (! strcmp (IDENTIFIER_POINTER (declarator), "main"))
 	      warning ("cannot inline function `main'");
 	    else if (last && TREE_VALUE (last) != void_type_node)
-	      error ("inline declaration ignored for function with `...'");
+	      warning ("inline declaration ignored for function with `...'");
 	    else
 	      /* Assume that otherwise the function can be inlined.  */
 	      TREE_INLINE (decl) = 1;
@@ -2672,7 +2745,7 @@ finish_struct (t, fieldlist)
 	    layout_decl (decl);
 	    rest_of_decl_compilation (decl, 0, toplevel, 0);
 	    if (! toplevel)
-	      expand_decl (decl);
+	      expand_decl (decl, NULL_TREE);
 	    --current_binding_level->n_incomplete;
 	  }
     }

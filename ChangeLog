@@ -1,4 +1,368 @@
+Thu Aug 18 14:42:36 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.26 released.
+
+	* m68k.md (movsi): Constraint change for fpa regs.
+
+	* reload1.c (choose_reload_targets): Clear reg_reloaded_contents
+	for all regs of a multi-reg group.
+
+	* reload.c (find_equiv_reg): HARD_REGNO_NREGS wants mode, not size.
+	Check properly for overlap against multiword reload regs.
+
+Tue Aug 16 14:54:18 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c, expr.c (immed_double_const): immed_real_const_2 renamed.
+
+	* tm-i386.h (SFVALUE): Should be `double'.
+	* tm-i386v.h (SFVALUE): Don't override it.
+
+	* tm-i386.h (ASM_OUTPUT_ASCII): Don't define it.
+	* tm-att386.h: Definition moved here.
+
+	* tm-bsd386.h: New file, for Sequent.
+	* tm-seq386.h: New file, for Sequent.
+	* config-i386.h: New file, for Sequent.
+
+	* expr.c (push_block): Take account of STACK_POINTER_OFFSET.
+	(expand_call): Therefore need not do so here.
+
+	* optabs.c (expand_fix): Typo if going via DImode.
+
+	* reload1.c (choose_reload_targets): Don't * reload_reg_rtx if 0.
+
+Mon Aug 15 01:11:49 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (copy_for_inline): Don't try copying 0-length vector.
+	(copy_rtx_and_substitute): Likewise.
+
+	* m68k.md (andsi3): use clrw instead of andw #0.
+
+	* print-tree.c (walk): Don't omit permanent nodes reach from temps.
+
+	* m68k.md (zero_extend...): Reinstall the old zero-extend insns
+	without names, so they can help the combiner.
+
+	* expr.c (expand_expr): Don't use hard regs as subtargets.
+	* combine.c (FAKE_EXTEND_SAFE_P): Always consider MEMs safe.
+	* reload.c (find_reloads): For (SUBREG (MEM ...)) set force_reload.
+
+	* c-parse.y (redescape): Don't warn for `\('.
+
+	* reload.c (find_reloads_address): #if was backwards.
+
+Sun Aug 14 16:52:22 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-typeck.c (shorten_compare): Change switch to chain of ifs.
+
+	* tm-ns32k.h (PRINT_OPERAND): CONST_DOUBLE contains a double
+	even if it's SFmode.
+	(FUNCTION_PROLOGUE): If MAIN_FUNCTION_PROLOGUE defined, run it.
+
+	* cccp.c (file_buf): Rename field `free' to `free_ptr'.
+
+	* Makefile (ALLOCA, MALLOC, LIBDEPS): New variables for easier
+	customization.  Executables depend on LIBDEPS instead of OBSTACK1.
+	(cccp): Deps and libs now work like the others.
+
+	* output-i386.c (notice_update_cc): Rewritten for clarity.
+
+	* tm-i386.h (OUTPUT_JUMP): If CC_IN_OVERFLOW, abort.
+
+	* recog.c (push_operand): Test for stack_pointer_rtx.
+
+	* integrate.c (copy_rtx_and_substitute): Don't submit push-operands
+	to `memory_address'--it would lose on machines where pushing is
+	a special insn, not an addressing mode.
+
+	* output-i386.c	(top_dead_p): No more redundancy--that didn't work.
+	Now one method if optimized, one for call_insns if noopt, one for
+	other insns if noopt.
+	(call_top_dead_p): fp_top_dead_p renamed
+	and only the call-insn clause remains.
+
+	* i386.md (cmpsf, cmpdf): Output was backwards.
+	(", tstsf, tstdf): Set CC_IN_80387.
+	(incb pattern): Restrict allowable registers.
+	(movsf, movdf): Call top_dead_p only when absolutely necessary.
+	(call_value): Use top_dead_p, not subroutine.
+
+Sat Aug 13 15:19:23 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stupid.c (stupid_life_analysis): If only 1 reg class,
+	call stupid_find_reg only once.
+
+	* stmt.c (expand_function_start):
+	Clear current_function_pretend_args_size.
+
+	* expr.c (store_constructor): If target is hard reg, go via a pseudo.
+
+	* varasm.c (real_constant_chain): Now static in this file.
+	(force_const_double_mem): Put R on chain if not already on.
+	(clear_const_double_mem): Set XEXP (,2) to 0;
+	also clear real_constant_chain and the chain links.
+	* emit-rtl.c (init_emit_once): Put 0 in XEXP (,2) of {d,f}const0_rtx.
+	* cse.c (canon_hash): For CONST_DOUBLE, ignore elts other than 0,1.
+
+Fri Aug 12 11:48:38 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (order_regs_for_reload): Handle REG_ALLOC_ORDER more spots.
+
+	* global-alloc.c (find_reg): error handling REG_ALLOC_ORDER;
+	also error skipping regs known to be hopeless.
+	* local-alloc.c (find_free_reg): error skipping hopeless regs.
+	* stupid.c (stupid_find_reg): likewise.
+
+	* local-alloc.c (qty_compare_1): typo, had q1 for q2.
+
+	* expr.c (expand_expr): Don't use supplied target when optimizing
+	arithmetic using a comparison or conditional; that target could be
+	needed for the result of the comparison.
+
+	* reload1.c (reload): Don't set reg_equiv_constant for hard regs.
+
+	* stupid.c (stupid_life_analysis): Ignore reg R if regno_reg_rtx[R]==0.
+
+	* symout.c (symout_finish): Use perm. links in permanent_fwd_refs.
+
+	* i386.md (movhi, movqi): Check no_labels_between_p.
+
+Thu Aug 11 10:44:46 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y (yylex): Out-of-range float is just a warning.
+
+	* tm-gnx-v3.h: New file for Genix.
+	* ns32k.md (movsi, call, call_value): GNX_V3 conditionals.
+	* tm-ns32k.h (PRINT_OPERAND_ADDRESS): Changes for Genix.
+
+	* ns32k.md (insv patterns): Operand 0 is read-write.
+
+	* i386.md (tstsf, tstdf): Don't push the arg if already in st(0).
+
+	* varasm.c (output_constant_def): If EXP is permanent, the rtl is too.
+
+	* tm-*.h (ASM_OUTPUT_{LOCAL,COMMON}): New 4th arg, rounded size
+	vs unrounded size.
+	* varasm.c (assemble_variable): Pass new arg.
+	* symout.c (symout_init): Likewise.
+
+	* cccp.c (rescan): Don't let char const cross lines.
+	(skip_quoted_string, macarg1, discard_comments): Likewise.
+
+	* expr.c (expand_expr, VAR_DECL case): handle flag_force_addr.
+
+	* tm-i386v.h (TAREGT_DEFAULT): Assume 80387.
+	* config-i386v.h (alloca): Use __builtin_alloca under GNU C.
+
+Wed Aug 10 11:23:06 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (find_reloads): Alternative loses
+	if it has no regs for a reg operand.
+
+	* tm-sun3.h (STARTFILE_SPEC): Define, for fpa's sake.
+	* tm-m68k.h: New hard regs, reg classes, reg class letters,
+	target flag and switch, operand syntax and CC handling for fpa.
+	* m68k.md: Add fpa insn patterns.
+	* output-m68k.c (standard_SunFPA_constant_p): New fn.
+	(output_move_const_{single,double}): Handle fpa regs.
+	(singlemove_string): Handle fpa regs.
+
+	* stmt.c (fixup_memory_subreg): Result had wrong mode.
+
+	* ns32k.md (insv patterns): Adjust bit-number along with address.
+
+	* sparc.md (negdf2, absdf2): Order of the words was backwards.
+
+	* reload1.c (new_spill_reg): End confusion about meaning of 1st arg.
+	Arg counted_for_nongroups had wrong type.
+
+	* tm-m68k.h (FUNCTION_{PRO,EPI}LOGUE): Round frame size to word bdry.
+
+Tue Aug  9 07:53:59 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-i386.h (ASM_OUTPUT_ASCII): Don't lose the sign bit.
+
+	* tm-i386v.h (STARTFILE_SPEC, LIB_SPEC): Use crt1.o, crtn.o.
+
+	* stmt.c (fixup_var_refs_1): fixup all memory subregs.
+
+	* reload1.c (choose_reload_targets): Don't strip paradoxical
+	subregs from values to be reloaded.
+
+	* cccp.c: Comment out text after #endif.
+
+	* c-parse.y (init): Allow empty braces as init; warn if pedantic.
+
+	* c-decl.c: Move C-specific options from toplev.c.
+	* c-tree.h: Move their externs from flags.h.
+	* c-decl.c (lang_decode_option): New fn called by `main'.
+	* toplev.c (sorry, really_sorry): New error reporting fns.
+	* c-decl.c (language_string): New var, name of this language.
+
+	* c-parse.y: Don't include flags.h.
+	* dbxout.c: Do include it.
+
+	* dbxout.c (dbxout_type): Handle function fields and static fields
+	and basetypes.  Handle METHOD_TYPE and REFERENCE_TYPE.
+	Abort on unexpected tree code.
+	(dbxout_args): New fn to output prototype arg types.
+	(everywhere): Use IDENTIFIER_LENGTH instead of strlen.
+	(dbxout_type_name): Cleanup; avoid strlen.
+
+	* local-alloc.c (reg_is_set): Don't call {post_,}mark_life for pseudos.
+
+	* tree.h (TYPE_BASECLASSES): New field in type nodes.
+
+	* ns32k.md (insv patterns): Was adjusting the address wrong.
+
+	* c-decl.c (grokdeclarator): Just a warning for inline varargs fn.
+
+Mon Aug  8 08:16:46 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (immed_real_const_2): Guts of creating a CONST_DOUBLE.
+	* expr.c (expand_expr): Use that for 64-bit int constants.
+
+	* loop.c (invariant_p): Don't check x->unchanging; it's not safe.
+
+	* c-typeck.c (build_indirect_ref): Handle flag_volatile here
+	so that it propagates to component_refs.
+	* expr.c (expand_expr): No need to handle it here.
+
+	* integrate.c (save_for_inline, expand_inline_function):
+	Set up insn_map to record mapping of old uids to copied insns.
+	(copy_for_inline, copy_rtx_and_substitute): Map 'u' refs via insn_map.
+
+	* emit-rtl (emit_label, emit_barrier): Return what was emitted.
+
+	* sdbout.c (sdbout_filename): Split off from sdbout_init.
+	* tm-encore.h, tm-3b1.h, tm-vaxv.h, tm-att386.h (ASM_FILE_START):
+	Call sdbout_filename.
+
+	* toplev.c: Better messages for invalid options.
+
+	* tm-m68k.h (PRINT_OPERAND_ADDRESS): Handle labelref+basereg.
+
+	* tm-3b1.h (PUT_SDB_DIM): Override sdbout's definition.
+	(ASM_FORMAT_PRIVATE_NAME): Override tm-hp...s definition.
+	(PUT_SDB_PLAIN_DEF): Prepend `~' to specified name.
+	(SDB_GENERATE_FAKE): Prepend `~'.
+
+	* gcc.c: Include config.h before obstack.h.
+
+Sun Aug  7 11:17:56 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stor-layout.c (layout_decl): Do nothing with CONST_DECL.
+	Treat FRIEND_DECLs like variables.
+	(layout_record): Handle VAR_DECLs and FUNCTION_DECLs in the fieldlist.
+	Handle basetypes (almost like fields).
+	(layout_type): Handle REFERENCE_TYPE and METHOD_TYPE.
+
+	* tree.c (temp_tree_cons): New fn.
+	(array_type_nelts, simple_cst_equal): New fns.
+	(lvalue_p): CALL_EXPR is an lvalue if it returns REFERENCE_TYPE.
+	() Manage TYPE_REFERENCE_TO.
+	(TYPE_HASH_SIZE): Bigger.
+	(type_list_equal): Compare the TREE_PURPOSE fields.
+	(build_reference_type, build_method_type): New fns.
+
+	* stmt.c (block_stack): Add field `cleanups' to each element.
+	(expand_{start,end}_bindings, expand_decl): Update that field.
+	(stack_block_stack): Now includes blocks that have cleanups.
+	(goto_fixup_chain): Add field `cleanup_list_list'.
+	(expand_goto_internal): Execute cleanups for blocks being exited.
+	(expand_fixup): Make a fixup if any block has cleanups.
+	(fixup_gotos): New args CLEANUPS and DONT_JUMP_IN.
+	Execute cleanups for blocks being exited, or add to cleanup_list_list.
+	(expand_end_bindings): New arg DONT_JUMP_IN.  Execute any cleanups.
+	(expand_decl): New arg CLEANUP.
+	(expand_cleanups, fixup_cleanups): New functions.
+	* c-decl.c: Calls to expand_decl pass new arg.
+	* c-parse.y: Calls to expand_end_bindings pass new arg.
+
+	* stmt.c (expand_return): Handle INIT_EXPR, or bare RESULT_DECL.
+
+	* stmt.c (case_stack): Add field `has_default' to each element.
+	(pushcase,expand_end_case): Maintain and use that field.
+
+	* stmt.c (pushcase): Handle RANGE_EXPR cases.
+	(pushcase_range): Create RANGE_EXPR cases.
+
+	* final.c (final): Always pass 3 args to ASM_OUTPUT_CASE_END.
+	* tm-3b1.h: Delete offending spaces.
+
+Fri Aug  5 16:17:16 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (copy_rtx_and_substitute): Don't make fp+reg+const
+	without an intermediate temporary reg.
+
+	* print-tree.c (dump): Don't print an identifier's chain.
+
+	* toplev.c (compile_file): Treat `.i' suffix like `.co'.
+
+	* gcc.c: New config macro CC1_SPEC: extra switches for cc1.
+	Make a new spec for `.i' files.
+
+	* c-decl.c (pushdecl, finish_decl): Delete duplicate tests.
+
+	* varargs.h: Maybe include va-sparc.h or va-spur.h.
+	* va-sparc.h: New file.
+	* va-spur.h: renamed file.
+
+	* tree.h ({TYPE,DECL}_LANG_SPECIFIC): Types and decls can point to
+	language-specific structures containing other info.
+	* print-tree.c (dump): Hooks for printing the language-specific
+	data in types and decls.
+
+Thu Aug  4 08:54:30 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tree.def: Add some tree codes for C++.
+
+	* Rename files: parse.[yh] -> c-parse.[yh], decl.c -> c-decl.c,
+	typecheck.c -> c-typeck.c.
+	Part of tree.c split out to c-convert.c.
+
+	* expr.c (push_block): No longer static.
+	(expand_expr): Handle REFERENCE_EXPR and INIT_EXPR.
+	(expand_call): Turn a METHOD_TYPE to a FUNCTION_TYPE.
+	This is probably not all that is required.
+
+	* parse.y (yylex): Use p->rid to check for `signed' and `inline'.
+
+	* tm-sparc.h (ASM_OUTPUT_SOURCE_LINE): typo.
+
+	* sparc.md: Add a pattern for andcc.
+	(cmpsf): Clobber reg 32 in DFmode.
+	(branches): There are no unsigned floating branches; abort.
+	(bgt): Correct name of floating variant.
+	(mov?i): Load small constants via mov.
+	(movdf for constants): Use mov, not add, to move regs.
+	(movsf, floatsi*, fix*): Simplify reg-to-reg-via-mem move generation.
+	(trunc*): Use mov, not or, to move regs.
+	(negsi2, one_cmplsi2): Avoid "neg" and "not" assembler syntax.
+	(call...): Generate "call" insns; handle #-reg-parms value.
+	* Define some peepholes for return insns.
+
+	* tm-sparc.h (TARGET_SUN_ASM): New target flag.
+	(TARGET_DEFAULT): Now 1.
+	(FRAME_POINTER_REQUIRED): Now 1.
+	(STARTING_FRAME_OFFSET): Now -16.
+	(LEGITIMATE_CONSTANT_P): Only CONST_DOUBLEs fail.
+	(FUNCTION_{PROLOGUE,EPILOGUE}): Rewritten.
+
+	* output-sparc.c (small_int): Test for int that mov can load.
+	(singlemove_string): Use mov, not add.
+	(output_move_double): Changes for overlap and for use of ldd, std.
+	(output_fp_move_double): Use ldd, std when safe.
+	(make_f0_contain_0): Simplify.
+
+	* integrate.c (expand_inline_function): Some special CALL_INSN
+	handling no longer needed due to REG_FUNCTION_VALUE_P.
+
+	* m68k.md (movqi): Constraints allow moving areg to areg.
+
 Wed Aug  3 08:29:31 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.25 released.
 
 	* integrate.c (expand_inline_function): Don't let MEM be inline_target.
 

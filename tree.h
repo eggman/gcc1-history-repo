@@ -81,7 +81,13 @@ enum built_in_function
   BUILT_IN_MEMSET,
   BUILT_IN_FSQRT,
   BUILT_IN_GETEXP,
-  BUILT_IN_GETMAN
+  BUILT_IN_GETMAN,
+
+  /* C++ extensions */
+  BUILT_IN_NEW,
+  BUILT_IN_VEC_NEW,
+  BUILT_IN_DELETE,
+  BUILT_IN_VEC_DELETE,
 };
 
 /* The definition of tree nodes fills the next several pages.  */
@@ -387,9 +393,11 @@ struct tree_exp
 #define TYPE_DOMAIN(NODE) ((NODE)->type.values)
 #define TYPE_FIELDS(NODE) ((NODE)->type.values)
 #define TYPE_ARG_TYPES(NODE) ((NODE)->type.values)
+#define TYPE_METHOD_CLASS(NODE) ((NODE)->type.max)
 #define TYPE_SEP(NODE) ((NODE)->type.sep)
 #define TYPE_SEP_UNIT(NODE) ((NODE)->type.sep_unit)
 #define TYPE_POINTER_TO(NODE) ((NODE)->type.pointer_to)
+#define TYPE_REFERENCE_TO(NODE) ((NODE)->type.reference_to)
 #define TYPE_MIN_VALUE(NODE) ((NODE)->type.sep)
 #define TYPE_MAX_VALUE(NODE) ((NODE)->type.max)
 #define TYPE_PRECISION(NODE) ((NODE)->type.sep_unit)
@@ -398,6 +406,8 @@ struct tree_exp
 #define TYPE_NAME(NODE) ((NODE)->type.name)
 #define TYPE_NEXT_VARIANT(NODE) ((NODE)->type.next_variant)
 #define TYPE_MAIN_VARIANT(NODE) ((NODE)->type.main_variant)
+#define TYPE_BASETYPES(NODE) ((NODE)->type.basetypes)
+#define TYPE_LANG_SPECIFIC(NODE) ((NODE)->type.lang_specific)
 
 struct tree_type
 {
@@ -405,18 +415,23 @@ struct tree_type
   union tree_node *values;
   union tree_node *sep;
   union tree_node *size;
-  enum machine_mode mode;
+
+  enum machine_mode mode : 8;
   unsigned char size_unit;
   unsigned char align;
   unsigned char sep_unit;
-  enum machine_mode elt_mode;	/* Unused */
+
   union tree_node *pointer_to;
+  union tree_node *reference_to;
   int parse_info;
   int symtab_address;
   union tree_node *name;
   union tree_node *max;
   union tree_node *next_variant;
   union tree_node *main_variant;
+  union tree_node *basetypes;
+  /* Points to a structure whose details depend on the language in use.  */
+  struct lang_type *language_specific;
 };
 
 /* Define fields and accessors for nodes representing declared names.  */
@@ -443,6 +458,7 @@ struct tree_type
 #define DECL_SYMTAB_INDEX(NODE) ((NODE)->decl.block_symtab_address)
 #define DECL_SAVED_INSNS(NODE) ((NODE)->decl.saved_insns)
 #define DECL_FRAME_SIZE(NODE) ((NODE)->decl.frame_size)
+#define DECL_LANG_SPECIFIC(NODE) ((NODE)->decl.lang_specific)
 
 struct tree_decl
 {
@@ -468,6 +484,8 @@ struct tree_decl
 				   constitute its definition on the
 				   permanent obstack.  */
   int block_symtab_address;
+  /* Points to a structure whose details depend on the language in use.  */
+  struct lang_decl *lang_specific;
 };
 
 /* Define fields and accessors for nodes representing statements.
@@ -599,8 +617,11 @@ extern tree make_signed_type ();
 extern tree make_unsigned_type ();
 extern void fixup_unsigned_type ();
 extern tree build_pointer_type ();
+extern tree build_reference_type ();
 extern tree build_array_type ();
 extern tree build_function_type ();
+extern tree build_method_type ();
+extern tree type_nelts ();
 
 /* Construct expressions, performing type checking.  */
 
@@ -674,7 +695,7 @@ extern tree chainon ();
 
 /* Make a new TREE_LIST node from specified PURPOSE, VALUE and CHAIN.  */
 
-extern tree tree_cons ();
+extern tree tree_cons (), perm_tree_cons (), temp_tree_cons ();
 
 /* Return the last tree node in a chain.  */
 
@@ -832,7 +853,7 @@ extern int all_types_permanent;
 
 /* In stmt.c */
 
-extern tree get_last_expr ();
+extern tree expand_start_stmt_expr (), expand_end_stmt_expr ();
 extern void expand_expr_stmt(), clear_last_expr();
 extern void expand_label(), expand_goto(), expand_asm();
 extern void expand_start_cond(), expand_end_cond();
@@ -851,5 +872,5 @@ extern void expand_emit_delayed_expr ();
 extern void expand_null_return(), expand_return();
 extern void expand_start_bindings(), expand_end_bindings();
 extern void expand_start_case(), expand_end_case();
-extern int pushcase();
+extern int pushcase(), pushcase_range ();
 extern void expand_start_function(), expand_end_function();

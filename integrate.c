@@ -153,15 +153,20 @@ function_cannot_inline_p (fndecl)
 
 /* Mapping from old pesudo-register to new pseudo-registers.
    The first element of this map is reg_map[FIRST_PSEUDO_REGISTER].
-   It allocated in `save_current_insns' and `expand_function_inline',
+   It is allocated in `save_for_inline' and `expand_inline_function',
    and deallocated on exit from each of those routines.  */
 static rtx *reg_map;
 
 /* Mapping from old code-labels to new code-labels.
    The first element of this map is label_map[min_labelno].
-   It allocated in `save_current_insns' and `expand_function_inline',
+   It is allocated in `save_for_inline' and `expand_inline_function',
    and deallocated on exit from each of those routines.  */
 static rtx *label_map;
+
+/* Mapping from old insn uid's to copied insns.
+   It is allocated in `save_for_inline' and `expand_inline_function',
+   and deallocated on exit from each of those routines.  */
+static rtx *insn_map;
 
 /* Map pseudo reg number into the PARM_DECL for the parm living in the reg.
    Zero for a reg that isn't a parm's home.
@@ -195,6 +200,7 @@ save_for_inline (fndecl)
   tree parms;
   int max_labelno, min_labelno, i, len;
   int max_reg;
+  int max_uid;
 
   /* Make and emit a return-label if we have not already done so.  */
 
@@ -245,6 +251,7 @@ save_for_inline (fndecl)
   head = gen_inline_header_rtx (NULL, NULL, min_labelno, max_labelno,
 				max_parm_reg, max_reg,
 				current_function_args_size);
+  max_uid = INSN_UID (head);
 
   /* We have now allocated all that needs to be allocated permanently
      on the rtx obstack.  Set our high-water mark, so that we
@@ -294,6 +301,11 @@ save_for_inline (fndecl)
   for (i = min_labelno; i < max_labelno; i++)
     label_map[i] = gen_label_rtx ();
 
+  /* Record the mapping of old insns to copied insns.  */
+
+  insn_map = (rtx *) alloca (max_uid * sizeof (rtx));
+  bzero (insn_map, max_uid * sizeof (rtx));
+
   /* Now copy the chain of insns.  */
 
   for (insn = NEXT_INSN (insn); insn; insn = NEXT_INSN (insn))
@@ -328,6 +340,7 @@ save_for_inline (fndecl)
 	  abort ();
 	}
       INSN_UID (copy) = INSN_UID (insn);
+      insn_map[INSN_UID (insn)] = copy;
       NEXT_INSN (last_insn) = copy;
       PREV_INSN (copy) = last_insn;
       last_insn = copy;
@@ -376,7 +389,6 @@ copy_for_inline (orig)
     case CONST_INT:
     case CONST_DOUBLE:
     case SYMBOL_REF:
-    case CODE_LABEL:
     case PC:
     case CC0:
       return x;
@@ -446,8 +458,13 @@ copy_for_inline (orig)
 	  XEXP (x, i) = copy_for_inline (XEXP (x, i));
 	  break;
 
+	case 'u':
+	  /* Change any references to old-insns to point to the
+	     corresponding copied insns.  */
+	  return insn_map[INSN_UID (XEXP (x, i))];
+
 	case 'E':
-	  if (XVEC (x, i) != NULL)
+	  if (XVEC (x, i) != NULL && XVECLEN (x, i) != 0)
 	    {
 	      register int j;
 
@@ -611,6 +628,12 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   for (i = min_labelno; i < max_labelno; i++)
     label_map[i] = gen_label_rtx ();
 
+  /* As we copy insns, record the correspondence, so that inter-insn
+     references can be copied into isomorphic structure.  */
+
+  insn_map = (rtx *) alloca (INSN_UID (header) * sizeof (rtx));
+  bzero (insn_map, INSN_UID (header) * sizeof (rtx));
+
   /* Set up a target to translate the inline function's value-register.  */
 
   if (structure_value_addr != 0 || TYPE_MODE (type) == VOIDmode)
@@ -715,6 +738,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
 	  /* The (USE (REG n)) at return from the function should be ignored
 	     since we are changing (REG n) into inline_target.  */
+	  copy = 0;
 	  if (GET_CODE (pattern) == USE
 	      && GET_CODE (XEXP (pattern, 0)) == REG
 	      && REG_FUNCTION_VALUE_P (XEXP (pattern, 0)))
@@ -752,6 +776,10 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  break;
 
 	case CALL_INSN:
+#if 0
+	  /* This should no longer be necessary now that references
+	     to this function's return value are flagged to distinguish
+	     them from other references to the same hard register.  */
 	  {
 	    rtx newbod;
 	    /* If the call's body is (set (reg...) (call...)),
@@ -761,10 +789,28 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	    if (GET_CODE (PATTERN (insn)) == SET)
 	      newbod = gen_rtx (SET, VOIDmode, SET_DEST (PATTERN (insn)),
 				copy_rtx_and_substitute (SET_SRC (PATTERN (insn))));
+	    else if (GET_CODE (PATTERN (insn)) == PARALLEL
+		     && GET_CODE (XVECEXP (PATTERN (insn), 0, 0)) == SET)
+	      {
+		register int j;
+		rtx newelem;
+		newbod = gen_rtx (PARALLEL, VOIDmode,
+				  rtvec_alloc (XVECLEN (PATTERN (insn), 0)));
+		newelem = gen_rtx (SET, VOIDmode,
+				   SET_DEST (XVECEXP (PATTERN (insn), 0, 0)),
+				   copy_rtx_and_substitute (SET_SRC (XVECEXP (PATTERN (insn), 0, 0))));
+		XVECEXP (newbod, 0, 0) = newelem;
+		for (j = 1; j < XVECLEN (newbod, 0); j++)
+		  XVECEXP (newbod, 0, j)
+		    = copy_rtx_and_substitute (XVECEXP (PATTERN (insn), 0, j));
+	      }
 	    else
 	      newbod = copy_rtx_and_substitute (PATTERN (insn));
 	    copy = emit_call_insn (newbod);
 	  }
+#else /* 1 */
+	  copy = emit_call_insn (copy_rtx_and_substitute (PATTERN (insn)));
+#endif /* 1 */
 	  copy->integrated = 1;
 	  /* Special handling needed for the following INSN depending on
 	     whether it copies the value from the fcn return reg.  */
@@ -773,22 +819,24 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  break;
 
 	case CODE_LABEL:
-	  emit_label (label_map[CODE_LABEL_NUMBER (insn)]);
+	  copy = emit_label (label_map[CODE_LABEL_NUMBER (insn)]);
 	  follows_call = 0;
 	  break;
 
 	case BARRIER:
-	  emit_barrier ();
+	  copy = emit_barrier ();
 	  break;
 
 	case NOTE:
-	  emit_note (NOTE_SOURCE_FILE (insn), NOTE_LINE_NUMBER (insn));
+	  copy = emit_note (NOTE_SOURCE_FILE (insn), NOTE_LINE_NUMBER (insn));
 	  break;
 
 	default:
 	  abort ();
 	  break;
 	}
+
+      insn_map[INSN_UID (insn)] = copy;
     }
 
   if (return_label)
@@ -985,7 +1033,7 @@ copy_rtx_and_substitute (orig)
 				       c + fp_delta));
 	    }
 	  copy = copy_rtx_and_substitute (copy);
-	  temp = gen_rtx (PLUS, mode, frame_pointer_rtx, copy);
+	  temp = force_reg (mode, gen_rtx (PLUS, mode, frame_pointer_rtx, copy));
 	  return plus_constant (temp, fp_delta);
 	}
       else if (reg_mentioned_p (frame_pointer_rtx, orig)
@@ -1033,6 +1081,18 @@ copy_rtx_and_substitute (orig)
       if (copy == frame_pointer_rtx || copy == arg_pointer_rtx)
 	return gen_rtx (MEM, mode,
 			plus_constant (frame_pointer_rtx, fp_delta));
+
+      /* Allow a pushing-address even if that is not valid as an
+	 ordinary memory address.  It indicates we are inlining a special
+	 push-insn.  */
+#ifdef STACK_GROWS_DOWNWARD
+      if (GET_CODE (copy) == PRE_DEC && XEXP (copy, 0) == stack_pointer_rtx)
+	return orig;
+#else
+      if (GET_CODE (copy) == PRE_INC && XEXP (copy, 0) == stack_pointer_rtx)
+	return orig;
+#endif
+
       if (GET_CODE (copy) == PLUS)
 	{
 	  if (XEXP (copy, 0) == frame_pointer_rtx
@@ -1137,7 +1197,6 @@ copy_rtx_and_substitute (orig)
 
       switch (*format_ptr++)
 	{
-	case 'u':
 	case '0':
 	  break;
 
@@ -1145,9 +1204,14 @@ copy_rtx_and_substitute (orig)
 	  XEXP (copy, i) = copy_rtx_and_substitute (XEXP (orig, i));
 	  break;
 
+	case 'u':
+	  /* Change any references to old-insns to point to the
+	     corresponding copied insns.  */
+	  return insn_map[INSN_UID (XEXP (orig, i))];
+
 	case 'E':
 	  XVEC (copy, i) = XVEC (orig, i);
-	  if (XVEC (orig, i) != NULL)
+	  if (XVEC (orig, i) != NULL && XVECLEN (orig, i) != 0)
 	    {
 	      XVEC (copy, i) = rtvec_alloc (XVECLEN (orig, i));
 	      for (j = 0; j < XVECLEN (copy, i); j++)
@@ -1164,9 +1228,6 @@ copy_rtx_and_substitute (orig)
 	  break;
 
 	default:
-	  fprintf (stderr,
-		   "switch format wrong in rtl2.copy_rtx_and_substitute(). format was: %c.\n",
-		   format_ptr[-1]);
 	  abort ();
 	}
     }

@@ -834,40 +834,30 @@ enum reg_class {
    after execution of an instruction whose pattern is EXP.
    Do not alter them if the instruction would not alter the cc's.  */
 
-/* On the 80386, all simple mov insns o store in a register
-   fail to set the cc's.  However, in some cases these instructions
-   can make it possibly invalid to use the saved cc's.  In those
-   cases we clear out some or all of the saved cc's so they won't be used.  */
-
 #define NOTICE_UPDATE_CC(EXP) \
   notice_update_cc(EXP)
+
+/* Output a signed jump insn.  Use template NORMAL ordinarily, or
+   FLOAT following a floating point comparison.
+   We ought to use NO_OV if following an arithmetic insn that set the
+   cc's based on its result; but (1) the NO_OV templates written
+   in i386.md are incorrect and (2) notice_update_cc never records
+   cc settings from arithmetic insns.  */
 
 #define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)  \
 { if (cc_status.flags & CC_IN_80387)				\
     return FLOAT;						\
   if (cc_status.flags & CC_NO_OVERFLOW)				\
-    return NO_OV;						\
+    abort ();							\
   return NORMAL; }
 
 /* Control the assembler format that we output.  */
-
-/* Output at beginning of assembler file.  */
-
 
 #ifdef ATT
 #include <syms.h>
 #else 
 #define FILNMLEN 14
 #endif
-
-#define ASM_OUTPUT_ASCII(asm_out_file, p, size) \
-{int i=0; \
-  while (i < size) \
-    { if (i%10 ==0) { if(i!=0)fprintf(asm_out_file,"\n"); \
-		      fprintf(asm_out_file,ASM_BYTE); } \
-        else fprintf(asm_out_file,","); \
-	  fprintf (asm_out_file, "0x%x",(p[i++] & 0177));} \
-	fprintf(asm_out_file,"\n"); }
 
 /* How to refer to registers in assembler output.
    This sequence is indexed by compiler's hard-register-number (see above). */
@@ -1023,53 +1013,17 @@ do { union { float f; long l;} tem;			\
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  \
   print_operand_address (FILE, ADDR)
 
-/* gnulib uses  these.  We need to return single floats in the fp
-   reg, in order to interface with the libraries.  So while many machines
-   Use SFVALUE=int, we need SFVALUE=float
-   SFmode can't sometimes be returned in an fp reg and sometimes not.
-   */
-
-#undef SFVALUE 
-#undef INTIFY
-
-/* this is the type of value returned by the _xxsf library functions
-except for the comparison functions which  always return an int.
-On some machines this is int, for the 386 we want float */
+/* Routines in gnulib that return floats must return them in an fp reg,
+   just as other functions do which return such values.
+   These macros make that happen.  */
 
 #define SFVALUE float
-
-/* This converts an SFmode to an SFVALUE */
-
 #define INTIFY(FLOATVAL) FLOATVAL
-
-/* moving floats from ordinary registers on the 386 takes more
-   time than a move from memory.  Also moving from a floating
-   point register different from the top, is expensive.
-   Also since we need to specifically pop a reg after use, this
-   is expensive, and cannot be maintained with some branches:
-   {double x;
-   if (n> 0) x=3.0;
-   if (n < 1) x=2.0;
-   ..}
-   If x were assigned to the float stack, we would not know whether it had
-   been set or not. Some values of n would leave two items on the stack,
-   and some just one.  But a function returning a real type must leave
-   exactly one item on the stack, and others none, so we must know at
-   compile time how many net pushes there have been.
-   */
-
-  /* The architecture on some machines does not make all switch
-     settings possible, given the present compiler.  This will
-     be run after all switches have been decoded */
-
-#define OVERRIDE_SWITCHES \
- /* flag_float_store=1;  */ \
-  if (!optimize) set_target_switch("soft-float");
 
 /* Nonzero if INSN magically clobbers register REGNO.  */
 
 #define INSN_CLOBBERS_REGNO_P(INSN, REGNO)	\
-  (FP_REGNO_P (REGNO)			\
+  (FP_REGNO_P (REGNO)				\
    && (GET_CODE (INSN) == JUMP_INSN || GET_CODE (INSN) == BARRIER))
 
 /* a letter which is not needed by the normal asm syntax, which

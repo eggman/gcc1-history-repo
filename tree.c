@@ -783,6 +783,25 @@ perm_tree_cons (purpose, value, chain)
   return node;
 }
 
+/* Same as `tree_cons', but make this node temporary, regardless.  */
+
+tree
+temp_tree_cons (purpose, value, chain)
+     tree purpose, value, chain;
+{
+  register tree node;
+  register struct obstack *ambient_obstack = current_obstack;
+  current_obstack = &temporary_obstack;
+
+  node = make_node (TREE_LIST);
+  TREE_CHAIN (node) = chain;
+  TREE_PURPOSE (node) = purpose;
+  TREE_VALUE (node) = value;
+
+  current_obstack = ambient_obstack;
+  return node;
+}
+
 /* Return the last node in a chain of nodes (chained through TREE_CHAIN).  */
 
 tree
@@ -852,6 +871,21 @@ int_size_in_bytes (type)
   return (size + BITS_PER_UNIT - 1) / BITS_PER_UNIT;
 }
 
+/* Return, as an INTEGER_CST node, the number of elements for
+   TYPE (which is an ARRAY_TYPE).  */
+
+tree
+array_type_nelts (type)
+     tree type;
+{
+  tree index_type = TYPE_DOMAIN (type);
+  return (tree_int_cst_equal (TYPE_MIN_VALUE (index_type), integer_zero_node)
+	  ? TYPE_MAX_VALUE (index_type)
+	  : fold (build (MINUS_EXPR, integer_type_node,
+			 TYPE_MAX_VALUE (index_type),
+			 TYPE_MIN_VALUE (index_type))));
+}
+
 /* Return nonzero if arg is static -- a reference to an object in
    static storage.  This is not the same as the C meaning of `static'.  */
 
@@ -907,6 +941,11 @@ lvalue_p (ref)
       case RESULT_DECL:
       case ERROR_MARK:
 	if (TREE_CODE (TREE_TYPE (ref)) != FUNCTION_TYPE)
+	  return 1;
+	break;
+
+      case CALL_EXPR:
+	if (TREE_CODE (TREE_TYPE (ref)) == REFERENCE_TYPE)
 	  return 1;
       }
   return 0;
@@ -1121,6 +1160,7 @@ build_decl (code, name, type)
   return t;
 }
 
+#if 0
 /* Low-level constructors for statements.
    These constructors all expect source file name and line number
    as arguments, as well as enough arguments to fill in the data
@@ -1224,23 +1264,6 @@ build_case (filename, line, object, cases)
 }
 
 tree
-build_let (filename, line, vars, body, supercontext, tags)
-     char *filename;
-     int line;
-     tree vars, body, supercontext, tags;
-{
-  register tree t = make_node (LET_STMT);
-  STMT_SOURCE_FILE (t) = filename;
-  STMT_SOURCE_LINE (t) = line;
-  STMT_VARS (t) = vars;
-  STMT_BODY (t) = body;
-  STMT_SUPERCONTEXT (t) = supercontext;
-  STMT_BIND_SIZE (t) = 0;
-  STMT_TYPE_TAGS (t) = tags;
-  return t;
-}
-
-tree
 build_loop (filename, line, body)
      char *filename;
      int line;
@@ -1263,6 +1286,29 @@ build_compound (filename, line, body)
   STMT_SOURCE_FILE (t) = filename;
   STMT_SOURCE_LINE (t) = line;
   STMT_BODY (t) = body;
+  return t;
+}
+
+#endif /* 0 */
+
+/* LET_STMT nodes are used to represent the structure of binding contours
+   and declarations, once those contours have been exited and their contents
+   compiled.  This information is used for outputting debugging info.  */
+
+tree
+build_let (filename, line, vars, body, supercontext, tags)
+     char *filename;
+     int line;
+     tree vars, body, supercontext, tags;
+{
+  register tree t = make_node (LET_STMT);
+  STMT_SOURCE_FILE (t) = filename;
+  STMT_SOURCE_LINE (t) = line;
+  STMT_VARS (t) = vars;
+  STMT_BODY (t) = body;
+  STMT_SUPERCONTEXT (t) = supercontext;
+  STMT_BIND_SIZE (t) = 0;
+  STMT_TYPE_TAGS (t) = tags;
   return t;
 }
 
@@ -1306,6 +1352,7 @@ build_type_variant (type, constp, volatilep)
   TREE_READONLY (t) = constp;
   TREE_VOLATILE (t) = volatilep;
   TYPE_POINTER_TO (t) = 0;
+  TYPE_REFERENCE_TO (t) = 0;
 
   /* Add this type to the chain of variants of TYPE.  */
   TYPE_NEXT_VARIANT (t) = TYPE_NEXT_VARIANT (m);
@@ -1335,7 +1382,7 @@ struct type_hash
    While all these live in the same table, they are completely independent,
    and the hash code is computed differently for each of these.  */
 
-#define TYPE_HASH_SIZE 29
+#define TYPE_HASH_SIZE 59
 struct type_hash *type_hash_table[TYPE_HASH_SIZE];
 
 /* Here is how primitive or already-canonicalized types' hash
@@ -1443,7 +1490,8 @@ type_hash_canon (hashcode, type)
 
 /* Given two lists of types
    (chains of TREE_LIST nodes with types in the TREE_VALUE slots)
-   return 1 if the lists contain the same types in the same order.  */
+   return 1 if the lists contain the same types in the same order.
+   Also, the TREE_PURPOSEs must match.  */
 
 int
 type_list_equal (l1, l2)
@@ -1451,8 +1499,13 @@ type_list_equal (l1, l2)
 {
   register tree t1, t2;
   for (t1 = l1, t2 = l2; t1 && t2; t1 = TREE_CHAIN (t1), t2 = TREE_CHAIN (t2))
-    if (TREE_VALUE (t1) != TREE_VALUE (t2))
-      return 0;
+    {
+      if (TREE_VALUE (t1) != TREE_VALUE (t2))
+	return 0;
+      if (TREE_PURPOSE (t1) != TREE_PURPOSE (t2)
+	  && !simple_cst_equal (TREE_PURPOSE (t1), TREE_PURPOSE (t2)))
+	return 0;
+    }
 
   return t1 == t2;
 }
@@ -1489,6 +1542,74 @@ tree_int_cst_lt (t1, t2)
   if (!TREE_UNSIGNED (TREE_TYPE (t1)))
     return INT_CST_LT (t1, t2);
   return INT_CST_LT_UNSIGNED (t1, t2);
+}
+
+/* Compare two constructor-element-type constants.  */
+
+int
+simple_cst_equal (t1, t2)
+     tree t1, t2;
+{
+  register enum tree_code code1, code2;
+
+  if (t1 == t2)
+    return 1;
+  if (t1 == 0 || t2 == 0)
+    return 0;
+
+  code1 = TREE_CODE (t1);
+  code2 = TREE_CODE (t2);
+
+  if (code1 == NOP_EXPR || code1 == CONVERT_EXPR)
+    if (code2 == NOP_EXPR || code2 == CONVERT_EXPR)
+      return simple_cst_equal (TREE_OPERAND (t1, 0), TREE_OPERAND (t2, 0));
+    else
+      return simple_cst_equal (TREE_OPERAND (t1, 0), t2);
+  else if (code2 == NOP_EXPR || code2 == CONVERT_EXPR)
+    return simple_cst_equal (t1, TREE_OPERAND (t2, 0));
+
+  if (code1 != code2)
+    return 0;
+
+  switch (code1)
+    {
+    case INTEGER_CST:
+      return TREE_INT_CST_LOW (t1) == TREE_INT_CST_LOW (t2)
+	&& TREE_INT_CST_HIGH (t1) == TREE_INT_CST_HIGH (t2);
+
+    case REAL_CST:
+      return TREE_REAL_CST (t1) == TREE_REAL_CST (t2);
+
+    case STRING_CST:
+      return TREE_STRING_LENGTH (t1) == TREE_STRING_LENGTH (t2)
+	&& !strcmp (TREE_STRING_POINTER (t1), TREE_STRING_POINTER (t2));
+
+    case CONSTRUCTOR:
+      abort ();
+
+    case VAR_DECL:
+    case PARM_DECL:
+    case CONST_DECL:
+      return 0;
+
+    case PLUS_EXPR:
+    case MINUS_EXPR:
+    case MULT_EXPR:
+    case TRUNC_DIV_EXPR:
+    case TRUNC_MOD_EXPR:
+    case LSHIFT_EXPR:
+    case RSHIFT_EXPR:
+      return (simple_cst_equal (TREE_OPERAND (t1, 0), TREE_OPERAND (t2, 0))
+	      && simple_cst_equal (TREE_OPERAND (t1, 1), TREE_OPERAND (t2, 1)));
+
+    case NEGATE_EXPR:
+    case ADDR_EXPR:
+    case REFERENCE_EXPR:
+      return simple_cst_equal (TREE_OPERAND (t1, 0), TREE_OPERAND (t2, 0));
+
+    default:
+      abort ();
+    }
 }
 
 /* Constructors for pointer, array and function types.
@@ -1600,6 +1721,78 @@ build_function_type (value_type, arg_types)
 
   if (TYPE_SIZE (t) == 0)
     layout_type (t);
+  return t;
+}
+
+/* Build the node for the type of references-to-TO_TYPE.  */
+
+tree
+build_reference_type (to_type)
+     tree to_type;
+{
+  register tree t = TYPE_REFERENCE_TO (to_type);
+  register struct obstack *ambient_obstack = current_obstack;
+  register struct obstack *ambient_saveable_obstack = saveable_obstack;
+
+  /* First, if we already have a type for pointers to TO_TYPE, use it.  */
+
+  if (t)
+    return t;
+
+  /* We need a new one.  If TO_TYPE is permanent, make this permanent too.  */
+  if (TREE_PERMANENT (to_type))
+    {
+      current_obstack = &permanent_obstack;
+      saveable_obstack = &permanent_obstack;
+    }
+
+  t = make_node (REFERENCE_TYPE);
+  TREE_TYPE (t) = to_type;
+
+  /* Record this type as the pointer to TO_TYPE.  */
+  TYPE_REFERENCE_TO (to_type) = t;
+
+  layout_type (t);
+
+  current_obstack = ambient_obstack;
+  saveable_obstack = ambient_saveable_obstack;
+  return t;
+}
+
+/* Construct, lay out and return the type of methods belonging to class
+   BASETYPE and whose arguments and values are described by TYPE.
+   If that type exists already, reuse it.
+   TYPE must be a FUNCTION_TYPE node.  */
+
+tree
+build_method_type (basetype, type)
+     tree basetype, type;
+{
+  register tree t;
+  int hashcode;
+
+  /* Make a node of the sort we want.  */
+  t = make_node (METHOD_TYPE);
+
+  if (TREE_CODE (type) != FUNCTION_TYPE)
+    abort ();
+
+  TYPE_METHOD_CLASS (t) == basetype;
+  TREE_TYPE (t) = type;
+
+  /* The actual arglist for this function includes a "hidden" argument
+     which is "this".  Put it into the list of argument types.  */
+
+  TYPE_ARG_TYPES (t)
+    = tree_cons (NULL, build_pointer_type (basetype), TYPE_ARG_TYPES (type));
+
+  /* If we already have such a type, use the old one and free this one.  */
+  hashcode = TYPE_HASH (basetype) + TYPE_HASH (type);
+  t = type_hash_canon (hashcode, t);
+
+  if (TYPE_SIZE (t) == 0)
+    layout_type (t);
+
   return t;
 }
 
@@ -1817,339 +2010,4 @@ int_fits_type_p (c, type)
   else
     return (!INT_CST_LT (TYPE_MAX_VALUE (type), c)
 	    && !INT_CST_LT (c, TYPE_MIN_VALUE (type)));
-}
-
-/* Subroutines of `convert'.  */
-
-/* Change of width--truncation and extension of integers or reals--
-   is represented with NOP_EXPR.  Proper functioning of many things
-   assumes that no other conversions can be NOP_EXPRs.
-
-   Conversion between integer and pointer is represented with CONVERT_EXPR.
-   Converting integer to real uses FLOAT_EXPR
-   and real to integer uses FIX_TRUNC_EXPR.  */
-
-static tree
-convert_to_pointer (type, expr)
-     tree type, expr;
-{
-  register tree intype = TREE_TYPE (expr);
-  register enum tree_code form = TREE_CODE (intype);
-  
-  if (integer_zerop (expr))
-    {
-      if (type == TREE_TYPE (null_pointer_node))
-	return null_pointer_node;
-      expr = build_int_2 (0, 0);
-      TREE_TYPE (expr) = type;
-      return expr;
-    }
-
-  if (form == POINTER_TYPE)
-    return build (NOP_EXPR, type, expr);
-
-
-  if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    {
-      if (type_precision (intype) == POINTER_SIZE)
-	return build (CONVERT_EXPR, type, expr);
-      return convert_to_pointer (type,
-				 convert (type_for_size (POINTER_SIZE, 0),
-					  expr));
-    }
-
-  error ("cannot convert to a pointer type");
-
-  return null_pointer_node;
-}
-
-/* The result of this is always supposed to be a newly created tree node
-   not in use in any existing structure.  */
-
-static tree
-convert_to_integer (type, expr)
-     tree type, expr;
-{
-  register tree intype = TREE_TYPE (expr);
-  register enum tree_code form = TREE_CODE (intype);
-  extern tree build_binary_op_nodefault ();
-  extern tree build_unary_op ();
-
-  if (form == POINTER_TYPE)
-    {
-      if (integer_zerop (expr))
-	expr = integer_zero_node;
-      else
-	expr = fold (build (CONVERT_EXPR,
-			    type_for_size (POINTER_SIZE, 0), expr));
-      intype = TREE_TYPE (expr);
-      form = TREE_CODE (intype);
-      if (intype == type)
-	return expr;
-    }
-
-  if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    {
-      register int outprec = TYPE_PRECISION (type);
-      register int inprec = TYPE_PRECISION (intype);
-      register enum tree_code ex_form = TREE_CODE (expr);
-
-      if (outprec >= inprec)
-	return build (NOP_EXPR, type, expr);
-
-/* Here detect when we can distribute the truncation down past some arithmetic.
-   For example, if adding two longs and converting to an int,
-   we can equally well convert both to ints and then add.
-   For the operations handled here, such truncation distribution
-   is always safe.
-   It is desirable in these cases:
-   1) when truncating down to full-word from a larger size
-   2) when truncating takes no work.
-   3) when at least one operand of the arithmetic has been extended
-   (as by C's default conversions).  In this case we need two conversions
-   if we do the arithmetic as already requested, so we might as well
-   truncate both and then combine.  Perhaps that way we need only one.
-
-   Note that in general we cannot do the arithmetic in a type
-   shorter than the desired result of conversion, even if the operands
-   are both extended from a shorter type, because they might overflow
-   if combined in that type.  The exceptions to this--the times when
-   two narrow values can be combined in their narrow type even to
-   make a wider result--are handled by "shorten" in build_binary_op.  */
-
-      switch (ex_form)
-	{
-	case RSHIFT_EXPR:
-	  /* We can pass truncation down through right shifting
-	     when the shift count is a negative constant.  */
-	  if (TREE_CODE (TREE_OPERAND (expr, 1)) != INTEGER_CST
-	      || TREE_INT_CST_LOW (TREE_OPERAND (expr, 1)) > 0)
-	    break;
-	  goto trunc1;
-
-	case LSHIFT_EXPR:
-	  /* We can pass truncation down through left shifting
-	     when the shift count is a positive constant.  */
-	  if (TREE_CODE (TREE_OPERAND (expr, 1)) != INTEGER_CST
-	      || TREE_INT_CST_LOW (TREE_OPERAND (expr, 1)) < 0)
-	    break;
-	  /* In this case, shifting is like multiplication.  */
-
-	case PLUS_EXPR:
-	case MINUS_EXPR:
-	case MULT_EXPR:
-	case MAX_EXPR:
-	case MIN_EXPR:
-	case BIT_AND_EXPR:
-	case BIT_IOR_EXPR:
-	case BIT_XOR_EXPR:
-	case BIT_ANDTC_EXPR:
-	trunc1:
-	  {
-	    tree arg0 = get_unwidened (TREE_OPERAND (expr, 0), type);
-	    tree arg1 = get_unwidened (TREE_OPERAND (expr, 1), type);
-
-	    if (outprec >= BITS_PER_WORD
-		|| TRULY_NOOP_TRUNCATION (outprec, inprec)
-		|| inprec > TYPE_PRECISION (TREE_TYPE (arg0))
-		|| inprec > TYPE_PRECISION (TREE_TYPE (arg1)))
-	      {
-		/* Do the arithmetic in type TYPEX,
-		   then convert result to TYPE.  */
-		register tree typex = type;
-
-		/* Can't do arithmetic in enumeral types
-		   so use an integer type that will hold the values.  */
-		if (TREE_CODE (typex) == ENUMERAL_TYPE)
-		  typex = type_for_size (TYPE_PRECISION (typex),
-					 TREE_UNSIGNED (typex));
-
-		/* But now perhaps TYPEX is as wide as INPREC.
-		   In that case, do nothing special here.
-		   (Otherwise would recurse infinitely in convert.  */
-		if (TYPE_PRECISION (typex) != inprec)
-		  {
-		    /* Don't do unsigned arithmetic where signed was wanted,
-		       or vice versa.  */
-		    typex = (TREE_UNSIGNED (TREE_TYPE (expr))
-			     ? unsigned_type (typex) : signed_type (typex));
-		    return convert (type,
-				    build_binary_op_nodefault (ex_form,
-							       convert (typex, arg0),
-							       convert (typex, arg1)));
-		  }
-	      }
-	  }
-	  break;
-
-	case EQ_EXPR:
-	case NE_EXPR:
-	case GT_EXPR:
-	case GE_EXPR:
-	case LT_EXPR:
-	case LE_EXPR:
-	case TRUTH_AND_EXPR:
-	case TRUTH_OR_EXPR:
-	case TRUTH_NOT_EXPR:
-	  /* If we want result of comparison converted to a byte,
-	     we can just regard it as a byte, since it is 0 or 1.  */
-	  TREE_TYPE (expr) = type;
-	  return expr;
-
-	case NEGATE_EXPR:
-	case BIT_NOT_EXPR:
-	case ABS_EXPR:
-	  {
-	    register tree typex = type;
-
-	    /* Can't do arithmetic in enumeral types
-	       so use an integer type that will hold the values.  */
-	    if (TREE_CODE (typex) == ENUMERAL_TYPE)
-	      typex = type_for_size (TYPE_PRECISION (typex),
-				     TREE_UNSIGNED (typex));
-
-	    /* But now perhaps TYPEX is as wide as INPREC.
-	       In that case, do nothing special here.
-	       (Otherwise would recurse infinitely in convert.  */
-	    if (TYPE_PRECISION (typex) != inprec)
-	      {
-		/* Don't do unsigned arithmetic where signed was wanted,
-		   or vice versa.  */
-		typex = (TREE_UNSIGNED (TREE_TYPE (expr))
-			 ? unsigned_type (typex) : signed_type (typex));
-		return convert (type,
-				build_unary_op (ex_form,
-						convert (typex, TREE_OPERAND (expr, 0)),
-						1));
-	      }
-	  }
-
-	case NOP_EXPR:
-	  /* If truncating after truncating, might as well do all at once.
-	     If truncating after extending, we may get rid of wasted work.  */
-	  return convert (type, get_unwidened (TREE_OPERAND (expr, 0), type));
-
-	case COND_EXPR:
-	  /* Can treat the two alternative values like the operands
-	     of an arithmetic expression.  */
-	  {
-	    tree arg1 = get_unwidened (TREE_OPERAND (expr, 1), type);
-	    tree arg2 = get_unwidened (TREE_OPERAND (expr, 2), type);
-
-	    if (outprec >= BITS_PER_WORD
-		|| TRULY_NOOP_TRUNCATION (outprec, inprec)
-		|| inprec > TYPE_PRECISION (TREE_TYPE (arg1))
-		|| inprec > TYPE_PRECISION (TREE_TYPE (arg2)))
-	      {
-		/* Do the arithmetic in type TYPEX,
-		   then convert result to TYPE.  */
-		register tree typex = type;
-
-		/* Can't do arithmetic in enumeral types
-		   so use an integer type that will hold the values.  */
-		if (TREE_CODE (typex) == ENUMERAL_TYPE)
-		  typex = type_for_size (TYPE_PRECISION (typex),
-					 TREE_UNSIGNED (typex));
-
-		/* But now perhaps TYPEX is as wide as INPREC.
-		   In that case, do nothing special here.
-		   (Otherwise would recurse infinitely in convert.  */
-		if (TYPE_PRECISION (typex) != inprec)
-		  {
-		    /* Don't do unsigned arithmetic where signed was wanted,
-		       or vice versa.  */
-		    typex = (TREE_UNSIGNED (TREE_TYPE (expr))
-			     ? unsigned_type (typex) : signed_type (typex));
-		    return convert (type,
-				    build (COND_EXPR, typex,
-					   TREE_OPERAND (expr, 0),
-					   convert (typex, arg1),
-					   convert (typex, arg2)));
-		  }
-	      }
-	  }
-
-	}
-
-      return build (NOP_EXPR, type, expr);
-    }
-
-  if (form == REAL_TYPE)
-    return build (FIX_TRUNC_EXPR, type, expr);
-
-  error ("aggregate value used where an integer was expected");
-
-  {
-    register tree tem = build_int_2 (0, 0);
-    TREE_TYPE (tem) = type;
-    return tem;
-  }
-}
-
-static tree
-convert_to_real (type, expr)
-     tree type, expr;
-{
-  register enum tree_code form = TREE_CODE (TREE_TYPE (expr));
-  extern int flag_float_store;
-
-  if (form == REAL_TYPE)
-    return build (flag_float_store ? CONVERT_EXPR : NOP_EXPR,
-		  type, expr);
-
-  if (form == INTEGER_TYPE || form == ENUMERAL_TYPE)
-    return build (FLOAT_EXPR, type, expr);
-
-  if (form == POINTER_TYPE)
-    error ("pointer value used where a float was expected");
-  else
-    error ("aggregate value used where a float was expected");
-
-  {
-    register tree tem = make_node (REAL_CST);
-    TREE_TYPE (tem) = type;
-    TREE_REAL_CST (tem) = 0;
-    return tem;
-  }
-}
-
-/* Create an expression whose value is that of EXPR,
-   converted to type TYPE.  The TREE_TYPE of the value
-   is always TYPE.  This function implements all reasonable
-   conversions; callers should filter out those that are
-   not permitted by the language being compiled.  */
-
-tree
-convert (type, expr)
-     tree type, expr;
-{
-  register tree e = expr;
-  register enum tree_code code = TREE_CODE (type);
-
-  if (type == TREE_TYPE (expr) || TREE_CODE (expr) == ERROR_MARK)
-    return expr;
-  if (TREE_CODE (TREE_TYPE (expr)) == ERROR_MARK)
-    return error_mark_node;
-  if (TREE_CODE (TREE_TYPE (expr)) == VOID_TYPE)
-    {
-      error ("void value not ignored as it ought to be");
-      return error_mark_node;
-    }
-  if (code == VOID_TYPE)
-    return build (CONVERT_EXPR, type, e);
-#if 0
-  /* This is incorrect.  A truncation can't be stripped this way.
-     Extensions will be stripped by the use of get_unwidened.  */
-  if (TREE_CODE (expr) == NOP_EXPR)
-    return convert (type, TREE_OPERAND (expr, 0));
-#endif
-  if (code == INTEGER_TYPE || code == ENUMERAL_TYPE)
-    return fold (convert_to_integer (type, e));
-  if (code == POINTER_TYPE)
-    return fold (convert_to_pointer (type, e));
-  if (code == REAL_TYPE)
-    return fold (convert_to_real (type, e));
-
-  error ("conversion to non-scalar type requested");
-  return error_mark_node;
 }

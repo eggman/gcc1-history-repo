@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 26 June 1988
+@center last updated 17 August 1988
 @sp 1
-@center for version 1.23
+@center for version 1.26
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -275,10 +275,17 @@ Charles LaBrec contributed the support for the Integrated Solutions
 68020 system.
 
 @item
-Michael Tiemann of MCC wrote the description of the National
-Semiconductor 32000 series cpu, with some contributions from Jan Stein
-of the Chalmers Computer Club.  Tiemann also wrote the code for inline
-function integration and for the SPARC cpu and Motorola 88000 cpu.
+Michael Tiemann of MCC wrote most of the description of the National
+Semiconductor 32000 series cpu.  He also wrote the code for inline
+function integration and for the SPARC cpu and Motorola 88000 cpu
+and part of the Sun FPA support.
+
+@item
+Jan Stein of the Chalmers Computer Society provided support for
+Genix, as well as part of the 32000 machine description.
+
+@item
+Randy Smith finished the Sun FPA support.
 
 @item
 Robert Brown implemented the support for Encore 32000 systems.
@@ -971,11 +978,23 @@ config file for the machine you are using (@pxref{Config}).  This
 file is responsible for defining information about the host
 machine.  It includes @file{tm.h}.
 
-The file's name should be @file{config-@var{machine}.h}.  On VMS, use
-@file{config-vms.h} rather than @file{config-vax.h}.  On the HP 9000
-series 300, use @file{config-hp9k3.h} rather than
-@file{config-m68k.h}.  On Suns (model 3 or 4) running system version
-4, use @file{config-sun4.h}.@refill
+The file's name should be @file{config-@var{machine}.h}, with these
+exceptions:
+
+@table @file
+@item config-vms.h
+for vaxen running VMS.
+@item config-vaxv.h
+for vaxen running system V.
+@item config-i386v.h
+for Intel 80386's running system V.
+@item config-sun4.h
+for Suns (model 3 or 4) running @emph{operating system} version 4.
+@item config-hp9k3.h
+for the HP 9000 series 300.
+@item config-gnx.h
+for the ns32000 running Genix
+@end table
 
 If your system does not support symbolic links, you might want to
 set up @file{config.h} to contain a @samp{#include} command which
@@ -986,49 +1005,53 @@ Make a symbolic link named @file{tm.h} to the machine-description
 macro file for your machine (its name should be
 @file{tm-@var{machine}.h}).
 
-For the 68000/68020, do not use @file{tm-m68k.h} directly;
-instead use one of the files @file{tm-sun3.h}, @file{tm-sun2.h},
-@file{tm-isi68.h}, @file{tm-news800.h} or @file{tm-3b1.h}.  Each
-of those files includes @file{tm-m68k.h} but sets up a few things
-differently as appropriate to the specific model of
-machine.@refill
+If your system is a 68000, don't use the file @file{tm-m68k.h}
+directly.  Instead, use one of these files:
 
-There are two files you can use for a 680x0 running HPUX:
-@file{tm-hp9k320.h} and @file{tm-hp9k320g.h}.  Use the former if
-you are installing GNU CC alone.  The latter is for another option
-where GNU CC together with the GNU assembler, linker, debugger
-and other utilities are used to replace all of HPUX that deals
-with compilation.  Not all of the pieces of GNU software needed for
-this mode of operation are as yet in distribution; full instructions
-will appear here in the future.@refill
+@table @file
+@item tm-sun3.h
+for Sun 3 machines.
+@item tm-sun2.h
+for Sun 2 machines.
+@item tm-3b1.h
+for AT&T 3b1 (aka 7300 Unix PC).
+@item tm-isi68.h
+for Integrated Solutions systems.
+@item tm-news800.h
+for SONY News systems.
+@item tm-hp9k320.h
+for HPUX systems, if you are using GNU CC with the system's
+assembler and linker.
+@item tm-hp9k320g.h
+for HPUX systems, if you are using the GNU assembler, linker and
+other utilities.  Not all of the pieces of GNU software needed
+for this mode of operation are as yet in distribution; full
+instructions will appear here in the future.@refill
+@end table
 
 For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
 system V, or @file{tm-vms.h} on VMS.@refill
 
-For the SPARC, use @file{tm-sparc.h}.
+For the SPARC (Sun 4), use @file{tm-sparc.h}.
 
 For the Motorola 88000, use @file{tm-m88k.h}.  The support for the
 88000 has a few unfinished spots because there was no way to run the
 output.  Bugs are suspected in handling of branch-tables and in
 the function prologue and epilogue.
 
-For the 80386, don't use @file{tm-i386.h} directly.  Use @file{tm-i386v.h}
-if the target machine is running system V, or @file{tm-compaq.h} for a
-Compaq.
+For the 80386, don't use @file{tm-i386.h} directly.  Use
+@file{tm-i386v.h} if the target machine is running system V,
+@file{tm-seq386.h} for a Sequent 386 system, or @file{tm-compaq.h} for
+a Compaq.
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
-machine, or @file{tm-encore.h} for an Encore machine; otherwise,
-perhaps @file{tm-ns32k.h} will work for you.  If you are trying to use
-GNU CC on GENIX, you may need to get the version of @code{malloc} from
-GNU Emacs instead of the system library version, and you probably need
-to cause the following assembler code to be executed in @file{crt0.o}
-in order to run the GNU CC output:
+machine, or @file{tm-encore.h} for an Encore machine, or
+@file{tm-gnx.h} if you are using Genix version 3; otherwise, perhaps
+@file{tm-ns32k.h} will work for you.
 
-@example
-lprd    sb,$0
-sprd    mod,r0
-movqd   $0,0(r0)
-@end example
+Note that Genix has bugs in @code{alloca} and @code{malloc}; you must
+get the compiled versions of these from GNU Emacs and edit GNU CC's
+@file{Makefile} to use them.
 
 Note that Encore systems are supported only under BSD.
 
@@ -1044,13 +1067,13 @@ subroutine file for your machine (its name should be
 
 @item
 Make sure the Bison parser generator is installed.  (This is
-unnecessary if the Bison output files @file{parse.tab.c} and
-@file{cexp.c} are more recent than @file{parse.y} and @file{cexp.y}
+unnecessary if the Bison output files @file{c-parse.tab.c} and
+@file{cexp.c} are more recent than @file{c-parse.y} and @file{cexp.y}
 and you do not plan to change the @samp{.y} files.)
 
 Note that if you have an old version of Bison you may get an error
 from the line with the @samp{%expect} directive.  If so, simply remove
-that line from @file{parse.y} and proceed.
+that line from @file{c-parse.y} and proceed.
 
 @item
 If you are using a Sun, make sure the environment variable
@@ -1348,6 +1371,10 @@ In ANSI C, this is not allowed: @code{long} and other type modifiers
 require an explicit @code{int}.  Because this criterion is expressed
 by Bison grammar rules rather than C code, the @samp{-traditional}
 flag cannot alter it.
+
+@item
+PCC allows typedef names to be used as function parameters.  The
+difficulty described immediately above applies here too.
 
 @item
 When compiling functions that return @code{float}, PCC converts it to
@@ -2482,12 +2509,12 @@ represented as declaration nodes.
 Constant folding and associative-law simplifications are also done
 during this pass.
 
-The source files for parsing are @file{parse.y}, @file{decl.c},
-@file{typecheck.c}, @file{stor-layout.c}, @file{fold-const.c}, and
-@file{tree.c}.  The last three are intended to be language-independent.
-There are also header files @file{parse.h}, @file{c-tree.h},
-@file{tree.h} and @file{tree.def}.  The last two define the format of
-the tree representation.@refill
+The source files for parsing are @file{c-parse.y}, @file{c-decl.c},
+@file{c-typeck.c}, @file{c-convert.c}, @file{stor-layout.c},
+@file{fold-const.c}, and @file{tree.c}.  The last three files are
+intended to be language-independent.  There are also header files
+@file{c-parse.h}, @file{c-tree.h}, @file{tree.h} and @file{tree.def}.
+The last two define the format of the tree representation.@refill
 
 @item
 RTL generation.  This is the conversion of syntax tree into RTL code.
@@ -3200,6 +3227,11 @@ says which register.
 The compilation parameter @code{WORDS_BIG_ENDIAN}, if defined, says
 that word number zero is the most significant part; otherwise, it is
 the least significant part.
+
+Between the combiner pass and the reload pass, it is possible to have
+a @samp{subreg} which contains a @samp{mem} instead of a @samp{reg} as
+its first operand.  The reload pass eliminates these cases by
+reloading the @samp{mem} into a suitable register.
 
 Note that it is not valid to access a @code{DFmode} value in @code{SFmode}
 using a @samp{subreg}.  On some machines the most significant part of a
@@ -4305,8 +4337,9 @@ pattern will not match at all.
 
 Operand numbers must be chosen consecutively counting from zero in
 each instruction pattern.  There may be only one @samp{match_operand}
-expression in the pattern for each expression number, and they must
-appear in order of increasing expression number.
+expression in the pattern for each operand number.  Usually operands
+are numbered in the order of appearance in @samp{match_operand}
+expressions.
 
 @var{testfn} is a string that is the name of a C function that accepts
 two arguments, a machine mode and an expression.  During matching,
@@ -4921,6 +4954,10 @@ machine description, but typically on a RISC machine these can only be
 pseudo registers that did not get hard registers, while on other
 machines explicit memory references will get optional reloads.
 
+In addition, the constraints must allow any hard register to be moved
+to any other hard register (provided that @code{HARD_REGNO_MODE_OK}
+permits mode @var{m} in each of the registers).
+
 @item @samp{movstrict@var{m}}
 Like @samp{mov@var{m}} except that if operand 0 is a @samp{subreg}
 with mode @var{m} of a register whose natural mode is wider,
@@ -5124,10 +5161,24 @@ that refers to the label to jump to.  Jump if the condition codes
 meet condition @var{cond}.
 
 @item @samp{call}
-Subroutine call instruction.  Operand 1 is the number of bytes of
-arguments pushed (in mode @code{SImode}), and operand 0 is the
-function to call.  Operand 0 should be a @samp{mem} RTX whose address
-is the address of the function.
+Subroutine call instruction returning no value.  Operand 0 is the
+function to call; operand 1 is the number of bytes of arguments pushed
+(in mode @code{SImode}, except it is normally a @samp{const_int});
+operand 2 is the number of registers used as operands.
+
+On most machines, operand 2 is not actually stored into the RTL pattern.
+
+Operand 0 should be a @samp{mem} RTX whose address is the address of
+the function.
+
+@item @samp{call_value}
+Subroutine call instruction returning a value.  Operand 0 is the hard
+register in which the value is returned.  There are three more
+operands, the same as the three operands of the @samp{call}
+instruction (but with numbers increased by one).
+
+Subroutines that return @code{BLKmode} objects use the @samp{call}
+insn.
 
 @item @samp{return}
 Subroutine return instruction.  This instruction pattern name should be
@@ -5687,14 +5738,30 @@ compiler source files include @file{config.h}.
 
 @table @code
 @item CPP_PREDEFINES
-Define this to be a string constant containing @samp{-D} options
-to define the predefined macros that identify this machine and system.
+Define this to be a string constant containing @samp{-D} options to
+define the predefined macros that identify this machine and system.
+These macros will be predefined unless the @samp{-ansi} option is
+specified.
 
 For example, on the Sun, one can use the value
 
 @example
 "-Dmc68000 -Dsun -Dunix"
 @end example
+
+@item CPP_SPEC
+A C string constant that tells the GNU CC driver program options to
+pass to CPP.  It can also specify how to translate options you
+give to GNU CC into options for GNU CC to pass to the CPP.
+
+Do not define this macro if it does not need to do anything.
+
+@item CC1_SPEC
+A C string constant that tells the GNU CC driver program options to
+pass to CC1.  It can also specify how to translate options you
+give to GNU CC into options for GNU CC to pass to the CC1.
+
+Do not define this macro if it does not need to do anything.
 
 @item extern int target_flags;
 This declaration should be present.
@@ -5745,12 +5812,14 @@ with opposite meanings, and picks the latter as the default:
     @{ "68000", -1@},     \
     @{ "", 1@}@}
 @end example
-@end table
 
-Sometimes certain combinations of command options do not make sense on a
-particular target machine.  You can define a macro @code{OVERRIDE_OPTIONS}
-to take account of this.  This macro, if defined, is executed once
-just after all the command options have been parsed.
+@item OVERRIDE_OPTIONS
+Sometimes certain combinations of command options do not make sense on
+a particular target machine.  You can define a macro
+@code{OVERRIDE_OPTIONS} to take account of this.  This macro, if
+defined, is executed once just after all the command options have been
+parsed.
+@end table
 
 @node Storage Layout, Registers, Run-time Target, Machine Macros
 @section Storage Layout
@@ -5787,6 +5856,9 @@ Number of storage units in a word; normally 4.
 @item POINTER_SIZE
 Width of a pointer, in bits.
 
+@item POINTER_BOUNDARY
+Alignment required for pointers stored in memory, in bits.
+
 @item PARM_BOUNDARY
 Alignment required for function parameters on the stack, in bits.
 
@@ -5801,7 +5873,7 @@ Alignment required for a function entry point, in bits.
 @item BIGGEST_ALIGNMENT
 Biggest alignment that any data type can require on this machine, in bits.
 
-@item EMPTY_FIELD_ALIGNMENT
+@item EMPTY_FIELD_BOUNDARY
 Alignment in bits to be given to a structure bit field that follows an
 empty field such as @code{int : 0;}.
 
@@ -5857,9 +5929,10 @@ pseudo register's number really is assigned the number
 An initializer that says which registers are used for fixed purposes
 all throughout the compiled code and are therefore not available for
 general allocation.  These would include the stack pointer, the frame
-pointer, the program counter on machines where that is considered one
-of the addressable registers, and any other numbered register with a
-standard use.
+pointer (except on machines where that can be used as a general
+register when no frame pointer is needed), the program counter on
+machines where that is considered one of the addressable registers,
+and any other numbered register with a standard use.
 
 This information is expressed as a sequence of numbers, separated by
 commas and surrounded by braces.  The @var{n}th number is 1 if
@@ -5891,6 +5964,18 @@ This is necessary in case the fixed or call-clobbered registers depend
 on target flags.
 
 You need not define this macro if it has no work to do.
+
+If the usage of an entire class of registers depends on the target
+flags, you may indicate this to gcc by using this macro to modify
+@code{fixed_regs} and @code{call_used_regs} to 1 for each of the
+registers in the classes which should not be used by gcc.  Also define
+the macro @code{REG_CLASS_FROM_LETTER} to return @code{NO_REGS} if it
+is called with a letter for a class that shouldn't be used.
+
+(However, if this class is not included in @code{GENERAL_REGS} and all
+of the insn patterns whose constraints permit this class are
+controlled by target switches, then GCC will automatically avoid using
+these registers when the target switches are opposed to them.)
 
 @item OVERLAPPING_REGNO_P (@var{regno})
 If defined, this is a C expression whose value is @var{regno} is
@@ -6047,7 +6132,7 @@ The register number used for passing a function's static chain
 pointer.  This is needed for languages such as Pascal and Algol where
 functions defined within other functions can access the local
 variables of the outer functions; it is not currently used because C
-does not provide this feature.
+does not provide this feature, but you must define the macro.
 
 The static chain register need not be a fixed register.
 
@@ -6150,6 +6235,13 @@ Each register class has a number, which is the value of casting
 the class name to type @code{int}.  The number serves as an index
 in many of the tables described below.
 
+@item N_REG_CLASSES
+The number of distinct register classes, defined as follows:
+
+@example
+#define N_REG_CLASSES (int) LIM_REG_CLASSES
+@end example
+
 @item REG_CLASS_NAMES
 An initializer containing the names of the register classes as C string
 constants.  These names are used in writing some of the debugging dumps.
@@ -6171,15 +6263,22 @@ A C expression whose value is a register class containing hard register
 which is @dfn{minimal}, meaning that no smaller class also contains the
 register.
 
+@item BASE_REG_CLASS
+A macro whose definition is the name of the class to which a valid
+base register must belong.  A base register is one used in an address
+which is the register value plus a displacement.
+
 @item INDEX_REG_CLASS
-A macro whose definition is the name of the class to which a valid index
-register must belong.
+A macro whose definition is the name of the class to which a valid
+index register must belong.  An index register is one used in an
+address where its value is either multiplied by a scale factor or
+added to another register (as well as added to a displacement).
 
 @item REG_CLASS_FROM_LETTER (@var{char})
 A C expression which defines the machine-dependent operand constraint
-letters for register classes.  If @var{char} is such a letter, the value
-should be the register class corresponding to it.  Otherwise, the value
-should be @code{NO_REGS}.
+letters for register classes.  If @var{char} is such a letter, the
+value should be the register class corresponding to it.  Otherwise,
+the value should be @code{NO_REGS}.
 
 @item REGNO_OK_FOR_BASE_P (@var{num})
 A C expression which is nonzero if register number @var{num} is
@@ -6199,8 +6298,8 @@ two registers, neither one of them scaled, then either one may be
 labeled the ``base'' and the other the ``index''; but whichever
 labeling is used must fit the machine's constraints of which registers
 may serve in each capacity.  The compiler will try both labelings,
-looking for one that is valid, and reload one or both registers only
-if neither labeling works.
+looking for one that is valid, and will reload one or both registers
+only if neither labeling works.
 
 @item PREFERRED_RELOAD_CLASS (@var{x}, @var{class})
 A C expression that places additional restrictions on the register class
@@ -6454,10 +6553,12 @@ of @code{FUNCTION_ARG} and other related values.  For some target
 machines, the type @code{int} suffices and can hold the number of
 bytes of argument so far.
 
-@item INIT_CUMULATIVE_ARGS (@var{cum})
+@item INIT_CUMULATIVE_ARGS (@var{cum}, @var{fntype})
 A C statement (sans semicolon) for initializing the variable @var{cum}
 for the state at the beginning of the argument list.  The variable has
-type @code{CUMULATIVE_ARGS}.
+type @code{CUMULATIVE_ARGS}.  The value of @var{fntype} is the tree node
+for the data type of the function which will receive the args, or 0
+if the args are to a compiler support library function.
 
 @item FUNCTION_ARG_ADVANCE (@var{cum}, @var{mode}, @var{type}, @var{named})
 Update the summarizer variable @var{cum} to advance past an argument
@@ -6673,6 +6774,28 @@ for index registers, and so on).  Then only these subroutine macros
 need have two variants; the higher levels of macros may be the same
 whether strict or not.@refill
 
+@item REG_OK_FOR_BASE_P (@var{x})
+A C expression that is nonzero if @var{x} (asumed to be a @code{reg}
+RTX) is valid for use as a base register.  For hard registers, it
+should always accept those which the hardware permits and reject the
+others.  Whether the macro accepts or rejects pseudo registers must be
+controlled by @code{REG_OK_STRICT} as described above.  This usually
+requires two variant definitions, of which @code{REG_OK_STRICT}
+controls the one actually used.
+
+@item REG_OK_FOR_INDEX_P (@var{x})
+A C expression that is nonzero if @var{x} (asumed to be a @code{reg}
+RTX) is valid for use as an index register.
+
+The difference between an index register and a base register is that
+the index register may be scaled.  If an address involves the sum of
+two registers, neither one of them scaled, then either one may be
+labeled the ``base'' and the other the ``index''; but whichever
+labeling is used must fit the machine's constraints of which registers
+may serve in each capacity.  The compiler will try both labelings,
+looking for one that is valid, and will reload one or both registers
+only if neither labeling works.
+
 @item LEGITIMIZE_ADDRESS (@var{x}, @var{oldx}, @var{mode}, @var{win})
 A C compound statement that attempts to replace @var{x} with a valid
 memory address for an operand of mode @var{mode}.  @var{win} will be a
@@ -6841,7 +6964,7 @@ An alias for the machine mode used for memory references to functions
 being called, in @samp{call} RTL expressions.  On most machines this
 should be @code{QImode}.
 
-@item CONST_COST (@var{x}, @var{code})
+@item CONST_COSTS (@var{x}, @var{code})
 A part of a C @code{switch} statement that describes the relative
 costs of constant RTL expressions.  It must contain @code{case} labels
 for expression codes @samp{const_int}, @samp{const}, @samp{symbol_ref}, @samp{label_ref}
@@ -6921,6 +7044,22 @@ pass to the linker.  It can also specify how to translate options you
 give to GNU CC into options for GNU CC to pass to the linker.
 
 Do not define this macro if it does not need to do anything.
+
+@item LIB_SPEC
+Another C string constant used much like @code{LINK_SPEC}.  The difference
+between the two is that @code{LIBS_SPEC} is used at the end of the
+command given to the linker.
+
+If this macro is not defined, a default is provided that
+loads the standard C library from the usual place.  See @file{gcc.c}.
+
+@item STARTFILE_SPEC
+Another C string constant used much like @code{LINK_SPEC}.  The
+difference between the two is that @code{STARTFILE_SPEC} is used at
+the very beginning of the command given to the linker.
+
+If this macro is not defined, a default is provided that loads the
+standard C startup file from the usual place.  See @file{gcc.c}.
 
 @item ASM_FILE_START (@var{stream})
 A C expression which outputs to the stdio stream @var{stream}
@@ -7017,11 +7156,13 @@ the expression @code{assemble_name (@var{stream}, @var{name})} to output
 the name itself; before and after that, output the additional
 assembler syntax for defining the name, and a newline.
 
-@item ASM_DECLARE_FUNCTION_NAME (@var{stream}, @var{name})
+@item ASM_DECLARE_FUNCTION_NAME (@var{stream}, @var{name}, @var{decl})
 A C statement (sans semicolon) to output to the stdio stream
-@var{stream} any text necessary for declaring the name of a function
-which is being defined.  This macro is responsible for outputting
-the label definition (perhaps using @code{ASM_OUTPUT_LABEL}).
+@var{stream} any text necessary for declaring the name @var{name} of a
+function which is being defined.  This macro is responsible for
+outputting the label definition (perhaps using
+@code{ASM_OUTPUT_LABEL}).  The argument @var{decl} is the
+@code{FUNCTION_DECL} tree node representing the function.
 
 If this macro is not defined, then the function name is defined in the
 usual manner as a label (by means of @code{ASM_OUTPUT_LABEL}).
@@ -7034,10 +7175,12 @@ that is, available for reference from other files.  Use the expression
 itself; before and after that, output the additional assembler syntax
 for making that name global, and a newline.
 
-@item ASM_OUTPUT_EXTERNAL (@var{stream}, @var{name})
+@item ASM_OUTPUT_EXTERNAL (@var{stream}, @var{name}, @var{decl})
 A C statement (sans semicolon) to output to the stdio stream
 @var{stream} any text necessary for declaring the name of an external
-symbol which is referenced in this compilation but not defined.
+symbol named @var{name} which is referenced in this compilation but
+not defined.  The value of @var{decl} is the tree node for the
+declaration.
 
 This macro need not be defined if it does not need to output anything.
 The GNU assembler and most Unix assemblers don't require anything.
@@ -7048,6 +7191,14 @@ assembler syntax to a label named @var{name}.  The character @samp{_}
 should be added to the front of the name, if that is customary on your
 operating system, as it is in most Berkeley Unix systems.  This macro
 is used in @code{assemble_name}.
+
+@item ASM_GENERATE_INTERNAL_LABEL (@var{string}, @var{prefix}, @var{num})
+A C statement to store into the string @var{string} a label whose
+name is made from the string @var{prefix} and the number @var{num}.
+
+This string, when output subsequently by @code{ASM_OUTPUT_LABELREF},
+should produce the same output that @code{ASM_OUTPUT_INTERNAL_LABEL}
+would produce with the same @var{prefix} and @var{num}.
 
 @item ASM_OUTPUT_INTERNAL_LABEL (@var{stream}, @var{prefix}, @var{num})
 A C statement to output to the stdio stream @var{stream} a label whose

@@ -17,6 +17,20 @@
 
 #define CPP_PREDEFINES "-Dmc68000 -Dsun -Dunix"
 
+/* STARTFILE_SPEC to include sun floating point initialization
+   This is necessary (tr: Sun does it) for both the m68881 and the fpa
+   routines.
+   Note that includes knowledge of the default specs for gcc, ie. no
+   args translates to the same effect as -m68881
+   I'm not sure what would happen below if people gave contradictory
+   arguments (eg. -msoft-float -mfpa) */
+  
+#define STARTFILE_SPEC  \
+  "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt0.o%s}}\
+   %{mfpa:Wcrt1.o%s} %{!mfpa:%{m68881:Mcrt1.o%s}} \
+   %{!mfpa:%{msoft-float:Fcrt1.o%s}} \
+   %{!mfpa:%{!m68881:%{!msoft-float:Mcrt1.o%s}}}"
+
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 
 #define STRUCTURE_SIZE_BOUNDARY 16

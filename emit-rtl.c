@@ -134,11 +134,6 @@ int regno_pointer_flag_length;
    Allocated in parallel with regno_pointer_flag.  */
 
 rtx *regno_reg_rtx;
-
-/* Chain of all CONST_DOUBLEs made for this function;
-   so we can uniquize them.  */
-
-rtx real_constant_chain;
 
 /* rtx gen_rtx (code, mode, [element1, ..., elementn])
 **
@@ -1076,7 +1071,7 @@ emit_call_insn (pattern)
 
 /* Add the label LABEL to the end of the doubly-linked list.  */
 
-void
+rtx
 emit_label (label)
      rtx label;
 {
@@ -1088,17 +1083,19 @@ emit_label (label)
       INSN_UID (label) = cur_insn_uid++;
       add_insn (label);
     }
+  return label;
 }
 
 /* Make an insn of code BARRIER
    and add it to the end of the doubly-linked list.  */
 
-void
+rtx
 emit_barrier ()
 {
   register rtx barrier = rtx_alloc (BARRIER);
   INSN_UID (barrier) = cur_insn_uid++;
   add_insn (barrier);
+  return barrier;
 }
 
 /* Make an insn of code NOTE
@@ -1193,6 +1190,34 @@ emit (x)
     emit_call_insn (x);
 }
 
+/* Begin emitting insns to a sequence which can be packaged in an RTL_EXPR.
+   Return an rtx containing data on any sequence already in progress.  */
+
+rtx
+start_sequence ()
+{
+  rtx save;
+  ++emit_to_sequence;
+  save = gen_rtx (INSN_LIST, VOIDmode,
+		  sequence_first_insn, sequence_last_insn);
+  sequence_first_insn = 0;
+  sequence_last_insn = 0;
+  return save;
+}
+
+/* After emitting to a sequence, restore previous saved state.
+   The argument SAVED should be the value returned by `start_sequence'
+   when this sequence was started.  */
+
+void
+end_sequence (saved)
+     rtx saved;
+{
+  sequence_first_insn = XEXP (saved, 0);
+  sequence_last_insn = XEXP (saved, 1);
+  --emit_to_sequence;
+}
+
 /* Generate a SEQUENCE rtx containing the insn-patterns in VEC
    following any insns previously placed on sequence_first_insn.
    This is how the gen_... function from a DEFINE_EXPAND
@@ -1385,7 +1410,6 @@ init_emit (write_symbols)
   reg_rtx_no = FIRST_PSEUDO_REGISTER;
   last_linenum = 0;
   last_filename = 0;
-  real_constant_chain = 0;
   first_label_num = label_num;
   sequence_first_insn = NULL;
   sequence_last_insn = NULL;
@@ -1429,7 +1453,7 @@ init_emit_once ()
     u.d = 0;
     XINT (fconst0_rtx, 0) = u.i[0];
     XINT (fconst0_rtx, 1) = u.i[1];
-    XEXP (fconst0_rtx, 2) = const0_rtx;
+    XEXP (fconst0_rtx, 2) = 0;
   }
   PUT_MODE (fconst0_rtx, SFmode);
 
@@ -1439,7 +1463,7 @@ init_emit_once ()
     u.d = 0;
     XINT (dconst0_rtx, 0) = u.i[0];
     XINT (dconst0_rtx, 1) = u.i[1];
-    XEXP (dconst0_rtx, 2) = const0_rtx;
+    XEXP (dconst0_rtx, 2) = 0;
   }
   PUT_MODE (dconst0_rtx, DFmode);
 

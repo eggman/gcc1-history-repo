@@ -1141,8 +1141,9 @@ invariant_p (x, n_times_set)
       return 0;
 
     case REG:
-      if (x == frame_pointer_rtx || x == arg_pointer_rtx
-	  || x->unchanging)
+      /* We used to check x->unchanging here, but that is invalid
+	 since the reg might be set by initialization within the loop.  */
+      if (x == frame_pointer_rtx || x == arg_pointer_rtx)
 	return 1;
       if (n_times_set[REGNO (x)] == -1)
 	return 2;
@@ -1156,10 +1157,12 @@ invariant_p (x, n_times_set)
       /* Don't mess with volatile memory references.  */
       if (x->volatil)
 	return 0;
+#if 0
       /* If it's declared read-only, it is invariant
 	 if its address is invariant.  */
       if (x->unchanging)
 	return invariant_p (XEXP (x, 0), n_times_set);
+#endif
       /* A store in a varying-address aggregate component
 	 could clobber anything except a scalar with a fixed address.  */
       if (unknown_aggregate_altered

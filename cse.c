@@ -1295,6 +1295,18 @@ canon_hash (x, mode)
 	       + INTVAL (x) + INTVAL (x) >> HASHBITS);
       return ((1 << HASHBITS) - 1) & hash;
 
+    case CONST_DOUBLE:
+      /* This is like the general case, except that it only counts
+	 the first two elements.  */
+      hash += (int) code + (int) GET_MODE (x);
+      {
+	int tem = XINT (x, 0);
+	hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+	tem = XINT (x, 1);
+	hash += ((1 << HASHBITS) - 1) & (tem + tem >> HASHBITS);
+      }
+      return hash;
+
       /* Assume there is only one rtx object for any given label.  */
     case LABEL_REF:
       return hash + ((int) LABEL_REF << 7) + (int) XEXP (x, 0);

@@ -539,31 +539,35 @@
 \def\oddfooting{\parsearg\oddfootingxxx}
 \def\everyfooting{\parsearg\everyfootingxxx}
 
-\def\evenheadingxxx #1{\evenheadingyyy #1\|\|\|\|\finish}
-\def\evenheadingyyy #1\|#2\|#3\|#4\finish{%
+{\catcode`\@=0 %
+
+\gdef\evenheadingxxx #1{\evenheadingyyy #1@|@|@|@|\finish}
+\gdef\evenheadingyyy #1@|#2@|#3@|#4\finish{%
 \global\evenheadline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
 
-\def\oddheadingxxx #1{\oddheadingyyy #1\|\|\|\|\finish}
-\def\oddheadingyyy #1\|#2\|#3\|#4\finish{%
+\gdef\oddheadingxxx #1{\oddheadingyyy #1@|@|@|@|\finish}
+\gdef\oddheadingyyy #1@|#2@|#3@|#4\finish{%
 \global\oddheadline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
 
-\def\everyheadingxxx #1{\everyheadingyyy #1\|\|\|\|\finish}
-\def\everyheadingyyy #1\|#2\|#3\|#4\finish{%
+\gdef\everyheadingxxx #1{\everyheadingyyy #1@|@|@|@|\finish}
+\gdef\everyheadingyyy #1@|#2@|#3@|#4\finish{%
 \global\evenheadline={\rlap{\centerline{#2}}\line{#1\hfil#3}}
 \global\oddheadline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
 
-\def\evenfootingxxx #1{\evenfootingyyy #1\|\|\|\|\finish}
-\def\evenfootingyyy #1\|#2\|#3\|#4\finish{%
+\gdef\evenfootingxxx #1{\evenfootingyyy #1@|@|@|@|\finish}
+\gdef\evenfootingyyy #1@|#2@|#3@|#4\finish{%
 \global\evenfootline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
 
-\def\oddfootingxxx #1{\oddfootingyyy #1\|\|\|\|\finish}
-\def\oddfootingyyy #1\|#2\|#3\|#4\finish{%
+\gdef\oddfootingxxx #1{\oddfootingyyy #1@|@|@|@|\finish}
+\gdef\oddfootingyyy #1@|#2@|#3@|#4\finish{%
 \global\oddfootline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
 
-\def\everyfootingxxx #1{\everyfootingyyy #1\|\|\|\|\finish}
-\def\everyfootingyyy #1\|#2\|#3\|#4\finish{%
+\gdef\everyfootingxxx #1{\everyfootingyyy #1@|@|@|@|\finish}
+\gdef\everyfootingyyy #1@|#2@|#3@|#4\finish{%
 \global\evenfootline={\rlap{\centerline{#2}}\line{#1\hfil#3}}
 \global\oddfootline={\rlap{\centerline{#2}}\line{#1\hfil#3}}}
+%
+}% unbind the catcode of @.
 
 % @headings on   turns them on.
 % @headings off  turns them off.
@@ -590,10 +594,18 @@
 }
 
 % Subroutines used in generating headings
-\def\today{\ifcase\month\or
+% Produces Day Month Year style of output.
+\def\today{\number\day\space
+\ifcase\month\or
 January\or February\or March\or April\or May\or June\or
 July\or August\or September\or October\or November\or December\fi
-\space\number\day, \number\year}
+\space\number\year}
+
+% Use this if you want the Month Day, Year style of output.
+%\def\today{\ifcase\month\or
+%January\or February\or March\or April\or May\or June\or
+%July\or August\or September\or October\or November\or December\fi
+%\space\number\day, \number\year}
 
 % @settitle line...  specifies the title of the document, for headings
 % It generates no output of its own

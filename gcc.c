@@ -75,6 +75,7 @@ or with constant text in a single argument.
  %S     process STARTFILE_SPEC as a spec.  A capital S is actually used here.
  %c	process SIGNED_CHAR_SPEC as a spec.
  %C     process CPP_SPEC as a spec.  A capital C is actually used here.
+ %1	process CC1_SPEC as a spec.
  %{S}   substitutes the -S switch, if that switch was given to CC.
 	If that switch was not specified, this substitutes nothing.
 	Here S is a metasyntactic variable.
@@ -116,8 +117,8 @@ position among the other output files.
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/file.h>
-#include "obstack.h"
 #include "config.h"
+#include "obstack.h"
 
 #ifdef USG
 #define R_OK 4
@@ -158,6 +159,12 @@ char *find_file ();
    or extra switch-translations.  */
 #ifndef CPP_SPEC
 #define CPP_SPEC ""
+#endif
+
+/* config.h can define CC1_SPEC to provide extra args to cc1
+   or extra switch-translations.  */
+#ifndef CC1_SPEC
+#define CC1_SPEC ""
 #endif
 
 /* config.h can define LINK_SPEC to provide extra args to the linker
@@ -204,12 +211,19 @@ struct compiler compilers[] =
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
 	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
-    %{!M*:%{!E:cc1 %g.cpp %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
+    %{!M*:%{!E:cc1 %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
                       %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+  {".i",
+   "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*}\
+	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+	%{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
+	%{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
+    %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
+            %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
   {".s",
    "%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
             %i %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
@@ -780,6 +794,10 @@ do_spec_1 (spec, inswitch)
 
 	  case 'C':
 	    do_spec_1 (CPP_SPEC, 0);
+	    break;
+
+	  case '1':
+	    do_spec_1 (CC1_SPEC, 0);
 	    break;
 
 	  case 'l':

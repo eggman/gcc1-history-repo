@@ -167,32 +167,6 @@ int flag_omit_frame_pointer = 0;
 
 int flag_no_peephole = 0;
 
-/* Nonzero means `char' should be signed.  */
-
-int flag_signed_char;
-
-/* Nonzero means allow type mismatches in conditional expressions;
-   just make their values `void'.   */
-
-int flag_cond_mismatch;
-
-/* Nonzero means don't recognize the keyword `asm'.  */
-
-int flag_no_asm;
-
-/* Nonzero means warn about implicit declarations.  */
-
-int warn_implicit;
-
-/* Nonzero means warn about function definitions that default the return type
-   or that use a null return and have a return-type other than void.  */
-
-int warn_return_type;
-
-/* Nonzero means do some things the same way PCC does.  */
-
-int flag_traditional;
-
 /* Nonzero means all references through pointers are volatile.  */
 
 int flag_volatile;
@@ -220,23 +194,16 @@ int extra_warnings = 0;
 
 int errorcount = 0;
 int warningcount = 0;
+int sorrycount = 0;
 
 /* Nonzero if generating code to do profiling.  */
 
 int profile_flag = 0;
 
 /* Nonzero for -pedantic switch: warn about anything
-   that standard C forbids.  */
+   that standard spec forbids.  */
 
 int pedantic = 0;
-
-/* Nonzero means `$' can be in an identifier.
-   See cccp.c for reasons why this breaks some obscure ANSI C programs.  */
-
-#ifndef DOLLARS_IN_IDENTIFIERS
-#define DOLLARS_IN_IDENTIFIERS 0
-#endif
-int dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
 
 /* Nonzero for -finline-functions: ok to inline functions that look like
    good inline candidates.  */
@@ -377,10 +344,10 @@ fatal_io_error (name)
 }
 
 void
-fatal (s)
+fatal (s, v)
      char *s;
 {
-  error (s, 0);
+  error (s, v);
   exit (34);
 }
 
@@ -432,22 +399,24 @@ report_error_function()
    S and V are a string and an arg for `printf'.  */
 
 void
-error (s, v)
+error (s, v, v2)
      char *s;
      int v;			/* @@also used as pointer */
+     int v2;			/* @@also used as pointer */
 {
-  error_with_file_and_line (input_filename, lineno, s, v);
+  error_with_file_and_line (input_filename, lineno, s, v, v2);
 }
 
 /* Report an error at line LINE of file FILE.
    S and V are a string and an arg for `printf'.  */
 
 void
-error_with_file_and_line (file, line, s, v)
+error_with_file_and_line (file, line, s, v, v2)
      char *file;
      int line;
      char *s;
      int v;
+     int v2;
 {
   count_error (0);
 
@@ -457,7 +426,7 @@ error_with_file_and_line (file, line, s, v)
     fprintf (stderr, "%s:%d: ", file, line);
   else
     fprintf (stderr, "cc1: ");
-  fprintf (stderr, s, v);
+  fprintf (stderr, s, v, v2);
   fprintf (stderr, "\n");
 }
 
@@ -487,10 +456,11 @@ error_with_decl (decl, s)
    S and V are a string and an arg for `printf'.  */
 
 void
-warning_with_line (line, s, v)
+warning_with_line (line, s, v, v2)
      int line;
      char *s;
      int v;
+     int v2;
 {
   if (count_error (1) == 0)
     return;
@@ -503,7 +473,7 @@ warning_with_line (line, s, v)
     fprintf (stderr, "cc1: ");
 
   fprintf (stderr, "warning: ");
-  fprintf (stderr, s, v);
+  fprintf (stderr, s, v, v2);
   fprintf (stderr, "\n");
 }
 
@@ -511,11 +481,12 @@ warning_with_line (line, s, v)
    S and V are a string and an arg for `printf'.  */
 
 void
-warning (s, v)
+warning (s, v, v2)
      char *s;
      int v;			/* @@also used as pointer */
+     int v2;
 {
-  warning_with_line (lineno, s, v);
+  warning_with_line (lineno, s, v, v2);
 }
 
 /* Report a warning at the declaration DECL.
@@ -540,6 +511,43 @@ warning_with_decl (decl, s)
   else
     fprintf (stderr, s, "((anonymous))");
   fprintf (stderr, "\n");
+}
+
+/* Apologize for not implementing some feature.
+   S, V, and V2 are a string and args for `printf'.  */
+
+void
+sorry (s, v, v2)
+     char *s;
+     int v, v2;
+{
+  sorrycount++;
+  if (input_filename)
+    fprintf (stderr, "%s:%d: ", input_filename, lineno);
+  else
+    fprintf (stderr, "cc1: ");
+
+  fprintf (stderr, "sorry, not implemented: ");
+  fprintf (stderr, s, v, v2);
+  fprintf (stderr, "\n");
+}
+
+/* Apologize for not implementing some feature, then quit.
+   S, V, and V2 are a string and args for `printf'.  */
+
+void
+really_sorry (s, v, v2)
+     char *s;
+     int v, v2;
+{
+  if (input_filename)
+    fprintf (stderr, "%s:%d: ", input_filename, lineno);
+  else
+    fprintf (stderr, "c++: ");
+
+  fprintf (stderr, "sorry, not implemented: ");
+  fprintf (stderr, s, v, v2);
+  fatal (" (fatal)\n");
 }
 
 /* When `malloc.c' is compiled with `rcheck' defined,
@@ -751,6 +759,8 @@ compile_file (name)
     strcpy (dumpname, dump_base_name);
     if (len > 2 && ! strcmp (".c", dumpname + len - 2))
       dumpname[len - 2] = 0;
+    else if (len > 2 && ! strcmp (".i", dumpname + len - 2))
+      dumpname[len - 2] = 0;
     else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
       dumpname[len - 3] = 0;
     strcat (dumpname, ".s");
@@ -780,6 +790,8 @@ compile_file (name)
       int len = strlen (dump_base_name);
       strcpy (dumpname, dump_base_name);
       if (len > 2 && ! strcmp (".c", dumpname + len - 2))
+	dumpname[len - 2] = 0;
+      else if (len > 2 && ! strcmp (".i", dumpname + len - 2))
 	dumpname[len - 2] = 0;
       else if (len > 3 && ! strcmp (".co", dumpname + len - 3))
 	dumpname[len - 3] = 0;
@@ -1410,8 +1422,6 @@ main (argc, argv, envp)
 	    register char *p = &str[1];
 	    if (!strcmp (p, "float-store"))
 	      flag_float_store = 1;
-	    else if (!strcmp (p, "traditional"))
-	      flag_traditional = 1, dollars_in_ident = 1;
 	    else if (!strcmp (p, "volatile"))
 	      flag_volatile = 1;
 	    else if (!strcmp (p, "defer-pop"))
@@ -1422,26 +1432,18 @@ main (argc, argv, envp)
 	      flag_omit_frame_pointer = 1;
 	    else if (!strcmp (p, "no-omit-frame-pointer"))
 	      flag_omit_frame_pointer = 0;
+	    else if (!strcmp (p, "writable-strings"))
+	      flag_writable_strings = 1;
 	    else if (!strcmp (p, "no-peephole"))
 	      flag_no_peephole = 1;
-	    else if (!strcmp (p, "signed-char"))
-	      flag_signed_char = 1;
-	    else if (!strcmp (p, "unsigned-char"))
-	      flag_signed_char = 0;
 	    else if (!strcmp (p, "force-mem"))
 	      flag_force_mem = 1;
 	    else if (!strcmp (p, "force-addr"))
 	      flag_force_addr = 1;
 	    else if (!strcmp (p, "combine-regs"))
 	      flag_combine_regs = 1;
-	    else if (!strcmp (p, "writable-strings"))
-	      flag_writable_strings = 1;
 	    else if (!strcmp (p, "no-function-cse"))
 	      flag_no_function_cse = 1;
-	    else if (!strcmp (p, "cond-mismatch"))
-	      flag_cond_mismatch = 1;
-	    else if (!strcmp (p, "no-asm"))
-	      flag_no_asm = 1;
 	    else if (!strncmp (p, "fixed-", 6))
 	      fix_register (&p[6], 1, 1);
 	    else if (!strncmp (p, "call-used-", 10))
@@ -1452,8 +1454,8 @@ main (argc, argv, envp)
 	      flag_inline_functions = 1;
 	    else if (!strcmp (p, "keep-inline-functions"))
 	      flag_keep_inline_functions = 1;
-	    else
-	      error ("Invalid option, `%s'", argv[i]);	      
+	    else if (! lang_decode_option (argv[i]))
+	      error ("Invalid option `%s'", argv[i]);	      
 	  }
 	else if (!strcmp (str, "noreg"))
 	  ;
@@ -1463,16 +1465,14 @@ main (argc, argv, envp)
 	  optimize = 1, obey_regdecls = 0;
 	else if (!strcmp (str, "pedantic"))
 	  pedantic = 1;
-	else if (!strcmp (str, "traditional"))
-	  flag_traditional = 1, dollars_in_ident = 1;
-	else if (!strcmp (str, "ansi"))
-	  flag_no_asm = 1, dollars_in_ident = 0;
+	else if (lang_decode_option (argv[i]))
+	  ;
 	else if (!strcmp (str, "quiet"))
 	  quiet_flag = 1;
 	else if (!strcmp (str, "version"))
 	  {
-	    extern char *version_string;
-	    printf ("GNU C version %s", version_string);
+	    extern char *version_string, *language_string;
+	    printf ("%s version %s", language_string, version_string);
 #ifdef TARGET_VERSION
 	    TARGET_VERSION;
 #endif
@@ -1489,14 +1489,6 @@ main (argc, argv, envp)
 	  inhibit_warnings = 1;
 	else if (!strcmp (str, "W"))
 	  extra_warnings = 1;
-	else if (!strcmp (str, "Wimplicit"))
-	  warn_implicit = 1;
-	else if (!strcmp (str, "Wreturn-type"))
-	  warn_return_type = 1;
-	else if (!strcmp (str, "Wcomment"))
-	  ; /* cpp handles this one.  */
-	else if (!strcmp (str, "Wtrigraphs"))
-	  ; /* cpp handles this one.  */
 	else if (!strcmp (str, "Wall"))
 	  {
 	    extra_warnings = 1;
@@ -1530,7 +1522,7 @@ main (argc, argv, envp)
 	    asm_file_name = argv[++i];
 	  }
 	else
-	  error ("Invalid switch, %s.", argv[i]);
+	  error ("Invalid option `%s'", argv[i]);
       }
     else
       filename = argv[i];
@@ -1569,6 +1561,8 @@ main (argc, argv, envp)
 
   if (errorcount)
     exit (FATAL_EXIT_CODE);
+  if (sorrycount)
+    exit (FATAL_EXIT_CODE);
   exit (SUCCESS_EXIT_CODE);
   return 34;
 }
@@ -1598,6 +1592,7 @@ set_target_switch (name)
 	  target_flags &= ~-target_switches[j].value;
 	else
 	  target_flags |= target_switches[j].value;
-	break;
+	return;
       }
+  error ("Invalid option `%s'", name);
 }

@@ -1613,9 +1613,12 @@ mark_used_regs (needed, live, x, final, insn)
 
 	if (GET_CODE (testreg) == REG
 	    && (regno = REGNO (testreg), regno != FRAME_POINTER_REGNUM)
-	    && regno != ARG_POINTER_REGNUM
+	    && regno != ARG_POINTER_REGNUM)
+#if 0 /* This was added in 1.25, but screws up death notes for hard regs.
+	 It probably isn't really needed anyway.  */
 	    && (regno >= FIRST_PSEUDO_REGISTER
 		|| INSN_VOLATILE (insn)))
+#endif
 	  {
 	    register int offset = regno / REGSET_ELT_BITS;
 	    register int bit = 1 << (regno % REGSET_ELT_BITS);

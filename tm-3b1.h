@@ -58,10 +58,10 @@ and this notice must be preserved on all copies.  */
 
 #define SDB_DEBUGGING_INFO
 
-/* The .file command may be needed to use SDB output.  */
+/* The .file command should always begin the output.  */
 
 #undef ASM_FILE_START
-#define ASM_FILE_START(FILE)
+#define ASM_FILE_START(FILE) sdbout_filename ((FILE), main_input_filename)
 
 /* Define __HAVE_FPU__ in preprocessor if -m68881 is specified.
    This will control the use of inline 68881 insns in certain macros.  */
@@ -94,6 +94,7 @@ and this notice must be preserved on all copies.  */
 /* Override parts of tm-m68k.h to fit the SGS-3b1 assembler.  */
 
 #undef TARGET_VERSION
+#undef ASM_FORMAT_PRIVATE_NAME
 #undef ASM_OUTPUT_DOUBLE
 #undef ASM_OUTPUT_FLOAT
 #undef ASM_OUTPUT_ALIGN
@@ -111,6 +112,14 @@ and this notice must be preserved on all copies.  */
 #undef ASM_OUTPUT_ASCII
 
 #define TARGET_VERSION printf (" (68k, SGS/AT&T unixpc syntax)");
+
+/* Store in OUTPUT a string (made with alloca) containing
+   an assembler-name for a local static variable named NAME.
+   LABELNO is an integer which is different for each call.  */
+
+#define ASM_FORMAT_PRIVATE_NAME(OUTPUT, NAME, LABELNO)	\
+( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 12),	\
+  sprintf ((OUTPUT), "%s%%%d", (NAME), (LABELNO)))
 
 /* The unixpc doesn't know about double's and float's */
 
@@ -303,20 +312,20 @@ do { union { float f; long l;} tem;			\
         output_addr_const (FILE, addr);					\
     }}
 
-#define ASM_GENERATE_INTERNAL_LABEL (LABEL, PREFIX, NUM)	\
+#define ASM_GENERATE_INTERNAL_LABEL(LABEL, PREFIX, NUM)	\
   sprintf ((LABEL), "%s%%%d", (PREFIX), (NUM))
 
 #define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)	\
     fprintf (FILE, "%s%%%d:\n", PREFIX, NUM)
 
 /* Must put address in  %a0 , not  %d0 . -- LGM, 7/15/88 */
-#define FUNCTION_PROFILER (FILE, LABEL_NO)	\
+#define FUNCTION_PROFILER(FILE, LABEL_NO)	\
     fprintf (FILE, "\tmov.l &LP%%%d,%%a0\n\tjsr mcount\n", (LABEL_NO))
 
-#define ASM_OUTPUT_ADDR_VEC_ELT (FILE, VALUE)	\
+#define ASM_OUTPUT_ADDR_VEC_ELT(FILE, VALUE)	\
     fprintf (FILE, "\tlong L%%%d\n", (VALUE))
 
-#define ASM_OUTPUT_ADDR_DIFF_ELT (FILE, VALUE, REL)	\
+#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, VALUE, REL)	\
     fprintf (FILE, "\tshort L%%%d-L%%%d\n", (VALUE), (REL))
 
 /* ihnp4!lmayk!lgm says that `short 0' triggers assembler bug;
@@ -362,10 +371,10 @@ do { union { float f; long l;} tem;			\
 	   (PTR)[0] == 'm') (PTR)++; }			\
 }
 
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tlcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (SIZE)))
+  fprintf ((FILE), ",%d\n", (ROUNDED)))
 
 #define ASM_OUTPUT_LABELREF(FILE,NAME)	\
   fprintf (FILE, "%s", NAME)
@@ -387,10 +396,11 @@ do { fprintf (asm_out_file, "\tdef\t");	\
      ASM_OUTPUT_LABELREF (asm_out_file, a); 	\
      fprintf (asm_out_file, ";"); } while (0)
 
-#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\tdef\t%s;",a)
+#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\tdef\t~%s;",a)
 #define PUT_SDB_ENDEF fputs("\tendef\n", asm_out_file)
 #define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\ttype\t0%o;", a)
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\tsize\t%d;", a)
+#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\tdim\t%d;", a)
 
 #define PUT_SDB_TAG(a)				\
 do { fprintf (asm_out_file, "\ttag\t");	\
@@ -404,7 +414,7 @@ do { fprintf (asm_out_file, "\ttag\t");	\
 
 #define PUT_SDB_BLOCK_END(LINE)			\
   fprintf (asm_out_file,			\
-	   "\tdef\t~eb;val\t~;\tscl\t100;\tline\t%d;\tendef\n",		\
+	   "\tdef\t~eb;\tval\t~;\tscl\t100;\tline\t%d;\tendef\n",	\
 	   (LINE))
 
 #define PUT_SDB_FUNCTION_START(LINE)		\
@@ -423,4 +433,4 @@ do { fprintf (asm_out_file, "\ttag\t");	\
 	   (NAME))
 
 #define SDB_GENERATE_FAKE(BUFFER, NUMBER) \
-  sprintf ((BUFFER), "%dfake", (NUMBER));
+  sprintf ((BUFFER), "~%dfake", (NUMBER));

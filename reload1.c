@@ -249,14 +249,16 @@ reload (first, global, dumpfile)
 	  {
 	    rtx x = XEXP (note, 0);
 	    i = REGNO (SET_DEST (PATTERN (insn)));
-	    if (GET_CODE (x) == MEM)
-	      reg_equiv_mem[i] = x;
-	    else if (immediate_operand (x))
-	      reg_equiv_constant[i] = x;
-	    else
-	      continue;
-
-	    reg_equiv_init[i] = insn;
+	    if (i >= FIRST_PSEUDO_REGISTER)
+	      {
+		if (GET_CODE (x) == MEM)
+		  reg_equiv_mem[i] = x;
+		else if (immediate_operand (x))
+		  reg_equiv_constant[i] = x;
+		else
+		  continue;
+		reg_equiv_init[i] = insn;
+	      }
 	  }
       }
 
@@ -793,8 +795,9 @@ reload (first, global, dumpfile)
     }
 }
 
-/* Add a new register REGNO to the tables of available spill-registers
+/* Add a new register to the tables of available spill-registers
     (as well as spilling all pseudos allocated to the register).
+   I is the index of this register in potential_reload_regs.
    CLASS is the regclass whose need is being satisfied.
    MAX_NEEDS and MAX_NONGROUPS are the vectors of needs,
     so that this register can count off against them.
@@ -804,28 +807,29 @@ reload (first, global, dumpfile)
    GLOBAL and DUMPFILE are the same as the args that `reload' got.  */
 
 static int
-new_spill_reg (regno, class, max_needs, max_nongroups,
+new_spill_reg (i, class, max_needs, max_nongroups,
 	       counted_for_nongroups, global, dumpfile)
-     int regno;
+     int i;
      int class;
      int *max_needs;
      int *max_nongroups;
-     int *counted_for_nongroups;
+     char *counted_for_nongroups;
      int global;
      FILE *dumpfile;
 {
   register enum reg_class *p;
   int val;
+  int regno = potential_reload_regs[i];
 
-  if (regno >= FIRST_PSEUDO_REGISTER)
+  if (i >= FIRST_PSEUDO_REGISTER)
     abort ();	/* Caller failed to find any register.  */
 
-  /* Make potential_reload_regs[REGNO] an additional reload reg.  */
+  /* Make reg REGNO an additional reload reg.  */
 
-  spill_regs[n_spills] = potential_reload_regs[regno];
-  spill_reg_order[potential_reload_regs[regno]] = n_spills;
-  forbidden_regs[potential_reload_regs[regno]] = 1;
-  potential_reload_regs[regno] = -1;
+  potential_reload_regs[i] = -1;
+  spill_regs[n_spills] = regno;
+  spill_reg_order[regno] = n_spills;
+  forbidden_regs[regno] = 1;
   if (dumpfile)
     fprintf (dumpfile, "Spilling reg %d.\n", spill_regs[n_spills]);
 
@@ -1195,9 +1199,16 @@ order_regs_for_reload ()
      Among them, prefer registers not preserved by calls.  */
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    if (regs_ever_live[i] == 0 && call_used_regs[i]
-	&& ! fixed_regs[i])
-      potential_reload_regs[o++] = i;
+    {
+#ifdef REG_ALLOC_ORDER
+      int regno = reg_alloc_order[i];
+#else
+      int regno = i;
+#endif
+      if (regs_ever_live[regno] == 0 && call_used_regs[regno]
+	  && ! fixed_regs[regno])
+	potential_reload_regs[o++] = regno;
+    }
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     {
@@ -1676,7 +1687,10 @@ choose_reload_targets (insn)
       {
 	int nr = HARD_REGNO_NREGS (spill_regs[i], reload_mode);
 	while (nr > 0)
-	  reload_reg_in_use[spill_regs[i] + --nr] = 1;
+	  {
+	    reload_reg_in_use[spill_regs[i] + --nr] = 1;
+	    reg_reloaded_contents[spill_reg_order[spill_regs[i] + nr]] = -1;
+	  }
       }
 
       new = spill_reg_rtx[i];
@@ -1686,7 +1700,6 @@ choose_reload_targets (insn)
 
       reload_reg_rtx[r] = new;
       reload_spill_index[r] = i;
-      reg_reloaded_contents[i] = -1;
 
       /* Detect when the reload reg can't hold the reload mode.  */
       if (! HARD_REGNO_MODE_OK (REGNO (reload_reg_rtx[r]), reload_mode))
@@ -1766,6 +1779,11 @@ choose_reload_targets (insn)
 	  rtx oldequiv = 0;
 	  enum machine_mode mode;
 
+#if 0
+	  /* No longer done because these paradoxical subregs now occur
+	     only for regs and for spilled stack slots, and in either case
+	     we can safely reload in the nominal machine mode.  */
+
 	  /* Strip off of OLD any size-increasing SUBREGs such as
 	     (SUBREG:SI foo:QI 0).  */
 
@@ -1773,26 +1791,29 @@ choose_reload_targets (insn)
 		 && (GET_MODE_SIZE (GET_MODE (old))
 		     > GET_MODE_SIZE (GET_MODE (SUBREG_REG (old)))))
 	    old = SUBREG_REG (old);
+#endif
 
 	  /* Determine the mode to reload in.
 	     This is very tricky because we have three to choose from.
 	     There is the mode the insn operand wants (reload_inmode[J]).
 	     There is the mode of the reload register RELOADREG.
-	     There is the intrinsic mode of the operand, revealed now
-	     in OLD because we have stripped SUBREGs.
+	     There is the intrinsic mode of the operand, which we could find
+	     by stripping some SUBREGs.
 	     It turns out that RELOADREG's mode is irrelevant:
 	     we can change that arbitrarily.
 
-	     Neither of the other two is always right.  For example, consider
-	     (SUBREG:SI foo:QI)) appearing as an operand that must be SImode;
-	     then suppose foo is in memory.  This must be loaded in QImode
-	     because we cannot fetch a byte as a word.  In this case OLD's
-	     mode is correct.
+	     Consider (SUBREG:SI foo:QI) as an operand that must be SImode;
+	     then the reload reg may not support QImode moves, so use SImode.
+	     If foo is in memory due to spilling a pseudo reg, this is safe,
+	     because the QImode value is in the least significant part of a
+	     slot big enough for a SImode.  If foo is some other sort of
+	     memory reference, then it is impossible to reload this case,
+	     so previous passes had better make sure this never happens.
 
 	     Then consider a one-word union which has SImode and one of its
 	     members is a float, being fetched as (SUBREG:SF union:SI).
 	     We must fetch that as SFmode because we could be loading into
-	     a float-only register.  In this case OLD's mode is also correct.
+	     a float-only register.  In this case OLD's mode is correct.
 
 	     Consider an immediate integer: it has VOIDmode.  Here we need
 	     to get a mode from something else.
@@ -1946,7 +1967,8 @@ choose_reload_targets (insn)
 	 If we are inheriting an old output-reload out of such a reg,
 	 the reg no longer dies there, so remove the death note.  */
 
-      if (PRESERVE_DEATH_INFO_REGNO_P (REGNO (reload_reg_rtx[j]))
+      if (reload_reg_rtx[j] != 0
+	  && PRESERVE_DEATH_INFO_REGNO_P (REGNO (reload_reg_rtx[j]))
 	  && reload_inherited[j] && reload_spill_index[j] >= 0
 	  && GET_CODE (reload_in[j]) == REG
 	  && spill_reg_store[reload_spill_index[j]] != 0
@@ -2049,6 +2071,7 @@ choose_reload_targets (insn)
 	  register rtx reloadreg = reload_reg_rtx[j];
 	  enum machine_mode mode;
 
+#if 0
 	  /* Strip off of OLD any size-increasing SUBREGs such as
 	     (SUBREG:SI foo:QI 0).  */
 
@@ -2056,6 +2079,7 @@ choose_reload_targets (insn)
 		 && (GET_MODE_SIZE (GET_MODE (old))
 		     > GET_MODE_SIZE (GET_MODE (SUBREG_REG (old)))))
 	    old = SUBREG_REG (old);
+#endif
 
 	  /* Determine the mode to reload in.
 	     See comments above (for input reloading).  */

@@ -575,9 +575,12 @@ find_reg (allocno, losers, all_regs_p, prefreg)
 		  && (losers == 0 || losers[j] < 0));
 		 j++);
 	    if (j == lim)
-	      break;
+	      {
+		i = regno;
+		break;
+	      }
 #ifndef REG_ALLOC_ORDER
-	    regno = j;			/* Skip starting points we know will lose */
+	    i = j;			/* Skip starting points we know will lose */
 #endif
 	  }
       }

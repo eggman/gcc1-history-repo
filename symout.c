@@ -128,7 +128,7 @@ symout_init (filename, asm_file, sourcename)
 	   "Ltext:\t.stabs \"%s\",%d,0,0,Ltext\n",
 	   sourcename, N_SO);
   fprintf (asmfile, ".data 0\nLdata:\n");
-  ASM_OUTPUT_LOCAL (asmfile, "Lbss", 0);
+  ASM_OUTPUT_LOCAL (asmfile, "Lbss", 0, 0);
   fprintf (asmfile, ".gdbsym Ldata,%d\n",
 	   (char *) &buffer.databeg - (char *) &buffer);
   fprintf (asmfile, ".gdbsym Lbss,%d\n",
@@ -385,7 +385,7 @@ symout_types (types)
 	     Make a list of all of these.  */
 	  if (TREE_PERMANENT (next))
 	    permanent_fwd_refs
-	      = tree_cons (TREE_TYPE (next), 0, permanent_fwd_refs);
+	      = perm_tree_cons (TREE_TYPE (next), 0, permanent_fwd_refs);
 	  else
 	    temporary_fwd_refs
 	      = tree_cons (TREE_TYPE (next), 0, temporary_fwd_refs);

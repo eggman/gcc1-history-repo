@@ -24,7 +24,7 @@ extern int pedantic;
 /* In a RECORD_TYPE or UNION_TYPE, nonzero if any component is read-only.  */
 #define C_TYPE_FIELDS_READONLY(type) TYPE_SEP_UNIT (type)
 
-/* in typecheck.c */
+/* in c-typecheck.c */
 extern tree build_component_ref(), build_conditional_expr(), build_compound_expr();
 extern tree build_unary_op(), build_binary_op(), build_function_call();
 extern tree build_binary_op_nodefault ();
@@ -41,7 +41,7 @@ extern tree default_conversion ();
 
 extern tree commontype ();
 
-/* in decl.c */
+/* in c-decl.c */
 extern tree build_label ();
 
 extern int start_function ();
@@ -86,3 +86,33 @@ extern tree ridpointers[];
 
 /* Points to the FUNCTION_DECL of the function whose body we are reading. */
 extern tree current_function_decl;
+
+/* Nonzero means `$' can be in an identifier.  */
+
+extern int dollars_in_ident;
+
+/* Nonzero means `char' should be signed.  */
+
+extern int flag_signed_char;
+
+/* Nonzero means allow type mismatches in conditional expressions;
+   just make their values `void'.   */
+
+extern int flag_cond_mismatch;
+
+/* Nonzero means don't recognize the keyword `asm'.  */
+
+extern int flag_no_asm;
+
+/* Nonzero means warn about implicit declarations.  */
+
+extern int warn_implicit;
+
+/* Nonzero means warn about function definitions that default the return type
+   or that use a null return and have a return-type other than void.  */
+
+extern int warn_return_type;
+
+/* Nonzero means do some things the same way PCC does.  */
+
+extern int flag_traditional;

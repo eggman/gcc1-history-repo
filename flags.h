@@ -63,10 +63,6 @@ extern int profile_flag;
    that standard C forbids.  */
 
 extern int pedantic;
-
-/* Nonzero means `$' can be in an identifier.  */
-
-extern int dollars_in_ident;
 
 /* Now the symbols that are set with `-f' switches.  */
 
@@ -123,32 +119,6 @@ extern int frame_pointer_needed;
 /* Nonzero to inhibit use of define_optimization peephole opts.  */
 
 extern int flag_no_peephole;
-
-/* Nonzero means `char' should be signed.  */
-
-extern int flag_signed_char;
-
-/* Nonzero means allow type mismatches in conditional expressions;
-   just make their values `void'.   */
-
-extern int flag_cond_mismatch;
-
-/* Nonzero means don't recognize the keyword `asm'.  */
-
-extern int flag_no_asm;
-
-/* Nonzero means warn about implicit declarations.  */
-
-extern int warn_implicit;
-
-/* Nonzero means warn about function definitions that default the return type
-   or that use a null return and have a return-type other than void.  */
-
-extern int warn_return_type;
-
-/* Nonzero means do some things the same way PCC does.  */
-
-extern int flag_traditional;
 
 /* Nonzero means all references through pointers are volatile.  */
 

@@ -169,12 +169,15 @@ do { fprintf (asm_out_file, "\t.tag\t");	\
   ((TYPE_NAME (type) != 0 && TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE) \
    ? IDENTIFIER_POINTER (TYPE_NAME (type)) : 0)
 
-/* Set up for SDB output at the start of compilation.
+/* Tell the assembler the source file name.
+   On systems that use SDB, this is done whether or not -g,
+   so it is called by ASM_FILE_START.
+
    ASM_FILE is the assembler code output file,
    INPUT_NAME is the name of the main input file.  */
 
 void
-sdbout_init (asm_file, input_name)
+sdbout_filename (asm_file, input_name)
      FILE *asm_file;
      char *input_name;
 {
@@ -194,10 +197,14 @@ sdbout_init (asm_file, input_name)
 #else
   fprintf (asm_file, "\t.file\t\"%s\"\n", na);
 #endif
+}
 
-  /* Get all permanent types not yet gotten
-     and output them.  */
+/* Set up for SDB output at the start of compilation.  */
 
+void
+sdbout_init ()
+{
+  /* Output all the initial permanent types.  */
   sdbout_types (nreverse (get_permanent_types ()));
 }
 

@@ -42,7 +42,7 @@ static char *singlemove_string ();
 static void output_movf ();
 static void replace_float_constant ();
 static int mentions_fp_top ();
-static int fp_top_dead_p ();
+static int call_top_dead_p ();
 static int fp_top_dead_p1 ();
 static rtx via_memory ();
 static void output_asm_insn_double_reg_op ();
@@ -1090,27 +1090,34 @@ print_operand_address (file, addr)
     }
 }
 
+/* Set the cc_status for the results of an insn whose pattern is EXP.
+   On the 80386, we assume that only test and compare insns
+   set the condition codes usefully,
+   and that all other insns except for jumps and moves
+   clobber the condition codes unpredictably.
+
+   In fact, it would be legitimate to detect certain arithmetic
+   instructions and record what they do to the cc's,
+   but it would be necessary to be careful:
+   for example, some fixed-point add insns generate code that
+   doesn't set them.  In addition, correct handling of arith insn
+   cc's requires setting CC_NO_OVERFLOW; but i386.md's jump insns
+   don't make correct output in this case.  */
+
 notice_update_cc (exp)
      rtx exp;
-     /* I have been fairly conservative in that we reset
-	cc_status for the default op.  Only ops for which
-	I am fairly certain cc_status will be ok have been
-	exempted.  There are doubtless many other cases which
-	could also be exempted.--wfs */
 {
-  /* on the 386, a mov does not set the condition codes.
-     It may invalidate the address of something in cc_status
-     however.
-     So in the first part we clear the condition flags for most
-     moves except jumps setting the pc_rtx, and moves into a
-     register which might was not part of the address of something
-     in the cc_status. */
-
   if (GET_CODE (exp) == SET)
     {
+      /* Jumps do not alter the cc's.  */
       if (SET_DEST (exp) == pc_rtx)
 	return;
-      if (REG_P (SET_DEST (exp)))
+      /* Moving register or memory into a register:
+	 it doesn't alter the cc's, but it might invalidate
+	 the RTX's which we remember the cc's came from.
+	 (Note that moving a constant 0 or 1 MAY set the cc's).  */
+      if (REG_P (SET_DEST (exp))
+	  && (REG_P (SET_SRC (exp)) || GET_CODE (SET_SRC (exp)) == MEM))
 	{
 	  if (cc_status.value1
 	      && reg_mentioned_p (SET_DEST (exp), cc_status.value1))
@@ -1119,7 +1126,24 @@ notice_update_cc (exp)
 	      && reg_mentioned_p (SET_DEST (exp), cc_status.value2))
 	    cc_status.value2 = 0;
 	}
-      else if (XEXP (exp, 0) != pc_rtx)
+      /* Moving register into memory doesn't alter the cc's.
+	 It may invalidate the RTX's which we remember the cc's came from.  */
+      if (GET_CODE (SET_DEST (exp)) == MEM && REG_P (SET_SRC (exp)))
+	{
+	  if (cc_status.value1 && GET_CODE (cc_status.value1) == MEM)
+	    cc_status.value1 = 0;
+	  if (cc_status.value2 && GET_CODE (cc_status.value2) == MEM)
+	    cc_status.value2 = 0;
+	  return;
+	}
+      /* Tests and compares set the cc's in predictable ways.  */
+      else if (SET_DEST (exp) == cc0_rtx)
+	{
+	  CC_STATUS_INIT;
+	  cc_status.value1 = SET_SRC (exp);
+	  return;
+	}
+      else
 	{
 	  CC_STATUS_INIT;
 	}
@@ -1129,13 +1153,10 @@ notice_update_cc (exp)
     {
       if (SET_DEST (XVECEXP (exp, 0, 0)) == pc_rtx)
 	return;
-      if (SET_DEST (XVECEXP (exp, 0, 0)) == cc0_rtx
-	  && (GET_MODE (SET_SRC (XVECEXP (exp, 0, 0))) == DFmode
-	      || GET_MODE (SET_SRC (XVECEXP (exp, 0, 0))) == SFmode))
+      if (SET_DEST (XVECEXP (exp, 0, 0)) == cc0_rtx)
 	{
-	  cc_status.flags = CC_IN_80387;
+	  CC_STATUS_INIT;
 	  cc_status.value1 = SET_SRC (XVECEXP (exp, 0, 0));
-	  cc_status.value1 = 0;
 	  return;
 	}
       CC_STATUS_INIT;
@@ -1143,47 +1164,6 @@ notice_update_cc (exp)
   else
     {
       CC_STATUS_INIT;
-    }
-
-  /* This was from 68000.  I don't see at the moment how it could arise for us
-     but to be safe I will put it in.  ??  */
-
-  if (cc_status.value2 != 0
-      && REG_P (cc_status.value2)
-      && GET_MODE (cc_status.value2) == QImode)
-    CC_STATUS_INIT;
-
-  if (cc_status.value2 != 0)
-    /* The only way cc_status could survive to here is if we
-       were just setting some reg.
-       now if set was to mul,add, .. or other operations which
-       set them properly, we put that in here.
-       For the moment we will not set them for floating point ops.
-       */
-    {
-      if (GET_CODE (exp) == SET
-	  && SET_DEST (exp) != pc_rtx
-	  /* Maybe handle 387 setting someday */
-	  && GET_MODE (SET_SRC (exp)) != DFmode
-	  && GET_MODE (SET_SRC (exp)) != DFmode)
-	switch (GET_CODE (SET_SRC (exp)))
-	  {
-	  case PLUS: case MINUS: case AND: case XOR: case IOR:
-	  case NEG: case ASHIFT: case LSHIFT: case ASHIFTRT: case LSHIFTRT:
-	  case ZERO_EXTRACT:
-
-	    {
-	      cc_status.flags = 0;
-	      cc_status.value1 = SET_DEST (exp);
-	      cc_status.value2 = SET_SRC (exp);
-	      break;
-	    }
-	    /* these have been fixed up above */
-	  case MEM: case REG:
-	    break;
-	  default:
-	    CC_STATUS_INIT;
-	  }
     }
 }
 
@@ -1193,15 +1173,15 @@ int
 top_dead_p (insn)
      rtx insn;
 {
-  int test = fp_top_dead_p (insn);
-  int test1 = fp_top_dead_p1 (insn);
-  if (test != test1)
-    {
-      printf ("***Float fp_dead Differs: %d,%d in insn %d\n",
-	      test, test1, INSN_UID (insn));
-      abort ();
-    }
- return test;
+  extern int optimize;
+  if (optimize)
+    return (find_regno_note (insn, REG_DEAD, FIRST_FLOAT_REG)
+	    || find_regno_note (insn, REG_DEAD, FIRST_FLOAT_REG + 1));
+
+  if (GET_CODE (insn) == CALL_INSN)
+    return call_top_dead_p (insn);
+
+  return fp_top_dead_p1 (insn);
 }
 
 /* Following is used after a call_value insn
@@ -1213,31 +1193,24 @@ top_dead_p (insn)
    */
 
 static int
-fp_top_dead_p (insn)
+call_top_dead_p (insn)
      rtx insn;
 {
-  extern int optimize;
-  if (! optimize)
+  int i;
+  for (i = 0; i < 3; i++)
     {
-      int i;
-      for (i = 0; i < 3; i++)
-	{
-	  insn = NEXT_INSN (insn);
-	  if (insn == 0)
-	    return 1;
-	  if (GET_CODE (PATTERN (insn)) == SET
-	      && SET_DEST (PATTERN (insn)) != stack_pointer_rtx)
-	    return (!(mentions_fp_top (SET_SRC (PATTERN (insn)))));
-	  if (GET_CODE (PATTERN (insn)) == CALL)
-	    return 1;
-	  if (GET_CODE (PATTERN (insn)) == USE)
-	    return (! FP_REG_P (XEXP (PATTERN (insn), 0)));
-	}
-      return 1;
+      insn = NEXT_INSN (insn);
+      if (insn == 0)
+	return 1;
+      if (GET_CODE (PATTERN (insn)) == SET
+	  && SET_DEST (PATTERN (insn)) != stack_pointer_rtx)
+	return (!(mentions_fp_top (SET_SRC (PATTERN (insn)))));
+      if (GET_CODE (PATTERN (insn)) == CALL)
+	return 1;
+      if (GET_CODE (PATTERN (insn)) == USE)
+	return (! FP_REG_P (XEXP (PATTERN (insn), 0)));
     }
-  else
-    return (find_regno_note (insn, REG_DEAD, FIRST_FLOAT_REG)
-	    || find_regno_note (insn, REG_DEAD, FIRST_FLOAT_REG + 1));
+  return 1;
 }
 
 /* Return 1 if current val of fpu top-of-stack appears unused

@@ -114,6 +114,23 @@ DEFTREECODE (CHAR_TYPE, "char_type", "t", 0)
    The TREE_TYPE points to the node for the type pointed to.  */
 DEFTREECODE (POINTER_TYPE, "pointer_type", "t", 0)
 
+/* An offset is a pointer relative to an object.
+   The TREE_TYPE points to the node for the type of object
+   that the offset is relative to.  */
+DEFTREECODE (OFFSET_TYPE, "offset_type", "t", 0)
+
+/* A reference is like a pointer except that it is coerced
+   automatically to the value it points to.  Used in C++.  */
+DEFTREECODE (REFERENCE_TYPE, "reference_type", "t", 0)
+
+/* METHOD_TYPE is the type of a function which takes an extra first
+   argument for "self", which is not present in the declared argument list.
+   The TREE_TYPE is a FUNCTION_TYPE node for the type with which
+   the function was declared.  The TYPE_METHOD_CLASS is the type of "self".
+   TYPE_ARG_TYPES is the real argument list, which
+   includes the hidden argument for "self".  */
+DEFTREECODE (METHOD_TYPE, "method_type", "t", 0)
+
 /* Used for Pascal; details not determined right now.  */
 DEFTREECODE (FILE_TYPE, "file_type", "t", 0)
 
@@ -306,6 +323,7 @@ DEFTREECODE (VAR_DECL, "var_decl", "d", 0)
 DEFTREECODE (PARM_DECL, "parm_decl", "d", 0)
 DEFTREECODE (RESULT_DECL, "result_decl", "d", 0)
 DEFTREECODE (FIELD_DECL, "field_decl", "d", 0)
+DEFTREECODE (FRIEND_DECL, "friend_decl", "d", 0)
 
 /* References to storage.  */
 
@@ -316,6 +334,12 @@ DEFTREECODE (COMPONENT_REF, "component_ref", "r", 2)
 
 /* C unary `*' or Pascal `^'.  One operand, an expression for a pointer.  */
 DEFTREECODE (INDIRECT_REF, "indirect_ref", "r", 1)
+
+/* Reference to the contents of an offset
+   (a value whose type is an OFFSET_TYPE).
+   Operand 0 is the object within which the offset is taken.
+   Operand 1 is the offset.  */
+DEFTREECODE (OFFSET_REF, "offset_ref", "r", 2)
 
 /* Pascal `^` on a file.  One operand, an expression for the file.  */
 DEFTREECODE (BUFFER_REF, "buffer_ref", "r", 1)
@@ -345,6 +369,18 @@ DEFTREECODE (COMPOUND_EXPR, "compound_expr", "e", 2)
 /* Assignment expression.  Operand 0 is the what to set; 1, the new value.  */
 DEFTREECODE (MODIFY_EXPR, "modify_expr", "e", 2)
 
+/* Initialization expression.  Operand 0 is the variable to initialize;
+   Operand 1 is the initializer.  */
+DEFTREECODE (INIT_EXPR, "init_expr", "e", 2)
+
+/* Allocation expression.  ??? Can you please fill in a description
+   of the arguments?  */
+DEFTREECODE (NEW_EXPR, "new_expr", "e", 2)
+
+/* Storage freeing expression.  ??? Can you please fill in a description
+   of the arguments?  */
+DEFTREECODE (DELETE_EXPR, "delete_expr", "e", 2)
+
 /* Conditional expression ( ... ? ... : ...  in C).
    Operand 0 is the condition.
    Operand 1 is the then-value.
@@ -357,6 +393,11 @@ DEFTREECODE (COND_EXPR, "cond_expr", "e", 3)
    There is no operand 2.  That slot is used for the
    CALL_EXPR_RTL macro (see preexpand_calls).  */
 DEFTREECODE (CALL_EXPR, "call_expr", "e", 3)
+
+/* Call a method.  Operand 0 is the method, whose type is a METHOD_TYPE.
+   Operand 1 is the expression for "self".
+   Operand 2 is the list of explicit arguments.  */
+DEFTREECODE (METHOD_CALL_EXPR, "method_call_expr", "e", 4)
 
 /* Simple arithmetic.  Operands must have the same machine mode
    and the value shares that mode.  */
@@ -489,6 +530,18 @@ DEFTREECODE (RTL_EXPR, "rtl_expr", "e", 2)
 /* & in C.  Value is the address at which the operand's value resides.
    Operand may have any mode.  Result mode is Pmode.  */
 DEFTREECODE (ADDR_EXPR, "addr_expr", "e", 1)
+
+/* Postfix & in C++.  Value is a reference to the object which is the operand.
+   Operand type is preserved, but we know that it is no longer
+   an lvalue.  */
+DEFTREECODE (REFERENCE_EXPR, "reference_expr", "e", 1)
+
+/* A wrapper in C++.  Operand 0 is the type that the wrapper
+   belongs to (if non-virtual).  Operand 1 is the function
+   being wrapped.  An anti-wrapper means do not wrap the function
+   (if it would be wrapped by default).  */
+DEFTREECODE (WRAPPER_EXPR, "wrapper_expr", "e", 2)
+DEFTREECODE (ANTI_WRAPPER_EXPR, "anti_wrapper_expr", "e", 2)
 
 /* Operand is a function constant; result is a function variable value
    of typeEPmode.  Used only for languages that need static chains.  */

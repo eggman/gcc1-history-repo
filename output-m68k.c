@@ -23,6 +23,12 @@ and this notice must be preserved on all copies.  */
 #include <stdio.h>
 extern FILE *asm_out_file;
 
+/* Index into this array by (register number >> 3) to find the
+   smallest class which contains that register.  */
+enum reg_class regno_reg_class[]
+  = { DATA_REGS, ADDR_REGS, FP_REGS,
+      LO_FPA_REGS, LO_FPA_REGS, FPA_REGS, FPA_REGS };
+
 static rtx find_addr_reg ();
 
 char *
@@ -64,6 +70,8 @@ static char *
 singlemove_string (operands)
      rtx *operands;
 {
+  if (FPA_REG_P (operands[0]) || FPA_REG_P (operands[1]))
+    return "fpmoves %1,%0";
   if (operands[1] != const0_rtx)
     return "move%.l %1,%0";
   if (! ADDRESS_REG_P (operands[0]))
@@ -269,32 +277,64 @@ char *
 output_move_const_double (operands)
      rtx *operands;
 {
-  int code = standard_68881_constant_p (operands[1]);
-
-  if (code != 0)
+  if (TARGET_FPA && FPA_REG_P(operands[0]))
     {
-      static char buf[40];
+      int code = standard_SunFPA_constant_p (operands[1]);
 
-      sprintf (buf, "fmovecr %%#0x%x,%%0", code & 0xff);
-      return buf;
+      if (code != 0)
+	{
+	  static char buf[40];
+
+	  sprintf (buf, "fpmove%%.d %%%%%d,%%0", code & 0x1ff);
+	  return buf;
+	}
+      return "fpmove%.d %1,%0";
     }
-  return "fmove%.d %1,%0";
+  else
+    {
+      int code = standard_68881_constant_p (operands[1]);
+
+      if (code != 0)
+	{
+	  static char buf[40];
+
+	  sprintf (buf, "fmovecr %%#0x%x,%%0", code & 0xff);
+	  return buf;
+	}
+      return "fmove%.d %1,%0";
+    }
 }
 
 char *
 output_move_const_single (operands)
      rtx *operands;
 {
-  int code = standard_68881_constant_p (operands[1]);
-
-  if (code != 0)
+  if (TARGET_FPA)
     {
-      static char buf[40];
+      int code = standard_SunFPA_constant_p (operands[1]);
 
-      sprintf (buf, "fmovecr %%#0x%x,%%0", code & 0xff);
-      return buf;
+      if (code != 0)
+	{
+	  static char buf[40];
+
+	  sprintf (buf, "fpmove%%.s %%%d,%%0", code & 0x1ff);
+	  return buf;
+	}
+      return "fpmove%.s %1,%0";
     }
-  return "fmove%.s %f1,%0";
+  else
+    {
+      int code = standard_68881_constant_p (operands[1]);
+
+      if (code != 0)
+	{
+	  static char buf[40];
+
+	  sprintf (buf, "fmovecr %%#0x%x,%%0", code & 0xff);
+	  return buf;
+	}
+      return "fmove%.s %f1,%0";
+    }
 }
 
 /* Return nonzero if X, a CONST_DOUBLE, has a value that we can get
@@ -334,3 +374,150 @@ standard_68881_constant_p (x)
      because they are not equal to a `double' C constant.  */
   return 0;
 }
+
+/* Return nonzero if X, a CONST_DOUBLE, has a value that we can get
+   from the Sun FPA's constant RAM.
+   The value returned, anded with 0x1ff, gives the code to use in fpmove
+   to get the desired constant. */
+#define S_E (2.718281745910644531)
+#define D_E (2.718281828459045091)
+#define S_PI (3.141592741012573242)
+#define D_PI (3.141592653589793116)
+#define S_SQRT2 (1.414213538169860840)
+#define D_SQRT2 (1.414213562373095145)
+#define S_LOG2ofE (1.442695021629333496)
+#define D_LOG2ofE (1.442695040888963387)
+#define S_LOG2of10 (3.321928024291992188)
+#define D_LOG2of10 (3.321928024887362182)
+#define S_LOGEof2 (0.6931471824645996094)
+#define D_LOGEof2 (0.6931471805599452862)
+#define S_LOGEof10 (2.302585124969482442)
+#define D_LOGEof10 (2.302585092994045901)
+#define S_LOG10of2 (0.3010300099849700928)
+#define D_LOG10of2 (0.3010299956639811980)
+#define S_LOG10ofE (0.4342944920063018799)
+#define D_LOG10ofE (0.4342944819032518167)
+
+int
+standard_SunFPA_constant_p (x)
+     rtx x;
+{
+  union {double d; int i[2];} u;
+  register double d;
+  u.i[0] = XINT (x, 0);
+  u.i[1] = XINT (x, 1);
+  d = u.d;
+
+  if (d == 0.0)
+    return 0x200;		/* 0 once 0x1ff is anded with it */
+  if (d == 1.0)
+    return 0xe;
+  if (d == 0.5)
+    return 0xf;
+  if (d == -1.0)
+    return 0x10;
+  if (d == 2.0)
+    return 0x11;
+  if (d == 3.0)
+    return 0xB1;
+  if (d == 4.0)
+    return 0x12;
+  if (d == 8.0)
+    return 0x13;
+  if (d == 0.25)
+    return 0x15;
+  if (d == 0.125)
+    return 0x16;
+  if (d == 10.0)
+    return 0x17;
+  if (d == -(1.0/2.0))
+    return 0x2E;
+
+/*
+ * Stuff that looks different if it's single or double
+ */
+  if (GET_MODE(x) == SFmode)
+    {
+      if (d == S_E)
+	return 0x8;
+      if (d == (2*S_PI))
+	return 0x9;
+      if (d == S_PI)
+	return 0xA;
+      if (d == (S_PI / 2.0))
+	return 0xB;
+      if (d == S_SQRT2)
+	return 0xC;
+      if (d == (1.0 / S_SQRT2))
+	return 0xD;
+      /* Large powers of 10 in the constant 
+	 ram are not used because they are
+	 not equal to a C double constant  */
+      if (d == -(S_PI / 2.0))
+	return 0x27;
+      if (d == S_LOG2ofE)
+	return 0x28;
+      if (d == S_LOG2of10)
+	return 0x29;
+      if (d == S_LOGEof2)
+	return 0x2A;
+      if (d == S_LOGEof10)
+	return 0x2B;
+      if (d == S_LOG10of2)
+	return 0x2C;
+      if (d == S_LOG10ofE)
+	return 0x2D;
+    }
+  else
+    {
+      if (d == D_E)
+	return 0x8;
+      if (d == (2*D_PI))
+	return 0x9;
+      if (d == D_PI)
+	return 0xA;
+      if (d == (D_PI / 2.0))
+	return 0xB;
+      if (d == D_SQRT2)
+	return 0xC;
+      if (d == (1.0 / D_SQRT2))
+	return 0xD;
+      /* Large powers of 10 in the constant 
+	 ram are not used because they are
+	 not equal to a C double constant  */
+      if (d == -(D_PI / 2.0))
+	return 0x27;
+      if (d == D_LOG2ofE)
+	return 0x28;
+      if (d == D_LOG2of10)
+	return 0x29;
+      if (d == D_LOGEof2)
+	return 0x2A;
+      if (d == D_LOGEof10)
+	return 0x2B;
+      if (d == D_LOG10of2)
+	return 0x2C;
+      if (d == D_LOG10ofE)
+	return 0x2D;
+    }
+  return 0x0;
+}
+
+#undef S_E 
+#undef D_E 
+#undef S_PI 
+#undef D_PI 
+#undef S_SQRT2 
+#undef D_SQRT2 
+#undef S_LOG2ofE 
+#undef D_LOG2ofE 
+#undef S_LOG2of10 
+#undef D_LOG2of10 
+#undef S_LOGEof2 
+#undef D_LOGEof2 
+#undef S_LOGEof10 
+#undef D_LOGEof10 
+#undef S_LOG10of2 
+#undef D_LOG10of2 
+#undef S_LOG10ofE 
+#undef D_LOG10ofE

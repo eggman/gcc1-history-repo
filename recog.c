@@ -310,7 +310,7 @@ push_operand (op, mode)
   if (GET_CODE (op) != PRE_INC)
     return 0;
 #endif
-  return REGNO (XEXP (op, 0)) == STACK_POINTER_REGNUM;
+  return XEXP (op, 0) == stack_pointer_rtx;
 }
 
 /* Return 1 if ADDR is a valid memory address for mode MODE.  */

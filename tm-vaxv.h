@@ -28,18 +28,19 @@ and this notice must be preserved on all copies.  */
 #undef DBX_DEBUGGING_INFO
 #define SDB_DEBUGGING_INFO
 
+/* The .file command should always begin the output.  */
 #undef ASM_FILE_START
-#define ASM_FILE_START(FILE)
+#define ASM_FILE_START(FILE) sdbout_filename ((FILE), main_input_filename)
 
 #undef ASM_OUTPUT_ALIGN
 #define ASM_OUTPUT_ALIGN(FILE,LOG) \
   fprintf(FILE, "\t.align %d\n", 1 << (LOG))
 
 #undef ASM_OUTPUT_LOCAL
-#define ASM_OUTPUT_LOCAL(FILE,NAME,SIZE)	\
+#define ASM_OUTPUT_LOCAL(FILE,NAME,SIZE,ROUNDED)	\
 ( fputs (".data\n", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ":\n\t.space %d\n", (SIZE)))
+  fprintf ((FILE), ":\n\t.space %d\n", (ROUNDED)))
 
 #define ASM_OUTPUT_ASCII(FILE,PTR,LEN)  \
 {							\

@@ -1,5 +1,5 @@
 /* Output dbx-format symbol table information from GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -67,6 +67,7 @@ and this notice must be preserved on all copies.  */
 #include "config.h"
 #include "tree.h"
 #include "rtl.h"
+#include "flags.h"
 #include <stdio.h>
 
 /* Typical USG systems don't have stab.h, and they also have
@@ -151,6 +152,7 @@ static int current_sym_nchars;
 
 void dbxout_types ();
 void dbxout_tags ();
+void dbxout_args ();
 static void dbxout_type_name ();
 static void dbxout_type ();
 static void dbxout_type_def ();
@@ -170,7 +172,7 @@ dbxout_init (asm_file, input_file_name)
   typevec_len = 100;
   typevec = (enum typestatus *) xmalloc (typevec_len * sizeof typevec[0]);
   bzero (typevec, typevec_len * sizeof typevec[0]);
-  
+
   /* Used to put `Ltext:' before the reference, but that loses on sun 4.  */
   fprintf (asmfile,
 	   "\t.stabs \"%s\",%d,0,0,Ltext\nLtext:\n",
@@ -362,7 +364,18 @@ dbxout_type (type, full)
       tem = size_in_bytes (type);
       fprintf (asmfile, (TREE_CODE (type) == RECORD_TYPE) ? "s%d" : "u%d",
 	       TREE_INT_CST_LOW (tem));
+
+      if (TYPE_BASETYPES (type) && use_gdb_dbx_extensions)
+	{
+	  putc ('!', asmfile);
+	  putc ((TREE_PUBLIC (TYPE_BASETYPES (type)) ? '2' : '0'),
+		asmfile);
+	  dbxout_type (TREE_VALUE (TYPE_BASETYPES (type)), 0);
+	  putc (',', asmfile);
+	  CHARS (3);
+	}
       CHARS (11);
+
       for (tem = TYPE_FIELDS (type); tem; tem = TREE_CHAIN (tem))
 	/* Output the name, type, position (in bits), size (in bits)
 	   of each field.  */
@@ -374,12 +387,59 @@ dbxout_type (type, full)
 	    if (tem != TYPE_FIELDS (type))
 	      CONTIN;
 	    fprintf (asmfile, "%s:", IDENTIFIER_POINTER (DECL_NAME (tem)));
-	    CHARS (1 + strlen (IDENTIFIER_POINTER (DECL_NAME (tem))));
-	    dbxout_type (TREE_TYPE (tem), 0);
-	    fprintf (asmfile, ",%d,%d;", DECL_OFFSET (tem),
-		     TREE_INT_CST_LOW (DECL_SIZE (tem)) * DECL_SIZE_UNIT (tem));
-	    CHARS (23);
+	    CHARS (2 + IDENTIFIER_LENGTH (DECL_NAME (tem)));
+	    if (use_gdb_dbx_extensions)
+	      {
+		putc ('/', asmfile);
+#ifdef TREE_PRIVATE
+		putc ((TREE_PRIVATE (tem) ? '0'
+		       : TREE_PROTECTED (tem) ? '1' : '2'),
+		      asmfile);
+#endif
+		CHARS (2);
+		if (TREE_CODE (tem) == FUNCTION_DECL)
+		  {
+		    tree t;
+		    putc (':', asmfile);
+		    CHARS (1);
+		    dbxout_type (TREE_TYPE (tem), 0); /* FUNCTION_TYPE */
+		    dbxout_args (TYPE_ARG_TYPES (TREE_TYPE (tem)));
+#ifdef TREE_VIRTUAL
+		    fprintf (asmfile, ":%s;%c", 
+			     XSTR (XEXP (DECL_RTL (tem), 0), 0),
+			     TREE_VIRTUAL (tem) ? '*' : '.');
+#endif
+		    CHARS (3 + strlen (XSTR (XEXP (DECL_RTL (tem), 0), 0)));
+		  }
+		else
+		  dbxout_type (TREE_TYPE (tem), 0);
+	      }
+	    else
+	      dbxout_type (TREE_TYPE (tem), 0);
+
+	    if (TREE_CODE (tem) == VAR_DECL)
+	      {
+		if (use_gdb_dbx_extensions)
+		  {
+		    fprintf (asmfile, ":%s", 
+			     XSTR (XEXP (DECL_RTL (tem), 0), 0));
+		    CHARS (2 + strlen (XSTR (XEXP (DECL_RTL (tem), 0), 0)));
+		  }
+		else
+		  {
+		    fprintf (asmfile, ",0,0;");
+		    CHARS (5);
+		  }
+	      }
+	    else
+	      {
+		fprintf (asmfile, ",%d,%d;", DECL_OFFSET (tem),
+			 (TREE_INT_CST_LOW (DECL_SIZE (tem))
+			  * DECL_SIZE_UNIT (tem)));
+		CHARS (23);
+	      }
 	  }
+
       putc (';', asmfile);
       CHARS (1);
       break;
@@ -401,7 +461,7 @@ dbxout_type (type, full)
 	{
 	  fprintf (asmfile, "%s:%d,", IDENTIFIER_POINTER (TREE_PURPOSE (tem)),
 		   TREE_INT_CST_LOW (TREE_VALUE (tem)));
-	  CHARS (11 + strlen (IDENTIFIER_POINTER (TREE_PURPOSE (tem))));
+	  CHARS (11 + IDENTIFIER_LENGTH (TREE_PURPOSE (tem)));
 	  if (TREE_CHAIN (tem) != 0)
 	    CONTIN;
 	}
@@ -415,11 +475,37 @@ dbxout_type (type, full)
       dbxout_type (TREE_TYPE (type), 0);
       break;
 
+    case METHOD_TYPE:
+      if (use_gdb_dbx_extensions)
+	{
+	  putc ('@', asmfile);
+	  CHARS (1);
+	  dbxout_type (TYPE_METHOD_CLASS (type), 0);
+	  putc (',', asmfile);
+	  CHARS (1);
+	  dbxout_type (TREE_TYPE (type), 0);
+	}
+      else
+	{
+	  /* Treat it as a function type.  */
+	  dbxout_type (TREE_TYPE (type), 0);
+	}
+      break;
+
+    case REFERENCE_TYPE:
+      putc (use_gdb_dbx_extensions ? '&' : '*', asmfile);
+      CHARS (1);
+      dbxout_type (TREE_TYPE (type), 0);
+      break;
+
     case FUNCTION_TYPE:
       putc ('f', asmfile);
       CHARS (1);
       dbxout_type (TREE_TYPE (type), 0);
       break;
+
+    default:
+      abort ();
     }
 }
 
@@ -431,18 +517,22 @@ static void
 dbxout_type_name (type)
      register tree type;
 {
-  register char *name;
+  tree t;
   if (TYPE_NAME (type) == 0)
     abort ();
   if (TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE)
-    name = IDENTIFIER_POINTER (TYPE_NAME (type));
+    {
+      t = TYPE_NAME (type);
+    }
   else if (TREE_CODE (TYPE_NAME (type)) == TYPE_DECL)
-    name = IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type)));
+    {
+      t = DECL_NAME (TYPE_NAME (type));
+    }
   else
     abort ();
 
-  fprintf (asmfile, "%s", name);
-  CHARS (strlen (name));
+  fprintf (asmfile, "%s", IDENTIFIER_POINTER (t));
+  CHARS (IDENTIFIER_LENGTH (t));
 }
 
 /* Output a .stabs for the symbol defined by DECL,
@@ -475,7 +565,7 @@ dbxout_symbol (decl, local)
   /* The output will always start with the symbol name,
      so count that always in the length-output-so-far.  */
 
-  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (decl)));
+  current_sym_nchars = 2 + IDENTIFIER_LENGTH (DECL_NAME (decl));
 
   switch (TREE_CODE (decl))
     {
@@ -591,7 +681,8 @@ dbxout_symbol (decl, local)
 	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
 		   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
 		       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
-	/* If the value is indirect by memory or by a reg not the frame ptr,
+	/* If the value is indirect by memory or by a register
+	   that isn't the frame pointer
 	   then it means the object is variable-sized and address through
 	   that register or stack slot.  DBX has no way to represent this
 	   so all we can do is output the variable as a pointer.
@@ -764,7 +855,6 @@ dbxout_parms (parms)
 	  dbxout_type (TREE_TYPE (parms), 0);
 	  dbxout_finish_symbol ();
 	}
-
     }
 }
 
@@ -787,7 +877,7 @@ dbxout_reg_parms (parms)
 	  current_sym_code = N_RSYM;
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (parms)));
 	  current_sym_addr = 0;
-	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+	  current_sym_nchars = 2 + IDENTIFIER_LENGTH (DECL_NAME (parms));
 	  fprintf (asmfile, ".stabs \"%s:r",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 	  dbxout_type (TREE_TYPE (parms), 0);
@@ -812,7 +902,7 @@ dbxout_reg_parms (parms)
 	      current_sym_code = N_LSYM;
 	      current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1));
 	      current_sym_addr = 0;
-	      current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
+	      current_sym_nchars = 2 + IDENTIFIER_LENGTH (DECL_NAME (parms));
 	      fprintf (asmfile, ".stabs \"%s:",
 		       IDENTIFIER_POINTER (DECL_NAME (parms)));
 	      dbxout_type (TREE_TYPE (parms), 0);
@@ -820,6 +910,22 @@ dbxout_reg_parms (parms)
 	    }
 	}
       parms = TREE_CHAIN (parms);
+    }
+}
+
+/* Given a chain of ..._TYPE nodes (as come in a parameter list),
+   output definitions of those names, in raw form */
+
+void
+dbxout_args (args)
+     tree args;
+{
+  while (args)
+    {
+      putc (',', asmfile);
+      dbxout_type (TREE_VALUE (args), 0);
+      CHARS (1);
+      args = TREE_CHAIN (args);
     }
 }
 
@@ -861,7 +967,7 @@ dbxout_type_def (type)
   current_sym_addr = 0;
   current_sym_nchars = 0;
   current_sym_nchars
-    = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type))));
+    = 2 + IDENTIFIER_LENGTH (DECL_NAME (TYPE_NAME (type)));
 
   fprintf (asmfile, ".stabs \"%s:t",
 	   IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type))));
@@ -890,7 +996,7 @@ dbxout_tags (tags)
 	  current_sym_code = N_LSYM;
 	  current_sym_value = 0;
 	  current_sym_addr = 0;
-	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (TREE_PURPOSE (link)));
+	  current_sym_nchars = 2 + IDENTIFIER_LENGTH (TREE_PURPOSE (link));
 
 	  fprintf (asmfile, ".stabs \"%s:T",
 		   IDENTIFIER_POINTER (TREE_PURPOSE (link)));

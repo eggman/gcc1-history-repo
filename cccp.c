@@ -154,7 +154,7 @@ typedef unsigned char U_CHAR;
 #define write(fd,buf,size)	VAX11_C_write(fd,buf,size)
 #ifdef __GNUC__
 #define BSTRING			/* VMS/GCC supplies the bstring routines */
-#endif __GNUC__
+#endif /* __GNUC__ */
 #endif /* VMS */
 
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -279,7 +279,7 @@ struct file_buf {
      Used to prohibit unmatched #endif (etc) in an include file.  */
   struct if_stack *if_stack;
   /* Object to be freed at end of input at this level.  */
-  U_CHAR *free;
+  U_CHAR *free_ptr;
 } instack[INPUT_STACK_MAX];
 
 /* Current nesting level of input sources.
@@ -1227,7 +1227,7 @@ rescan (op, output_marks)
 
 #define POPMACRO \
 do { ip->macro->type = T_MACRO;		\
-     if (ip->free) free (ip->free);	\
+     if (ip->free_ptr) free (ip->free_ptr);	\
      --indepth; } while (0)
 
 /* Reload `rescan's local variables that describe the current
@@ -1371,7 +1371,7 @@ do { ip = &instack[indepth];		\
 	  {
 	    if (!traditional)
 	      error_with_line (line_for_error (start_line),
-			       "unterminated string constant");
+			       "unterminated string or character constant");
 	    break;
 	  }
 	*obp++ = *ibp;
@@ -1381,6 +1381,11 @@ do { ip = &instack[indepth];		\
 	  ++op->lineno;
 	  if (traditional)
 	    goto while2end;
+	  if (pedantic || c == '\'') {
+	    error_with_line (line_for_error (start_line),
+			     "unterminated string or character constant");
+	    goto while2end;
+	  }
 	  break;
 
 	case '\\':
@@ -1894,7 +1899,7 @@ expand_to_temp_buffer (buf, limit, output_marks)
   ip = &instack[indepth];
   ip->fname = 0;
   ip->macro = 0;
-  ip->free = 0;
+  ip->free_ptr = 0;
   ip->length = length;
   ip->buf = ip->bufp = buf1;
   ip->if_stack = if_stack;
@@ -1905,7 +1910,7 @@ expand_to_temp_buffer (buf, limit, output_marks)
   obuf.bufp = obuf.buf = (U_CHAR *) xmalloc (obuf.length);
   obuf.fname = 0;
   obuf.macro = 0;
-  obuf.free = 0;
+  obuf.free_ptr = 0;
 
   ip->lineno = obuf.lineno = 1;
 
@@ -3680,7 +3685,7 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
   while (1) {
     if (bp >= limit) {
       error_with_line (line_for_error (start_line),
-		       "unterminated string constant");
+		       "unterminated string or character constant");
       if (eofp)
 	*eofp = 1;
       break;
@@ -3701,6 +3706,14 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
       }
       bp++;
     } else if (c == '\n') {
+      if (match == '\'') {
+	error_with_line (line_for_error (start_line),
+			 "unterminated character constant");
+	bp--;
+	if (eofp)
+	  *eofp = 1;
+	break;
+      }
       if (count_newlines)
 	++*count_newlines;
     } else if (c == match)
@@ -4018,7 +4031,7 @@ macroexpand (hp, op)
     ip2->buf = xbuf;
     ip2->length = xbuf_len;
     ip2->bufp = xbuf;
-    ip2->free = (nargs > 0) ? xbuf : 0;
+    ip2->free_ptr = (nargs > 0) ? xbuf : 0;
     ip2->macro = hp;
     ip2->if_stack = if_stack;
 
@@ -4071,7 +4084,7 @@ macarg (argptr)
     while (bp == ip->buf + ip->length) {
       if (instack[indepth].macro == 0) {
 	free (buffer);
-	return "Unterminated macro call";
+	return "unterminated macro call";
       }
       ip->macro->type = T_MACRO;
       free (ip->buf);
@@ -4221,8 +4234,11 @@ macarg1 (start, limit, depthptr, newlines, comments)
 	    while (*bp == '\\' && bp[1] == '\n') {
 	      bp += 2;
 	    }
-	  } else if (*bp == '\n')
+	  } else if (*bp == '\n') {
 	    ++*newlines;
+	    if (quotec == '\'')
+	      break;
+	  }
 	}
       }
       break;
@@ -4320,6 +4336,8 @@ discard_comments (start, length, newlines)
 	  {
 	    *obp++ = c = *ibp++;
 	    if (c == quotec)
+	      break;
+	    if (c == '\n' && quotec == '\'')
 	      break;
 	    if (c == '\\' && ibp < limit) {
 	      while (*ibp == '\\' && ibp[1] == '\n')
@@ -4805,7 +4823,7 @@ make_definition (str)
   ip->length = strlen (buf);
   ip->lineno = 1;
   ip->macro = 0;
-  ip->free = 0;
+  ip->free_ptr = 0;
   ip->if_stack = if_stack;
 
   for (kt = directive_table; kt->type != T_DEFINE; kt++)
@@ -4831,7 +4849,7 @@ make_undef (str)
   ip->length = strlen (str);
   ip->lineno = 1;
   ip->macro = 0;
-  ip->free = 0;
+  ip->free_ptr = 0;
   ip->if_stack = if_stack;
 
   for (kt = directive_table; kt->type != T_UNDEF; kt++)

@@ -57,7 +57,8 @@ and this notice must be preserved on all copies.  */
 #define IDENT_DIRECTIVE
 #define SCCS_DIRECTIVE
 
-#define ASM_FILE_START(FILE)
+/* The .file command should always begin the output.  */
+#define ASM_FILE_START(FILE) sdbout_filename ((FILE), main_input_filename)
 
 #define FUNCTION_BOUNDARY 128		/* speed optimization */
 
@@ -92,10 +93,10 @@ and this notice must be preserved on all copies.  */
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)				\
  fprintf (FILE, "\t.long 0l%.20e\n", (VALUE))
 
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)			\
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)		\
 ( fputs ("\t.bss ", (FILE)),					\
   assemble_name ((FILE), (NAME)),				\
-  fprintf ((FILE), ",%d,4\n", (SIZE)))
+  fprintf ((FILE), ",%d,4\n", (ROUNDED)))
 
  /*
   *  Encore assembler can't handle huge string constants like the one in

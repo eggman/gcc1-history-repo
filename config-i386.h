@@ -1,4 +1,4 @@
-/* Configuration for GNU C-compiler for Intel 80386 running System V.
+/* Configuration for GNU C-compiler for Intel 80386 running Sequent Symmetry
    Copyright (C) 1987 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -33,16 +33,7 @@ and this notice must be preserved on all copies.  */
 #define SUCCESS_EXIT_CODE 0
 #define FATAL_EXIT_CODE 33
 
-#define USG
-
 /* target machine dependencies.
    tm.h is a symbolic link to the actual target specific file.   */
+
 #include "tm.h"
-
-#define bcopy(a,b,c) memcpy (b,a,c)
-#define bzero(a,b) memset (a,0,b)
-#define bcmp(a,b,c) memcmp (a,b,c)
-
-#ifdef __GNUC__
-#define alloca(n) __builtin_alloca(n)
-#endif

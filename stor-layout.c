@@ -282,8 +282,11 @@ layout_decl (decl, known_align)
   register enum tree_code code = TREE_CODE (decl);
   int spec_size = DECL_SIZE_UNIT (decl);
 
+  if (code == CONST_DECL)
+    return;
+
   if (code != VAR_DECL && code != PARM_DECL && code != RESULT_DECL
-      && code != FIELD_DECL)
+      && code != FIELD_DECL && code != FRIEND_DECL)
     abort ();
 
   if (type == error_mark_node)
@@ -372,6 +375,8 @@ layout_record (rec)
 #else
   int record_align = MAX (BITS_PER_UNIT, TYPE_ALIGN (rec));
 #endif
+  /* These must be laid out *after* the record is.  */
+  tree pending_statics = NULL_TREE;
   /* Record size so far is CONST_SIZE + VAR_SIZE * SIZE_UNIT bits,
      where CONST_SIZE is an integer
      and VAR_SIZE is a tree expression.
@@ -381,9 +386,54 @@ layout_record (rec)
   register tree var_size = 0;
   register int size_unit = BITS_PER_UNIT;
 
+  int n_basetypes = list_length (TYPE_BASETYPES (rec));
+
+  /* Handle basetypes almost like fields, but record their
+     offsets differently.  */
+
+  for (field = TYPE_BASETYPES (rec); field; field = TREE_CHAIN (field))
+    {
+      tree basetype = TREE_VALUE (field);
+      int desired_align = TYPE_ALIGN (basetype);
+
+      /* Record must have at least as much alignment as any basetype.  */
+      record_align = MAX (record_align, desired_align);
+
+      /* Does this basetype have the alignment it needs
+	 by virtue of the basetypes that precede it?  */
+
+      if (const_size % desired_align != 0)
+	{
+	  /* No, we need to skip space before this field.
+	     Bump the cumulative size to multiple of field alignment.  */
+
+	  const_size = CEIL (const_size, desired_align) * desired_align;
+	}
+
+      /* Record this basetype's offset within the record.  */
+      TREE_PURPOSE (field) =
+	convert_units (build_int (const_size), 1, BITS_PER_UNIT);
+
+      /* Skip enough space for this basetype.  */
+      const_size += (TREE_INT_CST_LOW (TYPE_SIZE (basetype)) *
+		     TYPE_SIZE_UNIT (basetype));
+    }
+
   for (field = TYPE_FIELDS (rec); field; field = TREE_CHAIN (field))
     {
       register int desired_align;
+
+      /* If FIELD is a VAR_DECL, then treat it like a separate variable,
+	 not really like a structure field.
+	 If it is a FUNCTION_DECL, it's a method.
+	 In both cases, all we do is lay out the decl,
+	 and we do it *after* the record is laid out.  */
+
+      if (TREE_CODE (field) != FIELD_DECL)
+	{
+	  pending_statics = tree_cons (NULL, field, pending_statics);
+	  continue;
+	}
 
       /* Lay out the field so we know what alignment it needs.
 	 For KNOWN_ALIGN, pass the number of bits from start of record
@@ -483,6 +533,12 @@ layout_record (rec)
 				   BITS_PER_UNIT);
   TYPE_SIZE_UNIT (rec) = BITS_PER_UNIT;
   TYPE_ALIGN (rec) = MIN (BIGGEST_ALIGNMENT, record_align);
+
+  /* Lay out any static members.  This is done now
+     because their type may use the record's type.  */
+
+  for (field = pending_statics; field; field = TREE_CHAIN (field))
+    layout_decl (TREE_VALUE (field));
 }
 
 /* Lay out a UNION_TYPE type.
@@ -629,6 +685,7 @@ layout_type (type)
       break;
 
     case POINTER_TYPE:
+    case REFERENCE_TYPE:
       TYPE_MODE (type) = Pmode;
       TYPE_SIZE (type) = build_int (POINTER_SIZE / BITS_PER_UNIT);
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
@@ -716,6 +773,17 @@ layout_type (type)
       TYPE_SIZE (type) = build_int (2 * POINTER_SIZE / BITS_PER_UNIT);
       TYPE_SIZE_UNIT (type) = BITS_PER_UNIT;
       TYPE_ALIGN (type) = POINTER_BOUNDARY;
+      break;
+
+    case METHOD_TYPE:
+      {
+	tree t = TREE_TYPE (type);
+	layout_type (t);
+	TYPE_MODE (type) = TYPE_MODE (t);
+	TYPE_SIZE (type) = TYPE_SIZE (t);
+	TYPE_SIZE_UNIT (type) = TYPE_SIZE_UNIT (t);
+	TYPE_ALIGN (type) = POINTER_BOUNDARY;
+      }
       break;
 
     default:

@@ -239,14 +239,22 @@ stupid_life_analysis (f, nregs, file)
       register int r = reg_order[i];
       enum reg_class class;
 
+      /* Some regnos disappear from the rtl.  Ignore them to avoid crash.  */
+      if (regno_reg_rtx[r] == 0)
+	continue;
+
       /* Now find the best hard-register class for this pseudo register */
       if (N_REG_CLASSES > 1)
-	class = reg_preferred_class (r);
+	{
+	  class = reg_preferred_class (r);
 
-      reg_renumber[r] = stupid_find_reg (reg_crosses_call[r], class,
-					 PSEUDO_REGNO_MODE (r),
-					 reg_where_born[r],
-					 reg_where_dead[r]);
+	  reg_renumber[r] = stupid_find_reg (reg_crosses_call[r], class,
+					     PSEUDO_REGNO_MODE (r),
+					     reg_where_born[r],
+					     reg_where_dead[r]);
+	}
+      else
+	reg_renumber[r] = -1;
 
       /* If no reg available in that class,
 	 try any reg.  */
@@ -335,7 +343,7 @@ stupid_find_reg (call_preserved, class, mode,
 	      return regno;
 	    }
 #ifndef REG_ALLOC_ORDER
-	  regno += j;			/* Skip starting points we know will lose */
+	  i += j;			/* Skip starting points we know will lose */
 #endif
 	}
     }

@@ -41,29 +41,38 @@ libdir = /usr/local/lib
 
 # If you are making gcc for the first time, and if you are compiling it with
 # a non-gcc compiler, and if your system doesn't have a working alloca() in any
-# of the standard libraries (as is true for HP/UX), then get alloca.c from
-# GNU Emacs and un-comment the following line:
-# CLIB = alloca.o
+# of the standard libraries (as is true for HP/UX or Genix),
+# then get alloca.c from GNU Emacs and un-comment the following line:
+# ALLOCA = alloca.o
 
 # If your system has alloca() in /lib/libPW.a, un-comment the following line:
-# CLIB= -lc -lPW
-
-# For System V based systems, you will also have to comment out the `ranlib'
-# command below.
+# CLIB= -lPW
+  
+# If your system's malloc() routine fails for any reason (as it does on
+# certain versions of Genix), try getting the files
+# malloc.c and getpagesize.h from GNU Emacs and un-comment the following line:
+# MALLOC = malloc.o
 
 # If you are running GCC on an Apollo, you will need this:
 # CFLAGS = -g -O -M 3000 -U__STDC__ -DSHORT_ENUM_BUG
 
-# How to link with obstack
+# Change this to a null string if obstacks are installed in the
+# system library.
 OBSTACK=obstack.o
-# Dependency on obstack
-OBSTACK1=obstack.o
 
-LIBS = $(OBSTACK) $(CLIB)
+# Dependency on obstack, alloca, malloc or whatever library facilities
+# are not installed in the system libraries.
+LIBDEPS= $(OBSTACK) $(ALLOCA) $(MALLOC)
+
+# How to link with both our special library facilities
+# and the system's installed libraries.
+LIBS = $(OBSTACK) $(ALLOCA) $(MALLOC) $(CLIB)
+
 DIR = ../gcc
 
-OBJS = toplev.o version.o parse.tab.o tree.o print-tree.o \
- decl.o typecheck.o stor-layout.o fold-const.o \
+# Object files of CC1.
+OBJS = toplev.o version.o c-parse.tab.o tree.o print-tree.o \
+ c-decl.o c-typeck.o c-convert.o stor-layout.o fold-const.o \
  rtl.o expr.o stmt.o expmed.o explow.o optabs.o varasm.o \
  symout.o dbxout.o sdbout.o emit-rtl.o insn-emit.o \
  integrate.o jump.o cse.o loop.o flow.o stupid.o combine.o \
@@ -98,7 +107,7 @@ doc: cpp.info internals
 
 compilations: ${OBJS}
 
-gcc: gcc.o version.o $(OBSTACK1)
+gcc: gcc.o version.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o gccnew gcc.o version.o $(LIBS)
 # Go via `gccnew' to avoid `file busy' if $(CC) is `gcc'.
 	mv gccnew gcc
@@ -106,7 +115,7 @@ gcc: gcc.o version.o $(OBSTACK1)
 gcc.o: gcc.c $(CONFIG_H)
 	$(CC) $(CFLAGS) -c -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc-\" gcc.c
 
-cc1: $(OBJS) $(OBSTACK1)
+cc1: $(OBJS) $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o cc1 $(OBJS) $(LIBS)
 
 #Library of arithmetic subroutines
@@ -132,18 +141,24 @@ gnulib: gnulib.c
 #	mv gnulib gnulib-hp
 #	hpxt gnulib-hp gnulib
 
-decl.o : decl.c $(CONFIG_H) $(TREE_H) flags.h c-tree.h parse.h
-typecheck.o : typecheck.c $(CONFIG_H) $(TREE_H) c-tree.h flags.h
+
+# C-language specific files.
+
+c-parse.tab.o : c-parse.tab.c $(CONFIG_H) $(TREE_H) c-parse.h c-tree.h
+c-parse.tab.c : c-parse.y
+	$(BISON) -v c-parse.y
+
+c-decl.o : c-decl.c $(CONFIG_H) $(TREE_H) c-tree.h c-parse.h flags.h
+c-typeck.o : c-typeck.c $(CONFIG_H) $(TREE_H) c-tree.h flags.h
+c-convert.o : c-convert.c $(CONFIG_H) $(TREE_H)
+
+# Language-independent files.
+
 tree.o : tree.c $(CONFIG_H) $(TREE_H)
 print-tree.o : print-tree.c $(CONFIG_H) $(TREE_H)
 stor-layout.o : stor-layout.c $(CONFIG_H) $(TREE_H)
 fold-const.o : fold-const.c $(CONFIG_H) $(TREE_H)
 toplev.o : toplev.c $(CONFIG_H) $(TREE_H) flags.h
-
-parse.tab.o : parse.tab.c $(CONFIG_H) $(TREE_H) parse.h c-tree.h flags.h
-
-parse.tab.c : parse.y
-	$(BISON) -v parse.y
 
 rtl.o : rtl.c $(CONFIG_H) $(RTL_H)
 
@@ -158,7 +173,7 @@ explow.o : explow.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h insn-codes.h
 optabs.o : optabs.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 symout.o : symout.c $(CONFIG_H) $(TREE_H) $(RTL_H) symseg.h gdbfiles.h
-dbxout.o : dbxout.c $(CONFIG_H) $(TREE_H) $(RTL_H)
+dbxout.o : dbxout.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h
 sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H) c-tree.h
 
 emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h
@@ -244,49 +259,49 @@ insn-output.c : md genoutput
 
 # Now the programs that generate those files.
 
-genconfig : genconfig.o rtl.o $(OBSTACK1)
+genconfig : genconfig.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genconfig genconfig.o rtl.o $(LIBS)
 
 genconfig.o : genconfig.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genconfig.c
 
-genflags : genflags.o rtl.o $(OBSTACK1)
+genflags : genflags.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genflags genflags.o rtl.o $(LIBS)
 
 genflags.o : genflags.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genflags.c
 
-gencodes : gencodes.o rtl.o $(OBSTACK1)
+gencodes : gencodes.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o gencodes gencodes.o rtl.o $(LIBS)
 
 gencodes.o : gencodes.c $(RTL_H)
 	$(CC) $(CFLAGS) -c gencodes.c
 
-genemit : genemit.o rtl.o $(OBSTACK1)
+genemit : genemit.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genemit genemit.o rtl.o $(LIBS)
 
 genemit.o : genemit.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genemit.c
 
-genrecog : genrecog.o rtl.o $(OBSTACK1)
+genrecog : genrecog.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genrecog genrecog.o rtl.o $(LIBS)
 
 genrecog.o : genrecog.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genrecog.c
 
-genextract : genextract.o rtl.o $(OBSTACK1)
+genextract : genextract.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genextract genextract.o rtl.o $(LIBS)
 
 genextract.o : genextract.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genextract.c
 
-genpeep : genpeep.o rtl.o $(OBSTACK1)
+genpeep : genpeep.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genpeep genpeep.o rtl.o $(LIBS)
 
 genpeep.o : genpeep.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genpeep.c
 
-genoutput : genoutput.o rtl.o $(OBSTACK1)
+genoutput : genoutput.o rtl.o $(LIBDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o genoutput genoutput.o rtl.o $(LIBS)
 
 genoutput.o : genoutput.c $(RTL_H)
@@ -296,8 +311,8 @@ genoutput.o : genoutput.c $(RTL_H)
 cpp: cccp
 	-rm -f cpp
 	ln cccp cpp
-cccp: cccp.o cexp.o version.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o cccp cccp.o cexp.o version.o $(CLIB)
+cccp: cccp.o cexp.o version.o $(LIBDEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o cccp cccp.o cexp.o version.o $(LIBS)
 cexp.o: cexp.c
 cexp.c: cexp.y
 	$(BISON) cexp.y

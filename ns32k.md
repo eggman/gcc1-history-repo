@@ -274,7 +274,11 @@
       if (i <= 7 && i >= -8)
 	return \"movqd %1,%0\";
       if (i < 0x4000 && i >= -0x4000)
+#ifdef GNX_V3
+	return \"addr %c1,%0\";
+#else
 	return \"addr @%c1,%0\";
+#endif
       return \"movd %1,%0\";
     }
   else if (GET_CODE (operands[1]) == REG)
@@ -1753,7 +1757,7 @@
 }")
 
 (define_insn "insv"
-  [(set (zero_extract:SI (match_operand:SI 0 "general_operand" "=g,o")
+  [(set (zero_extract:SI (match_operand:SI 0 "general_operand" "+g,o")
 			 (match_operand:SI 1 "const_int" "i,i")
 			 (match_operand:SI 2 "general_operand" "rK,n"))
 	(match_operand:SI 3 "general_operand" "rm,rm"))]
@@ -1761,8 +1765,12 @@
   "*
 { if (GET_CODE (operands[2]) == CONST_INT)
     {
-      if (INTVAL (operands[2]) >= 8)
-	operands[0] = plus_constant (operands[0], INTVAL (operands[2]) >> 3);
+      if (GET_CODE (operands[0]) == MEM && INTVAL (operands[2]) >= 8)
+	{
+	  operands[0] = adj_offsetable_operand (operands[0],
+					        INTVAL (operands[2]) / 8);
+          operands[2] = gen_rtx (CONST_INT, VOIDmode, INTVAL (operands[2]) % 8);
+	}
       if (INTVAL (operands[1]) <= 8)
 	return \"inssb %3,%0,%2,%1\";
       else if (INTVAL (operands[1]) <= 16)
@@ -1774,7 +1782,7 @@
 }")
 
 (define_insn ""
-  [(set (zero_extract:SI (match_operand:HI 0 "general_operand" "=g,o")
+  [(set (zero_extract:SI (match_operand:HI 0 "general_operand" "+g,o")
 			 (match_operand:SI 1 "const_int" "i,i")
 			 (match_operand:SI 2 "general_operand" "rK,n"))
 	(match_operand:SI 3 "general_operand" "rm,rm"))]
@@ -1782,8 +1790,12 @@
   "*
 { if (GET_CODE (operands[2]) == CONST_INT)
     {
-      if (INTVAL (operands[2]) >= 8)
-	operands[0] = plus_constant (operands[0], INTVAL (operands[2]) >> 3);
+      if (GET_CODE (operands[0]) == MEM && INTVAL (operands[2]) >= 8)
+	{
+	  operands[0] = adj_offsetable_operand (operands[0],
+					        INTVAL (operands[2]) / 8);
+          operands[2] = gen_rtx (CONST_INT, VOIDmode, INTVAL (operands[2]) % 8);
+	}
       if (INTVAL (operands[1]) <= 8)
 	return \"inssb %3,%0,%2,%1\";
       else if (INTVAL (operands[1]) <= 16)
@@ -2096,9 +2108,17 @@
   if (GET_CODE (operands[0]) == MEM)
     {
       if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
+#ifdef GNX_V3
+	return \"bsr %0\";
+#else
 	return \"bsr %?%a0\";
+#endif
       if (GET_CODE (XEXP (operands[0], 0)) == REG)
+#ifdef GNX_V3
+	return \"jsr %0\";
+#else
         return \"jsr %a0\";
+#endif
     }
   return \"jsr %0\";
 }")
@@ -2113,9 +2133,17 @@
   if (GET_CODE (operands[1]) == MEM)
     {
       if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
+#ifdef GNX_V3
+	return \"bsr %1\";
+#else
 	return \"bsr %?%a1\";
+#endif
       if (GET_CODE (XEXP (operands[1], 0)) == REG)
+#ifdef GNX_V3
+	return \"jsr %1\";
+#else
         return \"jsr %a1\";
+#endif
     }
   return \"jsr %1\";
 }")

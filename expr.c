@@ -1030,10 +1030,9 @@ emit_move_insn (x, y)
    Note that it is not possible for the value returned to be a QUEUED.
    The value may be stack_pointer_rtx.
 
-   The value we return does not take account of STACK_POINTER_OFFSET,
-   so the caller must do so when using the value.  */
+   The value we return does take account of STACK_POINTER_OFFSET.  */
 
-static rtx
+rtx
 push_block (size)
      rtx size;
 {
@@ -1048,10 +1047,15 @@ push_block (size)
 #else
   temp = gen_rtx (PLUS, Pmode,
 		  stack_pointer_rtx,
-		  size);
+		  negate_rtx (size));
   if (GET_CODE (size) != CONST_INT)
     temp = force_operand (temp, 0);
 #endif
+
+#ifdef STACK_POINTER_OFFSET
+  temp = plus_constant (temp, STACK_POINTER_OFFSET);
+#endif /* STACK_POINTER_OFFSET */
+
   return memory_address (QImode, temp);
 }
 
@@ -1695,6 +1699,17 @@ store_constructor (exp, target)
      tree exp;
      rtx target;
 {
+  /* Don't try copying piece by piece into a hard register
+     since that is vulnerable to being clobbered by EXP.
+     Instead, construct in a pseudo register and then copy it all.  */
+  if (GET_CODE (target) == REG && REGNO (target) < FIRST_PSEUDO_REGISTER)
+    {
+      rtx temp = gen_reg_rtx (GET_MODE (target));
+      store_constructor (exp, temp);
+      emit_move_insn (target, temp);
+      return;
+    }
+
   if (TREE_CODE (TREE_TYPE (exp)) == RECORD_TYPE)
     {
       register tree elt;
@@ -1943,6 +1958,11 @@ expand_expr (exp, target, tmode, modifier)
   rtx original_target = target;
   int ignore = target == const0_rtx;
 
+  /* Don't use hard regs as subtargets, because the combiner
+     can only handle pseudo regs.  */
+  if (subtarget && REGNO (subtarget) < FIRST_PSEUDO_REGISTER)
+    subtarget = 0;
+
   if (ignore) target = 0, original_target = 0;
 
   /* If will do cse, generate all results into registers
@@ -1982,14 +2002,25 @@ expand_expr (exp, target, tmode, modifier)
 	  /* DECL_RTL probably contains a constant address.
 	     On RISC machines where a constant address isn't valid,
 	     make some insns to get that address into a register.  */
-	  if (!memory_address_p (DECL_MODE (exp), XEXP (DECL_RTL (exp), 0)))
+	  if (!memory_address_p (DECL_MODE (exp), XEXP (DECL_RTL (exp), 0))
+	      || (flag_force_addr
+		  && CONSTANT_ADDRESS_P (XEXP (DECL_RTL (exp), 0))))
 	    return change_address (DECL_RTL (exp), VOIDmode,
 				   copy_rtx (XEXP (DECL_RTL (exp), 0)));
 	}
       return DECL_RTL (exp);
 
     case INTEGER_CST:
-      return gen_rtx (CONST_INT, VOIDmode, TREE_INT_CST_LOW (exp));
+      if (GET_MODE_BITSIZE (mode) <= HOST_BITS_PER_INT)
+	return gen_rtx (CONST_INT, VOIDmode, TREE_INT_CST_LOW (exp));
+      /* If optimized, generate immediate CONST_DOUBLE
+	 which will be turned into memory by reload if necessary.  */
+      if (!cse_not_expected)
+	return immed_double_const (TREE_INT_CST_LOW (exp),
+				   TREE_INT_CST_HIGH (exp),
+				   mode);
+      output_constant_def (exp);
+      return TREE_CST_RTL (exp);
 
     case CONST_DECL:
       return expand_expr (DECL_INITIAL (exp), target, VOIDmode, 0);
@@ -1997,8 +2028,8 @@ expand_expr (exp, target, tmode, modifier)
     case REAL_CST:
       if (TREE_CST_RTL (exp))
 	return TREE_CST_RTL (exp);
-      /* If optimized, generate immediate float
-	 which will be turned into memory float if necessary.  */
+      /* If optimized, generate immediate CONST_DOUBLE
+	 which will be turned into memory by reload if necessary.  */
       if (!cse_not_expected)
 	return immed_real_const (exp);
       output_constant_def (exp);
@@ -2086,7 +2117,7 @@ expand_expr (exp, target, tmode, modifier)
 	  || (TREE_CODE (TREE_OPERAND (exp, 0)) == SAVE_EXPR
 	      && TREE_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0)) == PLUS_EXPR))
 	temp->in_struct = 1;
-      temp->volatil = TREE_THIS_VOLATILE (exp) | flag_volatile;
+      temp->volatil = TREE_THIS_VOLATILE (exp);
       temp->unchanging = TREE_READONLY (exp);
       return temp;
 
@@ -2231,6 +2262,7 @@ expand_expr (exp, target, tmode, modifier)
 
     case NOP_EXPR:
     case CONVERT_EXPR:
+    case REFERENCE_EXPR:
       if (TREE_CODE (type) == VOID_TYPE || ignore)
 	{
 	  expand_expr (TREE_OPERAND (exp, 0), const0_rtx, VOIDmode, modifier);
@@ -2731,21 +2763,84 @@ expand_expr (exp, target, tmode, modifier)
       OK_DEFER_POP;
       return temp;
 
+    case INIT_EXPR:
+      {
+	tree lhs = TREE_OPERAND (exp, 0);
+	tree rhs = TREE_OPERAND (exp, 1);
+	tree type = TREE_TYPE (lhs);
+
+	/* We are initializing via bitwise copy.  After doing that,
+	   if we cannot be sure of the virtual function table pointer
+	   that is returned, store it by hand.  */
+
+	temp = expand_assignment (lhs, rhs, ! ignore, original_target != 0);
+#if 0
+	if (TREE_VIRTUAL (type)
+	    && (type != TYPE_MAIN_VARIANT (TREE_TYPE (rhs))
+		|| TREE_CODE (rhs) != PARM_DECL
+		|| TREE_CODE (rhs) != VAR_DECL
+		|| TREE_CODE (rhs) != CALL_EXPR))
+	  {
+	    extern tree build_component_ref ();
+	    expand_assignment (build_component_ref (lhs, get_vfield_name (type), 0),
+			       build_unary_op (ADDR_EXPR, lookup_name (get_vtable_name (type)), 0),
+			       0, 0);
+	  }
+#endif
+	return temp;
+      }
+
     case MODIFY_EXPR:
-      /* If lhs is complex, expand calls in rhs before computing it.
-	 That's so we don't compute a pointer and save it over a call.
-	 If lhs is simple, compute it first so we can give it as a
-	 target if the rhs is just a call.  This avoids an extra temp and copy
-	 and that prevents a partial-subsumption which makes bad code.
-	 Actually we could treat component_ref's of vars like vars.  */
-      if (TREE_CODE (TREE_OPERAND (exp, 0)) != VAR_DECL
-	  && TREE_CODE (TREE_OPERAND (exp, 0)) != RESULT_DECL
-	  && TREE_CODE (TREE_OPERAND (exp, 0)) != PARM_DECL)
-	preexpand_calls (exp);
-      temp = expand_assignment (TREE_OPERAND (exp, 0),
-				TREE_OPERAND (exp, 1),
-				! ignore,
-				original_target != 0);
+      {
+	/* If lhs is complex, expand calls in rhs before computing it.
+	   That's so we don't compute a pointer and save it over a call.
+	   If lhs is simple, compute it first so we can give it as a
+	   target if the rhs is just a call.  This avoids an extra temp and copy
+	   and that prevents a partial-subsumption which makes bad code.
+	   Actually we could treat component_ref's of vars like vars.  */
+
+	tree lhs = TREE_OPERAND (exp, 0);
+	tree rhs = TREE_OPERAND (exp, 1);
+	tree type = TREE_TYPE (lhs);
+	temp = 0;
+
+	if (TREE_CODE (lhs) != VAR_DECL
+	    && TREE_CODE (lhs) != RESULT_DECL
+	    && TREE_CODE (lhs) != PARM_DECL)
+	  preexpand_calls (exp);
+
+#if 0
+	if (TREE_VIRTUAL (type)
+	    && (TYPE_MAIN_VARIANT (type) != TYPE_MAIN_VARIANT (TREE_TYPE (rhs))
+		|| (TREE_CODE (rhs) != VAR_DECL
+		    && TREE_CODE (rhs) != PARM_DECL
+		    && TREE_CODE (rhs) != RESULT_DECL)))
+	  {
+	    /* We are performing structure assignment.  If the
+	       types of the structures are different, or if the
+	       RHS is not "pure" (i.e., a VAR_DECL, PARM_DECLs are
+	       too hard right now), then we must preserve the purity
+	       of the LHS, by queueing the assignment of
+	       it virtual function table pointer to itself.  */
+	    extern tree build_component_ref ();
+	    tree vptr = build_component_ref (lhs, get_vfield_name (type), 0);
+	    enum machine_mode mode = TYPE_MODE (TREE_TYPE (vptr));
+	    int icode = (int) mov_optab->handlers[(int) mode].insn_code;
+	    rtx vptr_rtx = stabilize (expand_expr (vptr, 0, Pmode, 0));
+	    rtx vptr_tmp = copy_to_reg (vptr_rtx);
+
+	    if (icode == (int)CODE_FOR_nothing)
+	      abort ();
+
+	    temp = expand_assignment (lhs, rhs, ! ignore, original_target != 0);
+	    enqueue_insn (temp, GEN_FCN (icode) (vptr_rtx, vptr_tmp));
+	  }
+	else
+	  {
+#endif
+	    /* ??? Original code */
+	    temp = expand_assignment (lhs, rhs, ! ignore, original_target != 0);
+	  }
       return temp;
 
     case PREINCREMENT_EXPR:
@@ -2812,11 +2907,17 @@ expand_expr (exp, target, tmode, modifier)
 	  tree thenexp;
 	  rtx thenv = 0;
 
+#if 1
+	  /* We can't risk storing in the supplied target
+	     since it might be used in operand 1.  */
+	  target = gen_reg_rtx (mode);
+#else
 	  /* Don't store intermediate results in a fixed register.  */
 	  if (target != 0 && GET_CODE (target) == REG
 	      && REGNO (target) < FIRST_PSEUDO_REGISTER)
 	    target = 0;
 	  if (target == 0) target = gen_reg_rtx (mode);
+#endif
 
 	  /* Compute X into the target.  */
 	  store_expr (TREE_OPERAND (exp, 0), target, 0);
@@ -3430,6 +3531,9 @@ expand_call (exp, target, ignore)
     abort ();
   funtype = TREE_TYPE (funtype);
 
+  if (TREE_CODE (funtype) == METHOD_TYPE)
+    funtype = TREE_TYPE (funtype);
+
   /* Pass the function the address in which to return a structure value.  */
   if (structure_value_addr && GET_CODE (struct_value_rtx) == MEM)
     actparms = tree_cons (error_mark_node,
@@ -3486,13 +3590,6 @@ expand_call (exp, target, ignore)
       arg_size[i].constant = 0;
       arg_size[i].var = 0;
       arg_offset[i] = args_size;
-
-#ifdef STACK_POINTER_OFFSET
-      /* ARG_OFFSET is used to index ARGS_ADDR, which is the stack ptr reg,
-	 so if there is a gap between that reg and the actual t.o.s. addr,
-	 we must include it in this offset.  */
-      arg_offset[i].constant += STACK_POINTER_OFFSET;
-#endif
 
       if (type == error_mark_node)
 	continue;

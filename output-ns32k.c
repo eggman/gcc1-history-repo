@@ -200,8 +200,8 @@ check_reg (oper, reg)
    which is easier to debug than putting all the code in
    a macro definition in tm-ns32k.h .  */
 
-/* This decl ought to be able to be inside the following function,
-   but a bug in the Encore compiler makes that fail to work.  */
+/* Nonzero if we have printed a base register.
+   If zero, on some systems, it means `(sb)' must be printed.  */
 static int paren_base_reg_printed = 0;
 
 print_operand_address (file, addr)

@@ -631,7 +631,7 @@ qty_compare_1 (q1, q2)
   register int tem = (qty_phys_sugg[*q2] >= 0) - (qty_phys_sugg[*q1] >= 0);
   if (tem != 0) return tem;
   return -((qty_n_refs[*q1] + qty_death[*q1] - qty_birth[*q1]) * qty_size[*q2]
-	   - (qty_n_refs[*q1] + qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
+	   - (qty_n_refs[*q2] + qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
 }
 
 /* Attempt to combine the two registers (rtx's) USEDREG and SETREG.
@@ -923,11 +923,8 @@ reg_is_set (reg, clobber_flag)
 	 because it will have to be live right after this insn.  */
       if (qty_death[reg_qty[regno]] == this_insn_number)
 	{
-	  /* It is live right after this insn */
-	  post_mark_life (reg_qty[regno], GET_MODE (reg), 1,
-			  this_insn_number, this_insn_number+1);
-	  /* But dead later.  */
-	  mark_life (regno, GET_MODE (reg), 0);
+	  /* Calls to post_mark_life and mark_life deleted here.
+	     They only know how to handle hard regs.  */
 	  qty_death[reg_qty[regno]]++;
 	}
     }
@@ -1060,7 +1057,7 @@ find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
 	      return regno;
 	    }
 #ifndef REG_ALLOC_ORDER
-	  regno += j;		/* Skip starting points we know will lose */
+	  i += j;		/* Skip starting points we know will lose */
 #endif
 	}
     }

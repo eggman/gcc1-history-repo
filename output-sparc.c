@@ -59,6 +59,14 @@ arith32_operand (op, mode)
   return (register_operand (op, mode) || GET_CODE (op) == CONST_INT);
 }
 
+int
+small_int (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  return (GET_CODE (op) == CONST_INT && SMALL_INT (op));
+}
+
 /* Return the best assembler insn template
    for moving operands[1] into operands[0] as a fullword.  */
 
@@ -70,7 +78,7 @@ singlemove_string (operands)
     return "st %r1,%0";
   if (GET_CODE (operands[1]) == MEM)
     return "ld %1,%0";
-  return "add %1,%%g0,%0";
+  return "mov %1,%0";
 }
 
 /* Output assembler code to perform a doubleword move insn
@@ -157,10 +165,61 @@ output_move_double (operands)
     latehalf[1] = operands[1];
 
   /* If the first move would clobber the source of the second one,
-     do them in the other order.  This happens only for registers;
-     such overlap can't happen in memory unless the user explicitly
-     sets it up, and that is an undefined circumstance.  */
+     do them in the other order.
 
+     RMS says "This happens only for registers;
+     such overlap can't happen in memory unless the user explicitly
+     sets it up, and that is an undefined circumstance."
+
+     but it happens on the sparc when loading parameter registers,
+     so I am going to define that circumstance, and make it work
+     as expected.  */
+
+  /* Easy case: try moving both words at once.  */
+  if ((optype0 == REGOP && optype1 != REGOP
+       && (REGNO (operands[0]) & 1) == 0)
+      || (optype0 != REGOP && optype1 == REGOP
+	  && (REGNO (operands[1]) & 1) == 0))
+    {
+      rtx op1, op2;
+      rtx base = 0, offset = const0_rtx;
+
+      if (optype0 == REGOP)
+	op1 = operands[0], op2 = XEXP (operands[1], 0);
+      else
+	op1 = operands[1], op2 = XEXP (operands[0], 0);
+
+      /* We know structs are properly aligned.  */
+      if (operands[1]->in_struct)
+	return "ldd %1,%0";
+      if (operands[0]->in_struct)
+	return "std %1,%0";
+
+      /* Otherwise, only trust global variables
+	 and even offsets from the frame pointer.  */
+      if (GET_CODE (op2) == SYMBOL_REF
+	  || GET_CODE (op2) == CONST
+	  || GET_CODE (op2) == REG)
+	base = op2;
+      else if (GET_CODE (op2) == PLUS)
+	if (GET_CODE (XEXP (op2, 0)) == REG)
+	  base = XEXP (op2, 0),
+	  offset = XEXP (op2, 1);
+	else if (GET_CODE (XEXP (op2, 1)) == REG)
+	  base = XEXP (op2, 1),
+	  offset = XEXP (op2, 0);
+
+      if (base
+	  && (GET_CODE (base) != REG
+	      || (REGNO (base) == FRAME_POINTER_REGNUM
+		  && GET_CODE (offset) == CONST_INT
+		  && INTVAL (offset) & 0x7 == 0)))
+	if (op1 == operands[0])
+	  return "ldd %1,%0";
+	else
+	  return "std %1,%0";
+    }
+      
   if (optype0 == REGOP && optype1 == REGOP
       && REGNO (operands[0]) == REGNO (latehalf[1]))
     {
@@ -180,6 +239,14 @@ output_move_double (operands)
 	output_asm_insn ("add %0,-0x4,%0", &addreg0);
 
       /* Do low-numbered word.  */
+      return singlemove_string (operands);
+    }
+  else if (optype0 == REGOP && optype1 != REGOP
+	   && reg_mentioned_p (operands[0], XEXP (operands[1], 0)))
+    {
+      /* Do the late half first.  */
+      output_asm_insn (singlemove_string (latehalf), latehalf);
+      /* Then clobber.  */
       return singlemove_string (operands);
     }
 
@@ -219,43 +286,40 @@ output_fp_move_double (operands)
 	  return "fmovs %1,%0";
 	}
       if (GET_CODE (operands[1]) == REG)
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*	return "st %1,[%%sp-8]\n\tldd [%%sp-8],%0"; */
 	{
-	  rtx xoperands[2];
-	  int offset = - get_frame_size () - 8;
-	  xoperands[1] = gen_rtx (REG, SImode, REGNO (operands[1]) + 1);
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset + 4);
-	  output_asm_insn ("st %1,[%%fp+%0]", xoperands);
-	  xoperands[1] = operands[1];
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-	  output_asm_insn ("st %1,[%%fp+%0]", xoperands);
-	  xoperands[1] = operands[0];
-	  output_asm_insn ("ldd [%%fp+%0],%1", xoperands);
-	  return "";
+	  if ((REGNO (operands[1]) & 1) == 0)
+	    return "std %1,[%%fp-8]\n\tldd [%%fp-8],%0";
+	  else
+	    {
+	      rtx xoperands[3];
+	      xoperands[0] = operands[0];
+	      xoperands[1] = operands[1];
+	      xoperands[2] = gen_rtx (REG, SImode, REGNO (operands[1]) + 1);
+	      output_asm_insn ("st %2,[%%fp-4]\n\tst %1,[%%fp-8]\n\tldd [%%fp-8],%0", xoperands);
+	      return "";
+	    }
 	}
       return "ldd %1,%0";
     }
   else if (FP_REG_P (operands[1]))
     {
       if (GET_CODE (operands[0]) == REG)
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*	return "std %1,[%%sp-8]\n\tldd [%%sp-8],%0"; */
 	{
-	  rtx xoperands[2];
-	  int offset = - get_frame_size () - 8;
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-	  xoperands[1] = operands[1];
-	  output_asm_insn ("std %1,[%%fp+%0]", xoperands);
-	  xoperands[1] = operands[0];
-	  output_asm_insn ("ld [%%fp+%0],%1", xoperands);
-	  xoperands[1] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset + 4);
-	  output_asm_insn ("ld [%%fp+%0],%1", xoperands);
-	  return "";
+	  if ((REGNO (operands[0]) & 1) == 0)
+	    return "std %1,[%%fp-8]\n\tldd [%%fp-8],%0";
+	  else
+	    {
+	      rtx xoperands[3];
+	      xoperands[2] = operands[1];
+	      xoperands[1] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
+	      xoperands[0] = operands[0];
+	      output_asm_insn ("std %2,[%%fp-8]\n\tld [%%fp-4],%1\n\tld [%%fp-8],%0", xoperands);
+	      return "";
+	    }
 	}
       return "std %1,%0";
     }
+  else abort ();
 }
 
 /* Return a REG that occurs in ADDR with coefficient 1.
@@ -729,13 +793,8 @@ void
 make_f0_contain_0 (size)
      int size;
 {
-  rtx xoperands[1];
-  int offset = - get_frame_size () - 8;
-
-  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
   if (size == 1)
-    output_asm_insn ("ld [%%fp%0],%%f0", xoperands);
+    output_asm_insn ("ld [%%fp-16],%%f0", 0);
   else if (size == 2)
-    output_asm_insn ("ldd [%%fp%0],%%f0", xoperands);
+    output_asm_insn ("ldd [%%fp-16],%%f0", 0);
 }
-

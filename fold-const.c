@@ -99,7 +99,9 @@ force_fit_type (t)
 
   /* First clear all bits that are beyond the type's precision.  */
 
-  if (prec > HOST_BITS_PER_INT)
+  if (prec == 2 * HOST_BITS_PER_INT)
+    ;
+  else if (prec > HOST_BITS_PER_INT)
     {
       TREE_INT_CST_HIGH (t)
 	&= ~((-1) << (prec - HOST_BITS_PER_INT));
@@ -115,6 +117,7 @@ force_fit_type (t)
   /* If it's a signed type and value's sign bit is set, extend the sign.  */
 
   if (! TREE_UNSIGNED (TREE_TYPE (t))
+      && prec != 2 * HOST_BITS_PER_INT
       && (prec > HOST_BITS_PER_INT
 	  ? TREE_INT_CST_HIGH (t) & (1 << (prec - HOST_BITS_PER_INT - 1))
 	  : TREE_INT_CST_LOW (t) & (1 << (prec - 1))))
@@ -1098,6 +1101,7 @@ fold (expr)
 	      else
 		t = build_int_2 (- TREE_INT_CST_LOW (arg0),
 				 ~ TREE_INT_CST_HIGH (arg0));
+	      TREE_TYPE (t) = TREE_TYPE (expr);
 	      force_fit_type (t);
 	    }
 	  else if (TREE_CODE (arg0) == REAL_CST)

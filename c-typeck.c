@@ -750,7 +750,8 @@ build_indirect_ref (ptr, errorstring)
 
 	TREE_READONLY (ref) = TREE_READONLY (t);
 	TREE_VOLATILE (ref) = TREE_VOLATILE (t) || TREE_VOLATILE (pointer);
-	TREE_THIS_VOLATILE (ref) = TREE_VOLATILE (t);
+	TREE_THIS_VOLATILE (ref)
+	  = TREE_VOLATILE (t) || flag_volatile;
 	return ref;
       }
   else if (TREE_CODE (pointer) != ERROR_MARK)
@@ -1787,45 +1788,44 @@ shorten_compare (op0_ptr, op1_ptr, restype_ptr, rescode_ptr)
 	}
 
       val = 0;
-      switch (code)
+      /* This used to be a switch, but Genix compiler can't handle that.  */
+      if (code == NE_EXPR)
 	{
-	case NE_EXPR:
 	  if (max_lt || min_gt)
 	    val = integer_one_node;
-	  break;
-
-	case EQ_EXPR:
+	}
+      else if (code == EQ_EXPR)
+	{
 	  if (max_lt || min_gt)
 	    val = integer_zero_node;
-	  break;
-
-	case LT_EXPR:
+	}
+      else if (code == LT_EXPR)
+	{
 	  if (max_lt)
 	    val = integer_one_node;
 	  if (!min_lt)
 	    val = integer_zero_node;
-	  break;
-
-	case GT_EXPR:
+	}
+      else if (code == GT_EXPR)
+	{
 	  if (min_gt)
 	    val = integer_one_node;
 	  if (!max_gt)
 	    val = integer_zero_node;
-	  break;
-
-	case LE_EXPR:
+	}
+      else if (code == LE_EXPR)
+	{
 	  if (!max_gt)
 	    val = integer_one_node;
 	  if (min_gt)
 	    val = integer_zero_node;
-	  break;
-
-	case GE_EXPR:
+	}
+      else if (code == GE_EXPR)
+	{
 	  if (!min_lt)
 	    val = integer_one_node;
 	  if (max_lt)
 	    val = integer_zero_node;
-	  break;
 	}
 
       /* If primop0 was sign-extended and unsigned comparison specd,

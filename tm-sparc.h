@@ -43,6 +43,11 @@ extern int target_flags;
 /* Nonzero if we should generate code to use the fpu.  */
 #define TARGET_FPU (target_flags & 1)
 
+/* Nonzero if we expect to be passed through the Sun
+   optimizing assembler.  This requires us to generate
+   code which we otherwise would not (for example, pointers-to-functions). */
+#define TARGET_SUN_ASM (target_flags & 4)
+
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
    each pair being { "NAME", VALUE }
@@ -52,9 +57,10 @@ extern int target_flags;
 #define TARGET_SWITCHES  \
   { {"fpu", 1},			\
     {"soft-float", -1},		\
+    {"sun-asm", 4},		\
     { "", TARGET_DEFAULT}}
 
-#define TARGET_DEFAULT 0
+#define TARGET_DEFAULT 1
 
 /* target machine storage layout */
 
@@ -203,7 +209,7 @@ extern int target_flags;
    Zero means the frame pointer need not be set up (and parms
    may be accessed via the stack pointer) in functions that seem suitable.
    This is computed in `reload', in reload1.c.  */
-#define FRAME_POINTER_REQUIRED 0
+#define FRAME_POINTER_REQUIRED 1
 
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM 30
@@ -325,7 +331,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    If FRAME_GROWS_DOWNWARD, this is the offset to the END of the
    first local allocated.  Otherwise, it is the offset to the BEGINNING
    of the first local allocated.  */
-#define STARTING_FRAME_OFFSET 0
+#define STARTING_FRAME_OFFSET -16
 
 /* If we generate an insn to push BYTES bytes,
    this says how many the stack pointer really advances by.
@@ -506,58 +512,45 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
   extern char call_used_regs[];					\
   extern int current_function_pretend_args_size;		\
   extern int frame_pointer_needed;				\
-  int fsize = ((SIZE) + 7) & ~7;				\
-  int nregs, i, save_needed = frame_pointer_needed;		\
-  int n_iregs = 0;						\
-  for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
-    {								\
-      if (regs_ever_live[i] && ! call_used_regs[i])		\
-        { nregs++; break; }					\
-    }								\
-  if (regs_ever_live[31]) save_needed = 1;			\
-  else if (regs_ever_live[32]) save_needed = 1, fsize += 8;	\
-  else for (i = 16; i < 24; i++)				\
-    if (regs_ever_live[i])					\
-      { save_needed = 1; break; }				\
+  int fsize = ((SIZE) + 7) & -8;				\
+  int actual_fsize;						\
+  int n_fregs = 0, i;						\
+  int n_iregs = 64;						\
+  for (i = 32; i < FIRST_PSEUDO_REGISTER; i++)			\
+    if (regs_ever_live[i] && ! call_used_regs[i])		\
+      n_fregs++;						\
   for (i = 24; i < 32; i++)					\
-    if (regs_ever_live[i])					\
-      { save_needed = 1; n_iregs = 1; break; }			\
-  if (n_iregs) fsize += 32;	/* magic.  */			\
+    if (regs_ever_live[i]) { n_iregs = 96; break; }		\
   fprintf (FILE, "\t!#PROLOGUE# 0\n");				\
-  if (save_needed == 0)						\
-    {								\
-      fprintf (FILE, "\t!#PROLOGUE# 1\n");			\
-      if (nregs)						\
-	for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
-	  if (regs_ever_live[i] && ! call_used_regs[i])		\
-	    {							\
-	      fprintf (FILE, "\tstf %s,[%%sp-0x%x]\n",		\
-		       reg_names[i], 4 * nregs++);		\
-	    }							\
-      nregs = (nregs + 7) & ~7;					\
-      if (nregs + fsize)					\
-	fprintf (FILE, "sub %%sp,%d,%%sp", 4 * nregs + fsize);	\
-    }								\
+  actual_fsize = fsize + n_iregs + (n_fregs*4+7 & -8);		\
+  fsize += current_function_pretend_args_size+7 & -8;		\
+  actual_fsize += current_function_pretend_args_size+7 & -8;	\
+  if (actual_fsize < 4096)					\
+    fprintf (FILE, "\tsave %%sp,-%d,%%sp\n", actual_fsize);	\
   else								\
     {								\
-      fsize += 16 * 4 + current_function_pretend_args_size;	\
-      fsize = (fsize + 7) & ~7;					\
-      if (fsize < 4096)						\
-	fprintf (FILE, "\tsave %%sp,-%d,%%sp\n", fsize);	\
-      else							\
-	fprintf (FILE, "\tsethi %%hi(-%d),%%g1\n\tadd %%g1,%%lo(-%d),%%g1\n\tsave %%sp,%%g1,%%sp\n", fsize, fsize);	\
-      fprintf (FILE, "\t!#PROLOGUE# 1\n");			\
-      for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
-	if (regs_ever_live[i] && ! call_used_regs[i])		\
-	  {							\
-	    fprintf (FILE, "\tstf %s,[%%fp-0x%x]\n",		\
-		     reg_names[i], 4 * nregs++);		\
-	  }							\
-      if ((nregs&1)==0) nregs += 1;				\
-      if (regs_ever_live[32])					\
-	fprintf (FILE, "\tst %s,[%%fp-0x%x]\n\tst %s,[%%fp-0x%x]\n",	\
-		 reg_names[0], 4 * nregs, reg_names[0], 4 * (nregs+1));	\
+      fprintf (FILE, "\tsethi %%hi(0x%x),%%g1\n\tadd %%g1,%%lo(0x%x),%%g1\n", \
+	       -actual_fsize, -actual_fsize);			\
+      fprintf (FILE, "\tsave %%sp,%%g1,%%sp\n");		\
     }								\
+  fprintf (FILE, "\t!#PROLOGUE# 1\n");				\
+  if (n_fregs)							\
+    {								\
+      for (i = 32, n_fregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
+        if (regs_ever_live[i] && ! call_used_regs[i])		\
+          {							\
+	    if (regs_ever_live[i+1] && ! call_used_regs[i+1])	\
+	      fprintf (FILE, "\tstd %s,[%%sp+0x%x]\n",		\
+		       reg_names[i], n_iregs + 4 * n_fregs),	\
+	      n_fregs += 2, i += 1;				\
+	    else						\
+	      fprintf (FILE, "\tstf %s,[%%sp+0x%x]\n",		\
+		       reg_names[i], n_iregs + 4 * n_fregs++);	\
+          }							\
+    }								\
+  if (regs_ever_live[32])					\
+    fprintf (FILE, "\tst %s,[%%fp-16]\n\tst %s,[%%fp-12]\n",	\
+	     reg_names[0], reg_names[0]);			\
 }
 
 /* Output assembler code to FILE to increment profiler label # LABELNO
@@ -601,47 +594,44 @@ extern union tree_node *current_function_decl;
   extern int current_function_pretend_args_size;		\
   extern int max_pending_stack_adjust;				\
   extern int frame_pointer_needed;				\
-  int fsize = ((SIZE) + 7) & ~7;				\
-  int nregs, i, save_needed = frame_pointer_needed;		\
+  int fsize = ((SIZE) + 7) & -8;				\
+  int actual_fsize;						\
+  int n_fregs = 0, i;						\
   int n_iregs = 64;						\
-  for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
+  for (i = 32, n_fregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
     if (regs_ever_live[i] && ! call_used_regs[i])		\
-      nregs++;							\
-  if (regs_ever_live[31]) save_needed = 1;			\
-  else if (regs_ever_live[31]) save_needed = 1, fsize += 8;	\
-  else for (i = 16; i < 24; i++)				\
-    if (regs_ever_live[i])					\
-      { save_needed = 1; break; }				\
+      n_fregs++;						\
   for (i = 24; i < 32; i++)					\
-    if (regs_ever_live[i])					\
-      { save_needed = 1; n_iregs = 96; break; }			\
-  if (save_needed == 0)						\
+    if (regs_ever_live[i]) { n_iregs = 96; break; }		\
+  actual_fsize = fsize + n_iregs + (n_fregs*4+7 & -8);		\
+  actual_fsize += current_function_pretend_args_size+7 & -8;	\
+  fsize += current_function_pretend_args_size+7 & -8;		\
+  if (n_fregs)							\
     {								\
-      nregs = (nregs + 7) & ~7;					\
-      if (nregs + fsize)					\
-	fprintf (FILE, "add %%sp,%d,%%sp", 4 * nregs + fsize);	\
-      if (nregs)						\
-	for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
-          if (regs_ever_live[i] && ! call_used_regs[i])		\
-	    {							\
-              fprintf (FILE, "\tldf [%%sp-0x%x],%s\n",		\
-		       reg_names[i], 4 * nregs++);		\
-	    }							\
-      fprintf (FILE, "\tretl\n\tnop\n");			\
+      char *base;						\
+      int offset;						\
+      if (fsize < 4096)						\
+	{ base = "%fp"; offset = n_iregs - actual_fsize; }	\
+      else							\
+	{ base = "%g1"; offset = n_iregs;			\
+	  if (fsize < 4096)					\
+	    fprintf (FILE, "sethi %%hi(0x%x),%%g1\n\tadd %%g1,%%lo(0x%x),%%g1\n\tadd %%fp,%%g1,%%g1\n", -actual_fsize, -actual_fsize);\
+	}							\
+      for (i = 32, n_fregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
+	if (regs_ever_live[i] && ! call_used_regs[i])		\
+	  {							\
+	    if (regs_ever_live[i+1] && ! call_used_regs[i+1])	\
+	      fprintf (FILE, "\tldd [%s%+d],%s\n",		\
+		       base, offset + 4 * n_fregs,		\
+		       reg_names[i]),				\
+	      n_fregs += 2, i += 1;				\
+	    else						\
+	      fprintf (FILE, "\tldf [%s%+d],%s\n",		\
+		       base, offset + 4 * n_fregs++,		\
+		       reg_names[i]);				\
+	  }							\
     }								\
-  else								\
-    {								\
-      if (nregs)						\
-	for (i = 32, nregs = 0; i < FIRST_PSEUDO_REGISTER; i++)	\
-          if (regs_ever_live[i] && ! call_used_regs[i])		\
-	    {							\
-              fprintf (FILE, "\tldf [%%fp+0x%x],%s\n",		\
-		       reg_names[i], 4 * nregs++);		\
-	    }							\
-      fprintf (FILE, "\tret\n\trestore\n");			\
-    }								\
-/*fprintf (FILE, "\tLp%d = %d\n", tree_uid (current_function_decl), n_iregs);			\
-  fprintf (FILE, "\tLt%d = %d\n", tree_uid (current_function_decl), n_iregs + max_pending_stack_adjust); */	\
+  fprintf (FILE, "\tret\n\trestore\n");				\
 }
 
 /* If the memory address ADDR is relative to the frame pointer,
@@ -728,9 +718,7 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
    I think that this is toxic for SPARC.  */
 
 #define LEGITIMATE_CONSTANT_P(X)		\
- ((GET_CODE (X) == CONST_INT			\
-   && (unsigned) (INTVAL (X) + 0x1000) < 0x2000)\
-  || (GET_CODE (X) == SYMBOL_REF && (X)->unchanging) || 1)
+ (GET_CODE (X) != CONST_DOUBLE)
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -1010,7 +998,7 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 
    This is needed for SunOS 4.0, and should not hurt for 3.2
    versions either.  */
-#define ASM_OUTPUT_SOURCE_LINE (file, line)		\
+#define ASM_OUTPUT_SOURCE_LINE(file, line)		\
   { static int sym_lineno = 1;				\
     fprintf (file, ".stabn 68,0,%d,LM%d\nLM%d:\n",	\
 	     line, sym_lineno, sym_lineno);		\
@@ -1108,20 +1096,20 @@ extern struct rtx_def *reg_o0_rtx, *reg_o1_rtx, *reg_o2_rtx, *reg_i7_rtx;
 /* This says how to output an assembler line
    to define a global common symbol.  */
 
-#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".global ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
   fputs ("\n.common ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,\"bss\"\n", (SIZE)))
+  fprintf ((FILE), ",%d,\"bss\"\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
 
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\n.common ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,\"bss\"\n", (SIZE)))
+  fprintf ((FILE), ",%d,\"bss\"\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.

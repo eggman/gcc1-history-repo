@@ -345,8 +345,8 @@ main (argc, argv)
   printf ("/* Generated automatically by the program `genpeep'\n\
 from the machine description file `md'.  */\n\n");
 
-  printf ("#include \"rtl.h\"\n\n");
   printf ("#include \"config.h\"\n\n");
+  printf ("#include \"rtl.h\"\n\n");
   printf ("#include \"regs.h\"\n\n");
 
   printf ("extern rtx peep_operand[];\n\n");

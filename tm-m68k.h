@@ -58,6 +58,9 @@ extern int target_flags;
 /* Compile with 16-bit `int'.  */
 #define TARGET_SHORT (target_flags & 040)
 
+/* Compile with special insns for Sun FPA.  */
+#define TARGET_FPA (target_flags & 0100)
+
 /* Macro to define tables used to set the flags.
    This is a list in braces of pairs in braces,
    each pair being { "NAME", VALUE }
@@ -69,14 +72,23 @@ extern int target_flags;
     { "68881", 2},				\
     { "bitfield", 4},				\
     { "68000", -5},				\
-    { "soft-float", -2},			\
+    { "soft-float", -0102},			\
     { "nobitfield", -4},			\
     { "rtd", 8},				\
     { "nortd", -8},				\
     { "short", 040},				\
     { "noshort", -040},				\
+    { "fpa", 0100},				\
+    { "nofpa", -0100},				\
     { "", TARGET_DEFAULT}}
 /* TARGET_DEFAULT is defined in tm-sun*.h and tm-isi68.h, etc.  */
+
+/* Blow away 68881 flag silently on TARGET_FPA (since we can't clear
+   any bits in TARGET_SWITCHES above) */
+#define OVERRIDE_OPTIONS		\
+{					\
+  if (TARGET_FPA) target_flags &= ~2;	\
+}
 
 /* target machine storage layout */
 
@@ -149,15 +161,22 @@ extern int target_flags;
    For the 68000, we give the data registers numbers 0-7,
    the address registers numbers 010-017,
    and the 68881 floating point registers numbers 020-027.  */
-#define FIRST_PSEUDO_REGISTER 24
+#define FIRST_PSEUDO_REGISTER 56 /* 24 */
 
 /* 1 for registers that have pervasive standard uses
    and are not available for the register allocator.
    On the 68000, only the stack pointer is such.  */
+/* fpa0 is also reserved so that it can be used to move shit back and
+   forth between high fpa regs and everything else. */
 #define FIXED_REGISTERS  \
  {0, 0, 0, 0, 0, 0, 0, 0, \
   0, 0, 0, 0, 0, 0, 0, 1, \
-  0, 0, 0, 0, 0, 0, 0, 0}
+  0, 0, 0, 0, 0, 0, 0, 0, \
+  /* FPA registers.  */   \
+  1, 0, 0, 0, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, }
 
 /* 1 for registers not available across function calls.
    These must include the FIXED_REGISTERS and also any
@@ -168,7 +187,38 @@ extern int target_flags;
 #define CALL_USED_REGISTERS \
  {1, 1, 0, 0, 0, 0, 0, 0, \
   1, 1, 0, 0, 0, 0, 0, 1, \
-  1, 1, 0, 0, 0, 0, 0, 0}
+  1, 1, 0, 0, 0, 0, 0, 0, \
+  /* FPA registers.  */   \
+  1, 1, 1, 1, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, \
+  0, 0, 0, 0, 0, 0, 0, 0, }
+
+/* Make sure everything's fine if we *don't* have a given processor.
+   This assumes that putting a register in fixed_regs will keep the
+   compilers mitt's completely off it.  We don't bother to zero it out
+   of register classes.  If neither TARGET_FPA or TARGET_68881 is set,
+   the compiler won't touch since no instructions that use these
+   registers will be valid.  */
+#define CONDITIONAL_REGISTER_USAGE \
+{ 						\
+  int i; 					\
+  HARD_REG_SET x; 				\
+  if (!TARGET_FPA)				\
+    { 						\
+      COPY_HARD_REG_SET (x, reg_class_contents[(int)FPA_REGS]); \
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++ ) \
+       if (TEST_HARD_REG_BIT (x, i)) 		\
+	fixed_regs[i] = call_used_regs[i] = 1; 	\
+    } 						\
+  if (TARGET_FPA)				\
+    { 						\
+      COPY_HARD_REG_SET (x, reg_class_contents[(int)FP_REGS]); \
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++ ) \
+       if (TEST_HARD_REG_BIT (x, i)) 		\
+	fixed_regs[i] = call_used_regs[i] = 1; 	\
+    } 						\
+}
 
 /* Return number of consecutive hard regs needed starting at reg REGNO
    to hold something of mode MODE.
@@ -185,9 +235,14 @@ extern int target_flags;
 /* Value is 1 if hard register REGNO can hold a value of machine-mode MODE.
    On the 68000, the cpu registers can hold any mode but the 68881 registers
    can hold only SFmode or DFmode.  And the 68881 registers can't hold anything
-   if 68881 use is disabled.  */
+   if 68881 use is disabled.  However, the Sun FPA register can
+   (apparently) hold whatever you feel like putting in them.  */
 #define HARD_REGNO_MODE_OK(REGNO, MODE) \
-  ((REGNO) < 16 || (TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)))
+  ((REGNO) < 16								\
+   || ((REGNO) < 24							\
+       ? TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)		\
+       : ((REGNO) < 56							\
+	  ? TARGET_FPA : 0)))
 
 /* Value is 1 if it is a good idea to tie two pseudo registers
    when one has mode MODE1 and one has mode MODE2.
@@ -248,39 +303,86 @@ extern int target_flags;
 /* The 68000 has three kinds of registers, so eight classes would be
    a complete set.  One of them is not needed.  */
 
-enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DATA_REGS, ALL_REGS, LIM_REG_CLASSES };
+/*
+ * Notes on final choices:
+ *
+ *   1) Didn't feel any need to union-ize LOW_FPA_REGS with anything
+ * else.
+ *   2) Removed all unions that involve address registers with
+ * floating point registers (left in unions of address and data with
+ * floating point).
+ *   3) Defined GENERAL_REGS as ADDR_OR_DATA_REGS.
+ *   4) Defined ALL_REGS as FPA_OR_FP_OR_GENERAL_REGS.
+ *   4) Left in everything else.
+ */
+enum reg_class { NO_REGS, LO_FPA_REGS, FPA_REGS, FP_REGS, 
+  FP_OR_FPA_REGS, DATA_REGS, DATA_OR_FPA_REGS, DATA_OR_FP_REGS, 
+  DATA_OR_FP_OR_FPA_REGS, ADDR_REGS, GENERAL_REGS, 
+  GENERAL_OR_FPA_REGS, GENERAL_OR_FP_REGS, ALL_REGS,
+  LIM_REG_CLASSES };
 
 #define N_REG_CLASSES (int) LIM_REG_CLASSES
 
 /* Give names of register classes as strings for dump file.   */
 
 #define REG_CLASS_NAMES \
- {"NO_REGS", "DATA_REGS", "ADDR_REGS", "GENERAL_REGS",  \
-  "FP_REGS", "FP_OR_DATA_REGS", "ALL_REGS" }
+ { "NO_REGS", "LO_FPA_REGS", "FPA_REGS", "FP_REGS",  \
+   "FP_OR_FPA_REGS", "DATA_REGS", "DATA_OR_FPA_REGS", "DATA_OR_FP_REGS",  \
+   "DATA_OR_FP_OR_FPA_REGS", "ADDR_REGS", "GENERAL_REGS",  \
+   "GENERAL_OR_FPA_REGS", "GENERAL_OR_FP_REGS", "ALL_REGS" }
 
 /* Define which registers fit in which classes.
    This is an initializer for a vector of HARD_REG_SET
    of length N_REG_CLASSES.  */
 
-#define REG_CLASS_CONTENTS {0, 0xff, 0xff00, 0xffff, 0xff0000, 0xff00ff, 0xffffff}
+#define REG_CLASS_CONTENTS \
+{							\
+ {0, 0},			/* NO_REGS */		\
+ {0xff000000, 0x000000ff},	/* LO_FPA_REGS */	\
+ {0xff000000, 0x00ffffff},	/* FPA_REGS */		\
+ {0x00ff0000, 0x00000000},	/* FP_REGS */		\
+ {0xffff0000, 0x00ffffff},	/* FP_OR_FPA_REGS */	\
+ {0x000000ff, 0x00000000},	/* DATA_REGS */		\
+ {0xff0000ff, 0x00ffffff},	/* DATA_OR_FPA_REGS */	\
+ {0x00ff00ff, 0x00000000},	/* DATA_OR_FP_REGS */	\
+ {0xffff00ff, 0x00ffffff},	/* DATA_OR_FP_OR_FPA_REGS */\
+ {0x0000ff00, 0x00000000},	/* ADDR_REGS */		\
+ {0x0000ffff, 0x00000000},	/* GENERAL_REGS */	\
+ {0xff00ffff, 0x00ffffff},	/* GENERAL_OR_FPA_REGS */\
+ {0x00ffffff, 0x00000000},	/* GENERAL_OR_FP_REGS */\
+ {0xffffffff, 0x00ffffff},	/* ALL_REGS */		\
+}
 
 /* The same information, inverted:
    Return the class number of the smallest class containing
    reg number REGNO.  This could be a conditional expression
    or could index an array.  */
 
-#define REGNO_REG_CLASS(REGNO) \
- ((REGNO) >= 16 ? FP_REGS : (REGNO) < 8 ? DATA_REGS : ADDR_REGS)
+extern enum reg_class regno_reg_class[];
+#define REGNO_REG_CLASS(REGNO) (regno_reg_class[(REGNO)>>3])
 
 /* The class value for index registers, and the one for base regs.  */
 
 #define INDEX_REG_CLASS GENERAL_REGS
 #define BASE_REG_CLASS ADDR_REGS
-
-/* Get reg_class from a letter such as appears in the machine description.  */
+  
+/* Get reg_class from a letter such as appears in the machine description.
+   We do a trick here to modify the effective constraints on the
+   machine description; we zorch the constraint letters that aren't
+   appropriate for a specific target.  This allows us to guarrantee
+   that a specific kind of register will not be used for a given taget
+   without fiddling with the register classes above. */
 
 #define REG_CLASS_FROM_LETTER(C) \
-  ((C) == 'a' ? ADDR_REGS : ((C) == 'd' ? DATA_REGS : ((C) == 'f' ? FP_REGS : NO_REGS)))
+  ((C) == 'a' ? ADDR_REGS :			\
+   ((C) == 'd' ? DATA_REGS :			\
+    ((C) == 'f' ? (TARGET_68881 ? FP_REGS :	\
+		   NO_REGS) :			\
+     ((C) == 'x' ? (TARGET_FPA ? FPA_REGS :	\
+		    NO_REGS) :			\
+      ((C) == 'y' ? (TARGET_FPA ? LO_FPA_REGS :	\
+		     NO_REGS) :			\
+       NO_REGS)))))
 
 /* The letters I, J, K, L and M in a register constraint string
    can be used to stand for particular ranges of immediate operands.
@@ -300,11 +402,18 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
    (C) == 'K' ? (VALUE) < -0x80 || (VALUE) >= 0x80 :	\
    (C) == 'L' ? (VALUE) < 0 && (VALUE) >= -8 : 0)
 
-/* Similar, but for floating constants, and defining letters G and H.
-   Here VALUE is the CONST_DOUBLE rtx itself.  */
+/*
+ * A small bit of explanation:
+ * "G" defines all of the floating constants that are *NOT* 68881
+ * constants.  this is so 68881 constants get reloaded and the
+ * fpmovecr is used.  "H" defines *only* the class of constants that
+ * the fpa can use, because these can be gotten at in any fpa
+ * instruction and there is no need to force reloads.
+ */
 
 #define CONST_DOUBLE_OK_FOR_LETTER_P(VALUE, C)  \
-  ((C) == 'G' ? ! (TARGET_68881 && standard_68881_constant_p (VALUE)) : 1)
+  ((C) == 'G' ? ! (TARGET_68881 && standard_68881_constant_p (VALUE)) : \
+   (C) == 'H' ? (TARGET_FPA && standard_SunFPA_constant_p (VALUE)) : 0)
 
 /* Given an rtx X being reloaded into a reg required to be
    in class CLASS, return the class of reg to actually use.
@@ -323,7 +432,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* On the 68000, this is the size of MODE in words,
    except in the FP regs, where a single reg is always enough.  */
 #define CLASS_MAX_NREGS(CLASS, MODE)	\
- ((CLASS) == FP_REGS ? 1			\
+ ((CLASS) == FP_REGS || (CLASS) == FPA_REGS || (CLASS) == LO_FPA_REGS ? 1 \
   : ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
 
 /* Stack layout; function entry, exit and calling.  */
@@ -475,16 +584,20 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
   register int mask = 0;					\
   static char *reg_names[] = REGISTER_NAMES;			\
   extern char call_used_regs[];					\
-  int fsize = (SIZE);						\
+  int fsize = ((SIZE) + 3) & -4;				\
   if (frame_pointer_needed)					\
     { if (TARGET_68020 || fsize < 0x8000)			\
         fprintf (FILE, "\tlink a6,#%d\n", -fsize);		\
       else							\
 	fprintf (FILE, "\tlink a6,#0\n\tsubl #%d,sp\n", fsize); }  \
-  for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\
+  for (regno = 24; regno < 56; regno++)				\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+      fprintf(FILE, "\tfpmoved %s, sp@-\n",			\
+	      reg_names[regno]);				\
+  for (regno = 16; regno < 24; regno++)				\
     if (regs_ever_live[regno] && ! call_used_regs[regno])	\
        mask |= 1 << (regno - 16);				\
-  if (mask != 0)						\
+  if ((mask & 0xff) != 0)					\
     fprintf (FILE, "\tfmovem #0x%x,sp@-\n", mask & 0xff);       \
   mask = 0;							\
   for (regno = 0; regno < 16; regno++)				\
@@ -523,25 +636,32 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 { register int regno;						\
   register int mask, fmask;					\
   register int nregs;						\
-  int offset, foffset;						\
+  int offset, foffset, fpoffset;				\
   extern char call_used_regs[];					\
   static char *reg_names[] = REGISTER_NAMES;			\
   extern int current_function_pops_args;			\
   extern int current_function_args_size;			\
-  int fsize = (SIZE);						\
+  int fsize = ((SIZE) + 3) & -4;				\
   int big = 0;							\
-  nregs = 0;  fmask = 0;					\
-  for (regno = 16; regno < FIRST_PSEUDO_REGISTER; regno++)	\
+  nregs = 0;  fmask = 0; fpoffset = 0;				\
+  for (regno = 24 ; regno < 56 ; regno++)			\
+    if (regs_ever_live[regno] && ! call_used_regs[regno])	\
+      nregs++;							\
+  fpoffset = nregs*8;						\
+  nregs = 0;							\
+  for (regno = 16; regno < 24; regno++)				\
     if (regs_ever_live[regno] && ! call_used_regs[regno])	\
       { nregs++; fmask |= 1 << (23 - regno); }			\
-  foffset = nregs * 12;						\
+  foffset = fpoffset + nregs * 12;				\
   nregs = 0;  mask = 0;						\
   if (frame_pointer_needed) regs_ever_live[FRAME_POINTER_REGNUM] = 0; \
   for (regno = 0; regno < 16; regno++)				\
     if (regs_ever_live[regno] && ! call_used_regs[regno])	\
       { nregs++; mask |= 1 << regno; }				\
   offset = foffset + nregs * 4;					\
-  if (offset + fsize >= 0x8000 && frame_pointer_needed && (mask || fmask)) \
+  if (offset + fsize >= 0x8000 					\
+      && frame_pointer_needed 					\
+      && (mask || fmask || fpoffset)) 				\
     { fprintf (FILE, "\tmovel #%d,a0\n", -fsize);		\
       fsize = 0, big = 1; }					\
   if (exact_log2 (mask) >= 0) {					\
@@ -572,6 +692,20 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
     else							\
       fprintf (FILE, "\tfmovem a6@(-%d),#0x%x\n",		\
 	       foffset + fsize, fmask); }			\
+  if (fpoffset != 0)						\
+    for (regno = 55; regno >= 24; regno--)			\
+      if (regs_ever_live[regno] && ! call_used_regs[regno]) {	\
+	if (big)						\
+	  fprintf(FILE, "\tfpmoved a6@(-%d,a0:l), %s\n",	\
+		  fpoffset + fsize, reg_names[regno]);		\
+	else if (! frame_pointer_needed)			\
+	  fprintf(FILE, "\tfpmoved sp@+, %s\n",			\
+		  reg_names[regno]);				\
+	else							\
+	  fprintf(FILE, "\tfpmoved a6@(-%d), %s\n",		\
+		  fpoffset + fsize, reg_names[regno]);		\
+	fpoffset -= 8;						\
+      }								\
   if (frame_pointer_needed)					\
     fprintf (FILE, "\tunlk a6\n");				\
   if (current_function_pops_args && current_function_args_size)	\
@@ -649,6 +783,8 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 ((REGNO) < 8 || (unsigned) reg_renumber[REGNO] < 8)
 #define REGNO_OK_FOR_FP_P(REGNO) \
 (((REGNO) ^ 020) < 8 || (unsigned) (reg_renumber[REGNO] ^ 020) < 8)
+#define REGNO_OK_FOR_FPA_P(REGNO) \
+(((REGNO) >= 24 && (REGNO) < 56) || (reg_renumber[REGNO] >= 24 && reg_renumber[REGNO] < 56))
 
 /* Now macros that check whether X is a register and also,
    strictly, whether it is in a specified class.
@@ -668,6 +804,9 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* 1 if X is an address register  */
 
 #define ADDRESS_REG_P(X) (REG_P (X) && REGNO_OK_FOR_BASE_P (REGNO (X)))
+
+/* 1 if X is a register in the Sun FPA.  */
+#define FPA_REG_P(X) (REG_P (X) && REGNO_OK_FOR_FPA_P (REGNO (X)))
 
 /* Maximum number of registers that can appear in a valid memory address.  */
 
@@ -931,7 +1070,20 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
    cases we clear out some or all of the saved cc's so they won't be used.  */
 
 #define NOTICE_UPDATE_CC(EXP) \
-{ if (GET_CODE (EXP) == SET)					\
+{								\
+  /* If the cc is being set from the fpa and the
+     expression is not an explicit floating point
+     test instruction (which has code to deal with
+     this), reinit the CC */					\
+  if (((cc_status.value1					\
+	&& FPA_REG_P(cc_status.value1))				\
+       || (cc_status.value2					\
+	   && FPA_REG_P(cc_status.value2)))			\
+      && !(GET_CODE(EXP) == PARALLEL				\
+	   && GET_CODE (XVECEXP(EXP, 0, 0)) == SET		\
+	   && XEXP (XVECEXP (EXP, 0, 0), 0) == cc0_rtx))	\
+    { CC_STATUS_INIT; }						\
+  else if (GET_CODE (EXP) == SET)				\
     { if (ADDRESS_REG_P (XEXP (EXP, 0)))			\
 	{ if (cc_status.value1					\
 	      && reg_mentioned_p (XEXP (EXP, 0), cc_status.value1)) \
@@ -954,7 +1106,8 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 	  cc_status.value2 = XEXP (EXP, 1); } }			\
   else if (GET_CODE (EXP) == PARALLEL				\
 	   && GET_CODE (XVECEXP (EXP, 0, 0)) == SET)		\
-    { if (ADDRESS_REG_P (XEXP (XVECEXP (EXP, 0, 0), 0)))	\
+    {								\
+      if (ADDRESS_REG_P (XEXP (XVECEXP (EXP, 0, 0), 0)))	\
 	CC_STATUS_INIT;						\
       else if (XEXP (XVECEXP (EXP, 0, 0), 0) != pc_rtx)		\
 	{ cc_status.flags = 0;					\
@@ -965,7 +1118,8 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
       && ADDRESS_REG_P (cc_status.value2)			\
       && GET_MODE (cc_status.value2) == QImode)			\
     CC_STATUS_INIT;						\
-  if (cc_status.value2 != 0)					\
+  if (cc_status.value2 != 0					\
+      && !(cc_status.value1 && FPA_REG_P (cc_status.value1)))	\
     switch (GET_CODE (cc_status.value2))			\
       { case PLUS: case MINUS: case MULT: case UMULT:		\
 	case DIV: case UDIV: case MOD: case UMOD: case NEG:	\
@@ -984,8 +1138,10 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
       && cc_status.value2					\
       && reg_mentioned_p (cc_status.value1, cc_status.value2))	\
     cc_status.value2 = 0;					\
-  if ((cc_status.value1 && FP_REG_P (cc_status.value1))		\
-      || (cc_status.value2 && FP_REG_P (cc_status.value2)))	\
+  if (((cc_status.value1 && FP_REG_P (cc_status.value1))	\
+       || (cc_status.value2 && FP_REG_P (cc_status.value2)))	\
+      && !((cc_status.value1 && FPA_REG_P (cc_status.value1))	\
+	   || (cc_status.value2 && FPA_REG_P (cc_status.value2)))) \
     cc_status.flags = CC_IN_68881; }
 
 #define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)  \
@@ -1025,7 +1181,11 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 #define REGISTER_NAMES \
 {"d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",	\
  "a0", "a1", "a2", "a3", "a4", "a5", "a6", "sp",	\
- "fp0", "fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7"}
+ "fp0", "fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7", \
+ "fpa0", "fpa1", "fpa2", "fpa3", "fpa4", "fpa5", "fpa6", "fpa7", \
+ "fpa8", "fpa9", "fpa10", "fpa11", "fpa12", "fpa13", "fpa14", "fpa15", \
+ "fpa16", "fpa17", "fpa18", "fpa19", "fpa20", "fpa21", "fpa22", "fpa23", \
+ "fpa24", "fpa25", "fpa26", "fpa27", "fpa28", "fpa29", "fpa30", "fpa31", }
 
 /* How to renumber registers for dbx and gdb.
    On the Sun-3, the floating point registers have numbers
@@ -1130,18 +1290,18 @@ do { union { float f; long l;} tem;			\
 /* This says how to output an assembler line
    to define a global common symbol.  */
 
-#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (SIZE)))
+  fprintf ((FILE), ",%d\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
 
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (SIZE)))
+  fprintf ((FILE), ",%d\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1182,19 +1342,36 @@ do { union { float f; long l;} tem;			\
        sp@, (sp) or (%sp) depending on the style of syntax.
    '#' for an immediate operand prefix (# in MIT and Motorola syntax
        but & in SGS syntax).
-   '!' for the cc register (used in an `and to cc' insn).  */
+   '!' for the cc register (used in an `and to cc' insn).
+
+   'w' for FPA insn (print a CONST_DOUBLE as a SunFPA constant rather
+       than directly).  Second part of 'y' below.
+   'x' for float insn (print a CONST_DOUBLE as a float rather than in hex),
+       or print pair of registers as rx:ry.
+   'y' for a FPA insn (print pair of registers as rx:ry).  This also outputs
+       CONST_DOUBLE's as SunFPA constant RAM registers if
+       possible, so it should not be used except for the SunFPA. */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
-{ if (CODE == '.') ;							\
+{ int i;								\
+  if (CODE == '.') ;							\
   else if (CODE == '#') fprintf (FILE, "#");				\
   else if (CODE == '-') fprintf (FILE, "sp@-");				\
   else if (CODE == '+') fprintf (FILE, "sp@+");				\
   else if (CODE == 's') fprintf (FILE, "sp@");				\
   else if (CODE == '!') fprintf (FILE, "cc");				\
   else if (GET_CODE (X) == REG)						\
-    fprintf (FILE, "%s", reg_name [REGNO (X)]);				\
+    { if (REGNO (X) < 16 && (CODE == 'y' || CODE == 'x') && GET_MODE (X) == DFmode)	\
+        fprintf (FILE, "%s:%s", reg_name [REGNO (X)], reg_name [REGNO (X)+1]); \
+      else								\
+        fprintf (FILE, "%s", reg_name[REGNO (X)]);			\
+    }									\
   else if (GET_CODE (X) == MEM)						\
     output_address (XEXP (X, 0));					\
+  else if ((CODE == 'y' || CODE == 'w')					\
+	   && GET_CODE(X) == CONST_DOUBLE				\
+	   && (i = standard_SunFPA_constant_p (X)))			\
+    fprintf(FILE, "%%%d", i & 0x1ff);					\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
@@ -1317,10 +1494,18 @@ do { union { float f; long l;} tem;			\
 	  if (scale != 1) fprintf (FILE, ":%d", scale);			\
 	  putc (')', FILE);						\
 	  break; }							\
+      if (breg != 0 && ireg == 0 && GET_CODE (addr) == LABEL_REF)	\
+        { fprintf (FILE, "pc@(L%d-LI%d-2:b,%s:l",			\
+		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+		   reg_name[REGNO (breg)]);				\
+	  putc (')', FILE);						\
+	  break; }							\
       if (ireg != 0 || breg != 0)					\
 	{ int scale = 1;						\
 	  if (breg == 0)						\
 	    abort ();							\
+	  if (addr && GET_CODE (addr) == LABEL_REF) abort ();		\
 	  fprintf (FILE, "%s@(", reg_name[REGNO (breg)]);		\
 	  if (addr != 0)						\
 	    output_addr_const (FILE, addr);				\

@@ -528,7 +528,9 @@ final (first, file, write_symbols, optimize)
 			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 1, idx), 0)),
 			   CODE_LABEL_NUMBER (XEXP (XEXP (body, 0), 0)));
 #ifdef ASM_OUTPUT_CASE_END
-		ASM_OUTPUT_CASE_END (file, CODE_LABEL_NUMBER (PREV_INSN (insn)));
+		ASM_OUTPUT_CASE_END (file,
+				     CODE_LABEL_NUMBER (PREV_INSN (insn)),
+				     insn);
 #endif
 		break;
 	      }

@@ -1084,6 +1084,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  int c;
 	  register rtx operand = recog_operand[i];
 	  int offset = 0;
+	  /* Nonzero means this is a MEM that must be reloaded into a reg
+	     regardless of what the constraint says.  */
 	  int force_reload = 0;
 	  int offmemok = 0;
 	  int earlyclobber = 0;
@@ -1095,14 +1097,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	    {
 	      offset += SUBREG_WORD (operand);
 	      operand = SUBREG_REG (operand);
-	      if (GET_CODE (operand) == MEM
-/*** This is overcautious, as for BYTES_BIG_ENDIAN it is still possible
-     to avoid setting force_reload if the mode of the subreg
-     is SImode or bigger.  */
-#ifndef BYTES_BIG_ENDIAN
-		  && offset != 0
-#endif
-		  && !offsetable_memref_p (operand))
+	      if (GET_CODE (operand) == MEM)
 		force_reload = 1;
 	    }
 
@@ -1310,7 +1305,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	      default:
 		this_alternative[i]
 		  = (int) reg_class_subunion[this_alternative[i]][(int) REG_CLASS_FROM_LETTER (c)];
-
+		
 	      reg:
 		badop = 0;
 		if (GET_CODE (operand) == REG
@@ -1331,6 +1326,11 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	      this_alternative_offmemok[i] = offmemok;
 	      losers++;
 	      if (badop)
+		bad = 1;
+	      /* Alternative loses if it has no regs for a reg operand.  */
+	      if (GET_CODE (operand) == REG
+		  && this_alternative[i] == (int) NO_REGS
+		  && this_alternative_matches[i] < 0)
 		bad = 1;
 	    }
 	}
@@ -1901,7 +1901,7 @@ find_reloads_address (mode, memrefloc, ad, loc)
      (displacement is too large), compute the sum in a register.  */
   if (GET_CODE (ad) == PLUS
       && (XEXP (ad, 0) == frame_pointer_rtx
-#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+#if FRAME_POINTER_REGNUM != ARG_POINTER_REGNUM
 	  || XEXP (ad, 0) == arg_pointer_rtx
 #endif
 	  )
@@ -2510,9 +2510,12 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
      because they don't behave the way ordinary registers do.  */
   
 #ifdef OVERLAPPING_REGNO_P
-   if (OVERLAPPING_REGNO_P (valueno))
-     return 0;
+  if (OVERLAPPING_REGNO_P (valueno))
+    return 0;
 #endif      
+
+  nregs = HARD_REGNO_NREGS (regno, mode);
+  valuenregs = HARD_REGNO_NREGS (valueno, mode);
 
   /* Reject VALUE if it is a register being used for an input reload
      even if it is not one of those reserved.  */
@@ -2524,16 +2527,16 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 	if (reload_reg_rtx[i] != 0 && reload_in[i])
 	  {
 	    int regno1 = REGNO (reload_reg_rtx[i]);
-	    if (valueno == regno1)
+	    int nregs1 = HARD_REGNO_NREGS (regno1,
+					   GET_MODE (reload_reg_rtx[i]));
+	    if (regno1 < valueno + valuenregs
+		&& regno1 + nregs1 > valueno)
 	      return 0;
 	  }
     }
 
   if (goal_mem)
     goal_mem_addr_varies = rtx_addr_varies_p (goal);
-
-  nregs = HARD_REGNO_NREGS (regno, mode);
-  valuenregs = HARD_REGNO_NREGS (valueno, mode);
 
   /* Now verify that the values of GOAL and VALUE remain unaltered
      until INSN is reached.  */
@@ -2578,7 +2581,7 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 	      if (GET_CODE (dest) == REG)
 		{
 		  register int xregno = REGNO (dest);
-		  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE_SIZE (GET_MODE (dest)));
+		  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
 		  if (xregno < regno + nregs && xregno + xnregs > regno)
 		    return 0;
 		  if (xregno < valueno + valuenregs
@@ -2608,7 +2611,7 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 		      if (GET_CODE (dest) == REG)
 			{
 			  register int xregno = REGNO (dest);
-			  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE_SIZE (GET_MODE (dest)));
+			  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE (dest));
 			  if (xregno < regno + nregs
 			      && xregno + xnregs > regno)
 			    return 0;

@@ -1146,7 +1146,7 @@ expand_fix (to, from, unsignedp)
 
 	  if (must_trunc)
 	    from = ftruncify (from);
-	  emit_unop_insn (icode, to, from, FIX);
+	  emit_unop_insn (icode, temp, from, FIX);
 	  convert_move (to, temp, unsignedp);
 	  return;
 	}

@@ -127,14 +127,7 @@ walk (node, leaf, indent)
      tree leaf;
      int indent;
 {
-  if (node != NULL
-      /* Don't walk any global nodes reached from local nodes!
-	 The global nodes will be dumped at the end, all together.
-	 Also don't mention a FUNCTION_DECL node that is marked local
-	 since it was fully described when it was dumped locally.  */
-      && (TREE_CODE (node) != FUNCTION_DECL
-	  || TREE_PERMANENT (node))
-      && (TREE_PERMANENT (leaf) == TREE_PERMANENT (node)))
+  if (node != NULL)
     dump (node, indent+1);
 }
 
@@ -321,6 +314,9 @@ dump (node, indent)
       skip (indent);
       prdeclmodeinfo (node);
       prtypeinfo (node);
+#ifdef PRINT_LANG_DECL
+      print_lang_decl (node);
+#endif
       skip (indent);
       fprintf (outfile, " offset = %1d;", DECL_OFFSET (node));
       if (DECL_VOFFSET (node) != NULL)
@@ -341,6 +337,9 @@ dump (node, indent)
 	  else
 	    part ("initial", DECL_INITIAL (node));
 	}
+#ifdef PRINT_LANG_DECL
+      walk_lang_decl (node);
+#endif
       part ("chain", TREE_CHAIN (node));
       /* A Decl's chain contents is not part of the decl.  */
       nochain = 1;
@@ -358,6 +357,9 @@ dump (node, indent)
     case 't':
       prtypemodeinfo (node);
       prtypeinfo (node);
+#ifdef PRINT_LANG_TYPE
+      print_lang_type (node);
+#endif
       skip (indent);
       part ("pointers_to_this", TYPE_POINTER_TO (node));
       if (code == ARRAY_TYPE || code == SET_TYPE)
@@ -392,6 +394,9 @@ dump (node, indent)
 	{
 	  part ("arg_types", TYPE_ARG_TYPES (node));
 	}
+#ifdef PRINT_LANG_TYPE
+      walk_lang_type (node);
+#endif
       part ("chain", TREE_CHAIN (node));
       /* A type's chain's contents are not printed because the chain of types
 	 is not part of the meaning of any particular type.  */
@@ -478,7 +483,10 @@ dump (node, indent)
 
     case 'x':
       if (code == IDENTIFIER_NODE)
-	fprintf (outfile, " = %s;\n", IDENTIFIER_POINTER (node));
+	{
+	  fprintf (outfile, " = %s;\n", IDENTIFIER_POINTER (node));
+	  nochain = 1;
+	}
       else if (code == TREE_LIST)
 	{
 	  prtypeinfo (node);

@@ -70,7 +70,7 @@
   [(set (cc0)
 	(minus:SF (match_operand:SF 0 "nonmemory_operand" "fG")
 		  (match_operand:SF 1 "nonmemory_operand" "fG")))
-   (use (reg:SF 32))]
+   (use (reg:DF 32))]
   ""
   "*
 {
@@ -96,6 +96,13 @@
 	(match_operand:SI 0 "register_operand" "r"))]
   ""
   "tst %0")
+
+(define_insn ""
+  [(set (cc0)
+	(and (match_operand:SI 0 "register_operand" "r%")
+	     (match_operand:SI 1 "arith_operand" "rK")))]
+  ""
+  "andcc %0,%1,%%g0")
 
 (define_insn "tstdf"
   [(set (cc0)
@@ -168,7 +175,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbgt %l0\;nop\";
+    return \"fbg %l0\;nop\";
   return \"bgt %l0\;nop\";
 }")
 
@@ -182,7 +189,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbgu %l0\;nop\";
+    abort ();
   return \"bgu %l0\;nop\";
 }")
 
@@ -210,7 +217,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fblu %l0\;nop\";
+    abort ();
   return \"blu %l0\;nop\";
 }")
 
@@ -238,7 +245,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbgeu %l0\;nop\";
+    abort ();
   return \"bgeu %l0\;nop\";
 }")
 
@@ -266,7 +273,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbleu %l0\;nop\";
+    abort ();
   return \"bleu %l0\;nop\";
 }")
 
@@ -324,7 +331,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbleu %l0\;nop\";
+    abort ();
   return \"bleu %l0\;nop\";
 }")
 
@@ -352,7 +359,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbgeu %l0\;nop\";
+    abort ();
   return \"bgeu %l0\;nop\";
 }")
 
@@ -380,7 +387,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fblu %l0\;nop\";
+    abort ();
   return \"blu %l0\;nop\";
 }")
 
@@ -408,7 +415,7 @@
   "*
 {
   if (cc_status.flags & CC_IN_FCCR)
-    return \"fbgu %l0\;nop\";
+    abort ();
   return \"bgu %l0\;nop\";
 }")
 
@@ -442,7 +449,9 @@
     return \"st %r1,%0\";
   if (GET_CODE (operands[1]) == MEM)
     return \"ld %1,%0\";
-  if (REG_P (operands[1]))
+  if (REG_P (operands[1])
+      || (GET_CODE (operands[1]) == CONST_INT
+	  && SMALL_INT (operands[1])))
     return \"mov %1,%0\";
   return \"set %1,%0\";
 }")
@@ -464,7 +473,9 @@
     return \"sth %r1,%0\";
   if (GET_CODE (operands[1]) == MEM)
     return \"ldsh %1,%0\";
-  if (REG_P (operands[1]))
+  if (REG_P (operands[1])
+      || (GET_CODE (operands[1]) == CONST_INT
+	  && SMALL_INT (operands[1])))
     return \"mov %1,%0\";
   return \"set %1,%0\";
 }")
@@ -479,9 +490,7 @@
     return \"stb %r1,%0\";
   if (GET_CODE (operands[1]) == MEM)
     return \"ldsb %1,%0\";
-  if (REG_P (operands[1]))
-    return \"mov %1,%0\";
-  return \"set %1,%0\";
+  return \"mov %1,%0\";
 }")
 
 ;; The definition of this insn does not really explain what it does,
@@ -536,7 +545,7 @@
   if (operands[1] == dconst0_rtx && GET_CODE (operands[0]) == REG)
     {
       operands[1] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
-      return \"add %%g0,0x0,%0\;add %%g0,0x0,%1\";
+      return \"mov %%g0,%0\;mov %%g0,%1\";
     }
   if (operands[1] == dconst0_rtx && GET_CODE (operands[0]) == MEM)
     {
@@ -579,35 +588,13 @@
       if (FP_REG_P (operands[1]))
 	return \"fmovs %0,%1\";
       if (GET_CODE (operands[1]) == REG)
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*	return \"st %1,[%%sp-4]\;ld [%%sp-4],%0\"; */
-	{
-	  rtx xoperands[2];
-	  int offset = - get_frame_size () - 8;
-	  xoperands[1] = operands[1];
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-	  output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-	  xoperands[1] = operands[0];
-	  output_asm_insn (\"ld [%%fp+%0],%1\", xoperands);
-	  return \"\";
-	}
+        return \"st %1,[%%fp-4]\;ld [%%fp-4],%0\";
       return \"ld %1,%0\";
     }
   if (FP_REG_P (operands[1]))
     {
       if (GET_CODE (operands[0]) == REG)
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*	return \"st %1,[%%sp-4]\;ld [%%sp-4],%0\"; */
-	{
-	  rtx xoperands[2];
-	  int offset = - get_frame_size () - 8;
-	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-	  xoperands[1] = operands[1];
-	  output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-	  xoperands[1] = operands[0];
-	  output_asm_insn (\"ld [%%fp+%0],%1\", xoperands);
-	  return \"\";
-	}
+	return \"st %1,[%%fp-4]\;ld [%%fp-4],%0\";
       return \"st %1,%0\";
     }
   if (GET_CODE (operands[0]) == MEM)
@@ -627,7 +614,7 @@
 {
   if (GET_CODE (operands[0]) == MEM)
     return \"stb %1,%0\";
-  return \"or %1,%%g0,%0\";
+  return \"mov %1,%0\";
 }")
 
 (define_insn "trunchiqi2"
@@ -639,7 +626,7 @@
 {
   if (GET_CODE (operands[0]) == MEM)
     return \"stb %1,%0\";
-  return \"or %1,%%g0,%0\";
+  return \"mov %1,%0\";
 }")
 
 (define_insn "truncsihi2"
@@ -651,7 +638,7 @@
 {
   if (GET_CODE (operands[0]) == MEM)
     return \"sth %1,%0\";
-  return \"or %1,%%g0,%0\";
+  return \"mov %1,%0\";
 }")
 
 ;;- zero extension instructions
@@ -771,46 +758,6 @@
 ;; will be recognized as SImode (which is always valid)
 ;; rather than as QImode or HImode.
 
-;(define_insn "floatsisf2"
-;  [(set (match_operand:SF 0 "general_operand" "=f")
-;	(float:SF (match_operand:SI 1 "general_operand" "g")))]
-;  ""
-;  "*
-;{
-;  if (GET_CODE (operands[1]) == MEM)
-;    if (FP_REG_P (operands[0]))
-;      return \"ld %1,%0\;fitos %0,%0\";
-;    else
-;      {
-;	int offset = - get_frame_size () - 4;
-;	output_asm_insn (\"ld %1,%%f2\;fitos %%f2,%%f2\", operands);
-;	if (GET_CODE (operands[0]) == MEM)
-;	  return \"st %%f2,%0\";
-;	operands[1] = gen_rtx (CONST_INT, VOIDmode, offset);
-;	output_asm_insn (\"st %%f2,[%%fp+%1]\;ld [%%fp+%1],%0\", operands);
-;      }
-;  else if (FP_REG_P (operands[1]))
-;    if (FP_REG_P (operands[0]))
-;      return \"fitos %1,%0\";
-;    else
-;      {
-;	int offset = - get_frame_size () - 4;
-;	output_asm_insn (\"ld %1,%f2\;fitos %%f2,%%f2\", operands);
-;	return \"st %%f2,%0\";
-;      }
-;  else
-;    {
-;      rtx xoperands[2];
-;      int offset = - get_frame_size () - 4;
-;      xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-;      xoperands[1] = operands[1];
-;      output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-;      xoperands[1] = operands[0];
-;      output_asm_insn (\"ld [%%fp+%0],%1\;fitos %1,%1\", xoperands);
-;      return \"\";
-;    }
-;}")
-
 (define_insn "floatsisf2"
   [(set (match_operand:SF 0 "general_operand" "=f")
 	(float:SF (match_operand:SI 1 "general_operand" "g")))]
@@ -821,61 +768,9 @@
     return \"ld %1,%0\;fitos %0,%0\";
   else if (FP_REG_P (operands[1]))
     return \"fitos %1,%0\";
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*  return \"st %1,[%%sp-4]\;ld [%%sp-4],%%f0\;fitos %%f0,%0\"; */
   else
-    {
-      rtx xoperands[2];
-      int offset = - get_frame_size () - 4;
-      xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-      xoperands[1] = operands[1];
-      output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-      xoperands[1] = operands[0];
-      output_asm_insn (\"ld [%%fp+%0],%1\;fitos %1,%1\", xoperands);
-      return \"\";
-    }
+    return \"st %1,[%%fp-4]\;ld [%%fp-4],%0\;fitos %0,%0\";
 }")
-
-;(define_insn "floatsidf2"
-;  [(set (match_operand:DF 0 "general_operand" "=f")
-;	(float:DF (match_operand:SI 1 "general_operand" "g")))]
-;  ""
-;  "*
-;{
-;  if (GET_CODE (operands[1]) == MEM)
-;    if (FP_REG_P (operands[0]))
-;      return \"ld %1,%0\;fitod %0,%0\";
-;    else
-;      {
-;	rtx xoperands[3];
-;	xoperands[0] = operands[0];
-;	xoperands[1] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-;	xoperands[2] = operands[1];
-;	/* deal with loading a zero in.  */
-;	abort ();
-;	return \"ld %2,%0\;fitod %0,%0\";
-;      }
-;  else if (FP_REG_P (operands[1]))
-;    if (FP_REG_P (operands[0]))
-;      return \"fitod %1,%0\";
-;    else
-;      {
-;	output_asm_insn (\"ld %1,%f2\;fitod %%f2,%%f2\", operands);
-;	return \"std %%f2,%0\";
-;      }
-;  else
-;    {
-;      rtx xoperands[3];
-;      int offset = - get_frame_size () - 4;
-;      xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-;      xoperands[1] = operands[1];
-;      output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-;      xoperands[1] = operands[0];
-;      xoperands[2] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-;      output_asm_insn (\"ld [%%fp+%0],%1\;fitod %1,%1\", xoperands);
-;      return \"\";
-;    }
-;}")
 
 (define_insn "floatsidf2"
   [(set (match_operand:DF 0 "general_operand" "=f")
@@ -888,19 +783,7 @@
   else if (FP_REG_P (operands[1]))
     return \"fitod %1,%0\";
   else
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*  return \"st %1,[%%sp-4]\;ld [%%sp-4],%%f0\;fitod %%f0,%0\"; */
-    {
-      rtx xoperands[3];
-      int offset = - get_frame_size () - 4;
-      xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
-      xoperands[1] = operands[1];
-      output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
-      xoperands[1] = operands[0];
-      xoperands[2] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-      output_asm_insn (\"ld [%%fp+%0],%1\;fitod %1,%1\", xoperands);
-      return \"\";
-    }
+    return \"st %1,[%%fp-4]\;ld [%%fp-4],%0\;fitod %0,%0\";
 }")
 
 ;; Convert a float to an actual integer.
@@ -918,13 +801,7 @@
   if (GET_CODE (operands[0]) == MEM)
     return \"st %%f0,%0\";
   else
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*  return \"st %%f0,[%%sp-4]\;ld [%%sp-4],%0\"; */
-    {
-      int offset = - get_frame_size () - 4;
-      operands[1] = gen_rtx (CONST_INT, VOIDmode, offset);
-      return \"st %%f0,[%%fp+%1]\;ld [%%fp+%1],%0\";
-    }
+    return \"st %%f0,[%%fp-4]\;ld [%%fp-4],%0\";
 }")
 
 (define_insn "fix_truncdfsi2"
@@ -940,13 +817,7 @@
   if (GET_CODE (operands[0]) == MEM)
     return \"st %%f0,%0\";
   else
-/* No good, since a signal would probably clobber that word on the stack.  */
-/*  return \"st %%f0,[%%sp-4]\;ld [%%sp-4],%0\"; */
-    {
-      int offset = - get_frame_size () - 4;
-      operands[1] = gen_rtx (CONST_INT, VOIDmode, offset);
-      return \"st %%f2,[%%fp+%1]\;ld [%%fp+%1],%0\";
-    }
+    return \"st %%f0,[%%fp-4]\;ld [%%fp-4],%0\";
 }")
 
 ;;- arithmetic instructions
@@ -1172,17 +1043,21 @@
   ""
   "xnor %1,%2,%0")
 
+;; We cannot use the "neg" pseudo insn because the Sun assembler
+;; does not know how to make it work for constants.
 (define_insn "negsi2"
-  [(set (match_operand:SI 0 "register_operand" "=r")
-	(neg:SI (match_operand:SI 1 "arith32_operand" "rn")))]
+  [(set (match_operand:SI 0 "general_operand" "=r")
+	(neg:SI (match_operand:SI 1 "arith_operand" "rK")))]
   ""
-  "neg %1,%0")
+  "sub %%g0,%1,%0")
 
+;; We cannot use the "not" pseudo insn because the Sun assembler
+;; does not know how to make it work for constants.
 (define_insn "one_cmplsi2"
-  [(set (match_operand:SI 0 "register_operand" "=r")
-	(not:SI (match_operand:SI 1 "register_operand" "r")))]
+  [(set (match_operand:SI 0 "general_operand" "=r")
+	(not:SI (match_operand:SI 1 "arith_operand" "rK")))]
   ""
-  "not %1,%0")
+  "xnor %1,%%g0,%0")
 
 ;; Floating point arithmetic instructions.
 
@@ -1248,11 +1123,14 @@
   ""
   "*
 {
+  output_asm_insn (\"fnegs %1,%0\", operands);
   if (REGNO (operands[0]) != REGNO (operands[1]))
-    output_asm_insn (\"fmovs %1,%0\", operands);
-  operands[0] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-  operands[1] = gen_rtx (REG, VOIDmode, REGNO (operands[1]) + 1);
-  return \"fnegs %1,%0\";
+    {
+      operands[0] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
+      operands[1] = gen_rtx (REG, VOIDmode, REGNO (operands[1]) + 1);
+      output_asm_insn (\"fmovs %1,%0\", operands);
+    }
+  return \"\";
 }")
 
 (define_insn "negsf2"
@@ -1267,11 +1145,14 @@
   ""
   "*
 {
+  output_asm_insn (\"fabss %1,%0\", operands);
   if (REGNO (operands[0]) != REGNO (operands[1]))
-    output_asm_insn (\"fmovs %1,%0\", operands);
-  operands[0] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-  operands[1] = gen_rtx (REG, VOIDmode, REGNO (operands[1]) + 1);
-  return \"fabss %1,%0\";
+    {
+      operands[0] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
+      operands[1] = gen_rtx (REG, VOIDmode, REGNO (operands[1]) + 1);
+      output_asm_insn (\"fmovs %1,%0\", operands);
+    }
+  return \"\";
 }")
 
 (define_insn "abssf2"
@@ -1353,9 +1234,40 @@
   "jmp %0\;nop")
 
 ;;- jump to subroutine
-(define_insn "call"
+(define_expand "call"
   [(call (match_operand:SI 0 "memory_operand" "m")
-	 (match_operand:SI 1 "general_operand" "g"))
+	 (match_operand 1 "register_operand" "r"))]
+  ""
+  "
+{
+  rtx fn_rtx, nregs_rtx;
+
+  if (TARGET_SUN_ASM && GET_CODE (XEXP (operands[0], 0)) == REG)
+    {
+      rtx g1_rtx = gen_rtx (REG, SImode, 1);
+      emit_move_insn (g1_rtx, XEXP (operands[0], 0));
+      fn_rtx = gen_rtx (MEM, SImode, g1_rtx);
+    }
+  else
+    fn_rtx = operands[0];
+
+  /* Count the number of parameter registers being used by this call.
+     if that argument is NULL, it means we are using them all, which
+     means 6 on the sparc.  */
+  if (operands[2])
+    nregs_rtx = gen_rtx (CONST_INT, VOIDmode, REGNO (operands[2]) - 8);
+  else
+    nregs_rtx = gen_rtx (CONST_INT, VOIDmode, 6);
+
+  emit_call_insn (gen_rtx (PARALLEL, VOIDmode, gen_rtvec (2,
+			   gen_rtx (CALL, VOIDmode, fn_rtx, nregs_rtx),
+			   gen_rtx (USE, VOIDmode, gen_rtx (REG, SImode, 31)))));
+  DONE;
+}")
+
+(define_insn ""
+  [(call (match_operand:SI 0 "memory_operand" "m")
+	 (match_operand 1 "" "i"))
    (use (reg:SI 31))]
   ;;- Don't use operand 1 for most machines.
   ""
@@ -1363,13 +1275,46 @@
 {
   /* strip the MEM.  */
   operands[0] = XEXP (operands[0], 0);
-  return \"jmpl %a0,%%o7\;nop\";
+  return \"call %a0,%1\;nop\";
 }")
 
-(define_insn "call_value"
+(define_expand "call_value"
   [(set (match_operand 0 "" "rf")
 	(call (match_operand:SI 1 "memory_operand" "m")
-	      (match_operand:SI 2 "general_operand" "g")))
+	      (match_operand 2 "register_operand" "r")))]
+  ""
+  "
+{
+  rtx fn_rtx, nregs_rtx;
+  rtvec vec;
+
+  if (TARGET_SUN_ASM && GET_CODE (XEXP (operands[1], 0)) == REG)
+    {
+      rtx g1_rtx = gen_rtx (REG, SImode, 1);
+      emit_move_insn (g1_rtx, XEXP (operands[1], 0));
+      fn_rtx = gen_rtx (MEM, SImode, g1_rtx);
+    }
+  else
+    fn_rtx = operands[1];
+
+  if (operands[3])
+    nregs_rtx = gen_rtx (CONST_INT, VOIDmode, REGNO (operands[3]) - 8);
+  else
+    nregs_rtx = gen_rtx (CONST_INT, VOIDmode, 6);
+
+  vec = gen_rtvec (2,
+		   gen_rtx (SET, VOIDmode, operands[0],
+			    gen_rtx (CALL, VOIDmode, fn_rtx, nregs_rtx)),
+		   gen_rtx (USE, VOIDmode, gen_rtx (REG, SImode, 31)));
+
+  emit_call_insn (gen_rtx (PARALLEL, VOIDmode, vec));
+  DONE;
+}")
+
+(define_insn ""
+  [(set (match_operand 0 "" "rf")
+	(call (match_operand:SI 1 "memory_operand" "m")
+	      (match_operand 2 "" "i")))
    (use (reg:SI 31))]
   ;;- Don't use operand 1 for most machines.
   ""
@@ -1377,7 +1322,7 @@
 {
   /* strip the MEM.  */
   operands[1] = XEXP (operands[1], 0);
-  return \"jmpl %a1,%%o7\;nop\";
+  return \"call %a1,%2\;nop\";
 }")
 
 ;; A memory ref with constant address is not normally valid.
@@ -1385,129 +1330,42 @@
 ;; loading of the address to combine with the call.
 (define_insn ""
   [(call (mem:SI (match_operand:SI 0 "" "i"))
-	 (match_operand:SI 1 "general_operand" "g"))
+	 (match_operand:SI 1 "" "i"))
    (use (reg:SI 31))]
   "GET_CODE (operands[0]) == SYMBOL_REF"
-  "call %0\;nop")
+  "call %0,%1\;nop")
 
 (define_insn ""
   [(set (match_operand 0 "" "rf")
 	(call (mem:SI (match_operand:SI 1 "" "i"))
-	      (match_operand:SI 2 "general_operand" "g")))
+	      (match_operand:SI 2 "" "i")))
    (use (reg:SI 31))]
   "GET_CODE (operands[1]) == SYMBOL_REF"
-  "call %1\;nop")
-
-;; A purely functional call will have HImode.  (Experimental hack)
-;; (define_insn ""
-;;   [(call:HI (mem:SI (match_operand:SI 0 "" "i"))
-;; 	 (match_operand:SI 1 "general_operand" "g"))
-;;    (use (reg:SI 31))]
-;;   "GET_CODE (operands[0]) == SYMBOL_REF"
-;;   "call %0\t! no clobbers\;nop")
+  "call %1,%2\;nop")
 
-;; Extensions go here
-;(define_insn "alloca"
-;  [(set (match_operand:SI 0 "general_operand" "g")
-;	(alloca (match_operand:SI 1 "general_operand" "g")))
-;   (clobber (reg:SI 8))
-;   (clobber (reg:SI 9))
-;   (clobber (reg:SI 10))
-;   (clobber (reg:SI 11))
-;   (clobber (reg:SI 12))
-;   (clobber (reg:SI 13))
-;   (use (reg:SI 31))]
-;  ""
-;  "*
-;{
-;  rtx xoperands[1];
-;  int save_reg1 = -1;
-;  int save_reg2 = -1;
-;
-;  if (GET_CODE (operands[0]) == MEM)
-;    {
-;      rtx t = XEXP (operands[0], 0);
-;      if (REG_P (t))
-;	{
-;	  if (REGNO (t) <= 13 && REGNO (t) >= 8)
-;	    save_reg1 = REGNO (t);
-;	}
-;      else if (GET_CODE (t) == PLUS)
-;	{
-;	  rtx t1 = XEXP (t, 0);
-;	  if (REG_P (t1) && REGNO (t1) <= 13 && REGNO (t1) >= 8)
-;	    save_reg1 = REGNO (t1);
-;	  t1 = XEXP (t, 1);
-;	  if (REG_P (t1) && REGNO (t1) <= 13 && REGNO (t1) >= 8)
-;	    save_reg2 = REGNO (t1);
-;	}
-;      else abort ();
-;    }
-;
-;  if (save_reg1 >= 0)
-;    {
-;      xoperands[0] = gen_rtx (REG, SImode, save_reg1);
-;      output_asm_insn (\"mov %0,%%g1\", xoperands);
-;    }
-;  if (save_reg2 >= 0)
-;    {
-;      xoperands[0] = gen_rtx (REG, SImode, save_reg2);
-;      output_asm_insn (\"mov %0,%%g2\", xoperands);
-;    }
-;
-;  if (GET_CODE (operands[1]) == MEM)
-;    {
-;      output_asm_insn (\"ld %1,%%o0\;add %%o0,0x7,%%o0\;and %%o0,-0x8,%%o0\",
-;		       operands);
-;    }
-;  else if (REG_P (operands[1]))
-;    {
-;      output_asm_insn (\"add %1,0x7,%%o0\;and %%o0,-0x8,%%o0\", operands);
-;    }
-;  else if (GET_CODE (operands[1]) == CONST_INT)
-;    {
-;      int i = (INTVAL (operands[1]) + 7) & -8;
-;      operands[1] = gen_rtx (CONST_INT, VOIDmode, i);
-;      output_asm_insn (\"set %1,%%o0\", operands);
-;    }
-;  else abort ();
-;
-;  output_asm_insn (\"set Lt%x0,%%o2\;call ___builtin_alloca,3\;mov Lp%x0,%%o1\",
-;		   operands);
-;
-;  if (REG_P (operands[0]))
-;    if (REGNO (operands[0]) != 8)
-;      return \"mov %%o0,%0\";
-;    else
-;      return \"\";
-;
-;  if (save_reg1 >= 0 || save_reg2 >= 0)
-;    {
-;      rtx t = XEXP (operands[0], 0);
-;
-;      if (GET_CODE (t) == REG)
-;	operands[0] = gen_rtx (MEM, SImode, gen_rtx (REG, SImode, 1));
-;      else if (GET_CODE (t) == PLUS)
-;	{
-;	  if (save_reg1 >= 0 && save_reg2 >= 0)
-;	    operands[0] = gen_rtx (MEM, SImode,
-;				   gen_rtx (PLUS, SImode,
-;					    gen_rtx (REG, SImode, 1),
-;					    gen_rtx (REG, SImode, 2)));
-;	  else if (save_reg1 >= 0)
-;	    operands[0] = gen_rtx (MEM, SImode,
-;				   gen_rtx (PLUS, SImode,
-;					    gen_rtx (REG, SImode, 1),
-;					    XEXP (t, 1)));
-;	  else
-;	    operands[0] = gen_rtx (MEM, SImode,
-;				   gen_rtx (PLUS, SImode, XEXP (t, 0),
-;					    gen_rtx (REG, SImode, 2)));
-;	}
-;    }
-;  return \"st %%o0,%0\";
-;}")
+(define_peephole
+  [(set (reg:SI 24)
+	(match_operand:SI 0 "register_operand" "r"))
+   (return)]
+  ""
+  "ret\;restore %0,0x0,%%o0")
 
+(define_peephole
+  [(set (reg:SI 24)
+	(plus:SI (match_operand:SI 0 "register_operand" "r%")
+		 (match_operand:SI 1 "arith_operand" "rI")))
+   (return)]
+  ""
+  "ret\;restore %0,%1,%%o0")
+
+(define_peephole
+  [(set (reg:SI 24)
+	(minus:SI (match_operand:SI 0 "register_operand" "r")
+		  (match_operand:SI 1 "small_int" "I")))
+   (return)]
+  ""
+  "ret\;restore %0,-(%1),%%o0")
+
 ;;- Local variables:
 ;;- mode:emacs-lisp
 ;;- comment-start: ";;- "

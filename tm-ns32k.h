@@ -432,6 +432,10 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 		      : GET_MODE_SIZE (MODE))))  		\
  ? 2 - (CUM) / 4 : 0)
 
+#ifndef MAIN_FUNCTION_PROLOGUE
+#define MAIN_FUNCTION_PROLOGUE
+#endif
+
 /* This macro generates the assembly code for function entry.
    FILE is a stdio stream to output the code to.
    SIZE is an int: how many units of temporary storage to allocate.
@@ -446,6 +450,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
   char used_regs_buf[32], *bufp = used_regs_buf;		\
   int used_fregs_buf[8], *fbufp = used_fregs_buf;		\
   extern char call_used_regs[];					\
+  MAIN_FUNCTION_PROLOGUE;					\
   for (regno = 0, nregs = 0; regno < 8; regno++)		\
     if (regs_ever_live[regno] && !call_used_regs[regno]) {	\
        nregs += 1;						\
@@ -1110,18 +1115,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 /* This says how to output an assembler line
    to define a global common symbol.  */
 
-#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (SIZE)))
+  fprintf ((FILE), ",%d\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
 
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)  \
+#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (SIZE)))
+  fprintf ((FILE), ",%d\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1164,9 +1169,10 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
 	fprintf (FILE, "$0d%.20e", u.d); }				\
-    else { union { float f; int i; } u;					\
-	   u.i = XINT (X, 0);						\
-	   fprintf (FILE, "$0f%.20e", u.f); }				\
+    else								\
+      { union { double d; int i[2]; } u;				\
+	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	fprintf (FILE, "$0f%.20e", u.d); }				\
   else { putc ('$', FILE); output_addr_const (FILE, X); }}
 
 /* Print a memory operand whose address is X, on file FILE.  */
@@ -1302,18 +1308,21 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 		"XbwXdXXXq"[INTVAL (XEXP (reg1, 1))]);		        \
 	      reg1 = 0;							\
 	    }								\
-	  else if (GET_CODE (XEXP (addr, 0)) == REG)			\
+	  else if (GET_CODE (XEXP (addr, 0)) == REG			\
+		   && REGNO (XEXP (addr, 0)) < 8)			\
 	    {								\
 	      sprintf (reg2_str, "[%s:b]",				\
 		reg_name[ REGNO(XEXP (addr, 0)) ]);			\
 	      addr = XEXP (addr, 1); /* CONST / REG */			\
 	    }								\
-	  else if (GET_CODE (XEXP (addr, 1)) == REG)			\
+	  else if (GET_CODE (XEXP (addr, 1)) == REG			\
+		   && REGNO (XEXP (addr, 1)) < 8)			\
 	    {								\
 	      sprintf (reg2_str, "[%s:b]",				\
 		reg_name[ REGNO(XEXP (addr, 1)) ]);			\
 	      addr = XEXP (addr, 0); /* CONST / REG */			\
 	    }								\
+	  else abort ();						\
       }									\
       if (addr)								\
 	switch (GET_CODE (addr)) {					\
@@ -1345,9 +1354,42 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 		} else if (!*reg2_str)					\
 		    sprintf (reg2_str, "[%s:b]",			\
 			reg_name[REGNO (addr)]);			\
-		else {							\
+		else abort();						\
+		break;							\
+	    case MEM:							\
+		addr = XEXP(addr,0);					\
+		switch (GET_CODE(addr)) {				\
+		case REG:						\
+		  if (!*reg1_str) {					\
+		    if (offset || offset_printed)			\
+		      sprintf (reg1_str, "(0(%s))",			\
+			       reg_name[REGNO (addr)]); 		\
+		    else						\
+		      sprintf (reg1_str, "0(0(%s))",			\
+			       reg_name[REGNO (addr)]);			\
+		  } else						\
 		    abort();						\
-	        }							\
+		  break;						\
+		case PLUS:						\
+		  if (GET_CODE (XEXP (addr, 0)) == REG) {		\
+		    if (!*reg1_str) {					\
+		      sprintf (reg1_str, "(%s))",			\
+			       reg_name[REGNO(XEXP(addr, 0))]);		\
+		      offset = XEXP(addr, 1);				\
+		    } else						\
+		      abort();						\
+		  } else {						\
+		    if (!*reg1_str) {					\
+		      sprintf (reg1_str, "(%s))",			\
+			       reg_name[REGNO(XEXP(addr, 1))]);		\
+		      offset = XEXP(addr, 0);				\
+		    } else						\
+		      abort();						\
+		  }							\
+		  break;						\
+		default:						\
+		  abort();						\
+		}							\
 		break;							\
 	    default:							\
 		if (offset_printed)					\

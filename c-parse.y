@@ -48,9 +48,8 @@ State 411 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator)?
 %{
 #include "config.h"
 #include "tree.h"
-#include "parse.h"
+#include "c-parse.h"
 #include "c-tree.h"
-#include "flags.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -391,12 +390,11 @@ primary:
 		      error ("braced-group within expression allowed only inside a function");
 		      YYFAIL;
 		    }
-		  expand_start_stmt_expr (); }
+		  $<ttype>$ = expand_start_stmt_expr (); }
 	  compstmt ')'
 		{ if (pedantic)
 		    warning ("ANSI C forbids braced-groups within expressions");
-		  $$ = get_last_expr ();
-		  expand_end_stmt_expr (); }
+		  $$ = expand_end_stmt_expr ($<ttype>2); }
 	| primary '(' exprlist ')'   %prec '.'
 		{ $$ = build_function_call ($1, $3); }
 	| primary '[' expr ']'   %prec '.'
@@ -569,6 +567,10 @@ notype_initdcl:
 
 init:
 	expr_no_commas
+	| '{' '}'
+		{ $$ = build_nt (CONSTRUCTOR, NULL_TREE, NULL_TREE);
+		  if (pedantic)
+		    warning ("ANSI C forbids empty initializer braces"); }
 	| '{' initlist '}'
 		{ $$ = build_nt (CONSTRUCTOR, NULL_TREE, nreverse ($2)); }
 	| '{' initlist ',' '}'
@@ -580,7 +582,7 @@ init:
 /* This chain is built in reverse order,
    and put in forward order where initlist is used.  */
 initlist:
-	init
+	  init
 		{ $$ = build_tree_list (NULL_TREE, $1); }
 	| initlist ',' init
 		{ $$ = tree_cons (NULL_TREE, $3, $1); }
@@ -845,15 +847,15 @@ compstmt_or_error:
 
 compstmt: '{' '}'
 	| '{' pushlevel decls xstmts '}'
-		{ expand_end_bindings (getdecls (), 1);
+		{ expand_end_bindings (getdecls (), 1, 0);
 		  poplevel (1, 1, 0);
 		  pop_momentary (); }
 	| '{' pushlevel error '}'
-		{ expand_end_bindings (getdecls (), 0);
+		{ expand_end_bindings (getdecls (), 0, 0);
 		  poplevel (0, 0, 0);
 		  pop_momentary (); }
 	| '{' pushlevel stmts '}'
-		{ expand_end_bindings (getdecls (), 0);
+		{ expand_end_bindings (getdecls (), 0, 0);
 		  poplevel (0, 0, 0);
 		  pop_momentary (); }
 	;
@@ -1676,6 +1678,8 @@ readescape ()
       return 033;
 
     case '?':
+      /* `\(' is used at the beginning of a line to avoid confusing Emacs.  */
+    case '(':
       return c;
     }
   if (c >= 040 && c <= 0177)
@@ -1827,14 +1831,14 @@ yylex ()
 		if ((! flag_no_asm
 		     || ((int) p->token != ASM
 			 && (int) p->token != TYPEOF
-			 && strcmp (p->name, "inline")))
+			 && p->rid != RID_INLINE))
 		    /* -ftraditional means don't recognize
 		       typeof, const, volatile, signed or inline.  */
 		    && (! flag_traditional
 			|| ((int) p->token != TYPE_QUAL
 			    && (int) p->token != TYPEOF
-			    && strcmp (p->name, "signed")
-			    && strcmp (p->name, "inline"))))
+			    && p->rid != RID_SIGNED
+			    && p->rid != RID_INLINE)))
 		  value = (int) p->token;
 		break;
 	      }
@@ -2020,7 +2024,7 @@ yylex ()
 	    value = atof (token_buffer);
 #ifdef ERANGE
 	    if (errno == ERANGE && !flag_traditional)
-	      error ("floating point number exceeds range of `double'");
+	      warning ("floating point number exceeds range of `double'");
 #endif
 
 	    /* Read the suffixes to choose a data type.  */

@@ -332,13 +332,13 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 		  / BITS_PER_UNIT);
       /* Round size up to multiple of BIGGEST_ALIGNMENT bits
 	 so that each uninitialized object starts on such a boundary.  */
-      size = ((size + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
-	      / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
-	      * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
+      int rounded = ((size + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
+		     / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
+		     * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
       if (TREE_PUBLIC (decl))
-	ASM_OUTPUT_COMMON (asm_out_file, name, size);
+	ASM_OUTPUT_COMMON (asm_out_file, name, size, rounded);
       else
-	ASM_OUTPUT_LOCAL (asm_out_file, name, size);
+	ASM_OUTPUT_LOCAL (asm_out_file, name, size, rounded);
       return;
     }
 
@@ -383,29 +383,20 @@ assemble_name (file, name)
    CONST_DOUBLE rtx's, and force those out to memory when necessary.  */
 
 /* Chain of all CONST_DOUBLE rtx's constructed for the current function.
-   They are chained through the third operand slot.  */
+   They are chained through the third operand slot, XEXP (r, 3).
+   A CONST_DOUBLE rtx has XEXP (r, 2) != 0 iff it is on this chain.
+   XEXP (r, 2) is either a MEM, or const0_rtx if no MEM has been made.  */
 
-extern rtx real_constant_chain;
+static rtx real_constant_chain;
 
-/* Return a CONST_DOUBLE for a specified `double' value
-   and machine mode.  */
+/* Return a CONST_DOUBLE for a value specified as a pair of ints.  */
 
 rtx
-immed_real_const_1 (d, mode)
-     double d;
+immed_double_const (i0, i1, mode)
+     int i0, i1;
      enum machine_mode mode;
-
 {
   register rtx r;
-  union {double d; int i[2];} u;
-  register int i0, i1;
-
-  /* Get the desired `double' value as two ints
-     since that is how they are stored in a CONST_DOUBLE.  */
-
-  u.d = d;
-  i0 = u.i[0];
-  i1 = u.i[1];
 
   /* Search the chain for an existing CONST_DOUBLE with the right value.
      If one is found, return it.  */
@@ -421,12 +412,30 @@ immed_real_const_1 (d, mode)
   XEXP (r, 3) = real_constant_chain;
   real_constant_chain = r;
 
-  /* Store const0_rtx in slot 2 just so most things won't barf.
+  /* Store const0_rtx in slot 2 since this CONST_DOUBLE is on the chain.
      Actual use of slot 2 is only through force_const_double_mem.  */
 
   XEXP (r, 2) = const0_rtx;
 
   return r;
+}
+
+/* Return a CONST_DOUBLE for a specified `double' value
+   and machine mode.  */
+
+rtx
+immed_real_const_1 (d, mode)
+     double d;
+     enum machine_mode mode;
+{
+  union {double d; int i[2];} u;
+
+  /* Get the desired `double' value as two ints
+     since that is how they are stored in a CONST_DOUBLE.  */
+
+  u.d = d;
+
+  return immed_double_const (u.i[0], u.i[1], mode);
 }
 
 /* Return a CONST_DOUBLE rtx for a value specified by EXP,
@@ -448,12 +457,20 @@ immed_real_const (exp)
 
 /* Given a CONST_DOUBLE, cause a constant in memory to be created
    (unless we already have one for the same value)
-   and return a MEM rtx to refer to it.  */
+   and return a MEM rtx to refer to it.
+   Put the CONST_DOUBLE on real_constant_chain if it isn't already there.  */
 
 rtx
 force_const_double_mem (r)
      rtx r;
 {
+  if (XEXP (r, 2) == 0)
+    {
+      XEXP (r, 3) = real_constant_chain;
+      real_constant_chain = r;
+      XEXP (r, 2) = const0_rtx;
+    }
+
   if (XEXP (r, 2) == const0_rtx)
     {
       XEXP (r, 2) = force_const_mem (GET_MODE (r), r);
@@ -467,15 +484,21 @@ force_const_double_mem (r)
 }
 
 /* At the start of a function, forget the memory-constants
-   previously made for CONST_DOUBLEs.  */
+   previously made for CONST_DOUBLEs.
+   Also clear out real_constant_chain and clear out all the chain-pointers.  */
 
 static void
 clear_const_double_mem ()
 {
-  register rtx r;
+  register rtx r, next;
 
-  for (r = real_constant_chain; r; r = XEXP (r, 3))
-    XEXP (r, 2) = 0;
+  for (r = real_constant_chain; r; r = next)
+    {
+      next = XEXP (r, 3);
+      XEXP (r, 3) = 0;
+      XEXP (r, 2) = 0;
+    }
+  real_constant_chain = 0;
 }
 
 /* Given an expression EXP with a constant value,
@@ -897,11 +920,17 @@ output_constant_def (exp)
   if (TREE_CST_RTL (exp))
     return TREE_CST_RTL (exp);
 
+  if (TREE_PERMANENT (exp))
+    end_temporary_allocation ();
+
   def = gen_rtx (SYMBOL_REF, Pmode, get_or_assign_label (exp));
 
   TREE_CST_RTL (exp)
     = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)), def);
   TREE_CST_RTL (exp)->unchanging = 1;
+
+  if (TREE_PERMANENT (exp))
+    resume_temporary_allocation ();
 
   return TREE_CST_RTL (exp);
 }
