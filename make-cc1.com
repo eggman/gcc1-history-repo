@@ -24,7 +24,18 @@ $ assign/user insn-config.h sys$output:
 $ genconfig md
 $!
 $ gcc/debug/cc1_options="-mpcc-alignment" toplev.c
+$!
+$ t1:='f$search("PARSE_TAB.C")'
+$ if "''t1'" .eqs. "" then goto 10$
+$ t1:='f$file_attributes("PARSE.Y","RDT")'
+$ t1:='f$cvtime(t1)'
+$ t2:='f$file_attributes("PARSE_TAB.C","RDT")'
+$ t2:='f$cvtime(t2)'
+$ if t1 .les. t2 then goto 20$
+$ 10$:
 $ bison /verbose parse.y
+$ 20$:
+$!
 $ gcc/debug/cc1_options="-mpcc-alignment" parse_tab.c
 $ gcc/debug/cc1_options="-mpcc-alignment" tree.c
 $ gcc/debug/cc1_options="-mpcc-alignment" print-tree.c

@@ -21,8 +21,8 @@
 #include <setjmp.h>
 /* #define YYDEBUG 1 */
 
-  static int yylex ();
-  static yyerror ();
+  int yylex ();
+  void yyerror ();
   int expression_value;
 
   static jmp_buf parse_return_error;
@@ -462,7 +462,7 @@ yynewstate:
       bcopy ((char *)yyss1, (char *)yyss, size * sizeof (*yyssp));
       yyvs = (YYSTYPE *) alloca (yymaxdepth * sizeof (*yyvsp));
       bcopy ((char *)yyvs1, (char *)yyvs, size * sizeof (*yyvsp));
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
       yyls = (YYLTYPE *) alloca (yymaxdepth * sizeof (*yylsp));
       bcopy ((char *)yyls1, (char *)yyls, size * sizeof (*yylsp));
 #endif
@@ -470,7 +470,7 @@ yynewstate:
 
       yyssp = yyss + size - 1;
       yyvsp = yyvs + size - 1;
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
       yylsp = yyls + size - 1;
 #endif
 
@@ -572,7 +572,7 @@ yyresume:
     yychar = YYEMPTY;
 
   *++yyvsp = yylval;
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
   *++yylsp = yylloc;
 #endif
 
@@ -727,7 +727,7 @@ case 29:
 
   yyvsp -= yylen;
   yyssp -= yylen;
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
   yylsp -= yylen;
 #endif
 
@@ -744,7 +744,7 @@ case 29:
 
   *++yyvsp = yyval;
 
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
   yylsp++;
   if (yylen == 0)
     {
@@ -822,7 +822,7 @@ yyerrpop:   /* pop the current state because it cannot handle the error token */
   if (yyssp == yyss) YYERROR;
   yyvsp--;
   yystate = *--yyssp;
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
   yylsp--;
 #endif
 
@@ -867,7 +867,7 @@ yyerrhandle:
 #endif
 
   *++yyvsp = yylval;
-#ifdef YYLSP_USED
+#ifdef YYLSP_NEEDED
   *++yylsp = yylloc;
 #endif
 
@@ -888,7 +888,7 @@ static char *lexptr;
 
 /* maybe needs to actually deal with floating point numbers */
 
-static int
+int
 parse_number (olen)
      int olen;
 {
@@ -966,7 +966,7 @@ static struct token tokentab2[] = {
 
 /* Read one token, getting characters through lexptr.  */
 
-static int
+int
 yylex ()
 {
   register int c;
@@ -1080,7 +1080,7 @@ yylex ()
    If \ is followed by 000, we return 0 and leave the string pointer
    after the zeros.  A value of 0 does not mean end of string.  */
 
-static int
+int
 parse_escape (string_ptr)
      char **string_ptr;
 {
@@ -1147,7 +1147,7 @@ parse_escape (string_ptr)
     }
 }
 
-static
+void
 yyerror (s)
      char *s;
 {

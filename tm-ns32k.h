@@ -986,7 +986,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START "#NO_APP\n"
+#define ASM_FILE_START(FILE) fprintf (FILE, "#NO_APP\n");
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */

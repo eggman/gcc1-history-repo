@@ -46,7 +46,7 @@ gen_insn (insn)
   if (strlen (XSTR (insn, 0)) == 0)
     return;
 
-  printf ("#define HAVE_%s %s\n", XSTR (insn, 0),
+  printf ("#define HAVE_%s (%s)\n", XSTR (insn, 0),
 	  strlen (XSTR (insn, 2)) ? XSTR (insn, 2) : "1");
   printf ("extern rtx gen_%s ();\n", XSTR (insn, 0));
 }

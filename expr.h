@@ -239,6 +239,9 @@ rtx eliminate_constant_term ();
    by emitting insns to perform arithmetic if nec.  */
 rtx memory_address ();
 
+/* Like `memory_address' but pretent `flag_force_addr' is 0.  */
+rtx memory_address_noforce ();
+
 /* Return a memory reference like MEMREF, but with its mode changed
    to MODE and its address changed to ADDR.
    (VOIDmode means don't change the mode.

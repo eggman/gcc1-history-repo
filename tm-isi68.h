@@ -25,6 +25,11 @@ and this notice must be preserved on all copies.  */
 
 #define TARGET_DEFAULT 7
 
+/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+   This will control the use of inline 68881 insns in certain macros.  */
+
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
+
 /* If the 68881 is used, link must load libmc.a instead of libc.a */
 
 #define LIB_SPEC "%{msoft-float:%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p}}%{!msoft-float:%{!p:%{!pg:-lmc}}%{p:-lmc_p}%{pg:-lmc_p}}"
@@ -32,6 +37,10 @@ and this notice must be preserved on all copies.  */
 /* Names to predefine in the preprocessor for this target machine.  */
 
 #define CPP_PREDEFINES "-Dunix -Dmc68000 -Dis68k"
+
+/* This is BSD, so it wants DBX format.  */
+
+#define DBX_DEBUGGING_INFO
 
 /* Override parts of tm-m68000.h to fit the ISI 68k machine.  */
 
@@ -54,4 +63,4 @@ and this notice must be preserved on all copies.  */
  ((N) == 0 || (TARGET_68881 && (N) == 16))
 
 /* Also output something to cause the correct _doprnt to be loaded.  */
-#define ASM_FILE_START "#NO_APP\n.globl fltused\n"
+#define ASM_FILE_START(FILE) fprintf (FILE, "#NO_APP\n.globl fltused\n")

@@ -9,6 +9,7 @@ int immediate_operand ();
 int register_operand ();
 int address_operand ();
 int nonmemory_operand ();
+int nonimmediate_operand ();
 
 int offsetable_address_p ();
 rtx adj_offsetable_operand ();

@@ -1,6 +1,6 @@
 %% TeX macros to handle texinfo files
 
-%   Copyright (C) 1985, 1986 Richard M. Stallman
+%   Copyright (C) 1985, 1986, 1988 Richard M. Stallman
 
 %		       NO WARRANTY
 
@@ -101,7 +101,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.02}
+\def\texinfoversion{1.12}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -283,7 +283,7 @@
 
 % @@ prints an @
 % Kludge this until the fonts are right (grr).
-\def\@{{\sf @}}
+\def\@{{\sf \char '100}}
 
 % Define @` and @' to be the same as ` and '
 % but suppressing ligatures.
@@ -425,6 +425,11 @@
 \font\tensf=cmss10 scaled \magstephalf
 \def\li{\sf}
 \font\tensc=cmcsc10 scaled \magstephalf
+
+% Fonts for @defun, etc.
+\font\defbf=cmbx7 scaled \magstep2
+\let\deftt=\tentt
+\def\df{\let\tt=\deftt \defbf}
 
 % Font for title
 \font\titlerm = cmbx10 scaled \magstep5
@@ -577,8 +582,8 @@
 % edge of all pages.
 \def\HEADINGSon{
 \global\pageno=1
-\global\evenfootline={\thisfile\hfil}
-\global\oddfootline={\thisfile\hfil}
+\global\evenfootline={\hfil}
+\global\oddfootline={\hfil}
 \global\evenheadline={\line{\folio\hfil\thistitle}}
 \global\oddheadline={\line{\thischapter\hfil\folio}}
 }
@@ -862,7 +867,7 @@ July\or August\or September\or October\or November\or December\fi
 
 \def\doprintindex#1{\tex %
 \catcode`\%=\other\catcode`\&=\other\catcode`\#=\other
-\catcode`\@=\other\catcode`\$=\other\catcode`\_=\other
+\catcode`\$=\other\catcode`\_=\other
 \catcode`\~=\other
 \def\indexbackslash{\rawbackslashxx}
 \indexfonts\rm \tolerance=9500 \advance\baselineskip -1pt
@@ -876,9 +881,15 @@ July\or August\or September\or October\or November\or December\fi
 % These macros are used by the sorted index file itself.
 % Change them to control the appearance of the index.
 
+% Same as \bigskipamount except no shrink.
+% \balancecolumns gets confused if there is any shrink.
+\newskip\initialskipamount \initialskipamount 12pt plus4pt
+
 \outer\def\initial #1{%
 {\let\tentt=\sectt \let\sf=\sectt
-\bigbreak\line{\secbf#1\hfill}\kern 2pt\penalty3000}}
+\ifdim\lastskip<\initialskipamount
+\removelastskip \penalty-200 \vskip \initialskipamount\fi
+\line{\secbf#1\hfill}\kern 2pt\penalty3000}}
 
 \outer\def\entry #1#2{
 {\parfillskip=0in \parskip=0in \parindent=0in
@@ -1285,16 +1296,16 @@ July\or August\or September\or October\or November\or December\fi
 \catcode`\<=12
 \catcode`\>=12
 \escapechar=`\\
-
+%
 \let\{=\ptexlbrace
 \let\}=\ptexrbrace
 \let\.=\ptexdot
 \let\*=\ptexstar
-\def\@={@}
+\def\@={@}%
 \let\bullet=\ptexbullet
 \let\b=\ptexb \let\c=\ptexc \let\i=\ptexi \let\t=\ptext \let\l=\ptexl
 \let\L=\ptexL
-
+%
 \let\Etex=\endgroup}
 
 % Define @lisp ... @endlisp.
@@ -1444,6 +1455,339 @@ July\or August\or September\or October\or November\or December\fi
 \def\Equotation{\par\endgroup\afterenvbreak}%
 \advance \rightskip by \lispnarrowing 
 \advance \leftskip by \lispnarrowing}
+
+\message{defuns,}
+% Define formatter for defuns
+% First, allow user to change definition object font (\df) internally
+\def\setdeffont #1 {\csname DEF#1\endcsname}
+
+\newskip\defbodyindent \defbodyindent=36pt
+\newskip\defargsindent \defargsindent=50pt
+\newskip\deftypemargin \deftypemargin=12pt
+\newskip\deflastargmargin \deflastargmargin=18pt
+
+\newcount\parencount
+% define \functionparens, which makes ( and ) and & do special things.
+% \functionparens affects the group it is contained in.
+\def\activeparens{%
+\catcode`\(=\active \catcode`\)=\active \catcode`\&=\active
+\catcode`\[=\active \catcode`\]=\active}
+{\activeparens % Now, smart parens don't turn on until &foo (see \amprm)
+\gdef\functionparens{\boldbrax\let&=\amprm\parencount=0 }
+\gdef\boldbrax{\let(=\opnr\let)=\clnr\let[=\lbrb\let]=\rbrb}
+
+% Definitions of (, ) and & used in args for functions.
+% This is the definition of ( outside of all parentheses.
+\gdef\oprm#1 {{\rm\char`\(}#1 \bf \let(=\opnested %
+\global\advance\parencount by 1 }
+%
+% This is the definition of ( when already inside a level of parens.
+\gdef\opnested{\char`\(\global\advance\parencount by 1 }
+%
+\gdef\clrm{% Print a paren in roman if it is taking us back to depth of 0.
+% also in that case restore the outer-level definition of (.
+\ifnum \parencount=1 {\rm \char `\)}\sl \let(=\oprm \else \char `\) \fi
+\global\advance \parencount by -1 }
+% If we encounter &foo, then turn on ()-hacking afterwards
+\gdef\amprm#1 {{\rm\&#1}\let(=\oprm \let)=\clrm\ }
+%
+\gdef\normalparens{\boldbrax\let&=\ampnr}
+} % End of definition inside \activeparens
+%% These parens (in \boldbrax) actually are a little bolder than the
+%% contained text.  This is especially needed for [ and ]
+\def\opnr{{\sf\char`\(}} \def\clnr{{\sf\char`\)}} \def\ampnr{\&}
+\def\lbrb{{\tt\char`\[}} \def\rbrb{{\tt\char`\]}}
+
+% First, defname, which formats the header line itself.
+% #1 should be the function name.
+% #2 should be the type of definition, such as "Function".
+
+\def\defname #1#2{%
+\leftskip = 0in  %
+\noindent        %
+\setbox0=\hbox{\hskip \deflastargmargin{\rm #2}\hskip \deftypemargin}%
+\dimen0=\hsize \advance \dimen0 by -\wd0 % compute size for first line
+\dimen1=\hsize \advance \dimen1 by -\defargsindent %size for continuations
+\parshape 2 0in \dimen0 \defargsindent \dimen1     %
+% Now output arg 2 ("Function" or some such)
+% ending at \deftypemargin from the right margin,
+% but stuck inside a box of width 0 so it does not interfere with linebreaking
+\rlap{\rightline{{\rm #2}\hskip \deftypemargin}}%
+\tolerance=10000 \hbadness=10000    % Make all lines underfull and no complaints
+{\df #1}\enskip        % Generate function name
+}
+
+% Actually process the body of a definition
+% #1 should be the terminating control sequence, such as \Edefun.
+% #2 should be the "another name" control sequence, such as \defunx.
+% #3 should be the control sequence that actually processes the header,
+%    such as \defunheader.
+
+\def\defparsebody #1#2#3{\begingroup\inENV% Environment for definitionbody
+\medbreak %
+% Define the end token that this defining construct specifies
+% so that it will exit this group.
+\def#1{\endgraf\endgroup\medbreak}%
+\def#2{\begingroup\obeylines\activeparens\spacesplit#3}%
+\parindent=0in \leftskip=\defbodyindent %
+\begingroup\obeylines\activeparens\spacesplit#3}
+
+\def\defmethparsebody #1#2#3#4 {\begingroup\inENV %
+\medbreak %
+% Define the end token that this defining construct specifies
+% so that it will exit this group.
+\def#1{\endgraf\endgroup\medbreak}%
+\def#2##1 {\begingroup\obeylines\activeparens\spacesplit{#3{##1}}}%
+\parindent=0in \leftskip=\defbodyindent %
+\begingroup\obeylines\activeparens\spacesplit{#3{#4}}}
+
+% Split up #2 at the first space token.
+% call #1 with two arguments:
+%  the first is all of #2 before the space token,
+%  the second is all of #2 after that space token.
+% If #2 contains no space token, all of it is passed as the first arg
+% and the second is passed as empty.
+
+{\obeylines
+\gdef\spacesplit#1#2^^M{\endgroup\spacesplitfoo{#1}#2 \relax\spacesplitfoo}%
+\long\gdef\spacesplitfoo#1#2 #3#4\spacesplitfoo{%
+\ifx\relax #3%
+#1{#2}{}\else #1{#2}{#3#4}\fi}}
+
+% So much for the things common to all kinds of definitions.
+
+% Define \defun.
+
+% First, define the processing that is wanted for arguments of \defun
+% Use this to expand the args and terminate the paragraph they make up
+
+\def\defunargs #1{\functionparens \sl #1%
+\ifnum\parencount=0 \else \errmessage{unbalanced parens in @def arguments}\fi%
+\interlinepenalty=10000
+\endgraf\vskip -\parskip \penalty 10000}
+
+% \lastfunction is always defined to the name in the most recennt @defun
+% It is used by @kitem as the subtopic to index the keyword under
+
+\def\lastfunction{}
+
+% Do complete processing of one @defun or @defunx line already parsed.
+
+\def\defunheader #1#2{\doind {fn}{#1} % Make entry in function index
+\gdef\lastfunction{#1}%
+\dosetq {#1-fun}{page}%
+{\defname {#1}{Function}\defunargs {#2}}%
+}
+
+\def\defmacheader #1#2{\doind {fn}{#1} % Make entry in function index
+\gdef\lastfunction{#1}%
+\dosetq {#1-fun}{page}%
+\begingroup\defname {#1}{Macro}%
+\defunargs {#2}\endgroup %
+}
+
+\def\defspecheader #1#2{\doind {fn}{#1} % Make entry in function index
+\gdef\lastfunction{#1}%
+\dosetq {#1-fun}{page}%
+\begingroup\defname {#1}{Special form}%
+\defunargs {#2}\endgroup %
+}
+
+\def\defmessageheader #1#2{\doind {op}{#1} % Make entry in operation index
+\gdef\lastfunction{#1}%
+\dosetq {#1-message}{page}%
+\begingroup\defname {#1}{Operation}%
+\defunargs {#2}\endgroup %
+}
+
+% Now we can define @defun itself.
+
+\def\defun{\defparsebody\Edefun\defunx\defunheader}
+\def\defmac{\defparsebody\Edefmac\defmacx\defmacheader}
+\def\defspec{\defparsebody\Edefspec\defspecx\defspecheader}
+\def\defmessage{\defparsebody\Edefmessage\defmessagex\defmessageheader}
+
+% This definition is run if you use @defunx
+% anywhere other than immediately after a @defun or @defunx.
+
+\def\defunx #1 {\errmessage{@defunx in invalid context}}
+\def\defmacx #1 {\errmessage{@defmacx in invalid context}}
+\def\defspecx #1 {\errmessage{@defspecx in invalid context}}
+\def\defmessagex #1 {\errmessage{@defmessagex in invalid context}}
+
+% @defmethod, @defmetamethod, and so on
+
+% Do complete processing of one @defmethod line already parsed.
+
+\def\defmethodheader #1#2#3{\dosubind {op}{#2}{on {\bf #1}}% Make entry in operation index
+\gdef\lastfunction{#2}%
+\dosetqflushcolon {#1-}#2-method {page}%
+\begingroup\defname {#2}{Operation on {\bf #1}}%
+\defunargs {#3}\endgroup %
+}
+
+\def\defmetamethodheader #1#2#3{\dosubind {op}{#2}{on #1}% Make entry in operation index
+\gdef\lastfunction{#2}%
+\dosetqflushcolon {#1-}#2-method {page}%
+\begingroup\defname {#2}{Operation on #1}%
+\defunargs {#3}\endgroup %
+}
+
+\def\defivarheader #1#2#3{%
+\gdef\lastfunction{#2}%
+\dosubind {iv}{#2}{of {\bf #1}}% Make entry in instance variable index
+\dosetq {#1-#2-ivar}{page}%
+\begingroup\defname {#2}{Instance variable of {\bf #1}}%
+\defvarargs {#3}\endgroup %
+}
+
+\def\defmetaivarheader #1#2#3{%
+\gdef\lastfunction{#2}%
+\dosubind {iv}{#2}{of #1}% Make entry in ivar index
+\dosetq {#1-#2-ivar}{page}%
+\begingroup\defname {#2}{Instance variable of #1}%
+\defvarargs {#3}\endgroup %
+}
+
+\def\definitheader #1#2#3{%
+\gdef\lastfunction{#2}%
+\dosubind {io}{#2}{for {\bf #1}}% Make entry in init option index
+\dosetqflushcolon {#1-}#2-init-option {page}%
+\begingroup\defname {#2}{Init keyword for {\bf #1}}%
+\defvarargs {#3}\endgroup %
+}
+
+\def\defmetainitheader #1#2#3{%
+\gdef\lastfunction{#2}%
+\dosubind {io}{#2}{for #1}% Make entry in init option index
+\dosetqflushcolon {#1-}#2-init-option {page}%
+\begingroup\defname {#2}{Init keyword for #1}%
+\defvarargs {#3}\endgroup %
+}
+
+\def\defmethod{\defmethparsebody\Edefmethod\defmethodx\defmethodheader}
+\def\defmetamethod{%
+\defmethparsebody\Edefmetamethod\defmetamethodx\defmetamethodheader}
+
+\def\defivar{\defmethparsebody\Edefivar\defivarx\defivarheader}
+\def\defmetaivar{%
+\defmethparsebody\Edefmetaivar\defmetaivarx\defmetaivarheader}
+
+\def\definit{\defmethparsebody\Edefinit\definitx\definitheader}
+\def\defmetainit{%
+\defmethparsebody\Edefmetainit\defmetainitx\defmetainitheader}
+
+% These definitions are run if you use @defmethodx, etc.,
+% anywhere other than immediately after a @defmethod, etc.
+
+\def\defmethodx #1 {\errmessage{@defmethodx in invalid context}}
+\def\defmetamethodx #1 {\errmessage{@defmetamethodx in invalid context}}
+
+\def\defivarx #1 {\errmessage{@defivarx in invalid context}}
+\def\defmetaivarx #1 {\errmessage{@defmetaivarx in invalid context}}
+
+\def\definitx #1 {\errmessage{@definitx in invalid context}}
+\def\defmetainitx #1 {\errmessage{@defmetainitx in invalid context}}
+
+% Now @defvar
+
+% First, define the processing that is wanted for arguments of @defvar.
+% This is actually simple: just print them in roman.
+% This must expand the args and terminate the paragraph they make up
+\def\defvarargs #1{\normalparens #1%
+\interlinepenalty=10000
+\endgraf\vskip -\parskip \penalty 10000}
+
+% Do complete processing of one @defvar or @defvarx line already parsed.
+
+\def\defvarheader #1#2{\doind {vr}{#1}% Make entry in var index
+\gdef\lastfunction{#1}%
+\dosetq {#1-var}{page}%
+\begingroup\defname {#1}{Variable}%
+\defvarargs {#2}\endgroup %
+}
+
+\def\defconstheader #1#2{\doind {vr}{#1}% Make entry in var index
+\gdef\lastfunction{#1}%
+\dosetq {#1-var}{page}%
+\begingroup\defname {#1}{Constant}%
+\defvarargs {#2}\endgroup %
+}
+
+\def\defmeterheader #1#2{\doind {mt}{#1}% Make entry in meter index
+\gdef\lastfunction{#1}%
+\dosetq {#1-meter}{page}%
+\begingroup\defname {#1}{Meter}%
+\defvarargs {#2}\endgroup %
+}
+
+\def\defresourceheader #1#2{\doind {rs}{#1}% Make entry in resource index
+\gdef\lastfunction{#1}%
+\dosetq {#1-resource}{page}%
+\begingroup\defname {#1}{Resource}%
+\defvarargs {#2}\endgroup %
+}
+
+% Now we can define @defvar itself.  Also @defconst.
+
+\def\defvar{\defparsebody\Edefvar\defvarx\defvarheader}
+\def\defconst{\defparsebody\Edefconst\defconstx\defconstheader}
+\def\defmeter{\defparsebody\Edefmeter\defmeterx\defmeterheader}
+\def\defresource{\defparsebody\Edefresource\defresourcex\defresourceheader}
+
+% This definition is run if you use @defvarx
+% anywhere other than immediately after a @defvar or @defvarx.
+
+\def\defvarx #1 {\errmessage{@defvarx in invalid context}}
+\def\defconstx #1 {\errmessage{@defconstx in invalid context}}
+\def\defmeterx #1 {\errmessage{@defmeterx in invalid context}}
+\def\defresourcex #1 {\errmessage{@defresourcex in invalid context}}
+
+% Now define @defflavor
+% Args are printed in bold, a slight difference from @defvar.
+
+\def\defflavargs #1{\bf \defvarargs{#1}}
+
+% Do complete processing of one @defflavor (or similar construct) line.
+
+\def\defflavorheader #1#2{\doind {fl}{#1}% Make entry in flavor index
+\gdef\lastfunction{#1}%
+\dosetq {#1-flavor}{page}%
+\begingroup\defname {#1}{Flavor}%
+\defflavargs {#2}\endgroup %
+}
+
+\def\defconditionheader #1#2{\doind {cn}{#1}% Make entry in condition index
+\gdef\lastfunction{#1}%
+\dosetq {#1-condition}{page}%
+\begingroup\defname {#1}{Condition}%
+\defflavargs {#2}\endgroup %
+}
+
+\def\defconditionflavorheader #1#2{%
+\gdef\lastfunction{#1}%
+\doind {cn}{#1}% Make entry in condition index
+\doind {fl}{#1}% Make entry in flavor index
+\dosetq {#1-condition}{page}%
+\dosetq {#1-flavor}{page}%
+\dosetq {#1-condition-flavor}{page}%
+\doind {fl}{#1}% Make entry in flavor index
+\begingroup\defname {#1}{Condition flavor}%
+\defflavargs {#2}\endgroup %
+}
+
+\def\defflavor{\defparsebody\Edefflavor\defflavorx\defflavorheader}
+\def\defcondition{%
+\defparsebody\Edefcondition\defconditionx\defconditionheader}
+\def\defconditionflavor{%
+\defparsebody\Edefconditionflavor\defconditionflavorx\defconditionflavorheader}
+
+% This definition is run if you use @defflavorx, etc
+% anywhere other than immediately after a @defflavor, etc.
+
+\def\defflavorx #1 {\errmessage{@defflavorx in invalid context}}
+\def\defconditionx #1 {\errmessage{@defconditionx in invalid context}}
+\def\defconditionflavorx #1 {\errmessage{@defconditionflavorx in invalid context}}
 
 \message{cross reference,}
 % Define cross-reference macros
@@ -1627,6 +1971,9 @@ section\xreftie\the\chapno.\the\secno.\the\subsecno.\the\subsubsecno %
 \parskip 18pt plus 1pt
 \baselineskip 15pt
 \advance\topskip by 1.2cm
+
+% Prevent underfull vbox error messages.
+\vbadness=10000
 
 % Use @smallbook to reset parameters for 7x9.5 format
 \def\smallbook{

@@ -252,6 +252,17 @@ immediate_operand (op, mode)
 	  && LEGITIMATE_CONSTANT_P (op));
 }
 
+/* Return 1 if OP is a general operand that is not an immediate operand.  */
+
+int
+nonimmediate_operand (op, mode)
+     register rtx op;
+     enum machine_mode mode;
+{
+  return (general_operand (op, mode)
+	  && ! CONSTANT_P (op) && GET_CODE (op) != CONST_DOUBLE);
+}
+
 /* Return 1 if OP is a register reference or immediate value of mode MODE.  */
 
 int
@@ -327,7 +338,19 @@ memory_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  return GET_CODE (op) == MEM && general_operand (op, mode);
+  enum rtx_code code = GET_CODE (op);
+  int mode_altering_drug = 0;
+
+  while (code == SUBREG)
+    {
+      op = SUBREG_REG (op);
+      code = GET_CODE (op);
+      mode_altering_drug = 1;
+    }
+
+  return (GET_CODE (op) == MEM && general_operand (op, mode)
+	  && ! (mode_altering_drug
+		&& mode_dependent_address_p (XEXP (op, 0))));
 }
 
 /* If BODY is an insn body that uses ASM_OPERANDS,

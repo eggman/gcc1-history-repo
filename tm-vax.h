@@ -60,7 +60,9 @@ extern int target_flags;
 
 /* Default target_flags if no switches specified.  */
 
+#ifndef TARGET_DEFAULT
 #define TARGET_DEFAULT 1
+#endif
 
 /* Target machine storage layout */
 
@@ -694,6 +696,45 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 #define UDIVSI3_LIBCALL "*udiv"
 #define UMODSI3_LIBCALL "*urem"
+
+/* Check a `double' value for validity for a particular machine mode.  */
+
+/* note that it is very hard to accidently create a number that fits in a
+   double but not in a float, since their ranges are almost the same */
+#define CHECK_FLOAT_VALUE(mode, d) \
+  if ((mode) == SFmode) \
+    { \
+      if ((d) > 1.7014117331926443e+38) \
+	{ error ("magnitude of constant too large for `float'"); \
+	  (d) = 1.7014117331926443e+38; } \
+      else if ((d) < -1.7014117331926443e+38) \
+	{ error ("magnitude of constant too large for `float'"); \
+	  (d) = -1.7014117331926443e+38; } \
+      else if (((d) > 0) && ((d) < 2.9387358770557188e-39)) \
+	{ warning ("`float' constant truncated to zero"); \
+	  (d) = 0.0; } \
+      else if (((d) < 0) && ((d) > -2.9387358770557188e-39)) \
+	{ warning ("`float' constant truncated to zero"); \
+	  (d) = 0.0; } \
+    }
+
+/* For future reference:
+   D Float: 9 bit, sign magnitude, excess 128 binary exponent
+            normalized 56 bit fraction, redundant bit not represented
+            approximately 16 decimal digits of precision
+
+   The values to use if we trust decimal to binary conversions:
+#define MAX_D_FLOAT 1.7014118346046923e+38
+#define MIN_D_FLOAT .29387358770557188e-38
+
+   G float: 12 bit, sign magnitude, excess 1024 binary exponent
+            normalized 53 bit fraction, redundant bit not represented
+            approximately 15 decimal digits precision
+
+   The values to use if we trust decimal to binary conversions:
+#define MAX_G_FLOAT .898846567431157e+308
+#define MIN_G_FLOAT .556268464626800e-308
+*/
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -740,7 +781,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START "#NO_APP\n"
+#define ASM_FILE_START(FILE) fprintf (FILE, "#NO_APP\n");
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */
@@ -766,6 +807,10 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define REGISTER_NAMES \
 {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", \
  "r9", "r10", "r11", "ap", "fp", "sp", "pc"}
+
+/* This is BSD, so it wants DBX format.  */
+
+#define DBX_DEBUGGING_INFO
 
 /* How to renumber registers for dbx and gdb.
    Vax needs no change in the numeration.  */

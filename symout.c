@@ -27,7 +27,7 @@ and this notice must be preserved on all copies.  */
 #include <stdio.h>
 
 /* Get N_SO from stab.h if we can expect the file to exist.  */
-#ifndef NO_DBX_FORMAT
+#ifdef DBX_DEBUGGING_INFO
 #include <stab.h>
 #endif
 
@@ -474,14 +474,23 @@ subrange_p (type)
     }
 
   if (uns)
-    return integer_zerop (TYPE_MIN_VALUE (type))
-      && (TREE_INT_CST_LOW (TYPE_MAX_VALUE (type))
-	  == (1 << TYPE_PRECISION (type)) - 1);
+    {
+      int mask;
+
+      if (TYPE_PRECISION (type) == HOST_BITS_PER_INT)
+	/* Shifting by 32 loses on some machines.  */
+	mask = -1;
+      else
+	mask = (1 << TYPE_PRECISION (type)) - 1;
+
+      return (integer_zerop (TYPE_MIN_VALUE (type))
+	      && (TREE_INT_CST_LOW (TYPE_MAX_VALUE (type)) == mask));
+    }
   else
-    return (TREE_INT_CST_LOW (TYPE_MIN_VALUE (type))
-	    == (-1) << (TYPE_PRECISION (type) - 1))
-      && (TREE_INT_CST_LOW (TYPE_MAX_VALUE (type))
-	  == (1 << (TYPE_PRECISION (type) - 1)) - 1);
+    return ((TREE_INT_CST_LOW (TYPE_MIN_VALUE (type))
+	     == (-1) << (TYPE_PRECISION (type) - 1))
+	    && (TREE_INT_CST_LOW (TYPE_MAX_VALUE (type))
+		== (1 << (TYPE_PRECISION (type) - 1)) - 1));
 }
 
 /* Functions to output the "fields" of various kinds of types.

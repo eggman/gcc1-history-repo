@@ -39,16 +39,22 @@ and this notice must be preserved on all copies.  */
 
 #define	TARGET_DEFAULT 7
 
-/* Names to predefine in the preprocessor for this target machine.  */
+/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+   This will control the use of inline 68881 insns in certain macros.  */
 
 #ifdef HPUX_ASM
-/* This is needed because some programs, particularly GDB, need to
+/* __HPUX_ASM__ is needed because some programs, particularly GDB, need to
    know which assembler is being used so that the correct `asm'
    instructions can be used. */
-#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dmc68000 -Dhpux -Dunix -D__HPUX_ASM__"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__} -D__HPUX_ASM__"
 #else
-#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dmc68000 -Dhpux -Dunix"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
 #endif
+
+/* Names to predefine in the preprocessor for this target machine
+   (for non-strict-ANSI programs only).  */
+
+#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dmc68k -Dmc68000 -Dhpux -Dunix"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 
@@ -98,8 +104,6 @@ and this notice must be preserved on all copies.  */
 #undef ASM_OUTPUT_INTERNAL_LABEL
 
 #define TARGET_VERSION printf (" (68k, SGS/hpux syntax)");
-
-#define NO_DBX_FORMAT
 
 #define ASM_SPEC "%{m68000:+X}"
 
@@ -196,7 +200,7 @@ and this notice must be preserved on all copies.  */
     fprintf (FILE, "\trtd &%d\n", current_function_args_size);	\
   else fprintf (FILE, "\trts\n"); }
 
-#define ASM_FILE_START ""
+#define ASM_FILE_START(FILE)
 
 #define ASM_APP_ON ""
 

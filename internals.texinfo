@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 24 April 1988
+@center last updated 26 June 1988
 @sp 1
-@center for version 1.21
+@center for version 1.23
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -278,20 +278,20 @@ Charles LaBrec contributed the support for the Integrated Solutions
 Michael Tiemann of MCC wrote the description of the National
 Semiconductor 32000 series cpu, with some contributions from Jan Stein
 of the Chalmers Computer Club.  Tiemann also wrote the code for inline
-function integration.
+function integration and for the SPARC cpu.
 
 @item
 Robert Brown implemented the support for Encore 32000 systems.
 
 @item
-Michael Kashtan of SRI adapted GNU CC to the Vomit-Making System.
+David Kashtan of SRI adapted GNU CC to the Vomit-Making System.
 
 @item
 Alex Crain provided changes for the 3b1.
 
 @item
-Chris Hanson and another person who should remind me of his name
-assisted in making GNU CC work on HP-UX for the 9000 series 300.
+Greg Satz and Chris Hanson assisted in making GNU CC work on HP-UX for
+the 9000 series 300.
 @end itemize
 
 @node Options, Installation, Contributors, Top
@@ -449,7 +449,8 @@ Some of the @samp{-f} options described below turn specific kinds of
 optimization on or off.
 
 @item -g
-Produce debugging information in DBX format.
+Produce debugging information in the operating system's native
+format (for DBX or SDB).
 
 Unlike most other C compilers, GNU CC allows you to use @samp{-g} with
 @samp{-O}.  The shortcuts taken by optimized code may occasionally
@@ -524,7 +525,7 @@ another common case:
 @end example
 
 @noindent
-This has no bug because @code{x} is used only if it is set.
+This has no bug because @code{save_y} is used only if it is set.
 
 @item
 A nonvolatile automatic variable might be changed by a call to
@@ -592,12 +593,11 @@ plus any that you specify with @samp{-L}.
 
 Normally the files found this way are library files---archive files
 whose members are object files.  The linker handles an archive file by
-through it for members which define symbols that have so far been
-referenced but not defined.  But if the file that is found is an
+scanning through it for members which define symbols that have so far
+been referenced but not defined.  But if the file that is found is an
 ordinary object file, it is linked in the usual fashion.  The only
-difference between an @samp{-l} option and the full file name of the
-file that is found is syntactic and the fact that several directories
-are searched.
+difference between using an @samp{-l} option and specifying a file name
+is that @samp{-l} searches several directories.
 
 @item -L@var{dir}
 Add directory @var{dir} to the list of directories to be searched
@@ -948,8 +948,12 @@ Here is the procedure for installing GNU CC on a Unix system.
 
 @enumerate
 @item
-Edit @file{Makefile}.  If you are using HPUX, you must make a few
-changes described in comments at the beginning of the file.
+Edit @file{Makefile}.  If you are using HPUX, or any form of system V,
+you must make a few changes described in comments at the beginning of
+the file.
+
+@item
+On a Sequent system, go to the Berkeley universe.
 
 @item
 Choose configuration files.
@@ -964,7 +968,7 @@ machine.  It includes @file{tm.h}.
 The file's name should be @file{config-@var{machine}.h}.  On VMS,
 use @file{config-vms.h} rather than @file{config-vax.h}.  On the
 HP 9000 series 300, use @file{config-hp9k3.h} rather than
-@file{config-m68k.h}.@refill
+@file{config-m68k.h}.
 
 If your system does not support symbolic links, you might want to
 set up @file{config.h} to contain a @samp{#include} command which
@@ -991,12 +995,26 @@ with compilation.  Not all of the pieces of GNU software needed for
 this mode of operation are as yet in distribution; full instructions
 will appear here in the future.@refill
 
-For the 32000, use @file{tm-sequent.h} if you are using a Sequent
-machine, or @file{tm-encore.h} for an Encore machine; otherwise,
-perhaps @file{tm-ns32k.h} will work for you.
-
 For the vax, use @file{tm-vax.h} on Unix, or @file{tm-vms.h} on
 VMS.@refill
+
+For the sparc, use @file{tm-sparc.h}.
+
+For the 32000, use @file{tm-sequent.h} if you are using a Sequent
+machine, or @file{tm-encore.h} for an Encore machine; otherwise,
+perhaps @file{tm-ns32k.h} will work for you.  If you are trying to use
+GNU CC on GENIX, you may need to get the version of @code{malloc} from
+GNU Emacs instead of the system library version, and you probably need
+to cause the following assembler code to be executed in @file{crt0.o}
+in order to run the GNU CC output:
+
+@example
+lprd    sb,$0
+sprd    mod,r0
+movqd   $0,0(r0)
+@end example
+
+Note that Encore systems are supported only under BSD.
 
 @item
 Make a symbolic link named @file{md} to the machine description
@@ -1010,8 +1028,9 @@ subroutine file for your machine (its name should be
 
 @item
 Make sure the Bison parser generator is installed.  (This is
-unnecessary if the Bison output file @file{parse.tab.c} is more recent
-than @file{parse.y} and you do not plan to change @file{parse.y}.)
+unnecessary if the Bison output files @file{parse.tab.c} and
+@file{cexp.c} are more recent than @file{parse.y} and @file{cexp.y}
+and you do not plan to change the @samp{.y} files.)
 
 Note that if you have an old version of Bison you may get an error
 from the line with the @samp{%expect} directive.  If so, simply remove
@@ -1118,6 +1137,9 @@ the prefix with the names  @file{cpp}, @file{cc1} and @file{gnulib}.
 Thus, you can put the files in a directory @file{/usr/foo/gcc} and
 specify @samp{-B/usr/foo/gcc/} when you run GNU CC.
 
+Also, you can specify an alternative default directory for these files
+by setting the Make variable @code{libdir} when you make GNU CC.
+
 @node VMS Install,, Installation, Installation
 @section Installing GNU CC on VMS
 
@@ -1184,10 +1206,27 @@ Unix.
 Here are some of the things that have caused trouble for people installing
 GNU CC.
 
-@itemize
+@itemize @bullet
 @item
 On certain systems, defining certain environment variables such as
 @samp{CC} can interfere with the functioning of @code{make}.
+
+@item
+Cross compilation can run into trouble for certain machines because
+some target machines' assemblers require floating point numbers to be
+written as @emph{integer} constants in certain contexts.
+
+The compiler writes these integer constants by examining the floating
+point value as an integer and printing that integer, because this is
+simple to write and independent of the details of the floating point
+representation.  But this does not work if the compiler is running on
+a different machine with an incompatible floating point format, or
+even a different byte-ordering.
+
+It is possible to fix this by writing machine-independent code which
+understands the floating point representation of the target machine.
+I am not interested in doing that much work to compensate for bugs
+in assemblers.
 @end itemize
 
 @node Incompatibilities, Extensions, Trouble, Top
@@ -1324,8 +1363,9 @@ struct foo *nextfoo ();
 @end example
 
 @noindent
-(Note that this assumes you are using the GNU preprocessor, so that
-the ANSI antirecursion rules for macro expansions are effective.)
+(Note that this assumes you are using the GNU preprocessor and not
+@samp{-traditional}, so that the ANSI antirecursion rules for macro
+expansions are effective.)
 @end itemize
 
 @node Extensions, Bugs, Incompatibilities, Top
@@ -2220,6 +2260,14 @@ generated for that line.
 If you send me examples of output from GNU CC, please use @samp{-g}
 when you make them.  The debugging information includes source line
 numbers which are essential for correlating the output with the input.
+
+@item
+If you wish to suggest changes to the GNU CC source, send me context
+diffs.  If you even discuss something in the GNU CC source, refer to
+it by context, not by line number.
+
+The line numbers in my development sources don't match those in your
+sources.  They won't tell me anything.
 @end itemize
 
 Here are some things that are not necessary:
@@ -5724,6 +5772,21 @@ If you do not define this macro, the default is the same as
 Define this if instructions will fail to work if given data not
 on the nominal alignment.  If instructions will merely go slower
 in that case, do not define this macro.
+
+@item CHECK_FLOAT_VALUE (@var{mode}, @var{value})
+A C statement to validate the value @var{value} (or type
+@code{double}) for mode @var{mode}.  This means that you check whether
+@var{value} fits within the possible range of values for mode
+@var{mode} on this target machine.  The mode @var{mode} is always
+@code{SFmode} or @code{DFmode}.
+
+If @var{value} is not valid, you should call @code{error} to print an
+error message and then assign some valid value to @var{value}.
+Allowing an invalid value to go through the compiler can produce
+incorrect assembler code which may even cause Unix assemblers to
+crash.
+
+This macro need not be defined if there is no work for it to do.
 @end table
 
 @node Registers, Register Classes, Storage Layout, Machine Macros
@@ -5774,6 +5837,48 @@ This is necessary in case the fixed or call-clobbered registers depend
 on target flags.
 
 You need not define this macro if it has no work to do.
+
+@item OVERLAPPING_REGNO_P (@var{regno})
+If defined, this is a C expression whose value is @var{regno} is
+nonzero if hard register number @var{regno} is an overlapping
+register.  This means a hard register which overlaps a hard register
+with a different number.  (Such overlap is undesirable, but
+occasionally it allows a machine to be supported which otherwise could
+not be.)  This macro must return nonzero for @emph{all} the registers
+which overlap each other.  GNU CC can use an overlapping register only
+in certain limited ways.  It can be used for allocation within a basic
+block, and may be spilled for reloading; that is all.
+
+If this macro is not defined, it means that none of the hard registers
+overlap each other.  This is the usual situation.
+
+@item INSN_CLOBBERS_REGNO_P (@var{insn}, @var{regno})
+If defined, this is a C expression whose value should be nonzero if
+the insn @var{insn} has the effect of mysteriously clobbering the
+contents of hard register number @var{regno}.  By ``mysterious'' we
+mean that the insn's RTL expression doesn't describe such an effect.
+
+If this macro is not defined, it means that no insn clobbers registers
+mysteriously.  This is the usual situation; all else being equal,
+it is best for the RTL expression to show all the activity.
+
+@item PRESERVE_DEATH_INFO_REGNO_P (@var{regno})
+If defined, this is a C expression whose value is nonzero if accurate
+@code{REG_DEAD} notes are needed for hard register number @var{regno}
+at the time of outputting the assembler code.  When this is so, a few
+optimizations that take place after register allocation and could
+invalidate the death notes are not done when this register is
+involved.
+
+You would arrange to preserve death info for a register when some
+of the code in the machine description which is executed to write
+the assembler code looks at the the death notes.  This is
+necessary only when the actual hardware feature which GNU CC
+thinks of as a register is not actually a register of the usual sort.
+(It might, for example, be a hardware stack.)
+
+If this macro is not defined, it means that no death notes need to be
+preserved.  This is the usual situation.
 
 @item HARD_REGNO_REGS (@var{regno}, @var{mode})
 A C expression for the number of consecutive hard registers, starting
@@ -5871,16 +5976,16 @@ the function a frame pointer regardless of what
 them.@refill
 
 In a function that does not require a frame pointer, the frame pointer
-register can be allocated for ordinary usage, provided it is not
-marked as a fixed register.  See @code{FIXED_REGISTERS} for more
-information.
+register can be allocated for ordinary usage, unless you mark it as a
+fixed register.  See @code{FIXED_REGISTERS} for more information.
 
 @item ARG_POINTER_REGNUM
 The register number of the arg pointer register, which is used to
 access the function's argument list.  On some machines, this is the
 same as the frame pointer register.  On some machines, the hardware
 determines which register this is.  On other machines, you can choose
-any register you wish for this purpose.  It must in any case be a
+any register you wish for this purpose.  If this is not the same
+register as the frame pointer register, then you must mark it as a
 fixed register according to @code{FIXED_REGISTERS}.
 
 @item STATIC_CHAIN_REGNUM
@@ -6537,7 +6642,11 @@ and @samp{-funsigned-char}.
 
 @item SCCS_DIRECTIVE
 Define this if the preprocessor should ignore @code{#sccs} directives
-with no error message.
+and print no error message.
+
+@item IDENT_DIRECTIVE
+Define this if the preprocessor should ignore @code{#ident} directives
+and print no error message.
 
 @item MOVE_MAX
 The maximum number of bytes that a single instruction can move quickly
@@ -6619,8 +6728,8 @@ precise value of the constant, which is available for examination in
 obtained with @code{GET_CODE (@var{x})}.
 
 @item DOLLARS_IN_IDENTIFIERS
-Define this if the character @samp{$} should be allowed in identifier
-names.
+Define this to be nonzero if the character @samp{$} should be allowed
+by default in identifier names.
 @end table
 
 @node Condition Code, Assembler Format, Misc, Machine Macros
@@ -6686,12 +6795,17 @@ give to GNU CC into options for GNU CC to pass to the linker.
 
 Do not define this macro if it does not need to do anything.
 
-@item ASM_FILE_START
-A C string constant for text to be output at the start of each
-assembler output file.  Normally this is @code{"#NO_APP"}, which is a
-comment that has no effect on most assemblers but tells the GNU
-assembler that it can save time by not checking for certain assembler
-constructs.
+@item ASM_FILE_START (@var{stream})
+A C expression which outputs to the stdio stream @var{stream}
+some appropriate text to go at the start of an assembler file.
+
+Normally this macro is defined to output a line containing
+@samp{#NO_APP}, which is a comment that has no effect on most
+assemblers but tells the GNU assembler that it can save time by not
+checking for certain assembler constructs.
+
+On systems that use SDB, it is necessary to output certain commands;
+see @file{tm-attasm.h}.
 
 @item ASM_APP_ON
 A C string constant for text to be output before each @code{asm}
@@ -6728,6 +6842,14 @@ registers that the compiler knows about and DBX does not, or vice
 versa.  In such cases, some register may need to have one number in
 the compiler and another for DBX.
 
+@item DBX_DEBUGGING_INFO
+Define this macro if GNU CC should produce debugging output for DBX
+in response to the @samp{-g} option.
+
+@item SDB_DEBUGGING_INFO
+Define this macro if GNU CC should produce debugging output for SDB
+in response to the @samp{-g} option.
+
 @item DBX_NO_XREFS
 Define this macro if DBX on your system does not support the construct
 @samp{xs@var{tagname}}.  On some systems, this construct is used to
@@ -6750,47 +6872,47 @@ a different character instead, define this macro as a character
 constant for the character you want to use.  Do not define this macro
 if backslash is correct for your system.
 
-@item ASM_OUTPUT_LABEL (@var{file}, @var{name})
+@item ASM_OUTPUT_LABEL (@var{stream}, @var{name})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} the assembler definition of a label named @var{name}.  Use
-the expression @code{assemble_name (@var{file}, @var{name})} to output
+@var{stream} the assembler definition of a label named @var{name}.  Use
+the expression @code{assemble_name (@var{stream}, @var{name})} to output
 the name itself; before and after that, output the additional
 assembler syntax for defining the name, and a newline.
 
-@item ASM_DECLARE_FUNCTION_NAME (@var{file}, @var{name})
+@item ASM_DECLARE_FUNCTION_NAME (@var{stream}, @var{name})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} any text necessary for declaring the name of a function
+@var{stream} any text necessary for declaring the name of a function
 which is being defined.  This macro is responsible for outputting
 the label definition (perhaps using @code{ASM_OUTPUT_LABEL}).
 
 If this macro is not defined, then the function name is defined in the
 usual manner as a label (by means of @code{ASM_OUTPUT_LABEL}).
 
-@item ASM_GLOBALIZE_LABEL (@var{file}, @var{name})
+@item ASM_GLOBALIZE_LABEL (@var{stream}, @var{name})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} some commands that will make the label @var{name} global;
+@var{stream} some commands that will make the label @var{name} global;
 that is, available for reference from other files.  Use the expression
-@code{assemble_name (@var{file}, @var{name})} to output the name
+@code{assemble_name (@var{stream}, @var{name})} to output the name
 itself; before and after that, output the additional assembler syntax
 for making that name global, and a newline.
 
-@item ASM_OUTPUT_EXTERNAL (@var{file}, @var{name})
+@item ASM_OUTPUT_EXTERNAL (@var{stream}, @var{name})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} any text necessary for declaring the name of an external
+@var{stream} any text necessary for declaring the name of an external
 symbol which is referenced in this compilation but not defined.
 
 This macro need not be defined if it does not need to output anything.
 The GNU assembler and most Unix assemblers don't require anything.
 
-@item ASM_OUTPUT_LABELREF (@var{file}, @var{name})
-A C statement to output to the stdio stream @var{file} a reference in
+@item ASM_OUTPUT_LABELREF (@var{stream}, @var{name})
+A C statement to output to the stdio stream @var{stream} a reference in
 assembler syntax to a label named @var{name}.  The character @samp{_}
 should be added to the front of the name, if that is customary on your
 operating system, as it is in most Berkeley Unix systems.  This macro
 is used in @code{assemble_name}.
 
-@item ASM_OUTPUT_INTERNAL_LABEL (@var{file}, @var{prefix}, @var{num})
-A C statement to output to the stdio stream @var{file} a label whose
+@item ASM_OUTPUT_INTERNAL_LABEL (@var{stream}, @var{prefix}, @var{num})
+A C statement to output to the stdio stream @var{stream} a label whose
 name is made from the string @var{prefix} and the number @var{num}.
 These labels are used for internal purposes, and there is no reason
 for them to appear in the symbol table of the object file.  On many
@@ -6798,10 +6920,10 @@ systems, the letter @samp{L} at the beginning of a label has this
 effect.  The usual definition of this macro is as follows:
 
 @example
-fprintf (@var{file}, "L%s%d:\n", @var{prefix}, @var{num})
+fprintf (@var{stream}, "L%s%d:\n", @var{prefix}, @var{num})
 @end example
 
-@item ASM_OUTPUT_CASE_LABEL (@var{file}, @var{prefix}, @var{num}, @var{table})
+@item ASM_OUTPUT_CASE_LABEL (@var{stream}, @var{prefix}, @var{num}, @var{table})
 Define this if the label before a jump-table needs to be output
 specially.  The first three arguments are the same as for
 @code{ASM_OUTPUT_INTERNAL_LABEL}; the fourth argument is the
@@ -6813,6 +6935,16 @@ for the table.
 
 If this macro is not defined, these labels are output with
 @code{ASM_OUTPUT_INTERNAL_LABEL}.
+
+@item ASM_OUTPUT_CASE_END (@var{stream}, @var{num}, @var{table})
+Define this if something special must be output at the end of a jump-table.
+The definition should be a C statement to be executed after the assembler
+code for the table is written.  It should write the appropriate code to
+stdio stream @var{stream}.  The argument @var{table} is the jump-table
+insn, and @var{num} is the label-number of the preceding label.
+
+If this macro is not defined, nothing special is output at the end of
+the jump-table.
 
 @item ASM_FORMAT_PRIVATE_NAME (@var{outvar}, @var{name}, @var{number})
 A C expression to assign to @var{outvar} (which is a variable of type
@@ -6832,63 +6964,63 @@ conflict with the user's own symbols.  Most assemblers allow periods
 or percent signs in assembler symbols; putting at least one of these
 between the name and the number will suffice.
 
-@item ASM_OUTPUT_ADDR_DIFF_ELT (@var{file}, @var{value}, @var{rel})
+@item ASM_OUTPUT_ADDR_DIFF_ELT (@var{stream}, @var{value}, @var{rel})
 This macro should be provided on machines where the addresses
 in a dispatch table are relative to the table's own address.
 
 The definition should be a C statement to output to the stdio stream
-@var{file} an assembler pseudo-instruction to generate a difference
+@var{stream} an assembler pseudo-instruction to generate a difference
 between two labels.  @var{value} and @var{rel} are the numbers of two
 internal labels.  The definitions of these labels are output using
 @code{ASM_OUTPUT_INTERNAL_LABEL}, and they must be printed in the same
 way here.  For example,
 
 @example
-fprintf (@var{file}, "\t.word L%d-L%d\n",
+fprintf (@var{stream}, "\t.word L%d-L%d\n",
          @var{value}, @var{rel})
 @end example
 
-@item ASM_OUTPUT_ADDR_VEC_ELT (@var{file}, @var{value})
+@item ASM_OUTPUT_ADDR_VEC_ELT (@var{stream}, @var{value})
 This macro should be provided on machines where the addresses
 in a dispatch table are absolute.
 
 The definition should be a C statement to output to the stdio stream
-@var{file} an assembler pseudo-instruction to generate a reference to
+@var{stream} an assembler pseudo-instruction to generate a reference to
 a label.  @var{value} is the number of an internal label whose
 definition is output using @code{ASM_OUTPUT_INTERNAL_LABEL}.
 For example,
 
 @example
-fprintf (@var{file}, "\t.word L%d\n", @var{value})
+fprintf (@var{stream}, "\t.word L%d\n", @var{value})
 @end example
 
-@item ASM_OUTPUT_DOUBLE (@var{file}, @var{value})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_DOUBLE (@var{stream}, @var{value})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a @code{double} constant whose value is
 @var{value}.  @var{value} will be a C expression of type
 @code{double}.
 
-@item ASM_OUTPUT_FLOAT (@var{file}, @var{value})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_FLOAT (@var{stream}, @var{value})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a @code{float} constant whose value is
 @var{value}.  @var{value} will be a C expression of type @code{float}.
 
-@item ASM_OUTPUT_INT (@var{file}, @var{exp})
-@itemx ASM_OUTPUT_SHORT (@var{file}, @var{exp})
-@itemx ASM_OUTPUT_CHAR (@var{file}, @var{exp})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_INT (@var{stream}, @var{exp})
+@itemx ASM_OUTPUT_SHORT (@var{stream}, @var{exp})
+@itemx ASM_OUTPUT_CHAR (@var{stream}, @var{exp})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a @code{int}, @code{short} or @code{char}
 constant whose value is @var{value}.  The argument @var{exp} will be
 an RTL expression which represents a constant value.  Use
 @samp{output_addr_const (@var{exp})} to output this value as an
 assembler expression.@refill
 
-@item ASM_OUTPUT_BYTE (@var{file}, @var{value})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_BYTE (@var{stream}, @var{value})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a single byte containing the number @var{value}.
 
-@item ASM_OUTPUT_ASCII (@var{file}, @var{ptr}, @var{len})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_ASCII (@var{stream}, @var{ptr}, @var{len})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a string constant containing the @var{len}
 bytes at @var{ptr}.  @var{ptr} will be a C expression of type
 @code{char *} and @var{len} a C expression of type @code{int}.
@@ -6897,37 +7029,45 @@ If the assembler has a @code{.ascii} pseudo-op as found in the
 Berkeley Unix assembler, do not define the macro
 @code{ASM_OUTPUT_ASCII}.
 
-@item ASM_OUTPUT_SKIP (@var{file}, @var{nbytes})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_SKIP (@var{stream}, @var{nbytes})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to advance the location counter by @var{nbytes} bytes.
 @var{nbytes} will be a C expression of type @code{int}.
 
-@item ASM_OUTPUT_ALIGN (@var{file}, @var{power})
-A C statement to output to the stdio stream @var{file} an assembler
+@item ASM_OUTPUT_ALIGN (@var{stream}, @var{power})
+A C statement to output to the stdio stream @var{stream} an assembler
 instruction to advance the location counter to a multiple of 2 to the
 @var{power} bytes.  @var{power} will be a C expression of type @code{int}.
 
-@item ASM_OUTPUT_COMMON (@var{file}, @var{name}, @var{size})
+@item ASM_OUTPUT_COMMON (@var{stream}, @var{name}, @var{size})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} the assembler definition of a common-label named @var{name}
+@var{stream} the assembler definition of a common-label named @var{name}
 whose size is @var{size} bytes.  Use the expression
-@code{assemble_name (@var{file}, @var{name})} to output the name
+@code{assemble_name (@var{stream}, @var{name})} to output the name
 itself; before and after that, output the additional assembler syntax
 for defining the name, and a newline.
 
 This macro controls how the assembler definitions of uninitialized
 global variables are output.
 
-@item ASM_OUTPUT_LOCAL (@var{file}, @var{name}, @var{size})
+@item ASM_OUTPUT_LOCAL (@var{stream}, @var{name}, @var{size})
 A C statement (sans semicolon) to output to the stdio stream
-@var{file} the assembler definition of a local-common-label named
+@var{stream} the assembler definition of a local-common-label named
 @var{name} whose size is @var{size} bytes.  Use the expression
-@code{assemble_name (@var{file}, @var{name})} to output the name
+@code{assemble_name (@var{stream}, @var{name})} to output the name
 itself; before and after that, output the additional assembler syntax
 for defining the name, and a newline.
 
 This macro controls how the assembler definitions of uninitialized
 static variables are output.
+
+@item ASM_OUTPUT_SOURCE_LINE (@var{stream}, @var{line})
+A C statment to output DBX or SDB debugging information before code
+for line number @var{line} of the current source file to the
+stdio stream @var{stream}.
+
+This macro need not be defined if the standard form of debugging
+information for the debugger in use is appropriate.
 
 @item TARGET_BELL
 A C constant expression for the integer value for escape sequence
@@ -6945,16 +7085,16 @@ C constant expressions for the integer values for escape sequences
 C constant expressions for the integer values for escape sequences
 @samp{\v}, @samp{\f} and @samp{\r}.
 
-@item ASM_OUTPUT_OPCODE (@var{file}, @var{ptr})
+@item ASM_OUTPUT_OPCODE (@var{stream}, @var{ptr})
 Define this macro if you are using an unusual assembler that
 requires different names for the machine instructions.
 
 The definition is a C statement or statements which output an
-assembler instruction opcode to the stdio stream @var{file}.  The
+assembler instruction opcode to the stdio stream @var{stream}.  The
 macro-operand @var{ptr} is a variable of type @code{char *} which
 points to the opcode name in its ``internal'' form---the form that is
 written in the machine description.  The definition should output the
-opcode name to @var{file}, performing any translation you desire, and
+opcode name to @var{stream}, performing any translation you desire, and
 increment the variable @var{ptr} to point at the end of the opcode
 so that it will not be output twice.
 
@@ -6967,8 +7107,29 @@ care of the substitution yourself.  Just be sure to increment
 If the macro definition does nothing, the instruction is output
 in the usual way.
 
-@item PRINT_OPERAND (@var{file}, @var{x}, @var{code})
-A C compound statement to output to stdio stream @var{file} the
+@item FINAL_PRESCAN_INSN (@var{insn}, @var{opvec}, @var{noperands})
+If defined, a C statement to be executed just prior to the output of
+assembler code for @var{insn}, to modify the extracted operands so
+they will be output differently.
+
+Here the argument @var{opvec} is the vector containing the operands
+extracted from @var{insn}, and @var{noperands} is the number of
+elements of the vector which contain meaningful data for this insn.
+The contents of this vector are what will be used to convert the insn
+template into assembler code, so you can change the assembler output
+by changing the contents of the vector.
+
+This macro is useful when various assembler syntaxes share a single
+file of instruction patterns; by defining this macro differently, you
+can cause a large class of instructions to be output differently (such
+as with rearranged operands).  Naturally, variations in assembler
+syntax affecting individual insn patterns ought to be handled by
+writing conditional output routines in those patterns.
+
+If this macro is not defined, it is equivalent to a null statement.
+
+@item PRINT_OPERAND (@var{stream}, @var{x}, @var{code})
+A C compound statement to output to stdio stream @var{stream} the
 assembler syntax for an instruction operand @var{x}.  @var{x} is an
 RTL expression.
 
@@ -6990,8 +7151,8 @@ When the machine description has a specification @samp{%@var{punct}}
 with a null pointer for @var{x} and the punctuation character for
 @var{code}.
 
-@item PRINT_OPERAND_ADDRESS (@var{file}, @var{x})
-A C compound statement to output to stdio stream @var{file} the
+@item PRINT_OPERAND_ADDRESS (@var{stream}, @var{x})
+A C compound statement to output to stdio stream @var{stream} the
 assembler syntax for an instruction operand that is a memory reference
 whose address is @var{x}.  @var{x} is an RTL expression.
 

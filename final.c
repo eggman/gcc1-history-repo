@@ -52,9 +52,10 @@ and this notice must be preserved on all copies.  */
 #include "recog.h"
 #include "conditions.h"
 #include "gdbfiles.h"
+#include "flags.h"
 
 /* Get N_SLINE and N_SOL from stab.h if we can expect the file to exist.  */
-#ifndef NO_DBX_FORMAT
+#ifdef DBX_DEBUGGING_INFO
 #include <stab.h>
 #endif
 
@@ -79,6 +80,16 @@ void output_address ();
 void output_addr_const ();
 static void output_source_line ();
 
+/* the sdb debugger needs the line given as an offset from the beginning
+   of the current function -wfs*/
+
+extern int sdb_begin_function_line;
+
+/* Line number of last NOTE.  */
+static int last_linenum;
+
+/* Indexed by hard register, the name of the register for assembler code.  */
+
 static char *reg_name[] = REGISTER_NAMES;
 
 /* File in which assembler code is being written.  */
@@ -92,9 +103,14 @@ extern FILE *asm_out_file;
    Final uses these sequence numbers to generate assembler label names
    LBBnnn and LBEnnn for the beginning and end of the symbol-block.
    Dbxout uses the sequence nunbers to generate references to the same labels
-   from the dbx debugging information.  */
+   from the dbx debugging information.
 
-static next_block_index;
+   Sdb records this level at the beginning
+   of each function, so that when it recurses down the declarations, it may
+   find the current level, since it outputs the block beginning and endings
+   at the point in the asm file, where the blocks would begin and end.  */
+
+int next_block_index;
 
 /* Chain of all `struct gdbfile's.  */
 
@@ -211,7 +227,7 @@ app_disable ()
 
    FIRST is the first insn of the rtl for the function being compiled.
    FILE is the file to write assembler code to.
-   WRITE_SYMBOLS is 1 for gdb symbols, 2 for dbx symbols.
+   WRITE_SYMBOLS says which kind of debugging info to write (or none).
    OPTIMIZE is nonzero if we should eliminate redundant
      test and compare insns.  */
 
@@ -219,7 +235,7 @@ void
 final_start_function (first, file, write_symbols, optimize)
      rtx first;
      FILE *file;
-     int write_symbols;
+     enum debugger write_symbols;
      int optimize;
 {
   extern int profile_flag;
@@ -230,7 +246,7 @@ final_start_function (first, file, write_symbols, optimize)
 
   /* Record beginning of the symbol-block that's the entire function.  */
 
-  if (write_symbols == 1)
+  if (write_symbols == GDB_DEBUG)
     {
       pending_blocks[block_depth++] = next_block_index;
       fprintf (file, "\t.gdbbeg %d\n", next_block_index++);
@@ -248,8 +264,14 @@ final_start_function (first, file, write_symbols, optimize)
   FUNCTION_PROLOGUE (file, get_frame_size ());
 #endif
 
+#ifdef SDB_DEBUGGING_INFO
+  next_block_index = 1;
+  if (write_symbols == SDB_DEBUG)
+    sdbout_begin_function (last_linenum);
+#endif
+
   if (profile_flag)
-    { 
+    {
       int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
       fprintf (file, "\t%s\n", DATA_SECTION_ASM_OP);
       ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
@@ -271,7 +293,7 @@ void
 final_end_function (first, file, write_symbols, optimize)
      rtx first;
      FILE *file;
-     int write_symbols;
+     enum debugger write_symbols;
      int optimize;
 {
   if (app_on)
@@ -280,8 +302,13 @@ final_end_function (first, file, write_symbols, optimize)
       app_on = 0;
     }
 
-  if (write_symbols == 1)
+  if (write_symbols == GDB_DEBUG)
     fprintf (file, "\t.gdbend %d\n", pending_blocks[0]);
+
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    sdbout_end_function (last_linenum);
+#endif
 
 #ifdef FUNCTION_EPILOGUE
   /* Finally, output the function epilogue:
@@ -300,7 +327,7 @@ void
 final (first, file, write_symbols, optimize)
      rtx first;
      FILE *file;
-     int write_symbols;
+     enum debugger write_symbols;
      int optimize;
 {
   register rtx insn;
@@ -311,7 +338,7 @@ final (first, file, write_symbols, optimize)
       switch (GET_CODE (insn))
 	{
 	case NOTE:
-	  if (! write_symbols)
+	  if (write_symbols == NO_DEBUG)
 	    break;
 	  if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_FUNCTION_BEG)
 	    abort ();		/* Obsolete; shouldn't appear */
@@ -342,10 +369,17 @@ final (first, file, write_symbols, optimize)
 
 	      /* Output debugging info about the symbol-block beginning.  */
 
-	      if (write_symbols == 2)
+#ifdef SDB_DEBUGGING_INFO
+	      if (write_symbols == SDB_DEBUG)
+		sdbout_begin_block (file, last_linenum, next_block_index);
+#endif
+#ifdef DBX_DEBUGGING_INFO
+	      if (write_symbols == DBX_DEBUG)
 		ASM_OUTPUT_INTERNAL_LABEL (file, "LBB", next_block_index);
-	      else
+#endif
+	      if (write_symbols == GDB_DEBUG)
 		fprintf (file, "\t.gdbbeg %d\n", next_block_index);
+
 	      next_block_index++;
 	    }
 	  else if (NOTE_LINE_NUMBER (insn) == NOTE_INSN_BLOCK_END)
@@ -353,14 +387,21 @@ final (first, file, write_symbols, optimize)
 	      /* End of a symbol-block.  Pop its sequence number off
 		 PENDING_BLOCKS and output debugging info based on that.  */
 
-	      if (write_symbols == 2)
-		{
-		  if (block_depth > 0)
-		    ASM_OUTPUT_INTERNAL_LABEL (file, "LBE",
-					       pending_blocks[--block_depth]);
-		}
-	      else
-		fprintf (file, "\t.gdbend %d\n", pending_blocks[--block_depth]);
+	      --block_depth;
+
+#ifdef DBX_DEBUGGING_INFO
+	      if (write_symbols == DBX_DEBUG && block_depth >= 0)
+		ASM_OUTPUT_INTERNAL_LABEL (file, "LBE",
+					   pending_blocks[block_depth]);
+#endif
+
+#ifdef SDB_DEBUGGING_INFO
+	      if (write_symbols == SDB_DEBUG && block_depth >= 0)
+		sdbout_end_block (file, last_linenum);
+#endif
+
+	      if (write_symbols == GDB_DEBUG)
+		fprintf (file, "\t.gdbend %d\n", pending_blocks[block_depth]);
 	    }
 	  else if (NOTE_LINE_NUMBER (insn) > 0)
 	    /* This note is a line-number.  */
@@ -407,7 +448,7 @@ final (first, file, write_symbols, optimize)
 
 	    /* An INSN, JUMP_INSN or CALL_INSN.
 	       First check for special kinds that recog doesn't recognize.  */
-	       
+
 	    if (GET_CODE (body) == USE /* These are just declarations */
 		|| GET_CODE (body) == CLOBBER)
 	      break;
@@ -463,8 +504,13 @@ final (first, file, write_symbols, optimize)
 		register int vlen, idx;
 		vlen = XVECLEN (body, 0);
 		for (idx = 0; idx < vlen; idx++)
-		  ASM_OUTPUT_ADDR_VEC_ELT (file, 
+		  ASM_OUTPUT_ADDR_VEC_ELT (file,
 			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 0, idx), 0)));
+#ifdef ASM_OUTPUT_CASE_END
+		ASM_OUTPUT_CASE_END (file,
+				     CODE_LABEL_NUMBER (PREV_INSN (insn)),
+				     insn);
+#endif
 		break;
 	      }
 	    if (GET_CODE (body) == ADDR_DIFF_VEC)
@@ -473,9 +519,12 @@ final (first, file, write_symbols, optimize)
 		register int vlen, idx;
 		vlen = XVECLEN (body, 1);
 		for (idx = 0; idx < vlen; idx++)
-		  ASM_OUTPUT_ADDR_DIFF_ELT (file, 
+		  ASM_OUTPUT_ADDR_DIFF_ELT (file,
 			   CODE_LABEL_NUMBER (XEXP (XVECEXP (body, 1, idx), 0)),
 			   CODE_LABEL_NUMBER (XEXP (XEXP (body, 0), 0)));
+#ifdef ASM_OUTPUT_CASE_END
+		ASM_OUTPUT_CASE_END (file, CODE_LABEL_NUMBER (PREV_INSN (insn)));
+#endif
 		break;
 	      }
 
@@ -492,8 +541,8 @@ final (first, file, write_symbols, optimize)
 		&& SET_DEST (body) == SET_SRC (body)
 		&& GET_CODE (SET_DEST (body)) == REG)
 	      break;
-	       
-	    /* Check for redundant test and compare instructions 
+
+	    /* Check for redundant test and compare instructions
 	       (when the condition codes are already set up as desired).
 	       This is done only when optimizing; if not optimizing,
 	       it should be possible for the user to alter a variable
@@ -595,6 +644,14 @@ final (first, file, write_symbols, optimize)
 	      abort ();
 #endif
 
+	    /* Some target machines need to prescan each insn before
+	       it is output.  */
+
+#ifdef FINAL_PRESCAN_INSN
+	    FINAL_PRESCAN_INSN (insn, recog_operand,
+				insn_n_operands[insn_code_number]);
+#endif
+
 	    cc_prev_status = cc_status;
 
 	    /* Update `cc_status' for this instruction.
@@ -652,10 +709,13 @@ static void
 output_source_line (file, insn, write_symbols)
      FILE *file;
      rtx insn;
-     int write_symbols;
+     enum debugger write_symbols;
 {
   register char *filename = NOTE_SOURCE_FILE (insn);
-  if (write_symbols == 1)
+
+  last_linenum = NOTE_LINE_NUMBER (insn);
+
+  if (write_symbols == GDB_DEBUG)
     {
       /* Output GDB-format line number info.  */
 
@@ -669,18 +729,32 @@ output_source_line (file, insn, write_symbols)
       fprintf (file, "\t.gdbline %d,%d\n",
 	       current_gdbfile->filenum, NOTE_LINE_NUMBER (insn));
     }
-  else
+
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    {
+#ifdef ASM_OUTPUT_SOURCE_LINE
+      ASM_OUTPUT_SOURCE_LINE (file, last_linenum);
+#else
+      fprintf (file, "\t.ln\t%d\n", last_linenum - sdb_begin_function_line);
+#endif
+#endif
+
+#ifdef DBX_DEBUGGING_INFO
+  if (write_symbols == DBX_DEBUG)
     {
       /* Write DBX line number data.  */
 
       if (filename && (lastfile == 0 || strcmp (filename, lastfile)))
+	{
 #ifdef ASM_OUTPUT_SOURCE_FILENAME
-	ASM_OUTPUT_SOURCE_FILENAME (file, filename);
+	  ASM_OUTPUT_SOURCE_FILENAME (file, filename);
 #else
-      fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
-	       filename, N_SOL);
+	  fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
+		   filename, N_SOL);
 #endif
-      lastfile = filename;
+	  lastfile = filename;
+	}
 
 #ifdef ASM_OUTPUT_SOURCE_LINE
       ASM_OUTPUT_SOURCE_LINE (file, NOTE_LINE_NUMBER (insn));
@@ -688,6 +762,7 @@ output_source_line (file, insn, write_symbols)
       fprintf (file, "\t.stabd %d,0,%d\n",
 	       N_SLINE, NOTE_LINE_NUMBER (insn));
 #endif
+#endif /* DBX_DEBUGGING_INFO */
     }
 }
 
@@ -1078,9 +1153,19 @@ output_addr_const (file, x)
       goto restart;
 
     case PLUS:
-      output_addr_const (file, XEXP (x, 0));
-      fprintf (file, "+");
-      output_addr_const (file, XEXP (x, 1));
+      /* Some assemblers need integer constants to appear last (eg masm).  */
+      if (GET_CODE (XEXP (x, 0)) == CONST_INT)
+	{
+	  output_addr_const (file, XEXP (x, 1));
+	  fprintf (file, "+");
+	  output_addr_const (file, XEXP (x, 0));
+	}
+      else
+	{
+	  output_addr_const (file, XEXP (x, 0));
+	  fprintf (file, "+");
+	  output_addr_const (file, XEXP (x, 1));
+	}
       break;
 
     case MINUS:

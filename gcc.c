@@ -72,8 +72,9 @@ or with constant text in a single argument.
         This allows config.h to specify part of the spec for running as.
  %l     process LINK_SPEC as a spec.
  %L     process LIB_SPEC as a spec.
- %S     process STARTFILE_SPEC as a spec.  Here S is literal.
+ %S     process STARTFILE_SPEC as a spec.  A capital S is actually used here.
  %c	process SIGNED_CHAR_SPEC as a spec.
+ %C     process CPP_SPEC as a spec.  A capital C is actually used here.
  %{S}   substitutes the -S switch, if that switch was given to CC.
 	If that switch was not specified, this substitutes nothing.
 	Here S is a metasyntactic variable.
@@ -153,6 +154,12 @@ char *find_file ();
 #define ASM_SPEC ""
 #endif
 
+/* config.h can define CPP_SPEC to provide extra args to the assembler
+   or extra switch-translations.  */
+#ifndef CPP_SPEC
+#define CPP_SPEC ""
+#endif
+
 /* config.h can define LINK_SPEC to provide extra args to the linker
    or extra switch-translations.  */
 #ifndef LINK_SPEC
@@ -193,13 +200,13 @@ struct compiler compilers[] =
 {
   {".c",
    "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
-        -undef -D__GNU__ -D__GNUC__ %{ansi:-T -D__STRICT_ANSI__} %{!ansi:%p}\
-        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{Wcomment} %{Wall}\
+        -undef -D__GNU__ -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p}\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
+	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
     %{!M*:%{!E:cc1 %g.cpp %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
-		   %{W*} %{w} %{pedantic} %{ansi}\
-		   %{O:-opt}%{!O:-noreg}\
-		   %{v:-version} %{g:-G}%{gg:-symout %g.sym} %{pg:-p} %{p}\
+		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
                       %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
@@ -327,7 +334,11 @@ char *user_exec_prefix = 0;
 
 /* Default prefixes to attach to command names.  */
 
-char *standard_exec_prefix = "/usr/local/lib/gcc-";
+#ifndef STANDARD_EXEC_PREFIX
+#define STANDARD_EXEC_PREFIX "/usr/local/lib/gcc-"
+#endif /* !defined STANDARD_EXEC_PREFIX */
+
+char *standard_exec_prefix = STANDARD_EXEC_PREFIX;
 char *standard_exec_prefix_1 = "/usr/lib/gcc-";
 
 char *standard_startfile_prefix = "/lib/";
@@ -767,6 +778,10 @@ do_spec_1 (spec, inswitch)
 	    do_spec_1 (SIGNED_CHAR_SPEC, 0);
 	    break;
 
+	  case 'C':
+	    do_spec_1 (CPP_SPEC, 0);
+	    break;
+
 	  case 'l':
 	    do_spec_1 (LINK_SPEC, 0);
 	    break;
@@ -1023,8 +1038,10 @@ main (argc, argv)
 
   if (signal (SIGINT, SIG_IGN) != SIG_IGN)
     signal (SIGINT, fatal_error);
-  signal (SIGHUP, fatal_error);
-  signal (SIGTERM, fatal_error);
+  if (signal (SIGHUP, SIG_IGN) != SIG_IGN)
+    signal (SIGHUP, fatal_error);
+  if (signal (SIGTERM, SIG_IGN) != SIG_IGN)
+    signal (SIGTERM, fatal_error);
 
   argbuf_length = 10;
   argbuf = (char **) xmalloc (argbuf_length * sizeof (char *));
@@ -1138,7 +1155,7 @@ fatal (msg, arg1, arg2)
      char *msg, *arg1, *arg2;
 {
   error (msg, arg1, arg2);
-  delete_temp_files ();
+  delete_temp_files (0);
   exit (1);
 }
 

@@ -135,6 +135,7 @@ static FILE *loop_dump_stream;
 
 static rtx verify_loop ();
 static int invariant_p ();
+static int consec_sets_invariant_p ();
 static int can_jump_into_range_p ();
 static void count_loop_regs_set ();
 static void note_addr_stored ();
@@ -210,10 +211,18 @@ loop_optimize (f, nregs, dumpfile)
 
   for (insn = last_insn; insn; insn = PREV_INSN (insn))
     if (GET_CODE (insn) == NOTE
-	&& NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_BEG
+	&& NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_BEG)
+      {
 	/* Make sure it really is a loop -- no jumps in from outside.  */
-	&& (end = verify_loop (f, insn)))
-      scan_loop (insn, end, nregs);
+	end = verify_loop (f, insn);
+	if (end != 0)
+	  /* If so, optimize this loop.  */
+	  scan_loop (insn, end, nregs);
+	else if (loop_dump_stream)
+	  fprintf (loop_dump_stream,
+		   "\nLoop at %d ignored due to multiple entry points.\n",
+		   INSN_UID (insn));
+      }
 }
 
 /* Optimize one loop whose start is LOOP_START and end is END.
@@ -385,6 +394,7 @@ scan_loop (loop_start, end, nregs)
 	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
 	  && ! may_not_move[REGNO (SET_DEST (PATTERN (p)))])
 	{
+	  int tem1 = 0;
 	  /* If this register is used or set outside the loop,
 	     then we can move it only if we know this insn is
 	     executed exactly once per iteration,
@@ -398,8 +408,10 @@ scan_loop (loop_start, end, nregs)
 	    ;
 	  else if ((tem = invariant_p (SET_SRC (PATTERN (p)), n_times_set))
 		   && (n_times_set[REGNO (SET_DEST (PATTERN (p)))] == 1
-		       || consec_sets_invariant_p (SET_DEST (PATTERN (p)),
-						   p, n_times_set))
+		       || (tem1
+			   = consec_sets_invariant_p (SET_DEST (PATTERN (p)),
+						      n_times_set[REGNO (SET_DEST (PATTERN (p)))],
+						      p, n_times_set)))
 		   /* If the insn can cause a trap (such as divide by zero),
 		      can't move it unless it's guaranteed to be executed
 		      once loop is entered.  Even a function call might
@@ -420,7 +432,9 @@ scan_loop (loop_start, end, nregs)
 	      m->forces = 0;
 	      m->partial = 0;
 	      m->regno = regno;
-	      m->cond = (tem > 1);
+	      /* Set M->cond if either invariant_p or consec_sets_invariant_p
+		 returned 2 (only conditionally invariant).  */
+	      m->cond = ((tem | tem1) > 1);
 	      m->global = (uid_luid[regno_last_uid[regno]] > INSN_LUID (end)
 			   || uid_luid[regno_first_uid[regno]] < INSN_LUID (loop_start));
 	      m->match = 0;
@@ -656,7 +670,11 @@ move_movables (movables, n_times_set, n_times_used, threshold,
 
       if (!m->done
 	  && (! m->cond
-	      || 1 == invariant_p (SET_SRC (PATTERN (m->insn)), n_times_set))
+	      || (1 == invariant_p (SET_SRC (PATTERN (m->insn)), n_times_set)
+		  && (m->consec == 0
+		      || 1 == consec_sets_invariant_p (SET_DEST (PATTERN (m->insn)),
+						       m->consec + 1,
+						       m->insn, n_times_set))))
 	  && (! m->forces || m->forces->done))
 	{
 	  register int regno;
@@ -872,6 +890,7 @@ replace_regs (x, reg_map)
   return x;
 }
 
+#if 0
 /* P is an instruction that sets a register to the result of a ZERO_EXTEND.
    Replace it with an instruction to load just the low bytes
    if the machine supports such an instruction,
@@ -909,6 +928,7 @@ constant_high_bytes (p, loop_start)
       PATTERN (p) = new;
     }
 }
+#endif
 
 /* Verify that the ostensible loop starting at START
    really is a loop: nothing jumps into it from outside.
@@ -1223,24 +1243,28 @@ addr_overlap_p (other, base, size)
   return refers_to_mem_p (other, base, start, end);
 }
 
-/* Return 1 if all the insns in the loop that set REG
+/* Return nonzero if all the insns in the loop that set REG
    are INSN and the immediately following insns,
    and if each of those insns sets REG in an invariant way
    according to TABLE (not counting uses of REG in them).
+
+   The value is 2 if some of these insns are only conditionally invariant.
 
    We assume that INSN itself is the first set of REG
    and that its source is invariant.  */
 
 static int
-consec_sets_invariant_p (reg, insn, table)
+consec_sets_invariant_p (reg, n_sets, insn, table)
+     int n_sets;
      rtx reg, insn;
      short *table;
 {
   register rtx p = insn;
   register int regno = REGNO (reg);
   /* Number of sets we have to insist on finding after INSN.  */
-  int count = table[regno] - 1;
+  int count = n_sets - 1;
   int old = table[regno];
+  int tem = 0;
 
   table[regno] = 0;
 
@@ -1252,7 +1276,7 @@ consec_sets_invariant_p (reg, insn, table)
       if (code == INSN && GET_CODE (PATTERN (p)) == SET
 	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
 	  && REGNO (SET_DEST (PATTERN (p))) == regno
-	  && invariant_p (SET_SRC (PATTERN (p)), table))
+	  && (tem |= invariant_p (SET_SRC (PATTERN (p)), table)))
 	count--;
       else if (code != NOTE)
 	{
@@ -1262,7 +1286,8 @@ consec_sets_invariant_p (reg, insn, table)
     }
 
   table[regno] = old;
-  return 1;
+  /* If invariant_p ever returned 2, we return 2.  */
+  return 1 + (tem & 2);
 }
 
 #if 0
@@ -1478,6 +1503,13 @@ may_trap_p (x)
       /* Memory ref can trap unless it's a static var or a stack slot.  */
     case MEM:
       return rtx_varies_p (XEXP (x, 0));
+
+    case SET:
+      /* Any floating arithmetic may trap.  */
+      if (GET_MODE_CLASS (GET_MODE (SET_DEST (x))) == MODE_FLOAT
+	  && GET_CODE (SET_SRC (x)) != REG
+	  && GET_CODE (SET_SRC (x)) != MEM)
+	return 1;
     }
 
   fmt = GET_RTX_FORMAT (code);

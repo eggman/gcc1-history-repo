@@ -1,3 +1,5 @@
+#define USG
+
 #include "config-m68k.h"
 
 #define bcopy(a,b,c) memcpy (b,a,c)

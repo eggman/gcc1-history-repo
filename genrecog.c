@@ -901,8 +901,8 @@ change_state (oldpos, newpos)
 	printf ("  x%d = recog_addr_dummy;\n  XEXP (x%d, 0) = x%d;\n",
 		depth + 1, depth + 1, depth);
       else if (newpos[depth] >= 'a' && newpos[depth] <= 'z')
-	printf ("  x%d = XVECEXP (x%d, 0, %c);\n",
-		depth + 1, depth, '0' + newpos[depth] - 'a');
+	printf ("  x%d = XVECEXP (x%d, 0, %d);\n",
+		depth + 1, depth, newpos[depth] - 'a');
       else
 	printf ("  x%d = XEXP (x%d, %c);\n",
 		depth + 1, depth, newpos[depth]);

@@ -337,7 +337,10 @@ store_fixed_bit_field (op0, offset, bitsize, bitpos, value)
     subtarget = expand_bit_and (mode, op0,
 				gen_rtx (CONST_INT, VOIDmode, 
 					 (~ (((1 << bitsize) - 1) << bitpos))
-					  & ((1 << GET_MODE_BITSIZE (mode)) - 1)),
+					 & ((GET_MODE_BITSIZE (mode)
+					     == HOST_BITS_PER_INT)
+					    ? -1
+					    : ((1 << GET_MODE_BITSIZE (mode)) - 1))),
 				subtarget);
 
   /* Now logical-or VALUE into OP0, unless it is zero.  */
@@ -537,8 +540,27 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	{
 	  /* Get ref to first byte containing part of the field.  */
 	  if (GET_CODE (op0) == MEM)
-	    op0 = change_address (op0, QImode,
-				  plus_constant (XEXP (op0, 0), offset));
+	    {
+	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extzv][1])
+		     (op0, GET_MODE (op0))))
+		{
+		  /* If memory isn't acceptable for this operand,
+		     copy it to a register.  */
+		  unit = BITS_PER_WORD;
+		  offset = bitnum / unit;
+		  bitpos = bitnum % unit;
+		  op0 = change_address (op0, SImode,
+					plus_constant (XEXP (op0, 0), offset));
+		  op0 = force_reg (GET_MODE (op0), op0);
+#ifdef BITS_BIG_ENDIAN
+		  if (unit > GET_MODE_BITSIZE (GET_MODE (op0)))
+		    bitpos += unit - GET_MODE_BITSIZE (GET_MODE (op0));
+#endif
+		}
+	      else
+		op0 = change_address (op0, QImode,
+				      plus_constant (XEXP (op0, 0), offset));
+	    }
 
 	  /* If op0 is a register, we need it in SImode
 	     to make it acceptable to the format of extv.  */
@@ -588,8 +610,28 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	{
 	  /* Get ref to first byte containing part of the field.  */
 	  if (GET_CODE (op0) == MEM)
-	    op0 = change_address (op0, QImode,
-				  plus_constant (XEXP (op0, 0), offset));
+	    {
+	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extzv][1])
+		     (op0, GET_MODE (op0))))
+		{
+		  /* If memory isn't acceptable for this operand,
+		     copy it to a register.  */
+		  unit = BITS_PER_WORD;
+		  offset = bitnum / unit;
+		  bitpos = bitnum % unit;
+		  op0 = change_address (op0, SImode,
+					plus_constant (XEXP (op0, 0), offset));
+		  op0 = force_reg (GET_MODE (op0), op0);
+#ifdef BITS_BIG_ENDIAN
+		  if (unit > GET_MODE_BITSIZE (GET_MODE (op0)))
+		    bitpos += unit - GET_MODE_BITSIZE (GET_MODE (op0));
+#endif
+		}
+	      else
+		op0 = change_address (op0, QImode,
+				      plus_constant (XEXP (op0, 0), offset));
+	    }
+
 
 	  /* If op0 is a register, we need it in QImode
 	     to make it acceptable to the format of extv.  */

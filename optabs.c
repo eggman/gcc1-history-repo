@@ -95,7 +95,6 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
      enum optab_methods methods;
 {
   register rtx temp;
-  int target_is_not_an_operand = 0;
   rtx last = get_last_insn ();
 
   op0 = protect_from_queue (op0, 0);
@@ -103,10 +102,12 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
   if (target)
     target = protect_from_queue (target, 1);
 
+#if 0
   /* We may get better code by generating the result in a register
      when the target is not one of the operands.  */
   if (target && ! rtx_equal_p (target, op1) && ! rtx_equal_p (target, op0))
     target_is_not_an_operand = 1;
+#endif
 
   if (flag_force_mem)
     {
@@ -1157,7 +1158,7 @@ expand_fix (to, from, unsignedp)
 				  unsignedp ? "_fixunsdfsi"
 				  : "_fixdfsi"),
 			 SImode, 1, from, DFmode);
-      target = copy_to_reg (hard_libcall_value (SImode));
+      target = hard_libcall_value (SImode);
     }
   else
     {
@@ -1165,7 +1166,7 @@ expand_fix (to, from, unsignedp)
 				  unsignedp ? "_fixunsdfdi"
 				  : "_fixdfdi"),
 			 DImode, 1, from, DFmode);
-      target = copy_to_reg (hard_libcall_value (DImode));
+      target = hard_libcall_value (DImode);
     }
 
   if (GET_MODE (to) == DImode)

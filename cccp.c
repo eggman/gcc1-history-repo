@@ -175,6 +175,10 @@ struct hashnode *lookup ();
 char *xmalloc (), *xrealloc (), *xcalloc ();
 void fatal (), pfatal_with_name (), perror_with_name ();
 
+void conditional_skip ();
+void skip_if_group ();
+void output_line_command ();
+
 int grow_outbuf ();
 int handle_directive ();
 void memory_full ();
@@ -233,6 +237,10 @@ int pedantic;
 /* Nonzero means warn if slash-star appears in a comment.  */
 
 int warn_comments;
+
+/* Nonzero means warn if there are any trigraphs.  */
+
+int warn_trigraphs;
 
 /* Nonzero means try to imitate old fashioned non-ANSI preprocessor.  */
 
@@ -399,6 +407,7 @@ enum node_type {
  T_ERROR,	/* `#error' */
  T_ENDIF,	/* `#endif' */
  T_SCCS,	/* `#sccs', used on system V.  */
+ T_IDENT,	/* `#ident', used on system V.  */
  T_SPECLINE,	/* special symbol `__LINE__' */
  T_DATE,	/* `__DATE__' */
  T_FILE,	/* `__FILE__' */
@@ -472,6 +481,9 @@ struct directive directive_table[] = {
 #ifdef SCCS_DIRECTIVE
   {  4, do_sccs, "sccs", T_SCCS},
 #endif
+#ifdef IDENT_DIRECTIVE
+  {  4, do_ident, "ident", T_IDENT},
+#endif
 #if 0
   {  6, do_pragma, "pragma", T_PRAGMA},
 #endif
@@ -492,8 +504,17 @@ U_CHAR is_space[256];
   
 int errors = 0;			/* Error counter for exit code */
 
-/* Nonzero if have already warned about use of `$'.  */
-int dollar_seen = 0;
+/* Zero means dollar signs are punctuation.
+   -$ stores 0; -traditional, stores 1.  Default is 1 for VMS, 0 otherwise.
+   This must be 0 for correct processing of this ANSI C program:
+	#define foo(a) #a
+	#define lose(b) foo(b)
+	#define test$
+	lose(test)	*/
+#ifndef DOLLARS_IN_IDENTIFIERS
+#define DOLLARS_IN_IDENTIFIERS 0
+#endif
+int dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
 
 FILE_BUF expand_to_temp_buffer ();
 
@@ -562,7 +583,14 @@ main (argc, argv)
   progname = argv[0];
   in_fname = NULL;
   out_fname = NULL;
-  initialize_random_junk ();
+
+  /* Initialize is_idchar to allow $.  */
+  dollars_in_ident = 1;
+  initialize_char_syntax ();
+  dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
+
+  /* Install __LINE__, etc.  Must follow initialize_char_syntax.  */
+  initialize_builtins ();
 
   no_line_commands = 0;
   no_trigraphs = 1;
@@ -609,10 +637,23 @@ main (argc, argv)
 
       case 't':
 	traditional = 1;
+	dollars_in_ident = 1;
 	break;
 
       case 'W':
-	warn_comments = 1;
+	if (!strcmp (argv[i], "-Wtrigraphs"))
+	  {
+	    warn_trigraphs = 1;
+	    no_trigraphs = 0;
+	  }
+	if (!strcmp (argv[i], "-Wcomments"))
+	  warn_comments = 1;
+	if (!strcmp (argv[i], "-Wall"))
+	  {
+	    warn_trigraphs = 1;
+	    no_trigraphs = 0;
+	    warn_comments = 1;
+	  }
 	break;
 
       case 'M':
@@ -676,6 +717,10 @@ main (argc, argv)
 	no_trigraphs = 0;
 	break;
 
+      case '$':			/* Don't include $ in identifiers.  */
+	dollars_in_ident = 0;
+	break;
+
       case 'I':			/* Add directory to path for includes.  */
 	{
 	  struct directory_stack *dirtmp;
@@ -729,6 +774,9 @@ main (argc, argv)
       }
     }
   }
+
+  /* Now that dollars_in_ident is known, initialize is_idchar.  */
+  initialize_char_syntax ();
 
   /* Do standard #defines that identify processor type.  */
 
@@ -797,7 +845,7 @@ main (argc, argv)
   if (in_fname == NULL || *in_fname == 0) {
     in_fname = "";
     f = 0;
-  } else if ((f = open (in_fname, O_RDONLY)) < 0)
+  } else if ((f = open (in_fname, O_RDONLY, 0666)) < 0)
     goto perror;
 
   /* For -M, print the expected object file name
@@ -813,7 +861,7 @@ main (argc, argv)
       while (*p1)
 	{
 	  if (*p1 == '/')
-	    p = p1;
+	    p = p1 + 1;
 	  p1++;
 	}
       /* Output P, but remove known suffixes.  */
@@ -989,6 +1037,8 @@ trigraph_pcp (buf)
     bcopy (fptr, bptr, len);
   buf->length -= fptr - bptr;
   buf->buf[buf->length] = '\0';
+  if (warn_trigraphs && fptr != bptr)
+    warning("file contains %d trigraph(s)", (fptr - bptr) / 2);
 }
 
 /* Move all backslash-newline pairs out of embarrassing places.
@@ -1248,6 +1298,9 @@ do { ip = &instack[indepth];		\
       ip->bufp = ibp;
       op->bufp = obp;
       if (! handle_directive (ip, op)) {
+#ifdef USE_C_ALLOCA
+	alloca (0);
+#endif
 	/* Not a known directive: treat it as ordinary text.
 	   IP, OP, IBP, etc. have not been changed.  */
 	if (no_output && instack[indepth].fname) {
@@ -1262,6 +1315,9 @@ do { ip = &instack[indepth];		\
 	++obp;		/* Copy the '#' after all */
 	goto randomchar;
       }
+#ifdef USE_C_ALLOCA
+      alloca (0);
+#endif
       /* A # directive has been successfully processed.  */
       /* If not generating expanded output, ignore everything until
 	 next # directive.  */
@@ -1287,8 +1343,9 @@ do { ip = &instack[indepth];		\
       while (1) {
 	if (ibp >= limit)
 	  {
-	    error_with_line (line_for_error (start_line),
-			     "unterminated string constant");
+	    if (!traditional)
+	      error_with_line (line_for_error (start_line),
+			       "unterminated string constant");
 	    break;
 	  }
 	*obp++ = *ibp;
@@ -1296,6 +1353,8 @@ do { ip = &instack[indepth];		\
 	case '\n':
 	  ++ip->lineno;
 	  ++op->lineno;
+	  if (traditional)
+	    goto while2end;
 	  break;
 
 	case '\\':
@@ -1434,12 +1493,8 @@ do { ip = &instack[indepth];		\
       break;
 
     case '$':
-      if (pedantic)
-	{
-	  if (! dollar_seen)
-	    warning ("ANSI C forbids `$' in identifier (first use here)");
-	  dollar_seen = 1;
-	}
+      if (!dollars_in_ident)
+	goto randomchar;
       goto letter;
 
     case '0': case '1': case '2': case '3': case '4':
@@ -1453,11 +1508,17 @@ do { ip = &instack[indepth];		\
       if (ident_length == 0) {
 	while (ibp < limit) {
 	  c = *ibp++;
-	  if (!isalnum (c) && c != '.') {
+	  if (!isalnum (c) && c != '.' && c != '_') {
 	    --ibp;
 	    break;
 	  }
 	  *obp++ = c;
+	  /* A sign can be part of a preprocessing number
+	     if it follows an e.  */
+	  if (c == 'e' || c == 'E') {
+	    if (ibp < limit && (*ibp == '+' || *ibp == '-'))
+	      *obp++ = *ibp++;
+	  }
 	}
 	break;
       }
@@ -1768,7 +1829,7 @@ hashcollision:
  * OUTPUT_MARKS is 1 for macroexpanding a macro argument separately
  * before substitution; it is 0 for other uses.
  */
-static FILE_BUF
+FILE_BUF
 expand_to_temp_buffer (buf, limit, output_marks)
      U_CHAR *buf, *limit;
      int output_marks;
@@ -1921,6 +1982,8 @@ handle_directive (ip, op)
 
 	case '\'':
 	case '\"':
+	  if (traditional)
+	    break;
 	  bp = skip_quoted_string (bp - 1, limit, ip->lineno, &ip->lineno, &copy_command, &unterminated);
 	  /* Don't bother calling the directive if we already got an error
 	     message due to unterminated string.  Skip everything and pretend
@@ -2017,12 +2080,13 @@ handle_directive (ip, op)
 
 	  case '\'':
 	  case '\"':
-	    {
-	      register U_CHAR *bp1
-		= skip_quoted_string (xp - 1, limit, ip->lineno, 0, 0, 0);
-	      while (xp != bp1)
-		*cp++ = *xp++;
-	    }
+	    if (!traditional)
+	      {
+		register U_CHAR *bp1
+		  = skip_quoted_string (xp - 1, limit, ip->lineno, 0, 0, 0);
+		while (xp != bp1)
+		  *cp++ = *xp++;
+	      }
 	    break;
 
 	  case '/':
@@ -2297,7 +2361,7 @@ get_filename:
   if (*fbeg == '/') {
     strncpy (fname, fbeg, flen);
     fname[flen] = 0;
-    f = open (fname, O_RDONLY);
+    f = open (fname, O_RDONLY, 0666);
   } else {
     /* Search directory path, trying to open the file.
        Copy each filename tried into FNAME.  */
@@ -2323,7 +2387,7 @@ get_filename:
 	fname[flen] = 0;
       }
 #endif /* VMS */
-      if ((f = open (fname, O_RDONLY)) >= 0)
+      if ((f = open (fname, O_RDONLY, 0666)) >= 0)
 	break;
     }
   }
@@ -2451,11 +2515,6 @@ do_define (buf, limit, op, keyword)
 
   symname = bp;			/* remember where it starts */
   while (is_idchar[*bp] && bp < limit) {
-    if (*bp == '$' && pedantic) {
-      if (! dollar_seen)
-	warning ("ANSI C forbids `$' in identifier (first use here)");
-      dollar_seen = 1;
-    }
     bp++;
   }
   sym_length = bp - symname;
@@ -2486,11 +2545,6 @@ do_define (buf, limit, op, keyword)
 
       /* Find the end of the arg name.  */
       while (is_idchar[*bp]) {
-	if (*bp == '$' && pedantic) {
-	  if (! dollar_seen)
-	    warning ("ANSI C forbids `$' in identifier (first use here)");
-	  dollar_seen = 1;
-	}
 	bp++;
       }
       temp->length = bp - temp->name;
@@ -2573,7 +2627,7 @@ nope:
 /*
  * return zero if two DEFINITIONs are isomorphic
  */
-static
+int
 compare_defs (d1, d2)
      DEFINITION *d1, *d2;
 {
@@ -2664,7 +2718,7 @@ from the argument.  */
    If there is no trailing whitespace, a Newline Space is added at the end
    to prevent concatenation that would be contrary to the standard.  */
 
-static DEFINITION *
+DEFINITION *
 collect_expansion (buf, end, nargs, arglist)
      U_CHAR *buf, *end;
      int nargs;
@@ -2677,6 +2731,7 @@ collect_expansion (buf, end, nargs, arglist)
   U_CHAR *concat = 0;
   /* Pointer to first nonspace after last single-# seen.  */
   U_CHAR *stringify = 0;
+  int maxsize;
 
   /* Scan thru the replacement list, ignoring comments and quoted
      strings, picking up on the macro calls.  It does a linear search
@@ -2686,19 +2741,28 @@ collect_expansion (buf, end, nargs, arglist)
   if (end < buf)
     abort ();
 
-  defn = (DEFINITION *) xcalloc (1, sizeof (DEFINITION) + 2 * (end - buf + 2));
+  /* Find the beginning of the trailing whitespace.  */
+  /* Find end of leading whitespace.  */
+  limit = end;
+  p = buf;
+  while (p < limit && is_space[limit[-1]]) limit--;
+  while (p < limit && is_space[*p]) p++;
+
+  /* Allocate space for the text in the macro definition.
+     Leading and trailing whitespace chars need 2 bytes each.
+     Each other input char may or may not need 1 byte,
+     so this is an upper bound.
+     The extra 2 are for invented trailing newline-marker and final null.  */
+  maxsize = (sizeof (DEFINITION)
+	     + 2 * (end - limit) + 2 * (p - buf)
+	     + (limit - p) + 3);
+  defn = (DEFINITION *) xcalloc (1, maxsize);
 
   defn->nargs = nargs;
   exp_p = defn->expansion = (U_CHAR *) defn + sizeof (DEFINITION);
   lastp = exp_p;
 
-  /* Speed this loop up later? */
-
   p = buf;
-  limit = end;
-
-  /* Find the beginning of the trailing whitespace.  */
-  while (p < limit && is_space[limit[-1]]) limit--;
 
   /* Convert leading whitespace to Newline-markers.  */
   while (p < limit && is_space[*p]) {
@@ -2740,6 +2804,8 @@ collect_expansion (buf, end, nargs, arglist)
       break;
 
     case '#':
+      if (traditional)
+	break;
       if (p < limit && *p == '#') {
 	/* ##: concatenate preceding and following tokens.  */
 	/* Take out the first #, discard preceding whitespace.  */
@@ -2838,6 +2904,10 @@ collect_expansion (buf, end, nargs, arglist)
 
   defn->length = exp_p - defn->expansion;
 
+  /* Crash now if we overrun the allocated size.  */
+  if (defn->length + 1 > maxsize)
+    abort ();
+
 #if 0
 /* This isn't worth the time it takes.  */
   /* give back excess storage */
@@ -2853,7 +2923,7 @@ collect_expansion (buf, end, nargs, arglist)
  *   first n chars of s.  Returns a ptr to a static object
  *   since I happen to know it will fit.
  */
-static U_CHAR *
+U_CHAR *
 prefix (s, n)
      U_CHAR *s;
      int n;
@@ -3011,10 +3081,10 @@ do_error (buf, limit, op, keyword)
 do_pragma ()
 {
   close (0);
-  if (open ("/dev/tty", O_RDONLY) != 0)
+  if (open ("/dev/tty", O_RDONLY, 0666) != 0)
     goto nope;
   close (1);
-  if (open ("/dev/tty", O_WRONLY) != 1)
+  if (open ("/dev/tty", O_WRONLY, 0666) != 1)
     goto nope;
   execl ("/usr/games/hack", "#pragma", 0);
   execl ("/usr/games/rogue", "#pragma", 0);
@@ -3027,7 +3097,16 @@ nope:
 
 /* Just ignore #sccs, on systems where we define it at all.  */
 do_sccs ()
-{}
+{
+  if (pedantic)
+    error ("ANSI C does not allow #sccs");
+}
+
+do_ident ()
+{
+  if (pedantic)
+    error ("ANSI C does not allow #ident");
+}
 
 /*
  * handle #if command by
@@ -3099,7 +3178,7 @@ do_elif (buf, limit, op, keyword)
  * evaluate a #if expression in BUF, of length LENGTH,
  * then parse the result as a C expression and return the value as an int.
  */
-static int
+int
 eval_if_expression (buf, length)
      U_CHAR *buf;
      int length;
@@ -3164,7 +3243,7 @@ do_xifdef (buf, limit, op, keyword)
 /*
  * push TYPE on stack; then, if SKIP is nonzero, skip ahead.
  */
-static
+void
 conditional_skip (ip, skip, type)
      FILE_BUF *ip;
      int skip;
@@ -3194,7 +3273,7 @@ conditional_skip (ip, skip, type)
  * leaves input ptr at the sharp sign found.
  * If ANY is nonzero, return at next directive of any sort.
  */
-static
+void
 skip_if_group (ip, any)
      FILE_BUF *ip;
      int any;
@@ -3598,7 +3677,8 @@ skip_quoted_string (bp, limit, start_line, count_newlines, backslash_newlines_p,
  * appear to be a no-op, and we can output a few newlines instead
  * if we want to increase the line number by a small amount.
  */
-static
+
+void
 output_line_command (ip, op, conditional)
      FILE_BUF *ip, *op;
      int conditional;
@@ -4240,7 +4320,7 @@ error (msg, arg1, arg2, arg3)
   if (ip != NULL)
     fprintf (stderr, "%s:%d: ", ip->fname, ip->lineno);
   fprintf (stderr, msg, arg1, arg2, arg3);
-  fprintf (stderr, "\n", msg);
+  fprintf (stderr, "\n");
   errors++;
   return 0;
 }
@@ -4263,7 +4343,7 @@ warning (msg, arg1, arg2, arg3)
     fprintf (stderr, "%s:%d: ", ip->fname, ip->lineno);
   fprintf (stderr, "warning: ");
   fprintf (stderr, msg, arg1, arg2, arg3);
-  fprintf (stderr, "\n", msg);
+  fprintf (stderr, "\n");
   return 0;
 }
 
@@ -4283,7 +4363,7 @@ error_with_line (line, msg, arg1, arg2, arg3)
   if (ip != NULL)
     fprintf (stderr, "%s:%d: ", ip->fname, line);
   fprintf (stderr, msg, arg1, arg2, arg3);
-  fprintf (stderr, "\n", msg);
+  fprintf (stderr, "\n");
   errors++;
   return 0;
 }
@@ -4581,7 +4661,7 @@ dump_defn_1 (base, start, length)
     if (*p != '\n')
       putchar (*p);
     else if (*p == '\"' || *p =='\'') {
-      U_CHAR *p1 = skip_quoted_string (p, limit, 0, 0, 0);
+      U_CHAR *p1 = skip_quoted_string (p, limit, 0, 0, 0, 0);
       fwrite (p, p1 - p, 1, stdout);
       p = p1 - 1;
     }
@@ -4609,10 +4689,9 @@ dump_arg_n (defn, argnum)
   }
 }
 
-/*
- * initialize random junk in the hash table and maybe other places
- */
-initialize_random_junk ()
+/* Initialize syntactic classifications of characters.  */
+
+initialize_char_syntax ()
 {
   register int i;
 
@@ -4632,8 +4711,10 @@ initialize_random_junk ()
     ++is_idchar[i];
   ++is_idchar['_'];
   ++is_idstart['_'];
-  ++is_idchar['$'];
-  ++is_idstart['$'];
+  if (dollars_in_ident) {
+    ++is_idchar['$'];
+    ++is_idstart['$'];
+  }
 
   /* horizontal space table */
   ++is_hor_space[' '];
@@ -4646,7 +4727,12 @@ initialize_random_junk ()
   ++is_space['\v'];
   ++is_space['\f'];
   ++is_space['\n'];
+}
 
+/* Initialize the built-in macros.  */
+
+initialize_builtins ()
+{
   install ("__LINE__", -1, T_SPECLINE, 0, -1);
   install ("__DATE__", -1, T_DATE, 0, -1);
   install ("__FILE__", -1, T_FILE, 0, -1);
@@ -4657,7 +4743,7 @@ initialize_random_junk ()
 /*  This is supplied using a -D by the compiler driver
     so that it is present only when truly compiling with GNU C.  */
 }
-
+
 /*
  * process a given definition string, for initialization
  * If STR is just an identifier, define it with value 1.
@@ -4845,7 +4931,7 @@ perror_with_name (name)
   if (errno < sys_nerr)
     fprintf (stderr, "%s for `%s'\n", sys_errlist[errno], name);
   else
-    fprintf (stderr, "cannot open `%s'\n", sys_errlist[errno], name);
+    fprintf (stderr, "undocumented error for `%s'\n", name);
 }
 
 void
@@ -4930,14 +5016,6 @@ file_size_and_mode (fd, mode_pointer, size_pointer)
   struct stat sbuf;
 
   if (fstat (fd, &sbuf) < 0) return (-1);
-#ifdef	VMS
-#ifdef	__GNUC__
-#ifdef	stat_alignment_fix
-  /* Fix the size data in the stat buffer (this is temporary!) */
-  sbuf.st_size = (stat_alignment_fix(&(sbuf))->st_size);
-#endif	stat_alignment_fix
-#endif	__GNUC__
-#endif	VMS
   if (mode_pointer) *mode_pointer = sbuf.st_mode;
   if (size_pointer) *size_pointer = sbuf.st_size;
   return 0;

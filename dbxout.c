@@ -72,7 +72,7 @@ and this notice must be preserved on all copies.  */
 /* Typical USG systems don't have stab.h, and they also have
    no use for DBX-format debugging info.  */
 
-#ifndef NO_DBX_FORMAT
+#ifdef DBX_DEBUGGING_INFO
 
 #include <stab.h>
 
@@ -549,7 +549,7 @@ dbxout_symbol (decl, local)
 	 the variable is and on the scope of its name:
 	 G and N_GSYM for static storage and global scope,
 	 S for static storage and file scope,
-	 v for static storage and local scope,
+	 V for static storage and local scope,
 	    for those two, use N_LCSYM if data is in bss segment,
 	    N_STSYM if it is in data segment, or N_FUN if in text segment.
 	 no letter at all, and N_LSYM, for auto variable,
@@ -567,7 +567,7 @@ dbxout_symbol (decl, local)
 	    {
 	      current_sym_addr = XEXP (DECL_RTL (decl), 0);
 
-	      letter = TREE_PERMANENT (decl) ? 'S' : 'v';
+	      letter = TREE_PERMANENT (decl) ? 'S' : 'V';
 
 	      if (!DECL_INITIAL (decl))
 		current_sym_code = N_LCSYM;
@@ -716,9 +716,11 @@ dbxout_parms (parms)
 	  dbxout_finish_symbol ();
 	}
       /* Parm was passed in registers.
-	 If it is in a register, output a "regparm" symbol
+	 If it lives in a hard register, output a "regparm" symbol
 	 for the register it lives in.  */
-      else if (GET_CODE (DECL_RTL (parms)) == REG)
+      else if (GET_CODE (DECL_RTL (parms)) == REG
+	       && REGNO (DECL_RTL (parms)) >= 0
+	       && REGNO (DECL_RTL (parms)) < FIRST_PSEUDO_REGISTER)
 	{
 	  current_sym_code = N_RSYM;
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (parms)));
@@ -974,7 +976,7 @@ dbxout_function (decl)
   dbxout_block (DECL_INITIAL (decl), 0, DECL_ARGUMENTS (decl));
 }
 
-#else /* NO_DBX_FORMAT */
+#else /* not DBX_DEBUGGING_INFO */
 
 void
 dbxout_init (asm_file, input_file_name)
@@ -1003,4 +1005,4 @@ dbxout_function (decl)
      tree decl;
 {}
 
-#endif /* NO_DBX_FORMAT */
+#endif /* DBX_DEBUGGING_INFO */

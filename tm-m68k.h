@@ -794,8 +794,8 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 		   && GET_CODE (XEXP (XEXP (X, 0), 0)) == REG		\
 		   && GET_MODE (XEXP (XEXP (X, 0), 0)) == HImode))	\
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
-	  register rtx val = force_operand (XEXP (X, 1), temp);		\
-	  if (val != temp) emit_move_insn (temp, val);			\
+	  register rtx val = force_operand (XEXP (X, 1), 0);		\
+	  emit_move_insn (temp, val);					\
 	  XEXP (X, 1) = temp;						\
 	  return X; }							\
       else if (GET_CODE (XEXP (X, 1)) == REG				\
@@ -803,8 +803,8 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 		   && GET_CODE (XEXP (XEXP (X, 1), 0)) == REG		\
 		   && GET_MODE (XEXP (XEXP (X, 1), 0)) == HImode))	\
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
-	  register rtx val = force_operand (XEXP (X, 0), temp);		\
-	  if (val != temp) emit_move_insn (temp, val);			\
+	  register rtx val = force_operand (XEXP (X, 0), 0);		\
+	  emit_move_insn (temp, val);					\
 	  XEXP (X, 0) = temp;						\
 	  return X; }}}
 
@@ -973,7 +973,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START "#NO_APP\n"
+#define ASM_FILE_START(FILE) fprintf (FILE, "#NO_APP\n");
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */

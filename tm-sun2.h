@@ -20,3 +20,7 @@
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 
 #define STRUCTURE_SIZE_BOUNDARY 16
+
+/* This is BSD, so it wants DBX format.  */
+
+#define DBX_DEBUGGING_INFO

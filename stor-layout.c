@@ -126,6 +126,46 @@ get_temporary_types ()
   return tem;
 }
 
+/* SAVE_EXPRs for sizes of types and decls, waiting to be expanded.  */
+
+static tree pending_sizes;
+
+/* Nonzero means cannot safely call expand_expr now,
+   so put variable sizes onto `pending_sizes' instead.  */
+
+int immediate_size_expand;
+
+tree
+get_pending_sizes ()
+{
+  tree chain = pending_sizes;
+  pending_sizes = 0;
+  return chain;
+}
+
+/* Given a size SIZE that isn't constant, return a SAVE_EXPR
+   to serve as the actual size-expression for a type or decl.  */
+
+static tree
+variable_size (size)
+     tree size;
+{
+  size = save_expr (size);
+
+  if (global_bindings_p ())
+    {
+      error ("variable-size type declared outside of any function");
+      return build_int (1);
+    }
+
+  if (immediate_size_expand)
+    expand_expr (size, 0, VOIDmode, 0);
+  else
+    pending_sizes = tree_cons (0, size, pending_sizes);
+
+  return size;
+}
+
 /* Return the machine mode to use for an aggregate of SIZE bits.
 
    Note!!!  We only use a non-BLKmode mode if the size matches exactly.
@@ -220,30 +260,6 @@ convert_units (size, inunits, outunits)
   return genop (CEIL_DIV_EXPR, t,
 		build_int (outunits)); /* then to outunits */
 }
-
-/* Form a tree giving the value of
-   CEIL ((CONST + VAR * VAR_UNIT) / BITS_PER_UNIT)
-   where VAR is any expression and CONST and VAR_UNIT are integers.
-   VAR may be null; that counts as zero.  */
-
-static
-tree
-add_vc_sizes (constant, var, coeff)
-     int constant;
-     tree var;
-     int coeff;
-{
-  register tree tmp1;
-
-  if (var == 0)
-    return build_int (CEIL (constant, BITS_PER_UNIT));
-  if (constant == 0)
-    return convert_units (var, coeff, BITS_PER_UNIT);
-
-  tmp1 = genop (PLUS_EXPR, genop (MULT_EXPR, var, size_one_node),
-		build_int (constant)); /* add */
-  return genop (CEIL_DIV_EXPR, tmp1, build_int (BITS_PER_UNIT));
-}
 
 /* Set the size, mode and alignment of a ..._DECL node.
    Note that LABEL_DECL, TYPE_DECL and CONST_DECL nodes do not need this,
@@ -315,6 +331,8 @@ layout_decl (decl, known_align)
      and occupying a complete byte or bytes on proper boundary.  */
   if ((DECL_MODE (decl) == BLKmode
        || DECL_MODE (decl) == BImode)
+      /* Don't do this is DECL's type requires it to be BLKmode.  */
+      && TYPE_MODE (type) != BLKmode
       && TYPE_SIZE (type) != 0
       && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
     {
@@ -332,13 +350,17 @@ layout_decl (decl, known_align)
 	  DECL_SIZE_UNIT (decl) = BITS_PER_UNIT;
 	}
     }
+
+  /* Evaluate nonconstant size only once, either now or as soon as safe.  */
+  if (DECL_SIZE (decl) != 0 && ! TREE_LITERAL (DECL_SIZE (decl)))
+    DECL_SIZE (decl) = variable_size (DECL_SIZE (decl));
 }
 
 /* Lay out a RECORD_TYPE type (a C struct).
    This means laying out the fields, determining their offsets,
    and computing the overall size and required alignment of the record.
    Note that if you set the TYPE_ALIGN before calling this
-   then the union align is aligned to at least that boundary.  */
+   then the struct is aligned to at least that boundary.  */
 
 static void
 layout_record (rec)
@@ -346,9 +368,9 @@ layout_record (rec)
 {
   register tree field;
 #ifdef STRUCTURE_SIZE_BOUNDARY
-  int record_align = MIN (STRUCTURE_SIZE_BOUNDARY, TYPE_ALIGN (rec));
+  int record_align = MAX (STRUCTURE_SIZE_BOUNDARY, TYPE_ALIGN (rec));
 #else
-  int record_align = MIN (BITS_PER_UNIT, TYPE_ALIGN (rec));
+  int record_align = MAX (BITS_PER_UNIT, TYPE_ALIGN (rec));
 #endif
   /* Record size so far is CONST_SIZE + VAR_SIZE * SIZE_UNIT bits,
      where CONST_SIZE is an integer
@@ -645,9 +667,17 @@ layout_type (type)
       TYPE_MODE (type) = BLKmode;
       if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
 	{
+	  tree field;
+	  /* A record which has any BLKmode members must itself be BLKmode;
+	     it can't go in a register.  */
+	  for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
+	    if (TYPE_MODE (TREE_TYPE (field)) == BLKmode)
+	      goto record_lose;
+
 	  TYPE_MODE (type) 
 	    = agg_mode (TREE_INT_CST_LOW (TYPE_SIZE (type))
 			* TYPE_SIZE_UNIT (type));
+	record_lose: ;
 	}
       break;
 
@@ -656,9 +686,17 @@ layout_type (type)
       TYPE_MODE (type) = BLKmode;
       if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
 	{
+	  tree field;
+	  /* A union which has any BLKmode members must itself be BLKmode;
+	     it can't go in a register.  */
+	  for (field = TYPE_FIELDS (type); field; field = TREE_CHAIN (field))
+	    if (TYPE_MODE (TREE_TYPE (field)) == BLKmode)
+	      goto union_lose;
+
 	  TYPE_MODE (type) 
 	    = agg_mode (TREE_INT_CST_LOW (TYPE_SIZE (type))
 			* TYPE_SIZE_UNIT (type));
+	union_lose: ;
 	}
       break;
 
@@ -673,6 +711,10 @@ layout_type (type)
       abort ();
     } /* end switch */
 
+  /* Evaluate nonconstant size only once, either now or as soon as safe.  */
+  if (TYPE_SIZE (type) != 0 && ! TREE_LITERAL (TYPE_SIZE (type)))
+    TYPE_SIZE (type) = variable_size (TYPE_SIZE (type));
+	
   resume_momentary (old);
 }
 

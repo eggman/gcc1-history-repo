@@ -266,6 +266,14 @@ make_binding_level ()
   return (struct binding_level *) xmalloc (sizeof (struct binding_level));
 }
 
+/* Nonzero if we are currently in the global binding level.  */
+
+int
+global_bindings_p ()
+{
+  return current_binding_level == global_binding_level;
+}
+
 /* Enter a new binding level.
    If TAG_TRANSPARENT is nonzero, do so only for the name space of variables,
    not for that of tags.  */
@@ -499,16 +507,25 @@ duplicate_decls (new, old)
 
   /* If this decl has linkage, and the old one does too, maybe no error.  */
   if (TREE_CODE (old) != TREE_CODE (new))
-    error_with_decl (new, "`%s' redeclared as different kind of symbol");
+    {
+      error_with_decl (new, "`%s' redeclared as different kind of symbol");
+      error_with_decl (old, "previous declaration of `%s'");
+    }
   else
     {
       if (!types_match)
-	error_with_decl (new, "conflicting types for `%s'");
+	{
+	  error_with_decl (new, "conflicting types for `%s'");
+	  error_with_decl (old, "previous declaration of `%s'");
+	}
       else
 	{
 	  char *errmsg = redeclaration_error_message (new, old);
 	  if (errmsg)
-	    error_with_decl (new, errmsg);
+	    {
+	      error_with_decl (new, errmsg);
+	      error_with_decl (old, "previous declaration of `%s'");
+	    }
 	}
     }
 
@@ -626,6 +643,13 @@ pushdecl (x)
 		    && TREE_TYPE (TREE_TYPE (x)) == integer_type_node))
 	    warning ("`%s' was previously implicitly declared to return `int'",
 		     IDENTIFIER_POINTER (name));
+
+	  /* If this decl is `static' and an `extern' was seen previously,
+	     that is erroneous.  */
+	  if (TREE_PUBLIC (name)
+	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x))
+	    warning ("`%s' was declared `extern' and later `static'",
+		     IDENTIFIER_POINTER (name));
 	}
       else
 	{
@@ -648,6 +672,15 @@ pushdecl (x)
 	      /* If the global one is inline, make the local one inline.  */
 	      else if (TREE_INLINE (IDENTIFIER_GLOBAL_VALUE (name)))
 		IDENTIFIER_LOCAL_VALUE (name) = IDENTIFIER_GLOBAL_VALUE (name);
+	    }
+	  /* If we have a local external declaration,
+	     and no file-scope declaration has yet been seen,
+	     then if we later have a file-scope decl it may not be static.  */
+	  if (oldlocal == 0
+	      && IDENTIFIER_GLOBAL_VALUE (name) == 0
+	      && TREE_EXTERNAL (x))
+	    {
+	      TREE_PUBLIC (name) = 1;
 	    }
 	  /* Warn if shadowing an argument.  */
 	  if (oldlocal != 0
@@ -684,21 +717,14 @@ implicitly_declare (functionid)
      tree functionid;
 {
   register tree decl;
-  int force_perm = 0;
 
-  if (current_binding_level == global_binding_level
-      || flag_traditional)
-    /* An implicit declaration not inside a function?
-       It can happen with invalid input in an initializer.
-       A suitable error message will happen later,
-       but we must not put a temporary node in a global value!
-       If -traditional, ALL implicit decls must be permanent.  */
-    force_perm = 1;
+  /* Save the decl permanently so we can warn if definition follows.  */
+  end_temporary_allocation ();
 
-  if (force_perm)
-    end_temporary_allocation ();
-
-  decl = build_decl (FUNCTION_DECL, functionid, default_function_type);
+  if (IDENTIFIER_IMPLICIT_DECL (functionid) != 0)
+    decl = IDENTIFIER_IMPLICIT_DECL (functionid);
+  else
+    decl = build_decl (FUNCTION_DECL, functionid, default_function_type);
 
   TREE_EXTERNAL (decl) = 1;
   TREE_PUBLIC (decl) = 1;
@@ -717,8 +743,7 @@ implicitly_declare (functionid)
 
   IDENTIFIER_IMPLICIT_DECL (functionid) = decl;
 
-  if (force_perm)
-    temporary_allocation ();
+  resume_temporary_allocation ();
 
   return decl;
 }
@@ -1411,7 +1436,8 @@ finish_decl (decl, init, asmspec)
 	}
 
       if (pedantic && TYPE_DOMAIN (type) != 0
-	  && integer_zerop (TYPE_MAX_VALUE (TYPE_DOMAIN (type))))
+	  && tree_int_cst_lt (TYPE_MAX_VALUE (TYPE_DOMAIN (type)),
+			      integer_zero_node))
 	error_with_decl (decl, "zero-size array `%s'");
 
       if (TREE_CODE (decl) != TYPE_DECL)
@@ -2635,6 +2661,7 @@ finish_enum (enumtype, values)
 {
   register tree pair = values;
   register long maxvalue = 0;
+  register long minvalue = 0;
   register int i;
 
   TYPE_VALUES (enumtype) = values;
@@ -2644,8 +2671,15 @@ finish_enum (enumtype, values)
   for (pair = values; pair; pair = TREE_CHAIN (pair))
     {
       int value = TREE_INT_CST_LOW (TREE_VALUE (pair));
-      if (value > maxvalue)
-	maxvalue = value;
+      if (pair == values)
+	minvalue = maxvalue = value;
+      else
+	{
+	  if (value > maxvalue)
+	    maxvalue = value;
+	  if (value < minvalue)
+	    minvalue = value;
+	}
     }
 
 #if 0
@@ -2664,8 +2698,15 @@ finish_enum (enumtype, values)
   fixup_unsigned_type (enumtype);
 #endif
 
-  TREE_INT_CST_LOW (TYPE_MAX_VALUE (enumtype)) =  maxvalue;
+  TREE_INT_CST_LOW (TYPE_MAX_VALUE (enumtype)) = maxvalue;
 
+  /* An enum can have some negative values; then it is signed.  */
+  if (minvalue < 0)
+    {
+      TREE_INT_CST_LOW (TYPE_MIN_VALUE (enumtype)) = minvalue;
+      TREE_INT_CST_HIGH (TYPE_MIN_VALUE (enumtype)) = -1;
+      TREE_UNSIGNED (enumtype) = 0;
+    }
   return enumtype;
 }
 
@@ -2805,6 +2846,11 @@ start_function (declspecs, declarator)
      and make the FUNCTION_DECL itself not appear in the permanent dump.  */
 
   TREE_PERMANENT (current_function_decl) = 0;
+
+  /* If this fcn was already referenced via a block-scope `extern' decl
+     (or an implicit decl), propagate certain information about the usage.  */
+  if (TREE_ADDRESSABLE (DECL_NAME (current_function_decl)))
+    TREE_ADDRESSABLE (current_function_decl) = 1;
 
   return 1;
 }

@@ -200,6 +200,10 @@ check_reg (oper, reg)
    which is easier to debug than putting all the code in
    a macro definition in tm-ns32k.h .  */
 
+/* This decl ought to be able to be inside the following function,
+   but a bug in the Encore compiler makes that fail to work.  */
+static int paren_base_reg_printed = 0;
+
 print_operand_address (file, addr)
      register FILE *file;
      register rtx addr;
@@ -208,6 +212,7 @@ print_operand_address (file, addr)
   rtx offset;
   static char scales[] = { 'b', 'w', 'd', 0, 'q', };
   static char *reg_name[] = REGISTER_NAMES;
+
  retry:
   switch (GET_CODE (addr))
     {
@@ -248,7 +253,7 @@ print_operand_address (file, addr)
       if (REGNO (addr) == STACK_POINTER_REGNUM)
 	fprintf (file, "tos");
       else
-	fprintf (file, "%s", reg_name [REGNO (addr)]);
+	fprintf (file, "0(%s)", reg_name [REGNO (addr)]);
       break;
 
     case PRE_DEC:
@@ -411,7 +416,10 @@ print_operand_address (file, addr)
 	  output_addr_const (file, offset);
 #ifndef SEQUENT_ADDRESS_BUG
 	  putc ('(', file);
+	  paren_base_reg_printed = 0;
 	  output_address (addr);
+	  if (!paren_base_reg_printed)
+	    fprintf (file, "(sb)");
 	  putc (')', file);
 #else /* SEQUENT_ADDRESS_BUG */
 	  if ((GET_CODE (offset) == SYMBOL_REF
@@ -424,7 +432,10 @@ print_operand_address (file, addr)
 	  else
 	    {
 	      putc ('(', file);
+	      paren_base_reg_printed = 0;
 	      output_address (addr);
+	      if (!paren_base_reg_printed)
+	        fprintf (file, "(sb)");
 	      putc (')', file);
 	    }
 #endif /* SEQUENT_ADDRESS_BUG */
@@ -455,9 +466,7 @@ print_operand_address (file, addr)
 	  break;
 	}
       if (ireg && breg && offset == const0_rtx)
-	if (REGNO (breg) < 8)
-	  fprintf (file, "%s", reg_name[REGNO (breg)]);
-	else fprintf (file, "0(%s)", reg_name[REGNO (breg)]);
+	fprintf (file, "0(%s)", reg_name[REGNO (breg)]);
       else
 	{
 	  if (addr != 0)
@@ -471,6 +480,7 @@ print_operand_address (file, addr)
 	      if (GET_CODE (breg) != REG) abort ();
 #ifndef SEQUENT_ADDRESS_BUG
 	      fprintf (file, "(%s)", reg_name[REGNO (breg)]);
+	      paren_base_reg_printed = -1;
 #else
 	      if (GET_CODE (offset) == SYMBOL_REF || GET_CODE (offset) == CONST)
 		{
@@ -478,7 +488,10 @@ print_operand_address (file, addr)
 		  fprintf (file, "[%s:b]", reg_name[REGNO (breg)]);
 		}
 	      else
-		fprintf (file, "(%s)", reg_name[REGNO (breg)]);
+		{
+		  fprintf (file, "(%s)", reg_name[REGNO (breg)]);
+		  paren_base_reg_printed = -1;
+		}
 #endif
 	    }
 	}

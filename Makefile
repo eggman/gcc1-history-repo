@@ -39,12 +39,17 @@ libdir = /usr/local/lib
 # For CCLIBFLAGS you might want to specify the switch that
 # forces only 68000 instructions to be used.
 
-# If you are compiling this with CC on HPUX, you need the following line:
+# If you are making gcc for the first time, and if you are compiling it with
+# a non-gcc compiler, and if your system doesn't have a working alloca() in any
+# of the standard libraries (as is true for HP/UX), then get alloca.c from
+# GNU Emacs and un-comment the following line:
 # CLIB = alloca.o
-# Get alloca.o from GNU Emacs.
 
-# You must also change the line that uses `ranlib'.  See below.
+# If your system has alloca() in /lib/libPW.a, un-comment the following line:
+# CLIB= -lc -lPW
 
+# For System V based systems, you will also have to comment out the `ranlib'
+# command below.
 
 # How to link with obstack
 OBSTACK=obstack.o
@@ -57,7 +62,7 @@ DIR = ../gcc
 OBJS = toplev.o version.o parse.tab.o tree.o print-tree.o \
  decl.o typecheck.o stor-layout.o fold-const.o \
  rtl.o expr.o stmt.o expmed.o explow.o optabs.o varasm.o \
- symout.o dbxout.o emit-rtl.o insn-emit.o \
+ symout.o dbxout.o sdbout.o emit-rtl.o insn-emit.o \
  integrate.o jump.o cse.o loop.o flow.o stupid.o combine.o \
  regclass.o local-alloc.o global-alloc.o reload.o reload1.o insn-peep.o \
  final.o recog.o insn-recog.o insn-extract.o insn-output.o
@@ -70,7 +75,7 @@ STAGESTUFF = *.o insn-flags.h insn-config.h insn-codes.h \
  cc1 cpp cccp
 
 # Members of gnulib.
-LIBFUNCS = va_end _eprintf \
+LIBFUNCS = _eprintf \
    _umulsi3 _mulsi3 _udivsi3 _divsi3 _umodsi3 _modsi3 \
    _lshrsi3 _lshlsi3 _ashrsi3 _ashlsi3 \
    _divdf3 _muldf3 _negdf2 _adddf3 _subdf3 _cmpdf2 \
@@ -86,6 +91,8 @@ TREE_H = tree.h tree.def machmode.def
 
 all: gnulib gcc cc1 cpp
 
+doc: cpp.info internals
+
 compilations: ${OBJS}
 
 gcc: gcc.o version.o $(OBSTACK1)
@@ -94,7 +101,7 @@ gcc: gcc.o version.o $(OBSTACK1)
 	mv gccnew gcc
 
 gcc.o: gcc.c $(CONFIG_H)
-	$(CC) $(CFLAGS) -c gcc.c
+	$(CC) $(CFLAGS) -c -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc-\" gcc.c
 
 cc1: $(OBJS) $(OBSTACK1)
 	$(CC) $(CFLAGS) -o cc1 $(OBJS) $(LIBS)
@@ -115,7 +122,7 @@ gnulib: gnulib.c
 	done
 	mv libtemp/gnulib .
 	rm -rf libtemp
-	ranlib gnulib
+	if [ -f /usr/bin/ranlib ] ; then  ranlib gnulib ;fi
 # On HPUX, if you are working with the GNU assembler and linker,
 # the previous line must be replaced with
 # No change is needed here if you are using the HPUX assembler and linker.
@@ -149,6 +156,7 @@ optabs.o : optabs.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 symout.o : symout.c $(CONFIG_H) $(TREE_H) $(RTL_H) symseg.h gdbfiles.h
 dbxout.o : dbxout.c $(CONFIG_H) $(TREE_H) $(RTL_H)
+sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H) c-tree.h
 
 emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h
 
@@ -162,8 +170,10 @@ loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
    insn-config.h regs.h basic-block.h recog.h
-regclass.o : regclass.c $(CONFIG_H) $(RTL_H) flags.h regs.h insn-config.h recog.h hard-reg-set.h
-local-alloc.o : local-alloc.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
+regclass.o : regclass.c $(CONFIG_H) $(RTL_H) flags.h regs.h \
+   insn-config.h recog.h hard-reg-set.h
+local-alloc.o : local-alloc.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h \
+   insn-config.h recog.h hard-reg-set.h
 global-alloc.o : global-alloc.c $(CONFIG_H) $(RTL_H) flags.h  \
    basic-block.h regs.h hard-reg-set.h insn-config.h
 
@@ -289,6 +299,12 @@ cexp.c: cexp.y
 	mv cexp.tab.c cexp.c
 cccp.o: cccp.c
 
+cpp.info: cpp.texinfo
+	makeinfo $<
+
+internals: internals.texinfo
+	makeinfo $<
+
 # gnulib is not deleted because deleting it would be inconvenient
 # for most uses of this target.
 clean:
@@ -300,7 +316,7 @@ clean:
 install: all
 	install cc1 $(libdir)/gcc-cc1
 	install -c -m 755 gnulib $(libdir)/gcc-gnulib
-	ranlib $(libdir)/gcc-gnulib
+	if [ -f /usr/bin/ranlib ] ; then  ranlib $(libdir)/gcc-gnulib ;fi
 	install cpp $(libdir)/gcc-cpp
 	install gcc $(bindir)
 

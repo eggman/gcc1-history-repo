@@ -1,3 +1,609 @@
+Mon Jun 27 18:06:42 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* hard-reg-set.h (reg_alloc_order): New variable
+	based on REG_ALLOC_ORDER, a new machine-description macro.
+	* regclass.c (reg_alloc_order): Define it.
+	* local-alloc.c (find_free_reg): Handle reg_alloc_order.
+	* global-alloc.c (find_reg): Likewise.
+	* stupid.c (stupid_find_reg): Likewise.
+
+Sun Jun 26 10:47:47 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.23 released.
+
+	* tm-3b1.h: Define IDENT_DIRECTIVE.
+
+	* tm-encore.h: Define SDB_DEBUGGING_INFO.
+	Define SCCS_DIRECTIVE and IDENT_DIRECTIVE.
+
+	* output-ns32k.c: Decl of paren_base_reg_printed must be outside fcns.
+
+	* tm-encore.h (ASM_OUTPUT_DOUBLE): Do 0f, not 0l.
+	(CPP_PREDEFINES): No -Dns32032.
+
+	* sdbout.c: Include syms.h, not storclass.h.
+	(unnamed_struct_member): Decl was missing.
+	(PUT_SDB_INT_VAL, PUT_SDB_VAL): Fix typos.
+	(sdbout_types, sdbout_one_type, sdbout_parms): Fix typos.
+
+	* Makefile: Add file sdbout.o.
+	Changed comments pertaining to sysV.
+	Make a separate target `doc' to make the info files.
+
+	* m68k.md (bit-field insns): Use nonimmediate_operand for the thing
+	to extract from.
+	* vax.md (QImode bit-field insns): Likewise.
+
+	* recog.c (nonimmediate_operand): Accept any nonconst general operand.
+
+Sat Jun 25 07:54:42 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (lookup_as_function): arg to exp_equiv_p was missing.
+
+Fri Jun 24 09:14:47 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* recog.c (memory_operand): Allow (subreg (mem...)).
+
+Thu Jun 23 07:34:07 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* decl.c (finish_enum): Compute minimum value like maximum.
+	If minimum is negative, install it in the type and make it signed.
+
+	* stor-layout.c (layout_record): STRUCTURE_SIZE_BOUNDARY is minimum.
+	(layout_type): A RECORD_TYPE or UNION_TYPE must be BLKmode if
+	any member is BLKmode.  This is to prevent putting it in a register.
+	(layout_decl): If decl's type is BLKmode, the decl *must* be BLKmode.
+
+	* local-alloc.c (find_free_reg): Never allocate the frame pointer reg.
+
+	* tm-sequent.h (PRINT_OPERAND): Bug in SFmode CONST_DOUBLE.
+	* tm-encore.h: Likewise.
+
+	* flow.c (flow_analysis): Bug in n_basic_blocks error check.
+
+	* stmt.c (expand_asm_operands): Emit no insn if an arg is erroneous.
+
+Tue Jun 21 08:34:24 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (find_reloads_address): Write back *loc even if
+	subst_reg_equivs makes no change, in case subst_index_address did.
+
+	* flow.c: Define macros for -1 and -2 as values of reg_basic_block.
+	(mark_used_regs): Add an `else'; no change in behavior.
+	(mark_label_ref): Abort if LABEL_REF doesn't contain a CODE_LABEL.
+	(find_basic_blocks): Extra error check.
+
+	* output-ns32k.c (print_operand_address): Changes in handling of
+	register-indirect, and of indexing by sb register.
+
+Mon Jun 20 04:55:38 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cccp.c (collect_definition): Compute needed space more accurately.
+	Abort if use more space than was allocated.
+	(rescan) [USE_C_ALLOCA]: Do alloca (0) after handle_directive.
+
+	* genflags.c (gen_insn): Put parens around defns of HAVE_... macros.
+
+Sun Jun 19 02:52:53 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* expr.c (emit_push_insn): Consider PARM_BOUNDARY when compensating
+	for size of a pushed arg to bcopy.
+
+Sat Jun 18 07:20:54 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* New files sparc.md, tm-sparc.h, config-sparc.h, output-sparc.c.
+
+	* final.c (final): After an ADDR_{,DIFF_}VEC, do ASM_OUTPUT_CASE_END.
+	* tm-3b1.h: Define ASM_OUTPUT_CASE_END.
+	(PRINT_OPERAND_ADDRESS): Ref the case tables via an intermediate symbol
+	`LDnnn' whose def. is output by ASM_OUTPUT_CASE_END.
+	(ASM_OUTPUT_CASE_LABEL): Add missing newline.
+
+	* reload.c (find_equiv_reg): Reject a MEM containing an autoincrement.
+
+Fri Jun 17 06:58:37 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* genpeep.c (main): Write `extern' in the decl for `peep_operand'.
+
+	* flow.c (propagate_block): When a dead insn has a REG_RETVAL note,
+	call mark_set_regs anyway, so that `significant' is updated.
+
+	* jump.c (follow_jumps): New arg IGNORE_LOOPS.  If 0, don't follow
+	the insn at the beginning of a loop that enters the loop; this avoids
+	interference with loop optimizer.
+	(jump_optimize, tension_vector_labels): Pass that arg.
+
+	* loop.c (loop_optimize): Mention invalid multiple-entry loops in log.
+
+	* m68k.md (extv, extzv): Fix # of alternatives mismatch in constraints.
+
+Thu Jun 16 03:06:48 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* genrecog.c (change_state): Was mishandling printing XVECEXP indices 
+	greater than 9.
+
+	* combine.c (subst, simplify_and_const_int): Avoid making SUBREG
+	of a non-REG.
+
+	* expr.c (expand_expr): For FIX_TRUNC_EXPR to unsigned short/char,
+	go via signed int.
+
+	* optabs.c (expand_fix): Copy hard_libcall_value reg only once.
+
+	* reload1.c (order_regs_for_reload): Init all elements
+	of  potential_reload_regs to -1.
+
+	* Prevent generation of (set (reg) (plus ... (label_ref ...))).
+	* explow.c (memory_address_noforce): Like `memory_address' but
+	never force it into a register.
+	* expr.c (do_tablejump): Use that.
+	* m68k.md (casesi): Use that.
+
+	* rtl.h (struct rtx_def, GET_CODE, PUT_CODE): If SHORT_ENUM_BUG,
+	define the `code' field as a short.
+
+Wed Jun 15 01:25:57 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gcc.c (CPP_SPEC): New spec set by config.h gives flags to cpp.
+	* tm-*.h for m68k: Define CPP_SPEC to define __HAVE_FPU__ on
+	appropriate conditions.
+
+	* combine.c (subst): Simplify (not (minus x 1)) and (neg (minus x y)).
+
+Mon Jun 13 02:22:43 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* typecheck.c (build_array_ref): Avoid duplicate errmsg if index
+	is an error-mark.
+
+Sun Jun 12 23:04:39 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* cccp.c (handle_directive): If -traditional, quotes aren't special.
+	(rescan): Assume newline ends a string constant.
+
+	* cccp.c, cexp.y: Make all fcns non-static; add some forward decls.
+
+	* various: add static forward-decls for various functions.
+
+Fri Jun 10 00:25:18 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (choose_reload_targets): When writing back an incremented
+	value (handling reload_inc), write back to the real place, not to
+	OLDEQUIV (a register that holds the same value).
+
+	* tm-m68k.h (LEGITIMIZE_ADDRESS): Don't give force_operand a target.
+	This can cause the use of multiple insns with same output reg,
+	which can confuse cse.
+
+	* loop.c (consec_sets_invariant_p):
+	If invariant_p ever returns 2, we return 2.
+	New arg is # of consecutive sets to look for,
+	since this info is no longer in n_times_set at move_movables.
+	(scan_loop): If consec_sets_invariant_p returns 2, set m->cond.
+	(move_movables): check consecutive insns if m->consec && m->cond.
+
+	* tm*.h: ASM_DECLARE_FUNCTION_NAME now takes 3rd arg,
+	the FUNCTION_DECL node.
+	* varasm.c (assemble_function): Pass this arg.
+
+	* expr.c (expand_call, expand_builtin [alloca]):
+	If STACK_POINTER_OFFSET is defined, add it to stack pointer contents
+	before using it as address of actual data on the stack.
+	* stmt.c (expand_decl): Likewise.
+
+	* stmt.c (assign_parms): If 1st parm named `__builtin_va_alist'
+	came in regs, pretend it came on stack.
+	Handle pretending a BLKmode var came on the stack.
+	If REG_PARM_STACK_SLOT, count stack space for each parm
+	even if the parm came in a register; and use that stack space
+	if the parm needs to be addressable or is BLKmode.
+	Rearrange to simplify conditionals.
+
+Thu Jun  9 01:21:29 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* local-alloc.c:
+	`qty_...' vectors' elements for hard-reg-numbers now aren't used.
+	`reg_qty' elements for hard-reg numbers now aren't used,
+	and the element for a pseudo is never a hard-reg number.
+	(local_alloc): No need to reset those elements.
+	No need to reset elements out of range of prev block's NEXT_QTY.
+	(reg_is_born, reg_is_set, wipe_dead_reg):
+	Divide labor in same way for hard regs and pseudos;
+	simplify using fact that locality-to-basic-block has been precomputed
+	and recorded in reg_qty; avoid refs to reg_qty[HARDREG].
+	(reg_is_born, wipe_dead_regs): Block-number arg no longer needed.
+
+	* local-alloc.c (combine_regs): Remove old code for tying hard regs
+	to pseudos; great simplification results.
+	Use find_regno_note, not regno_dead_p.
+
+Wed Jun  8 00:18:04 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c (subst_reg_equivs): Set a flag if anything is changed.
+	(find_reloads_address): Check that flag to avoid extra work.
+	Also check early for safe reg+const address and avoid work.
+
+	* reload.c (find_reloads): Use loops instead of bcopy.
+	Check early for insn with no real constraints, and return.
+	Also check for move from hard reg to hard reg and return.
+
+	* cse.c (canon_reg): Rewrite for speed; use a switch.
+	(cse_insn): Don't call find_reg_note if REG_NOTES is 0.
+
+	* cse.c (cse_insn): Store modified SET_SRC even if there's a REG_EQUIV.
+	Inhibition was needed when the SET_SRC was the only place to find the
+	equivalent value; now it is in the REG_EQUIV note.
+
+	* stmt.c (expand_asm_operands): If NINPUTS is 0, make vec of no elts.
+	* regclass.c (reg_scan_mark_refs): Don't lose if XVEC (x,i) is 0.
+
+Tue Jun  7 03:51:28 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (assign_stack_local): If big-endian and MODE is narrow,
+	the bytes actually used are the least significant.
+
+	* parse.y (skip_white_space): Accept char as arg; let caller read it.
+	(yylex): Change call.
+	(check_newline): Return 1st nonwhite char after skipping lines.
+	(skip_white_space): Change call.
+	* toplev.c (compile_file): Change call.
+
+	* gcc.c: Pass -traditional to cc1.
+
+	* cse.c (cse_insn): Return very early for (set (reg) (call...)).
+	Mainly to save time.
+	(cse-insn) Old code to add REG_WAS_0 note wasted time but did nothing.
+
+	* expr.c (clear_pending_stack_adjust): Really do clear it,
+	if current fcn doesn't want to be inline.
+
+	* cse.c (cse_insn): Speedup: instead of safe_hash, use canon_hash
+	or HASHREG.
+
+Mon Jun  6 21:47:23 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* jump.c (rtx_renumbered_equal_p): Reject ADDR_VEC fast.
+
+	* cse.c (cse_insn): Ignore a REG_EQUIV or REG_EQUAL note if the
+	equivalent value is the same as the SET_SRC of the insn.
+
+	* flow.c (life_analysis): Don't call volatile_refs_p for a CALL_INSN;
+	just assume value is 1.
+	(propagate_block): Don't call mark_{used,set}_regs for a stack-pop
+	since if it isn't dead it has no effect on any useful life data.
+	(mark_set_1): Return quickly if setting stack-ptr, and almost as
+	quickly if setting any hard reg.
+	(mark_used_regs): Likewise for refs.
+	Also don't scan the vector of an ADDR_VEC or ADDR_DIFF_VEC.
+	(volatile_refs_p): Likewise.
+
+	* varasm.c (output_constant): Discard NOP_EXPR and CONVERT_EXPR
+	in integer case (they were for casting a pointer).
+
+	* parse.y (compstmt_or_error): Parse a compstmt after ignoring error.
+	Use this for fctn body so that an error after store_parm_decls
+	won't recover to xdecls and call store_parm_decls again.
+	Typical cause was missing semi at end of last parmdecl.
+
+	* parse.y: Add missing semicolons in actions.
+	(yylex): Don't use yylloc.
+
+Sun Jun  5 16:14:40 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* typecheck.c (build_array_ref): Check arg types here, to make
+	error message more accurate (not about "addition").
+
+Thu Jun  2 02:41:40 1988  Richard Stallman  (rms at rice-krispies.ai.mit.edu)
+
+	* cccp.c (collect_expansion): `#' isn't special if -traditional.
+
+	* dbxout.c (dbxout_parms): Don't output a regparm symbol
+	unless the parm got a hard reg assigned.
+
+	* tm-encore.h (ASM_OUTPUT_DOUBLE): Use 0f... not 0d...
+
+	* tm-vax.h (CHECK_FLOAT_VALUE): Define this.
+
+Wed Jun  1 17:13:00 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* expr.c (expand_call): Have sequence points between args.
+
+Tue May 31 00:27:06 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* expmed.c (store_fixed_bit_field): Avoid shifting by 32.
+	* cse.c (fold_rtx):
+	* symout.c (subrange_p):  likewise.
+
+	* local-alloc.c (block_alloc): If operands 1 and 2 commute,
+	try tying output to operand 2 if operand 1 won't do.
+
+	* toplev.c (compile_file): Pass main_input_file to symout_init.
+
+	* tree.c (build_real, build_real_from_int_cst):
+	Call CHECK_FLOAT_VALUE if it's defined, to report out-of-range values.
+
+	* tree.c (build_real, build_real_from_int_cst): New 1st arg TYPE.
+	* parse.y (yylex): Pass this arg; requires parsing suffixes first.
+	* fold-const.c (fold, combine, fold_convert): Pass this arg.
+	Handling of float binops in `combine' simplified.
+
+	* tm-encore.h (CPP_PREDEFINES): Remove -Dencore since CC lacks it.
+
+	* final.c (output_source_line): Let ASM_OUTPUT_SOURCE_LINE
+	be used for SDB also.
+
+Mon May 30 00:21:15 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (insert): Was inserting in wrong place in list.
+	(exp_equiv_p): Was failing to check validity when x == y.
+
+	* tree.c (build_pointer_type): Handle saveable_obstack
+	like current_obstack.
+
+	* decl.c (finish_decl): Error in test for zero-size array warning.
+
+	* reload.c (find_equiv_reg): New arg MODE specifies mode in which
+	an equivalent value is needed.  Equivalence must be good in that mode.
+	In addition, notice overlap with multiword register modes.
+	Simplify, knowing that registers have already been renumbered.
+	It was invalidating memory-goals too easily; setting a reg
+	only invalidates memory-goal if its address varies.
+	* reload.c, reload1.c, jump.c: Calls pass the new argument.
+
+	* cccp.c: For correct ANSI, must reject `$' in identifiers.
+	(dollars_in_ident): Variable says whether to allow them.
+	(rescan): Handle `$' as randomchar if that's 0.
+	(main): dollars_in_ident is set to 0 by -$, to 1 by -traditional.
+	(rescan, do_define): Delete former pedantic warnings for `$'.
+	(initialize_char_syntax, initialize_builtins): Inits split to two
+	functions; former is called after options are scanned
+	so `$' is in is_idchar conditionally.
+	* gcc.c: For -ansi, pass -$ to cccp.
+	* toplev.c, flags.h: Define dollars_in_ident.
+	* parse.y (yylex): Treat $ as punctuation unless dollars_in_ident.
+	Delete old pedantic warning about $.
+	* tm-vms.h: Define DOLLARS_IN_IDENTIFIERS as 1.
+
+	* cccp.c (rescan): Preprocessing numbers can have signs, after `e'.
+
+	* integrate.c (expand_inline_function): Abort, don't return failure,
+	if max_regno is too low.  I believe this can't happen.
+
+	* typecheck.c (build_binary_op_nodefault):
+	For ordered comparisons, no pedantic warning about void *.
+	For MAX, MIN, ditto, and also don't allow pointer vs 0.
+
+	* typecheck.c (build_unary_op): Don't allow pointer for +.
+
+	* typecheck.c (convert_for_assignment): 
+	Add missing warning for	case of unrelated pointer types.
+	Change criteria for new ANSI C draft.
+
+	* optabs.c (expand_binop): Don't set unused target_is_not_an_operand.
+
+	* fold-const.c (fold_convert): Don't set unused inprec, outprec.
+
+	* emit-rtl.c, parse.y: Delete unused var.
+
+	* stor-layout.c (add_vc_sizes): Unused function deleted.
+	* loop.c (constant_high_bytes): #if 0 this unused function.
+
+	* gcc.c (fatal): Add missing arg to delete_temp_files.
+
+	* cccp.c (dump_defn_1): Add missing arg to skip_quoted_string.
+
+	* reload.c (find_reloads): If constraints don't fit in an `asm',
+	print error instead of aborting.
+
+	* regclass.c (reg_class_record): Ignore `&' in constraint.
+
+Sun May 29 00:20:23 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Makefile: Run ranlib only if /usr/bin/ranlib exists.
+	Add comment saying what to do on system V.
+
+	* tree.c (suspend_momentary): Switch to the saveable_obstack
+	for the sake of inline functions.
+
+	* flags.h (enum debugger): New enum for write_symbols.
+	* toplev.c, varasm.c, final.c: Use the enum constants where appro.
+	Add calls to sdbout paralleling the calls to dbxout;
+	put each in the appropriate conditional {SDB,DBX}_DEBUGGING_INFO.
+
+	* toplev.c (main): Delete -noreg option; it's now the default.
+	Make -O an alias for -opt.  Rename -g to -gg.  -g is alias for -G.
+	Accept and ignore -Wtrigraphs.
+	* gcc.c: Simplify the specs.
+
+	* toplev.c (compile_file), tm-*.h:
+	ASM_FILE_START is now a statement, not just a string to be output.
+	Output it *after* determining the real source file name.
+
+	* fold-const.c (fold): Simplify x >= CST to x > CST-1 (CST positive).
+	To simplify this, canonicalize relationals to put constat last.
+
+	* decl.c (duplicate_decls): Make a 2nd errmsg to show previous decl.
+
+	* cccp.c (file_size_and_mode): Delete temporary VMS bootstrap patch.
+
+	* tm-att386.h: New file.
+
+	* decl.c (pushdecl): Warn if a local `extern' decl precedes
+	a file-scope `static' decl.
+
+	* expr.c (expand_call): No warning for failure to inline.
+
+	* expmed.c (extract_bit_field): copy operand 1 of extv or extzv
+	into register if memory isn't allowed.
+
+Sat May 28 02:10:56 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gnulib.c, Makefile: Delete va_end.
+
+	* final.c, symout.c: Check DBX_DEBUGGING_INFO, not NO_DBX_FORMAT.
+
+	* genemit.c (gen_expand): Notice a CALL inside a PARALLEL.
+
+	* regclass.c (init_reg_sets_1): Part of init_reg_set is put in this
+	new fn which is called after options are scanned.
+	Now CONDITIONAL_REGISTER_USAGE can depend on the options.
+	(fix_register): Just alter the data that init_reg_sets_1 will look at.
+
+	* reload1.c (reload): Don't complain if two different but tieable
+	modes require groups of the same regclass (assuming same size group).
+
+	* cccp.c: Add 3rd arg to all `open' calls.
+
+	* parse.y (check_newline): Typo prevented ignoring whitespace.
+
+	* cccp.c (perror_with_name): fprintf had harmful extra arg.
+
+	* cccp.c (main, trigraph_pcp): -Wtrigraphs means warn if any trigraphs.
+
+	* emit-rtl.c (gen_sequence): If LEN is 1, avoid looking at PATTERN
+	of something that doesn't have one.
+
+	* reload1.c (alter_frame_pointer_addresses): frame pointer can
+	occur by itself, not just inside a PLUS.
+	(reload): Call eliminate_frame_pointer before reload_as_needed.
+	Otherwise the latter can make reload insns that copy the frame ptr
+	to a data reg, but 68k can't copy sp+const to a data reg.
+
+	* decl.c (implicitly_declare): Always save the implicit decl
+	permanently.  Reuse an old one if it exists.
+	* tree.c (resume_temporary_allocation): Used after `end_temporary...'
+	to go back to temporary allocation.
+
+	* stor-layout (layout_{type,decl}): Call variable_size.
+	(variable_size): Turn a size into a SAVE_EXPR and either compute
+	it right away or put it on a list to be computed later.
+	(get_pending_sizes): Return that list and clear it out.
+	* stmt.c (expand_start_function): Tell `variable_size' to compute
+	sizes right away, and compute those saved on the list.
+	(expand_end_function): Tell it to put them on a list.
+
+Fri May 27 00:02:34 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* dbxout.c (dbxout_symbol): For local static var, use 'V', not 'v'.
+
+	* gcc.c (main): Don't handle SIGHUP or SIGTERM if shell ignored it.
+
+	* Makefile, gcc.c: Propagate Make var `libdir' to gcc search path.
+
+	* expr.c (expand_expr): a PARM_DECL with no rtl can occur in size of
+	`a' in `foo (a,i) int i; struct {int x[i];} a;', so report an error.
+
+	* flow.c (insn_dead_p): insn that makes stack bigger is never dead.
+	* combine.c (try_combine): Don't splice out stores into stack ptr.
+
+	* reload.c (find_equiv_reg): Test given regno for OVERLAPPING_REGNO_P.
+
+	* varasm.c (assemble_variable): Use saveable_obstack for allocation.
+
+Thu May 26 01:17:00 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* integrate.c (save_for_inline): Clear unused slots in parmdecl_map.
+	(There may be some non-parm regs below max_parm_regno.)
+	* integrate.c (copy_for_inline): Don't crash if parmdecl_map elt is 0.
+
+	* Don't fail to output a static inline function that was referenced
+	via a local extern decl before its definition.
+	* expr.c (expand_call): If need to mark a fcn decl addressable,
+	mark the identifier addressable also.
+	* typecheck.c (mark_addressable): If marking fcn addressable,
+	mark the identifier as well.
+	* decl.c (start_function): If identifier was marked addressable,
+	propagate it to the function.
+
+	* parse.y (yylex): Check for ERANGE after atof is called.
+	(Sun doesn't report ERANGE.)
+
+	* loop.c (may_trap_p): Any floating arithmetic may trap.
+
+Wed May 25 00:03:34 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* parse.y: Delete `noalias'.
+	(asm_operand): Don't allow this to be empty.
+	(asm_operands): Do allow this to be empty.
+
+	* reload.c (operands_match_p): Don't let REG and SUBREG match
+	if the reg isn't a hard reg.
+	No longer nec. to check reg_renumber, now that reload
+	substitutes the hard regno.
+
+	* reload1.c (reload): Counting existing spilled groups,
+	check HARD_REGNO_MODE_OK so we don't get fooled by an odd-even pair.
+	Spill entire need for new groups before spilling any solitary regs.
+	Reg already counted against max_nongroups can't become part of a group.
+	(new_spill_reg): Do bookkeeping associated with a new spill-reg.
+	(n_spills): This var is now static, no longer passed as arg
+	within the file.
+
+	(reload_reg_class_lower): Handle all group-reloads before solitaries.
+	(choose_reload_targets): therefore #if 0 the special code for
+	finding solitary registers that aren't suitable for groups.
+	But fix two bugs in it: braino deciding whether a reload
+	is looking for 1 register (not a group).  Use CLASS_MAX_NREGS.
+	Also braino deciding whether a spill reg can be in a group.
+	Did not fix bug that it fails to test HARD_REGNO_MODE_OK,
+	so it might split up an even-odd pair.
+
+	* vax.md: Special patterns for 8 and 16-bit fields, to make
+	move-insns (like the ones for the 68k).
+
+	* tree.c (convert_to_integer): Pass truncation down thru COND_EXPR
+	as through a binary operator.
+
+	* typecheck.c (build_cond_expr): If unpromoted operand types match,
+	don't promote them--let containing expression promote (just once).
+
+Tue May 24 14:46:26 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* combine.c (subst): Simplify (subreg (sign_extend X) 0).
+
+	* tm-hp9k320.h: Delete NO_DBX_FORMAT.
+	* Most tm...h files: Define DBX_DEBUGGING_INFO.
+	* dbxout.c: Change conditional to DBX_DEBUGGING_INFO.
+
+	* integrate.c (expand_inline_function): If inline fcn was declared to
+	return QI, but actually computes an SI, use SImode for INLINE_TARGET
+	but actually return a QI.
+
+	* varasm.c (force_const_mem): Failed to determine alignment bdry
+	from machine mode.
+
+	* jump.c (jump_optimize): Don't delete (move X Y) if X or Y is a
+	PRESERVE_DEATH_INFO_REGNO_P register.
+
+	* final.c (output_addr_const): In PLUS, output constant term last.
+
+	* final.c (final): Before outputting an insn, do FINAL_PRESCAN_INSN.
+
+	* final.c (next_block_index): No longer static.
+	(final): Add SDB_DEBUGGING_INFO cases for outputing NOTEs
+	for beginning and end of a block.
+	(output_source_line): Add SDB_DEBUGGING_INFO case for line number.
+	* varasm.c (assemble_function): Add code for SDB symbol output.
+
+	* gnulib.c: Allow config to override INTIFY.
+	New macro SFVALUE for data type to return a single-float in.
+
+	* combine.c (remove_death): No longer `static'.
+
+	* reload1. (choose_reload_targets): PRESERVE_DEATH_INFO_REGNO_P
+	selects hard regs for which death info should be updated for final.
+
+	* reload1.c (reload_as_needed): Let INSN_CLOBBERS_REGNO_P
+	prevent inheritance of certain reloads.
+
+	* reload.c (find_equiv_reg): Let OVERLAPPING_REGNO_P reject
+	an equiv reg.  Needed for funny float regs on 80387.
+
+	* cccp.c (do_ident): Define #ident as a no-op if IDENT_DIRECTIVE.
+	Warn if pedantic.
+	(do_sccs): Warn if pedantic.
+
+	* emit-rtl.c (restore_reg_data): Set cur_insn_uid--prevent duplicates.
+
 Sun May 22 12:25:06 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
 
 	* Version 1.22 released.

@@ -1,3 +1,4 @@
+
 ;;- Machine description for GNU compiler
 ;;- Vax Version
 ;;   Copyright (C) 1987 Free Software Foundation, Inc.
@@ -1053,11 +1054,99 @@
 ;		 (match_operand:SI 3 "general_operand" "g")))]
 ;  ""
 ;  "index %1,$0x80000000,$0x7fffffff,%3,%2,%0")
+
+;; Special cases of bit-field insns which we should
+;; recognize in preference to the general case.
+;; These handle aligned 8-bit and 16-bit fields,
+;; which can usually be done with move instructions.
+
+(define_insn ""
+  [(set (zero_extract:SI (match_operand:SI 0 "general_operand" "+ro")
+			 (match_operand:SI 1 "immediate_operand" "i")
+			 (match_operand:SI 2 "immediate_operand" "i"))
+	(match_operand:SI 3 "general_operand" "g"))]
+   "GET_CODE (operands[1]) == CONST_INT
+   && (INTVAL (operands[1]) == 8 || INTVAL (operands[1]) == 16)
+   && GET_CODE (operands[2]) == CONST_INT
+   && INTVAL (operands[2]) % INTVAL (operands[1]) == 0
+   && (GET_CODE (operands[0]) == REG
+       || ! mode_dependent_address_p (XEXP (operands[0], 0)))"
+  "*
+{
+  if (REG_P (operands[0]))
+    {
+      if (INTVAL (operands[2]) != 0)
+	return \"insv %3,%2,%1,%0\";
+    }
+  else
+    operands[0]
+      = adj_offsetable_operand (operands[0], INTVAL (operands[2]) / 8);
+
+  if (INTVAL (operands[1]) == 8)
+    return \"movb %3,%0\";
+  return \"movw %3,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=&g")
+	(zero_extract:SI (match_operand:SI 1 "general_operand" "ro")
+			 (match_operand:SI 2 "immediate_operand" "i")
+			 (match_operand:SI 3 "immediate_operand" "i")))]
+   "GET_CODE (operands[2]) == CONST_INT
+   && (INTVAL (operands[2]) == 8 || INTVAL (operands[2]) == 16)
+   && GET_CODE (operands[3]) == CONST_INT
+   && INTVAL (operands[3]) % INTVAL (operands[2]) == 0
+   && (GET_CODE (operands[1]) == REG
+       || ! mode_dependent_address_p (XEXP (operands[1], 0)))"
+  "*
+{
+  if (REG_P (operands[1]))
+    {
+      if (INTVAL (operands[3]) != 0)
+	return \"extzv %3,%2,%1,%0\";
+    }
+  else
+    operands[1]
+      = adj_offsetable_operand (operands[1], INTVAL (operands[3]) / 8);
+
+  if (INTVAL (operands[2]) == 8)
+    return \"movzbl %1,%0\";
+  return \"movzwl %1,%0\";
+}")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(sign_extract:SI (match_operand:SI 1 "general_operand" "ro")
+			 (match_operand:SI 2 "immediate_operand" "i")
+			 (match_operand:SI 3 "immediate_operand" "i")))]
+   "GET_CODE (operands[2]) == CONST_INT
+   && (INTVAL (operands[2]) == 8 || INTVAL (operands[2]) == 16)
+   && GET_CODE (operands[3]) == CONST_INT
+   && INTVAL (operands[3]) % INTVAL (operands[2]) == 0
+   && (GET_CODE (operands[1]) == REG
+       || ! mode_dependent_address_p (XEXP (operands[1], 0)))"
+  "*
+{
+  if (REG_P (operands[1]))
+    {
+      if (INTVAL (operands[3]) != 0)
+	return \"extv %3,%2,%1,%0\";
+    }
+  else
+    operands[1]
+      = adj_offsetable_operand (operands[1], INTVAL (operands[3]) / 8);
+
+  if (INTVAL (operands[2]) == 8)
+    return \"cvtbl %1,%0\";
+  return \"cvtwl %1,%0\";
+}")
+
+;; Register-only SImode cases of bit-field insns.
 
 (define_insn ""
   [(set (cc0)
 	(minus
-	 (sign_extract:SI (match_operand:QI 0 "general_operand" "g")
+	 (sign_extract:SI (match_operand:SI 0 "general_operand" "r")
 			  (match_operand:SI 1 "general_operand" "g")
 			  (match_operand:SI 2 "general_operand" "g"))
 	 (match_operand:SI 3 "general_operand" "g")))]
@@ -1067,32 +1156,16 @@
 (define_insn ""
   [(set (cc0)
 	(minus
-	 (zero_extract:SI (match_operand:QI 0 "general_operand" "g")
+	 (zero_extract:SI (match_operand:SI 0 "general_operand" "r")
 			  (match_operand:SI 1 "general_operand" "g")
 			  (match_operand:SI 2 "general_operand" "g"))
 	 (match_operand:SI 3 "general_operand" "g")))]
   ""
   "cmpzv %2,%1,%0,%3")
 
-(define_insn "extv"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(sign_extract:SI (match_operand:QI 1 "general_operand" "g")
-			 (match_operand:SI 2 "general_operand" "g")
-			 (match_operand:SI 3 "general_operand" "g")))]
-  ""
-  "extv %3,%2,%1,%0")
-
-(define_insn "extzv"
-  [(set (match_operand:SI 0 "general_operand" "=g")
-	(zero_extract:SI (match_operand:QI 1 "general_operand" "g")
-			 (match_operand:SI 2 "general_operand" "g")
-			 (match_operand:SI 3 "general_operand" "g")))]
-  ""
-  "extzv %3,%2,%1,%0")
-
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=g")
-	(sign_extract:SI (match_operand:SI 1 "register_operand" "r")
+	(sign_extract:SI (match_operand:SI 1 "general_operand" "r")
 			 (match_operand:SI 2 "general_operand" "g")
 			 (match_operand:SI 3 "general_operand" "g")))]
   ""
@@ -1101,6 +1174,46 @@
 (define_insn ""
   [(set (match_operand:SI 0 "general_operand" "=g")
 	(zero_extract:SI (match_operand:SI 1 "general_operand" "r")
+			 (match_operand:SI 2 "general_operand" "g")
+			 (match_operand:SI 3 "general_operand" "g")))]
+  ""
+  "extzv %3,%2,%1,%0")
+
+;; Non-register cases.
+;; nonimmediate_operand is used to make sure that mode-ambiguous cases
+;; don't match these (and therefore match the cases above instead).
+
+(define_insn ""
+  [(set (cc0)
+	(minus
+	 (sign_extract:SI (match_operand:QI 0 "nonimmediate_operand" "rm")
+			  (match_operand:SI 1 "general_operand" "g")
+			  (match_operand:SI 2 "general_operand" "g"))
+	 (match_operand:SI 3 "general_operand" "g")))]
+  ""
+  "cmpv %2,%1,%0,%3")
+
+(define_insn ""
+  [(set (cc0)
+	(minus
+	 (zero_extract:SI (match_operand:QI 0 "nonimmediate_operand" "rm")
+			  (match_operand:SI 1 "general_operand" "g")
+			  (match_operand:SI 2 "general_operand" "g"))
+	 (match_operand:SI 3 "general_operand" "g")))]
+  ""
+  "cmpzv %2,%1,%0,%3")
+
+(define_insn "extv"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(sign_extract:SI (match_operand:QI 1 "nonimmediate_operand" "rm")
+			 (match_operand:SI 2 "general_operand" "g")
+			 (match_operand:SI 3 "general_operand" "g")))]
+  ""
+  "extv %3,%2,%1,%0")
+
+(define_insn "extzv"
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(zero_extract:SI (match_operand:QI 1 "nonimmediate_operand" "rm")
 			 (match_operand:SI 2 "general_operand" "g")
 			 (match_operand:SI 3 "general_operand" "g")))]
   ""

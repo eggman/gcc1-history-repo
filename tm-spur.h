@@ -713,6 +713,9 @@ extern int current_function_pretend_args_size;
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS 1
 
+/* This is BSD, so it wants DBX format.  */
+#define DBX_DEBUGGING_INFO
+
 /* Do not break .stabs pseudos into continuations.  */
 #define DBX_CONTIN_LENGTH 0
 
@@ -777,7 +780,7 @@ extern int current_function_pretend_args_size;
 
 /* Output at beginning of assembler file.  */
 
-#define ASM_FILE_START ""
+#define ASM_FILE_START(FILE)
 
 /* Output to assembler file text saying following lines
    may contain character constants, extra white space, comments, etc.  */

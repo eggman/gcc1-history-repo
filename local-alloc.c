@@ -1,5 +1,5 @@
 /* Allocate registers within a basic block, for GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -62,6 +62,8 @@ and this notice must be preserved on all copies.  */
 #include "basic-block.h"
 #include "regs.h"
 #include "hard-reg-set.h"
+#include "insn-config.h"
+#include "recog.h"
 
 /* What about hardware registers used and set within same insn?
    Will that ever happen for a non-fixed register?
@@ -72,6 +74,9 @@ and this notice must be preserved on all copies.  */
 /* Next quantity number available for allocation.  */
 
 static int next_qty;
+
+/* In all the following vectors indexed by quantity number,
+   only elements at indices >= FIRST_PSEUDO_REGISTER are actually used.  */
 
 /* Element Q is the hard reg number chosen for quantity Q,
    or -1 if none was found.  */
@@ -126,9 +131,12 @@ static char *qty_crosses_call;
 
 static char *qty_preferred_or_nothing;
 
-/* reg_qty[n] is the qty number of (REG n),
-   or -1 if (REG n) is not local to the current basic block,
-   or -2 if not known yet.  */
+/* reg_qty[N] (where N is a pseudo reg number)
+   is the qty number of that reg (which is >= FIRST_PSEUDO_REGISTER),
+   or -1 if (REG N) is not local to the current basic block,
+   or -2 if not known yet.
+
+   If N is < FIRST_PSEUDO_REGISTER, reg_qty[N] is -1.  */
 
 static int *reg_qty;
 
@@ -162,14 +170,15 @@ static HARD_REG_SET *regs_live_at;
 
 static int call_seen;
 
-/* Communicate local vars `insn_number' and `b' from `block_alloc' to `reg_is_set'.  */
-
+/* Communicate local vars `insn_number' and `insn'
+   from `block_alloc' to `reg_is_set'.  */
 static int this_insn_number;
-static int this_block_number;
+static rtx this_insn;
 
 static void block_alloc ();
 static int combine_regs ();
 static void wipe_dead_reg ();
+static int find_free_reg ();
 static void reg_is_born ();
 static void reg_is_set ();
 static void mark_life ();
@@ -229,14 +238,17 @@ local_alloc ()
   for (i = 0; i < max_regno; i++)
     reg_renumber[i] = -1;
 
+  /* This controls only how many elts of the `qty_...' vectors
+     need to be zero for the first basic block.  */
+  next_qty = max_regno;
+
   /* Allocate each block's local registers, block by block.  */
 
   for (b = 0; b < n_basic_blocks; b++)
     {
       for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
 	{
-	  qty_phys_sugg[i] = -1;
-	  reg_qty[i] = -2;
+	  reg_qty[i] = -1;
 	}
       for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
 	{
@@ -250,14 +262,39 @@ local_alloc ()
 
       bzero (reg_offset, max_regno * sizeof (int));
 
-      bzero (qty_birth, max_regno * sizeof (int));
-      bzero (qty_death, max_regno * sizeof (int));
-      bzero (qty_size, max_regno * sizeof (int));
-      bzero (qty_mode, max_regno * sizeof (enum machine_mode));
-      bzero (qty_min_class, max_regno * sizeof (enum reg_class));
-      bzero (qty_preferred_or_nothing, max_regno);
-      bzero (qty_crosses_call, max_regno);
-      bzero (qty_phys_reg, max_regno * sizeof (short));
+      /* NEXT_QTY indicates which elements of the `qty_...'
+	 vectors might need to be initialized.  Initialize those,
+	 with explicit loop if there are few, else with bzero.  */
+
+      if (next_qty < FIRST_PSEUDO_REGISTER + 6)
+	{
+	  for (i = FIRST_PSEUDO_REGISTER; i < next_qty; i++)
+	    {
+	      qty_birth[i] = 0;
+	      qty_death[i] = 0;
+	      qty_size[i] = 0;
+	      qty_mode[i] = VOIDmode;
+	      qty_min_class[i] = NO_REGS;
+	      qty_preferred_or_nothing[i] = 0;
+	      qty_crosses_call[i] = 0;
+	    }
+	}
+      else
+	{
+	  int clear_length = next_qty - FIRST_PSEUDO_REGISTER;
+
+#define CLEAR(vector)  \
+   bzero ((vector) + FIRST_PSEUDO_REGISTER,    \
+	  (sizeof (*(vector))) * clear_length)
+
+	  CLEAR (qty_birth);
+	  CLEAR (qty_death);
+	  CLEAR (qty_size);
+	  CLEAR (qty_mode);
+	  CLEAR (qty_min_class);
+	  CLEAR (qty_preferred_or_nothing);
+	  CLEAR (qty_crosses_call);
+	}
 
       next_qty = FIRST_PSEUDO_REGISTER;
 
@@ -321,11 +358,20 @@ block_alloc (b)
 	  register int win = 0;
 	  register rtx r0, r1;
 	  int combined_regno = -1;
+	  int insn_code_number = recog_memoized (insn);
+	  int commutative = 0;
+
+	  /* Set COMMUTATIVE if operands 1 and 2 are commutative.  */
+	  if (insn_code_number >= 0
+	      && insn_n_operands[insn_code_number] > 2
+	      && insn_operand_constraint[insn_code_number][1][0] == '%')
+	    commutative = 1;
 
 	  /* Is this insn suitable for tying two registers?
 	     If so, try doing that.
 	     Suitable insns are (set reg0 reg1) and
 	     (set reg0 (arithop reg1 ...)).
+	     For a commutative operation, try (set reg0 (arithop ... reg1)).
 	     Subregs in place of regs are also ok.
 	     An insn with parallel sets is ok if the first set is suitable.
 
@@ -337,13 +383,22 @@ block_alloc (b)
 	      && (r1 = SET_SRC (body),
 		  GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
 	    win = combine_regs (r1, r0, b, insn_number, insn);
-	  else if (GET_CODE (body) == SET
-		   && (r0 = SET_DEST (body),
-		       GET_CODE (r0) == REG || GET_CODE (r0) == SUBREG)
-		   && GET_RTX_FORMAT (GET_CODE (SET_SRC (body)))[0] == 'e'
-		   && (r1 = XEXP (SET_SRC (body), 0),
-		       GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
-	    win = combine_regs (r1, r0, b, insn_number, insn);
+	  else if (GET_CODE (body) == SET)
+	    {
+	      r0 = SET_DEST (body);
+	      if (GET_CODE (r0) == REG || GET_CODE (r0) == SUBREG)
+		{
+		  if (GET_RTX_FORMAT (GET_CODE (SET_SRC (body)))[0] == 'e'
+		      && (r1 = XEXP (SET_SRC (body), 0),
+			  GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
+		    win = combine_regs (r1, r0, b, insn_number, insn);
+		  if (win == 0 && commutative
+		      && GET_RTX_FORMAT (GET_CODE (SET_SRC (body)))[1] == 'e'
+		      && (r1 = XEXP (SET_SRC (body), 1),
+			  GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
+		    win = combine_regs (r1, r0, b, insn_number, insn);
+		}
+	    }
 	  else if (GET_CODE (body) == PARALLEL)
 	    {
 	      rtx set1 = XVECEXP (body, 0, 0);
@@ -352,6 +407,13 @@ block_alloc (b)
 		      GET_CODE (r0) == REG || GET_CODE (r0) == SUBREG)
 		  && GET_RTX_FORMAT (GET_CODE (SET_SRC (set1)))[0] == 'e'
 		  && (r1 = XEXP (SET_SRC (set1), 0),
+		      GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
+		win = combine_regs (r1, r0, b, insn_number, insn);
+	      if (win == 0 && commutative && GET_CODE (set1) == SET 
+		  && (r0 = SET_DEST (set1),
+		      GET_CODE (r0) == REG || GET_CODE (r0) == SUBREG)
+		  && GET_RTX_FORMAT (GET_CODE (SET_SRC (set1)))[1] == 'e'
+		  && (r1 = XEXP (SET_SRC (set1), 1),
 		      GET_CODE (r1) == REG || GET_CODE (r1) == SUBREG))
 		win = combine_regs (r1, r0, b, insn_number, insn);
 	    }
@@ -368,77 +430,81 @@ block_alloc (b)
 	      combined_regno = REGNO (r1);
 	    }
 
-	  /* Mark the death of everything that dies in this instruction,
-	     except for anything that was just combined or that was
-	     just set in this insn.
-	     They can be found on the REG_NOTES list of the instruction.  */
 	  for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
-	    if (XEXP (link, 0)
-		&& REG_NOTE_KIND (link) == REG_DEAD
-		&& combined_regno != REGNO (XEXP (link, 0)))
-	      {
-		if (combined_regno >= 0 &&
-		    reg_qty[combined_regno] == reg_qty[REGNO (XEXP (link, 0))])
-		  /* Here for the death of the quotient in a divmod insn:
-		     something that was born and dead in this insn
-		     but combined with something else that also dies here.
-		     Mark the qty as dying one instruction later.  */
-		  wipe_dead_reg (XEXP (link, 0), insn_number,
-				 insn_number + 1, b);
-		else
-		  wipe_dead_reg (XEXP (link, 0), insn_number, insn_number, b);
-	      }
-	    else if (REG_NOTE_KIND (link) == REG_EQUIV
-		     && GET_CODE (SET_DEST (body)) == REG
-		     && general_operand (XEXP (link, 0), VOIDmode)
-		     /* Don't inhibit allocation of a "constant" register
-			that we have already tied to something else!  */
-		     && combined_regno < 0)
-	      {
-		/* Also, if this insn introduces a "constant" register,
-		   that could just be replaced by the value it is given here
-		   (which can legitimately be an immediate operand),
-		   tell global-alloc not to allocate it
-		   unless it is used at least twice more.  */
-		i = REGNO (SET_DEST (body));
-		if (reg_n_sets[i] > 1)
-		  {
-		    /* Register is set in another place => not really constant.
-		       cse or flow can cause this to happen.
-		       Ok, forget we ever thought it was constant.  */
-		    GET_MODE (link) = VOIDmode;
-		  }
-		else if (reg_n_refs[i] <= 2)
-		  {
-		    /* For a parameter copy, do let global-alloc
-		       allocate it; otherwise we would be forced to
-		       have a frame pointer.  */
-		    if (! frame_pointer_needed
-			&& GET_CODE (SET_SRC (PATTERN (insn))) == MEM)
-		      reg_live_length[i] = -2;
-		    else
-		      reg_live_length[i] = -1;
+	    {
+	      /* Mark the death of everything that dies in this instruction,
+		 except for anything that was just combined.  */
+	      if (XEXP (link, 0)
+		  && REG_NOTE_KIND (link) == REG_DEAD
+		  && combined_regno != REGNO (XEXP (link, 0)))
+		{
+#if 0  /* The mechanism in reg_is_set that checks whether the qty dies here
+	  ought to handle this case properly.  */
+		  if (combined_regno >= 0 &&
+		      reg_qty[combined_regno] == reg_qty[REGNO (XEXP (link, 0))])
+		    /* Here for the death of the quotient in a divmod insn:
+		       something that was born and dead in this insn
+		       but combined with something else that also dies here.
+		       Mark the qty as dying one instruction later.  */
+		    wipe_dead_reg (XEXP (link, 0), insn_number,
+				   insn_number + 1);
+		  else
+#endif
+		    wipe_dead_reg (XEXP (link, 0), insn_number, insn_number);
+		}
+	      /* Also, if this insn introduces a "constant" register,
+		 that could just be replaced by the value it is given here
+		 (which can legitimately be an immediate operand),
+		 tell global-alloc not to allocate it
+		 unless it is used at least twice more.  */
 
-		    /* If value is not constant, we have a parameter
-		       or a static chain pointer.  Tell local-alloc
-		       as well not to allocate it.  */
-		    if (! CONSTANT_P (SET_SRC (PATTERN (insn))))
-		      {
-			reg_basic_block[i] = -2;
-			reg_qty[i] = -1;
-		      }
-		  }
-		else
-		  /* In any case, lower its priority for global-alloc.  */
-		  reg_live_length[i] *= 2;
-	      }
+	      else if (REG_NOTE_KIND (link) == REG_EQUIV
+		       && GET_CODE (SET_DEST (body)) == REG
+		       && general_operand (XEXP (link, 0), VOIDmode)
+		       /* Don't inhibit allocation of a "constant" register
+			  that we have already tied to something else!  */
+		       && combined_regno < 0)
+		{
+		  i = REGNO (SET_DEST (body));
+		  if (reg_n_sets[i] > 1)
+		    {
+		      /* Register is set in another place => not really constant.
+			 cse or flow can cause this to happen.
+			 Ok, forget we ever thought it was constant.  */
+		      GET_MODE (link) = VOIDmode;
+		    }
+		  else if (reg_n_refs[i] <= 2)
+		    {
+		      /* For a parameter copy, do let global-alloc
+			 allocate it; otherwise we would be forced to
+			 have a frame pointer.  */
+		      if (! frame_pointer_needed
+			  && GET_CODE (SET_SRC (PATTERN (insn))) == MEM)
+			reg_live_length[i] = -2;
+		      else
+			reg_live_length[i] = -1;
+
+		      /* If value is not constant, we have a parameter
+			 or a static chain pointer.  Tell local-alloc
+			 as well not to allocate it.  */
+		      if (! CONSTANT_P (SET_SRC (PATTERN (insn))))
+			{
+			  reg_basic_block[i] = -2;
+			  reg_qty[i] = -1;
+			}
+		    }
+		  else
+		    /* In any case, lower its priority for global-alloc.  */
+		    reg_live_length[i] *= 2;
+		}
+	    }
 
 	  /* Allocate qty numbers for all registers local to this block
 	     that are born (set) in this instruction.
 	     A pseudo that already has a qty is not changed.  */
 
 	  this_insn_number = insn_number;
-	  this_block_number = b;
+	  this_insn = insn;
 	  note_stores (PATTERN (insn), reg_is_set);
 	}
       if (GET_CODE (insn) == CALL_INSN)
@@ -453,9 +519,8 @@ block_alloc (b)
     }
 
   /* Now every register that is local to this basic block
-     has been given a hardware register (its reg_qty is < FIRST_PSEUDO_REGISTER)
-     or is tied to something not local to this block (reg_qty is -1)
-     or belongs to a qty with a known birth.  (Verify this now.)
+     should have been given a quantity, or else -1 meaning ignore it.
+     Every quantity should have a known birth (verify this now).
 
      If a qty's death has not been established, it indicates a dead store.
      That is ok if the insn is not entirely dead.
@@ -572,10 +637,6 @@ qty_compare_1 (q1, q2)
    If we really combined them, we could lose if the pseudo lives
    across an insn that clobbers the hard reg (eg, movstr).
 
-   This refusal to actually tie a hard reg with a pseudo is a recent change
-   and the code that used to deal with pseudos that have already been
-   tied to hard regs has not been removed.
-
    There are elaborate checks for the validity of combining.  */
 
    
@@ -591,6 +652,8 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
   int usize, ssize;
   register int sqty;
 
+  /* Determine the numbers and sizes of registers being used.  */
+
   while (GET_CODE (usedreg) == SUBREG)
     {
       offset += SUBREG_WORD (usedreg);
@@ -600,18 +663,6 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
     return 0;
   ureg = REGNO (usedreg);
   usize = REG_SIZE (usedreg);
-
-#if 0
-  /* Function value register is assigned implicitly by function calls,
-     but since that is implicit, reg_is_born will not
-     have been called for it.  Do so now
-     if this is the first use following a function call.  */
-  if (FUNCTION_VALUE_REGNO_P (ureg) && call_seen)
-    {
-      reg_is_born (usedreg, insn_number, -1);
-      call_seen = 0;
-    }
-#endif
 
   while (GET_CODE (setreg) == SUBREG)
     {
@@ -635,15 +686,14 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
      hard regs, and there is no code to keep track of that.
      (This is overcautious; we could check that ssize actually
      requires more hard regs at this spot.)  */
-  if (ssize > usize && reg_qty[ureg] >= 0
-      && (usize < qty_size[reg_qty[ureg]]
-	  || reg_qty[ureg] < FIRST_PSEUDO_REGISTER))
+  if (ssize > usize && reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
+      && usize < qty_size[reg_qty[ureg]])
     return 0;
 
   /* Don't do anything with the non-allocatable registers.
-     Also, don't tie a call-clobberable register
-     to something that must live across calls.
-     Also, don't tie a hardware register to anything larger than it.  */
+     Also, don't suggest a call-clobberable register
+     for something that must live across calls.
+     Also, don't suggest a hardware register for anything larger than it.  */
   if (ureg < FIRST_PSEUDO_REGISTER)
     {
       if (fixed_regs[ureg])
@@ -663,17 +713,6 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
       if (ssize < usize)
 	return 0;
     }
-
-  /* Don't tie something that crosses calls
-     to something tied to a call-clobbered hardware register.  */
-  if (reg_qty[ureg] < FIRST_PSEUDO_REGISTER && reg_qty[ureg] >= 0
-      && call_used_regs[reg_qty[ureg]]
-      && reg_crosses_call[sreg])
-    return 0;
-  if (reg_qty[sreg] < FIRST_PSEUDO_REGISTER && reg_qty[sreg] >= 0
-      && call_used_regs[reg_qty[sreg]]
-      && reg_crosses_call[ureg])
-    return 0;
 
   /* Tying something to itself is ok iff no offset involved.  */
 
@@ -701,9 +740,9 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
   if (ureg < FIRST_PSEUDO_REGISTER)
     {
       if (reg_qty[sreg] == -2)
-	reg_is_born (setreg, insn_number, b);
+	reg_is_born (setreg, insn_number);
       if (reg_qty[ureg] == -2)
-	reg_is_born (usedreg, insn_number, b);
+	reg_is_born (usedreg, insn_number);
       if (reg_qty[sreg] >= 0)
 	qty_phys_sugg[reg_qty[sreg]] = ureg;
       return 0;
@@ -711,9 +750,9 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
   if (sreg < FIRST_PSEUDO_REGISTER)
     {
       if (reg_qty[sreg] == -2)
-	reg_is_born (setreg, insn_number, b);
+	reg_is_born (setreg, insn_number);
       if (reg_qty[ureg] == -2)
-	reg_is_born (usedreg, insn_number, b);
+	reg_is_born (usedreg, insn_number);
       /* If UREG already has a suggested hard reg, don't override it,
 	 since the most likely case is on a risc machine
 	 when a pseudo gets a subroutine result and is then returned by
@@ -728,103 +767,33 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
       return 0;
     }
 
-  /* Do nothing if SREG is a pseudo that already has a quantity.
-     Also do nothing if it's a hard register that already has one,
-     since that means it has been used already in this basic block
-     and something else still live may already be tied to it.  */
+  /* Do nothing if SREG is a pseudo that already has a quantity
+     or if it isn't local to this basic block or dies more than once.  */
 
   if (reg_qty[sreg] != -2)
     return 0;
 
-  /* Summarize the status of what we know about SREG in SQTY:
-     >= 0 for a hard reg, -2 for a pseudo local to the basic block,
-     -1 for a pseudo not local to the basic block.
-     Note that reg_n_deaths[sreg]==0 for a dead store.  */
+  /* Do nothing if UREG isn't local to this block or dies more than once.
+     We do this because global_alloc has no idea of tying,
+     so there is no use noting those local pseudos that could
+     profitably be delayed till global_alloc and get tied to global ones.  */
 
-  sqty = -2;
-  if (sreg < FIRST_PSEUDO_REGISTER)
-    sqty = sreg;
-  else if (reg_basic_block[sreg] != b || reg_n_deaths[sreg] > 1)
-    sqty = -1;
-
-  /* For now, since global_alloc has no idea of tying,
-     there is no use noting those local pseudos that could
-     profitably be delayed till global_alloc and get tied to global ones.
-     So right now give up if either SREG or UREG is a pseudo
-     not local to the block.  */
-
-  if (reg_qty[ureg] == -1 || sqty == -1)
+  if (reg_qty[ureg] == -1)
     return 0;
 
-  /* If SREG is not local to the basic block, or if it is a hard reg,
-     then tie UREG (and all others it is tied to) to SREG.
-     Only if UREG is a pseudo-reg local to this basic block
-     and not already tied to a hardware register,
-     and SREG is 1) external to the block or 2) a hardware register.
-     Also if SREG is a hardware register insist that it be in the class
-     that UREG and its other tied regs want to be in.  */
+  /* We don't already know about SREG, so tie it to UREG
+     if this is the last use of UREG, provided the classes they want
+     are compatible.  */
 
-  if (sqty != -2 && ureg >= FIRST_PSEUDO_REGISTER
-      && reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
-#if 0
-/* qty_best_class would require info not currently computed until
-   after this scan is complete.  */
-      &&
-      (sqty == -1 ||
-       TEST_HARD_REG_BIT (reg_class_contents[(int) qty_best_class (reg_qty[ureg])],
-			  sreg))
-#else
-      &&
-      (sqty == -1 ||
-       TEST_HARD_REG_BIT (reg_class_contents[(int) reg_preferred_class (ureg)],
-			  sreg))
-#endif
-      )
-    {
-      /* We get rid of the quantity that ureg belongs to
-	 and make all regs of that quantity get sqty instead.  */
-      register int i;
-      register int v = reg_qty[ureg];
-      if (sqty == -1) offset = 0;
-      else
-	{
-	  reg_is_born (setreg, insn_number, b);
-	  post_mark_life (sqty, qty_mode[sqty], 1, qty_birth[v], insn_number);
-	}
-
-      qty_birth[sqty] = qty_birth[v];
-      qty_death[v] = qty_birth[v]; /* So qty V won't occupy any hard reg */
-      qty_crosses_call[sqty] |= qty_crosses_call[v];
-      qty_preferred_or_nothing[sqty] = 0;
-      if (qty_size[v] > qty_size[sqty])
-	{
-	  qty_size[sqty] = qty_size[v];
-	  qty_mode[sqty] = qty_mode[v];
-	}
-      for (i = 0; i < max_regno; i++)
-	if (reg_qty[i] == v)
-	  {
-	    reg_qty[i] = sqty;
-	    reg_offset[i] -= offset;
-	  }
-    }
-  /* Else if we don't already know about SREG, tie it to UREG
-     if this is the last use of UREG.
-     If UREG is a hardware register (or tied to one), don't tie
-     if it is not in the class that SREG wants.
-     If UREG is not a hardware register, don't tie
-     if it and SREG want different classes.  */
-  else if (sqty == -2 && regno_dead_p (ureg, insn)
-	   && (reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
-	       ? reg_meets_class_p (sreg, qty_min_class[reg_qty[ureg]])
-	       : reg_qty[ureg] < 0
-	       ? reg_meets_class_p (sreg, reg_preferred_class (ureg))
-	       : TEST_HARD_REG_BIT (reg_class_contents[(int) reg_preferred_class (sreg)],
-				    reg_qty[ureg])))
+  if (find_regno_note (insn, REG_DEAD, ureg)
+      && (reg_qty[ureg] >= FIRST_PSEUDO_REGISTER
+	  ? reg_meets_class_p (sreg, qty_min_class[reg_qty[ureg]])
+	  : reg_meets_class_p (sreg, reg_preferred_class (ureg))))
     {
       if (reg_qty[ureg] == -2)
-	reg_is_born (usedreg, insn_number, b);
+	reg_is_born (usedreg, insn_number);
       sqty = reg_qty[sreg] = reg_qty[ureg];
+      if (sqty < FIRST_PSEUDO_REGISTER) abort ();
       /* If SREG's reg class is smaller, set qty_min_class[SQTY].  */
       update_qty_class (sqty, sreg);
       reg_offset[sreg] = reg_offset[ureg] + offset;
@@ -835,7 +804,7 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
 	  if (usize < ssize)
 	    {
 	      register int i;
-	      for (i = 0; i < max_regno; i++)
+	      for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
 		if (reg_qty[i] == sqty)
 		  reg_offset[i] -= offset;
 	      qty_size[sqty] = ssize;
@@ -897,7 +866,8 @@ update_qty_class (qty, reg)
 /* Handle something which alters the value of an rtx REG.
    REG is whatever is set or clobbered.  (CLOBBER_FLAG says which.)
    If it is not really a register, we do nothing.
-   THIS_INSN_NUMBER and THIS_BLOCK_NUMBER carry info from `block_alloc'.  */
+   The file-global variables `this_insn' and `this_insn_number'
+   carry info from `block_alloc'.  */
 
 static void
 reg_is_set (reg, clobber_flag)
@@ -911,100 +881,92 @@ reg_is_set (reg, clobber_flag)
 
   regno = REGNO (reg);
 
-  if (clobber_flag)
-    {
-      if (regno < FIRST_PSEUDO_REGISTER)
-	{
-	  register int lim = regno + HARD_REGNO_NREGS (regno, GET_MODE (reg));
-	  register int i;
-	  for (i = regno; i < lim; i++)
-	    SET_HARD_REG_BIT (regs_live_at[this_insn_number], i);
-	}
-      return;
-    }
-
-  reg_is_born (reg, this_insn_number, this_block_number);
-
-  /* If a register dies in the same insn that sets it,
-     say it dies in the following insn instead,
-     because it will have to be live right after this insn.  */
-  if (reg_qty[regno] >= 0
-      && qty_death[reg_qty[regno]] == this_insn_number)
-    {
-      /* It is live right after this insn */
-      post_mark_life (reg_qty[regno], GET_MODE (reg), 1,
-		      this_insn_number, this_insn_number+1);
-      /* But dead later.  */
-      mark_life (reg_qty[regno], GET_MODE (reg), 0);
-      qty_death[reg_qty[regno]]++;
-    }
-}
-
-/* Handle setting a register REG (or otherwise beginning its life).
-   INSN_NUMBER is the insn at which this is happening, and BLOCKNUM
-   is the current basic block number.  */
-
-static void
-reg_is_born (reg, insn_number, blocknum)
-     rtx reg;
-     int insn_number;
-     int blocknum;
-{
-  register int regno;
-
-  regno = REGNO (reg);
-     
   if (regno < FIRST_PSEUDO_REGISTER)
     {
-      reg_qty[regno] = regno;
-      qty_phys_reg[regno] = regno;
-      qty_mode[regno] = GET_MODE (reg);
-      mark_life (regno, GET_MODE (reg), 1);
+      /* A hard reg is set or clobbered.
+	 Mark it as live at the moment immediately following this insn
+	 so that no pseudo can live here at that time.  */
+
+      register int lim = regno + HARD_REGNO_NREGS (regno, GET_MODE (reg));
+      register int i;
+      for (i = regno; i < lim; i++)
+	SET_HARD_REG_BIT (regs_live_at[this_insn_number], i);
+
+      /* If the hard reg is given a useful value
+	 and it does not die in this insn,
+	 mark it as live indefinitely afterward.  */
+      if (! clobber_flag
+	  && ! find_regno_note (this_insn, REG_DEAD, regno))
+	reg_is_born (reg, this_insn_number);
     }
-  else if (reg_qty[regno] >= -1)
-    ;
-  else if (reg_basic_block[regno] == blocknum
-	   && reg_n_deaths[regno] == 1)
+  else if (! clobber_flag)
+    {
+      /* A pseudo-reg is set (not just clobbered).  */
+
+      reg_is_born (reg, this_insn_number);
+
+      /* If a pseudo register dies in the same insn that sets it,
+	 say it dies in the following insn instead,
+	 because it will have to be live right after this insn.  */
+      if (qty_death[reg_qty[regno]] == this_insn_number)
+	{
+	  /* It is live right after this insn */
+	  post_mark_life (reg_qty[regno], GET_MODE (reg), 1,
+			  this_insn_number, this_insn_number+1);
+	  /* But dead later.  */
+	  mark_life (reg_qty[regno], GET_MODE (reg), 0);
+	  qty_death[reg_qty[regno]]++;
+	}
+    }
+}
+
+/* Handle beginning of the life of register REG.
+   INSN_NUMBER is the insn at which this is happening.  */
+
+static void
+reg_is_born (reg, insn_number)
+     rtx reg;
+     int insn_number;
+{
+  register int regno = REGNO (reg);
+     
+  if (regno < FIRST_PSEUDO_REGISTER)
+    mark_life (regno, GET_MODE (reg), 1);
+  else if (reg_qty[regno] == -2)
     alloc_qty (regno, GET_MODE (reg), PSEUDO_REGNO_SIZE (regno), insn_number);
-  else
-    abort ();
-/*    reg_qty[regno] = -1;   now done before calling block_alloc.  */
 }
 
 /* Record the death in insn DEATH_INSN_NUMBER for the register REG.  */
 
 static void
-wipe_dead_reg (reg, this_insn_number, death_insn_number, blocknum)
+wipe_dead_reg (reg, this_insn_number, death_insn_number)
      register rtx reg;
      int this_insn_number;
      int death_insn_number;
-     int blocknum;
 {
   register int regno = REGNO (reg);
 
-  /* If a pseudo reg is referred to but was never set,
-     we will find here that its qty is -2.
-     Since these regs do not conflict with anything,
-     mark them as born and dead in the same place.  */
-  if (reg_qty[regno] == -2
-      && regno >= FIRST_PSEUDO_REGISTER
-      && reg_basic_block[regno] == blocknum
-      && reg_n_deaths[regno] == 1)
-    alloc_qty (regno, GET_MODE (reg), REG_SIZE (reg), this_insn_number);
-  /* For a hard reg, make it live so we can record the death.  */
-  if (regno < FIRST_PSEUDO_REGISTER
-      && reg_qty[regno] < 0)
-    reg_is_born (reg, this_insn_number, blocknum);
-  if (reg_qty[regno] >= 0)
+  if (regno < FIRST_PSEUDO_REGISTER)
     {
-      qty_death[reg_qty[regno]] = death_insn_number;
-      if (reg_qty[regno] < FIRST_PSEUDO_REGISTER)
-	{
-	  mark_life (reg_qty[regno], GET_MODE (reg), 0);
-	  if (this_insn_number != death_insn_number)
-	    post_mark_life (reg_qty[regno], GET_MODE (reg), 1,
-			    this_insn_number, death_insn_number);
-	}
+      mark_life (regno, GET_MODE (reg), 0);
+      if (this_insn_number != death_insn_number)
+	abort ();
+#if 0				/* Should never get here */
+	post_mark_life (regno, GET_MODE (reg), 1,
+			this_insn_number, death_insn_number);
+#endif
+    }
+  else
+    {
+      /* If a pseudo reg is referred to but was never set,
+	 we will find here that its qty is -2.
+	 Since these regs do not conflict with anything,
+	 mark them as born and dead in the same place.  */
+      if (reg_qty[regno] == -2)
+	alloc_qty (regno, GET_MODE (reg), REG_SIZE (reg), this_insn_number);
+
+      if (reg_qty[regno] >= 0)
+	qty_death[reg_qty[regno]] = death_insn_number;
     }
 }
 
@@ -1038,6 +1000,11 @@ find_free_reg (call_preserved, class, mode, qty, born_insn, dead_insn)
     IOR_HARD_REG_SET (used, regs_live_at[ins]);
 
   IOR_COMPL_HARD_REG_SET (used, reg_class_contents[(int) class]);
+  /* Don't use the frame pointer reg in local-alloc even if
+     we may omit the frame pointer, because if we do that and then we
+     need a frame pointer, reload won't know how to move the pseudo
+     to another hard reg.  It can move only regs made by global-alloc.  */
+  SET_HARD_REG_BIT (used, FRAME_POINTER_REGNUM);
 
   /* If quantity QTY has a suggested physical register,
      try that one first.  */

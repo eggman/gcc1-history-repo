@@ -110,9 +110,6 @@ static rtx sequence_last_insn = NULL;
    instead of the ordinary chain.  */
 int emit_to_sequence;
 
-/* First insn used for something other than copying parms or changing their modes.  */
-static rtx first_noninit_insn = NULL;
-
 /* INSN_UID for next insn emitted.
    Reset to 1 for each function compiled.  */
 
@@ -1219,7 +1216,10 @@ gen_sequence ()
     return gen_rtx (SEQUENCE, VOIDmode, NULL);
 
   /* If only one insn, return its pattern rather than a SEQUENCE.  */
-  if (len == 1)
+  if (len == 1
+      && (GET_CODE (sequence_first_insn) == INSN
+	  || GET_CODE (sequence_first_insn) == JUMP_INSN
+	  || GET_CODE (sequence_first_insn) == CALL_INSN))
     {
       tem = PATTERN (sequence_first_insn);
       sequence_first_insn = 0;
@@ -1242,6 +1242,8 @@ gen_sequence ()
 /* Set up regno_reg_rtx, reg_rtx_no and regno_pointer_flag
    according to the chain of insns starting with FIRST.
 
+   Also set cur_insn_uid to exceed the largest uid in that chain.
+
    This is used when an inline function's rtl is saved
    and passed to rest_of_compilation later.  */
 
@@ -1251,11 +1253,15 @@ void
 restore_reg_data (first)
      rtx first;
 {
-  rtx insn;
+  register rtx insn;
   int i;
+  register int max_uid = 0;
 
   for (insn = first; insn; insn = NEXT_INSN (insn))
     {
+      if (INSN_UID (insn) >= max_uid)
+	max_uid = INSN_UID (insn);
+
       switch (GET_CODE (insn))
 	{
 	case NOTE:
@@ -1270,7 +1276,10 @@ restore_reg_data (first)
 	  break;
 	}
     }
-  
+
+  /* Don't duplicate the uids already in use.  */
+  cur_insn_uid = max_uid + 1;
+
   /* If any regs are missing, make them up.  */
   for (i = FIRST_PSEUDO_REGISTER; i < reg_rtx_no; i++)
     if (regno_reg_rtx[i] == 0)

@@ -660,6 +660,7 @@ extern tree convert_units ();
 extern tree size_in_bytes ();
 extern tree genop ();
 extern tree build_int ();
+extern tree get_pending_sizes ();
 
 /* Type for sizes of data-type.  */
 
@@ -815,6 +816,15 @@ extern char *input_filename;
 /* Nonzero for -pedantic switch: warn about anything
    that standard C forbids.  */
 extern int pedantic;
+
+/* Nonzero means can safely call expand_expr now;
+   otherwise layout_type puts variable sizes onto `pending_sizes' instead.  */
+
+extern int immediate_size_expand;
+
+/* Points to the FUNCTION_DECL of the function whose body we are reading. */
+
+extern tree current_function_decl;
 
 /* In stmt.c */
 

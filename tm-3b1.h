@@ -51,7 +51,13 @@ and this notice must be preserved on all copies.  */
 
 /* cpp has to support a #sccs directive for the /usr/include files */
 
+#define IDENT_DIRECTIVE
 #define SCCS_DIRECTIVE
+
+/* Define __HAVE_FPU__ in preprocessor if -m68881 is specified.
+   This will control the use of inline 68881 insns in certain macros.  */
+
+#define CPP_SPEC "%{m68881:-D__HAVE_FPU__}"
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
@@ -220,13 +226,11 @@ do { union { float f; long l;} tem;			\
 	    { scale = INTVAL (XEXP (ireg, 1));				\
 	      ireg = XEXP (ireg, 0); }					\
 	  if (GET_CODE (ireg) == SIGN_EXTEND)				\
-	    fprintf (FILE, "L%d-LI%d(%%pc,%s.w",			\
-		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+	    fprintf (FILE, "LD%d(%%pc,%s.w",				\
 		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
 		     reg_name[REGNO (XEXP (ireg, 0))]); 		\
 	  else								\
-	    fprintf (FILE, "L%d-LI%d(%%pc,%s.l",			\
-		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
+	    fprintf (FILE, "LD%d(%%pc,%s.l",				\
 		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
 		     reg_name[REGNO (ireg)]);				\
 	  if (scale != 1) fprintf (FILE, ":%d", scale);			\
@@ -253,8 +257,7 @@ do { union { float f; long l;} tem;			\
 	  break;							\
 	}								\
       else if (reg1 != 0 && GET_CODE (addr) == LABEL_REF)		\
-	{ fprintf (FILE, "L%d-LI%d(%%pc,%s.w)",				\
-		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
+	{ fprintf (FILE, "LD%d(%%pc,%s.w)",				\
 		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
 		   reg_name[REGNO (reg1)]);				\
 	  break; }							\
@@ -271,8 +274,11 @@ do { union { float f; long l;} tem;			\
     fprintf (FILE, "%s%d:\n", PREFIX, NUM)
 
 #define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)	\
-    fprintf (FILE, "\tswbeg &%d\n%s%d:\n\tshort 0",	\
+    fprintf (FILE, "\tswbeg &%d\n%s%d:\n\tshort 0\n",	\
 	     XVECLEN (PATTERN (TABLE), 1) + 1, PREFIX, NUM)
+
+#define ASM_OUTPUT_CASE_END(FILE,NUM,TABLE)		\
+    fprintf (FILE, "\tset LD%d,L%d-LI%d\n", NUM, NUM, NUM);
 
 #define ASM_OUTPUT_OPCODE(FILE, PTR)			\
 { if ((PTR)[0] == 'j' && (PTR)[1] == 'b')		\

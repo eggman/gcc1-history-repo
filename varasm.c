@@ -108,9 +108,21 @@ assemble_function (decl)
 
   fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
 
+#ifdef SDB_DEBUGGING_INFO
+  /* Make sure types are defined for debugger before fcn name is defined.  */
+  if (write_symbols == SDB_DEBUG)
+    sdbout_tags (gettags ());
+#endif
+
   /* Tell assembler to move to target machine's alignment for functions.  */
 
   ASM_OUTPUT_ALIGN (asm_out_file, floor_log2 (FUNCTION_BOUNDARY / BITS_PER_UNIT));
+
+#ifdef SDB_DEBUGGING_INFO
+  /* Output SDB definition of the function.  */
+  if (write_symbols == SDB_DEBUG)
+    sdbout_mark_begin_function ();
+#endif
 
   /* Make function name accessible from other files, if appropriate.  */
 
@@ -119,7 +131,7 @@ assemble_function (decl)
 
   /* Do any machine/system dependent processing of the function name */
 #ifdef ASM_DECLARE_FUNCTION_NAME
-  ASM_DECLARE_FUNCTION_NAME (asm_out_file, fnname);
+  ASM_DECLARE_FUNCTION_NAME (asm_out_file, fnname, current_function_decl);
 #else
   /* Standard thing is just output label for the function.  */
   ASM_OUTPUT_LABEL (asm_out_file, fnname);
@@ -155,7 +167,7 @@ make_function_rtl (decl)
 
    ASMSPEC is the user's specification of assembler symbol name to use.
    TOP_LEVEL is nonzero if this variable has file scope.
-   WRITE_SYMBOLS is 2 if writing dbx symbol output.
+   WRITE_SYMBOLS is DBX_DEBUG if writing dbx symbol output.
    The dbx data for a file-scope variable is written here.
    AT_END is nonzero if this is the special handling, at end of compilation,
    to define things that have had only tentative definitions.  */
@@ -165,7 +177,7 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
      tree decl;
      tree asmspec;
      int top_level;
-     int write_symbols;
+     enum debugger write_symbols;
      int at_end;
 {
   register char *name = IDENTIFIER_POINTER (DECL_NAME (decl));
@@ -175,7 +187,8 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
     {
       if (TREE_CODE (asmspec) != STRING_CST)
 	abort ();
-      name = (char *) oballoc (strlen (TREE_STRING_POINTER (asmspec)) + 2);
+      name = (char *) obstack_alloc (saveable_obstack,
+				     strlen (TREE_STRING_POINTER (asmspec)) + 2);
       name[0] = '*';
       strcpy (&name[1], TREE_STRING_POINTER (asmspec));
     }
@@ -198,7 +211,7 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 	  char *label;
 
 	  ASM_FORMAT_PRIVATE_NAME (label, name, var_labelno);
-	  name = obstack_copy0 (current_obstack, label, strlen (label));
+	  name = obstack_copy0 (saveable_obstack, label, strlen (label));
 	  var_labelno++;
 	}
 
@@ -265,9 +278,16 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
 
   TREE_ASM_WRITTEN (decl) = 1;
 
-  if (write_symbols == 2)
+#ifdef DBX_DEBUGGING_INFO
+  /* File-scope global variables are output here.  */
+  if (write_symbols == DBX_DEBUG && top_level)
     dbxout_symbol (decl, 0);
-  else if (write_symbols != 0)
+#endif
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    sdbout_symbol (decl, 0);
+#endif
+  else if (write_symbols == GDB_DEBUG)
     /* Make sure the file is known to GDB even if it has no functions.  */
     set_current_gdbfile (DECL_SOURCE_FILE (decl));
 
@@ -1051,6 +1071,8 @@ force_const_mem (mode, x)
 
   if (found == 0)
     {
+      int align;
+
       /* No constant equal to X is known to have been output.
 	 Make a constant descriptor to enter X in the hash table.
 	 Assign the label number and record it in the descriptor for
@@ -1067,7 +1089,11 @@ force_const_mem (mode, x)
       fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
 
       /* Align the location counter as required by EXP's data type.  */
-      ASM_OUTPUT_ALIGN (asm_out_file, exact_log2 (UNITS_PER_WORD));
+      align = (mode == VOIDmode) ? UNITS_PER_WORD : GET_MODE_SIZE (mode);
+      if (align > BIGGEST_ALIGNMENT / BITS_PER_UNIT)
+	align = BIGGEST_ALIGNMENT / BITS_PER_UNIT;
+
+      ASM_OUTPUT_ALIGN (asm_out_file, exact_log2 (align));
 
       /* Output the label itself.  */
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LC", const_labelno);
@@ -1194,6 +1220,8 @@ output_constant (exp, size)
     case INTEGER_TYPE:
     case ENUMERAL_TYPE:
     case POINTER_TYPE:
+      while (TREE_CODE (exp) == NOP_EXPR || TREE_CODE (exp) == CONVERT_EXPR)
+	exp = TREE_OPERAND (exp, 0);
       x = expand_expr (exp, 0, VOIDmode, EXPAND_SUM);
 
       if (size == 1)

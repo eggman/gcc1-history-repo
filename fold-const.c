@@ -840,48 +840,41 @@ combine (code, arg1, arg2)
     {
       register double d1 = TREE_REAL_CST (arg1);
       register double d2 = TREE_REAL_CST (arg2);
-      register tree t;
+      register double value;
 
       switch (code)
 	{
 	case PLUS_EXPR:
-	  t = build_real (d1 + d2);
+	  value = d1 + d2;
 	  break;
 
 	case MINUS_EXPR:
-	  t = build_real (d1 - d2);
+	  value = d1 - d2;
 	  break;
 
 	case MULT_EXPR:
-	  t = build_real (d1 * d2);
+	  value = d1 * d2;
 	  break;
 
 	case RDIV_EXPR:
 	  if (d2 == 0)
 	    return 0;
 
-	  t = build_real (d1 / d2);
+	  value = d1 / d2;
 	  break;
 
 	case MIN_EXPR:
-	  if (d1 < d2)
-	    t = build_real (d1);
-	  else
-	    t = build_real (d2);
+	  value = d1 < d2 ? d1 : d2;
 	  break;
 
 	case MAX_EXPR:
-	  if (d1 > d2)
-	    t = build_real (d1);
-	  else
-	    t = build_real (d2);
+	  value = d1 > d2 ? d1 : d2;
 	  break;
 
 	default:
 	  abort ();
 	}
-      TREE_TYPE (t) = TREE_TYPE (arg1);
-      return t;
+      return build_real (TREE_TYPE (arg1), value);
     }
   if (TREE_CODE (arg1) == COMPLEX_CST)
     {
@@ -958,18 +951,6 @@ fold_convert (t)
 	{
 	  /* Given an integer constant, make new constant with new type,
 	     appropriately sign-extended or truncated.  */
-	  register int inprec;
-	  register int outprec;
-
-	  if (TREE_CODE (TREE_TYPE (arg1)) == POINTER_TYPE)
-	    inprec = BITS_PER_WORD;
-	  else
-	    inprec = TYPE_PRECISION (TREE_TYPE (arg1));
-	  if (TREE_CODE (type) == POINTER_TYPE)
-	    outprec = BITS_PER_WORD;
-	  else
-	    outprec = TYPE_PRECISION (type);
-
 	  t = build_int_2 (TREE_INT_CST_LOW (arg1),
 			   TREE_INT_CST_HIGH (arg1));
 	  TREE_TYPE (t) = type;
@@ -978,15 +959,15 @@ fold_convert (t)
       else if (TREE_CODE (arg1) == REAL_CST)
 	t = build_int_2 ((int) TREE_REAL_CST (arg1),
 			 (int) (TREE_REAL_CST (arg1) / 0x10000 / 0x10000));
+      TREE_TYPE (t) = type;
     }
   else if (TREE_CODE (type) == REAL_TYPE)
     {
       if (TREE_CODE (arg1) == INTEGER_CST)
-	t = build_real_from_int_cst (arg1);
+	return build_real_from_int_cst (type, arg1);
       else if (TREE_CODE (arg1) == REAL_CST)
-	t = build_real (TREE_REAL_CST (arg1));
+	return build_real (type, TREE_REAL_CST (arg1));
     }
-  TREE_TYPE (t) = type;
   TREE_LITERAL (t) = 1;
   return t;
 }
@@ -1120,7 +1101,7 @@ fold (expr)
 	      force_fit_type (t);
 	    }
 	  else if (TREE_CODE (arg0) == REAL_CST)
-	    t = build_real (- TREE_REAL_CST (arg0));
+	    t = build_real (TREE_TYPE (expr), - TREE_REAL_CST (arg0));
 	  TREE_TYPE (t) = TREE_TYPE (expr);
 	}
       return t;
@@ -1143,7 +1124,7 @@ fold (expr)
 	  else if (TREE_CODE (arg0) == REAL_CST)
 	    {
 	      if (TREE_REAL_CST (arg0) < 0)
-		t = build_real (- TREE_REAL_CST (arg0));
+		t = build_real (TREE_TYPE (expr), - TREE_REAL_CST (arg0));
 	    }
 	  TREE_TYPE (t) = TREE_TYPE (expr);
 	}
@@ -1409,6 +1390,32 @@ fold (expr)
     case GT_EXPR:
     case LE_EXPR:
     case GE_EXPR:
+      /* If one arg is a constant integer, put it last.  */
+      if (TREE_CODE (arg0) == INTEGER_CST
+	  && TREE_CODE (arg1) != INTEGER_CST)
+	{
+	  TREE_OPERAND (t, 0) = arg1;
+	  TREE_OPERAND (t, 1) = arg0;
+	  arg0 = TREE_OPERAND (t, 0);
+	  arg1 = TREE_OPERAND (t, 1);
+	  switch (code)
+	    {
+	    case GT_EXPR:
+	      code = LT_EXPR;
+	      break;
+	    case GE_EXPR:
+	      code = LE_EXPR;
+	      break;
+	    case LT_EXPR:
+	      code = GT_EXPR;
+	      break;
+	    case LE_EXPR:
+	      code = GE_EXPR;
+	      break;
+	    }
+	  TREE_CODE (t) = code;
+	}
+
       /* Convert foo++ == CONST into ++foo == CONST + INCR.
 	 First, see if one arg is constant; find the constant arg
 	 and the other one.  */
@@ -1454,26 +1461,22 @@ fold (expr)
 	  }
       }
 
-      /* An unsigned comparison against 0 can be simplified.  */
-      if (integer_zerop (arg0)
-	  && (TREE_CODE (TREE_TYPE (arg0)) == INTEGER_TYPE
-	      || TREE_CODE (TREE_TYPE (arg0)) == POINTER_TYPE)
-	  && TREE_UNSIGNED (TREE_TYPE (arg0)))
+      /* Change X >= CST to X > (CST - 1) if CST is positive.  */
+      if (TREE_CODE (arg1) == INTEGER_CST
+	  && ! tree_int_cst_lt (arg1, integer_one_node))
 	{
 	  switch (TREE_CODE (t))
 	    {
-	    case LT_EXPR:
-	      TREE_CODE (t) = NE_EXPR;
-	      break;
 	    case GE_EXPR:
-	      TREE_CODE (t) = EQ_EXPR;
+	      TREE_CODE (t) = GT_EXPR;
+	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
+	      TREE_OPERAND (t, 1) = arg1;
 	      break;
-	    case LE_EXPR:
-	      return build (COMPOUND_EXPR, integer_type_node,
-			    arg1, integer_one_node);
-	    case GT_EXPR:
-	      return build (COMPOUND_EXPR, integer_type_node,
-			    arg1, integer_zero_node);
+
+	    case LT_EXPR:
+	      TREE_CODE (t) = LE_EXPR;
+	      arg1 = combine (MINUS_EXPR, arg1, integer_one_node);
+	      TREE_OPERAND (t, 1) = arg1;
 	    }
 	}
 

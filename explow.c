@@ -322,6 +322,22 @@ memory_address (mode, x)
     return force_reg (Pmode, x);
   return x;
 }
+
+/* Like `memory_address' but pretend `flag_force_addr' is 0.  */
+
+rtx
+memory_address_noforce (mode, x)
+     enum machine_mode mode;
+     rtx x;
+{
+  int ambient_force_addr = flag_force_addr;
+  rtx val;
+
+  flag_force_addr = 0;
+  val = memory_address (mode, x);
+  flag_force_addr = ambient_force_addr;
+  return val;
+}
 
 /* Return a modified copy of X with its memory address copied
    into a temporary register to protect it from side effects.

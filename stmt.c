@@ -504,6 +504,8 @@ expand_asm_operands (string, outputs, inputs, vol)
   tree tail;
   int i;
 
+  last_expr_type = 0;
+
   if (ninputs + noutputs > MAX_RECOG_OPERANDS)
     {
       error ("more than %d operands in `asm'", MAX_RECOG_OPERANDS);
@@ -513,6 +515,10 @@ expand_asm_operands (string, outputs, inputs, vol)
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
     {
       tree val = TREE_VALUE (tail);
+
+      /* If there's an erroneous arg, emit no insn.  */
+      if (TREE_TYPE (val) == error_mark_node)
+	return;
 
       /* If an output operand is not a variable or indirect ref,
 	 create a SAVE_EXPR which is a pseudo-reg
@@ -529,13 +535,8 @@ expand_asm_operands (string, outputs, inputs, vol)
 
   /* Make vectors for the expression-rtx and constraint strings.  */
 
-  if (ninputs > 0)
-    {
-      argvec = rtvec_alloc (ninputs);
-      constraints = rtvec_alloc (ninputs);
-    }
-  else
-    argvec = constraints = 0;
+  argvec = rtvec_alloc (ninputs);
+  constraints = rtvec_alloc (ninputs);
 
   body = gen_rtx (ASM_OPERANDS, VOIDmode,
 		  TREE_STRING_POINTER (string), "", 0, argvec, constraints);
@@ -547,6 +548,12 @@ expand_asm_operands (string, outputs, inputs, vol)
   i = 0;
   for (tail = inputs; tail; tail = TREE_CHAIN (tail))
     {
+      /* If there's an erroneous arg, emit no insn,
+	 because the ASM_INPUT would get VOIDmode
+	 and that could cause a crash in reload.  */
+      if (TREE_TYPE (TREE_VALUE (tail)) == error_mark_node)
+	return;
+
       XVECEXP (body, 3, i)      /* argvec */
 	= expand_expr (TREE_VALUE (tail), 0, VOIDmode, 0);
       XVECEXP (body, 4, i)      /* constraints */
@@ -1319,6 +1326,12 @@ expand_decl (decl)
       anti_adjust_stack (size);
 #endif
       address = copy_to_reg (stack_pointer_rtx);
+#ifdef STACK_POINTER_OFFSET
+      /* If the contents of the stack pointer reg are offset from the
+	 actual top-of-stack address, add the offset here.  */
+      emit_insn (gen_add2_insn (address, gen_rtx (CONST_INT, VOIDmode,
+						  STACK_POINTER_OFFSET)));
+#endif
 #ifndef STACK_GROWS_DOWNWARD
       anti_adjust_stack (size);
 #endif
@@ -1738,6 +1751,7 @@ assign_stack_local (mode, size)
      int size;
 {
   register rtx x, addr;
+  int bigend_correction = 0;
 
   frame_pointer_needed = 1;
 
@@ -1746,11 +1760,19 @@ assign_stack_local (mode, size)
 	   / (BIGGEST_ALIGNMENT / BITS_PER_UNIT))
 	  * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
 
+  /* On a big-endian machine, if we are allocating more space than we will use,
+     use the least significant bytes of those that are allocated.  */
+#ifdef BYTES_BIG_ENDIAN
+  if (mode != BLKmode)
+    bigend_correction = size - GET_MODE_SIZE (mode);
+#endif
+
 #ifdef FRAME_GROWS_DOWNWARD
   frame_offset -= size;
 #endif
   addr = gen_rtx (PLUS, Pmode, frame_pointer_rtx,
-		  gen_rtx (CONST_INT, VOIDmode, frame_offset));
+		  gen_rtx (CONST_INT, VOIDmode,
+			   (frame_offset + bigend_correction)));
 #ifndef FRAME_GROWS_DOWNWARD
   frame_offset += size;
 #endif
@@ -2282,11 +2304,18 @@ assign_parms (fndecl)
 
   /* Nonzero if function takes extra anonymous args.
      This means the last named arg must be on the stack
-     right before the anonymous ones.  */
+     right before the anonymous ones.
+     Also nonzero if the first arg is named `__builtin_va_alist',
+     which is used on some machines for old-fashioned non-ANSI varargs.h;
+     this too should be stuck onto the stack as if it had arrived there.  */
   int vararg
-    = (TYPE_ARG_TYPES (TREE_TYPE (fndecl)) != 0
-      && (TREE_VALUE (tree_last (TYPE_ARG_TYPES (TREE_TYPE (fndecl))))
-	  != void_type_node));
+    = ((DECL_ARGUMENTS (fndecl) != 0
+	&& (! strcmp (IDENTIFIER_POINTER (DECL_NAME (DECL_ARGUMENTS (fndecl))),
+		      "__builtin_va_alist")))
+       ||
+       (TYPE_ARG_TYPES (TREE_TYPE (fndecl)) != 0
+	&& (TREE_VALUE (tree_last (TYPE_ARG_TYPES (TREE_TYPE (fndecl))))
+	    != void_type_node)));
 
   stack_args_size.constant = 0;
   stack_args_size.var = 0;
@@ -2370,31 +2399,52 @@ assign_parms (fndecl)
 					    DECL_ARG_TYPE (parm), 1);
 #endif
 	if (TREE_CHAIN (parm) == 0 && vararg && entry_parm != 0)
-	  nregs = GET_MODE_SIZE (GET_MODE (entry_parm)) / UNITS_PER_WORD;
+	  {
+	    if (GET_MODE (entry_parm) == BLKmode)
+	      nregs = GET_MODE_SIZE (GET_MODE (entry_parm)) / UNITS_PER_WORD;
+	    else
+	      nregs = (int_size_in_bytes (DECL_ARG_TYPE (parm))
+		       / UNITS_PER_WORD);
+	  }
 
 	if (nregs > 0)
-	  current_function_pretend_args_size
-	    = (((nregs * UNITS_PER_WORD) + (PARM_BOUNDARY / BITS_PER_UNIT) - 1)
-	       / (PARM_BOUNDARY / BITS_PER_UNIT)
-	       * (PARM_BOUNDARY / BITS_PER_UNIT));
+	  {
+	    current_function_pretend_args_size
+	      = (((nregs * UNITS_PER_WORD) + (PARM_BOUNDARY / BITS_PER_UNIT) - 1)
+		 / (PARM_BOUNDARY / BITS_PER_UNIT)
+		 * (PARM_BOUNDARY / BITS_PER_UNIT));
 
-	i = nregs;
-	while (--i >= 0)
-	  emit_move_insn (gen_rtx (MEM, SImode,
-				   plus_constant (XEXP (stack_parm, 0),
-						  i * GET_MODE_SIZE (SImode))),
-			  gen_rtx (REG, SImode, REGNO (entry_parm) + i));
-	if (nregs > 0)
-	  entry_parm = stack_parm;
+	    i = nregs;
+	    while (--i >= 0)
+	      emit_move_insn (gen_rtx (MEM, SImode,
+				       plus_constant (XEXP (stack_parm, 0),
+						      i * GET_MODE_SIZE (SImode))),
+			      gen_rtx (REG, SImode, REGNO (entry_parm) + i));
+	    entry_parm = stack_parm;
+	  }
       }
 
+      /* If we didn't decide this parm came in a register,
+	 by default it came on the stack.  */
       if (entry_parm == 0)
 	entry_parm = stack_parm;
 
-      /* Now ENTRY_PARM refers to the stack iff this parm uses stack space.
-	 In that case, count its size in STACK_ARGS_SIZE.  */
-
+      /* For a stack parm, record in DECL_OFFSET the arglist offset
+	 of the parm at the time it is passed (before conversion).  */
       if (entry_parm == stack_parm)
+	DECL_OFFSET (parm) = stack_offset.constant * BITS_PER_UNIT;
+
+      /* If there is actually space on the stack for this parm,
+	 count it in stack_args_size; otherwise set stack_parm to 0
+	 to indicate there is no preallocated stack slot for the parm.  */
+
+      if (entry_parm == stack_parm
+#ifdef REG_PARM_STACK_SPACE
+	  /* On some machines, even if a parm value arrives in a register
+	     there is still an (uninitialized) stack slot allocated for it.  */
+	  || 1
+#endif
+	  )
 	{
 	  tree sizetree = size_in_bytes (DECL_ARG_TYPE (parm));
 	  /* Round the size up to multiple of PARM_BOUNDARY bits.  */
@@ -2403,19 +2453,18 @@ assign_parms (fndecl)
 	  /* Add it in.  */
 	  ADD_PARM_SIZE (stack_args_size, s2);
 	}
+      else
+	/* No stack slot was pushed for this parm.  */
+	stack_parm = 0;
 
-      /* For a memory parm, record in DECL_OFFSET the arglist offset
-	 of the parm at the time it is passed (before conversion).  */
-      if (GET_CODE (entry_parm) != REG)
-	DECL_OFFSET (parm) = stack_offset.constant * BITS_PER_UNIT;
-
-      /* Now set STACK_PARM to the place in the stack
+      /* Now adjust STACK_PARM to the mode and precise location
 	 where this parameter should live during execution,
 	 if we discover that it must live in the stack during execution.
 	 To make debuggers happier on big-endian machines, we store
 	 the value in the last bytes of the space available.  */
 
-      if (nominal_mode != BLKmode && nominal_mode != passed_mode)
+      if (nominal_mode != BLKmode && nominal_mode != passed_mode
+	  && stack_parm != 0)
 	{
 #ifdef BYTES_BIG_ENDIAN
 	  stack_offset.constant
@@ -2436,51 +2485,35 @@ assign_parms (fndecl)
 	  stack_parm->in_struct = aggregate;
 	}
 
-      /* If the parm arrived in a reg, we don't have an argument
-	 stack slot for it, so don't think that we do.
-	 If it needs to be addressable, it will get put into the stack
-	 like an ordinary automatic variable.  */
-
-      if (GET_CODE (entry_parm) == REG)
-	stack_parm = 0;
-
-#if 0 /* Not needed now that `memory_address' is used above.  */
-      /* If either STACK_PARM or ENTRY_PARM is a MEM whose address
-	 is not really valid, arrange to correct all references later.  */
-
-      if ((GET_CODE (entry_parm) == MEM
-	   && ! memory_address_p (passed_mode, XEXP (entry_parm, 0)))
-	  || (stack_parm != entry_parm  && stack_parm != 0
-	      && GET_CODE (stack_parm) == MEM
-	      && ! memory_address_p (nominal_mode, XEXP (stack_parm, 0))))
-	invalid_stack_slot = 1;
-#endif /* 0 */
-
       /* ENTRY_PARM is an RTX for the parameter as it arrives,
 	 in the mode in which it arrives.
+	 STACK_PARM is an RTX for a stack slot where the parameter can live
+	 during the function (in case we want to put it there).
+	 STACK_PARM is 0 if no stack slot was pushed for it.
 
-	 Now output code if necessary to convert it to
+	 Now output code if necessary to convert ENTRY_PARM to
 	 the type in which this function declares it,
-	 and store a reference to that value in DECL_RTL.
-	 This reference may be the same as STACK_PARM,
-	 or a similar stack reference in a different mode,
-	 or may be a pseudo register.  */
+	 and store that result in an appropriate place,
+	 which may be a pseudo reg, may be STACK_PARM,
+	 or may be a local stack slot if STACK_PARM is 0.
+
+	 Set DECL_RTL to that place.  */
 
       if (nominal_mode == BLKmode)
 	{
 	  /* If a BLKmode arrives in registers, copy it to a stack slot.  */
-	  if (stack_parm == 0)
+	  if (GET_CODE (entry_parm) == REG)
 	    {
-	      stack_parm
-		= assign_stack_local (GET_MODE (entry_parm),
-				      int_size_in_bytes (TREE_TYPE (parm)));
+	      if (stack_parm == 0)
+		stack_parm
+		  = assign_stack_local (GET_MODE (entry_parm),
+					int_size_in_bytes (TREE_TYPE (parm)));
 
 	      move_block_from_reg (REGNO (entry_parm), stack_parm,
 				   int_size_in_bytes (TREE_TYPE (parm))
 				   / UNITS_PER_WORD);
 	    }
 	  DECL_RTL (parm) = stack_parm;
-
 	}
       else if (! ((obey_regdecls && ! TREE_REGDECL (parm))
 		  /* If -ffloat-store specified, don't put explicit
@@ -2554,6 +2587,7 @@ assign_parms (fndecl)
 
       FUNCTION_ARG_ADVANCE (args_so_far, passed_mode, DECL_ARG_TYPE (parm), 1);
     }
+
   max_parm_reg = max_reg_num ();
   last_parm_insn = get_last_insn ();
 
@@ -2705,6 +2739,9 @@ expand_function_start (subr)
   /* No stack slots allocated yet.  */
   frame_offset = STARTING_FRAME_OFFSET;
 
+  /* Within function body, compute a type's size as soon it is laid out.  */
+  immediate_size_expand++;
+
   init_pending_stack_adjust ();
   clear_current_args_size ();
 
@@ -2730,6 +2767,10 @@ expand_function_start (subr)
   /* After the parm initializations is where the tail-recursion label
      should go, if we end up needing one.  */
   tail_recursion_reentry = get_last_insn ();
+
+  /* Evaluate now the sizes of any types declared among the arguments.  */
+  for (tem = get_pending_sizes (); tem; tem = TREE_CHAIN (tem))
+    expand_expr (TREE_VALUE (tem), 0, VOIDmode, 0);
 
   /* Initialize rtx used to return the value.  */
 
@@ -2761,6 +2802,10 @@ void
 expand_function_end ()
 {
   register int i;
+
+  /* Outside function body, can't compute type's actual size
+     until next function's body starts.  */
+  immediate_size_expand--;
 
   /* Fix up any gotos that jumped out to the outermost
      binding level of the function.  */

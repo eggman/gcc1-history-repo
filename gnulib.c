@@ -3,6 +3,17 @@
 
 #include "config.h"
 
+/* These definitions work for machines where an SF value is
+   returned in the same register as an int.  */
+
+#ifndef SFVALUE  
+#define SFVALUE int
+#endif
+
+#ifndef INTIFY
+#define INTIFY(FLOATVAL)  (intify.f = (FLOATVAL), intify.i)
+#endif
+
 union double_di { double d; int i[2]; };
 union flt_or_int { int i; float f; };
 
@@ -12,15 +23,6 @@ union flt_or_int { int i; float f; };
 #else
 #define HIGH 1
 #define LOW 0
-#endif
-
-#ifdef Lva_end
-/* This is here in case the user says #undef va_end, which ANSI C permits.  */
-void
-va_end (ap)
-     char **ap;
-{
-}
 #endif
 
 #ifdef L_eprintf
@@ -234,10 +236,8 @@ _floatdidf (u)
 }
 #endif
 
-#define INTIFY(FLOATVAL)  (intify.f = (FLOATVAL), intify.i)
-
 #ifdef L_addsf3
-int
+SFVALUE
 _addsf3 (a, b)
      union flt_or_int a, b;
 {
@@ -247,7 +247,7 @@ _addsf3 (a, b)
 #endif
 
 #ifdef L_negsf2
-int
+SFVALUE
 _negsf2 (a)
      union flt_or_int a;
 {
@@ -257,7 +257,7 @@ _negsf2 (a)
 #endif
 
 #ifdef L_subsf3
-int
+SFVALUE
 _subsf3 (a, b)
      union flt_or_int a, b;
 {
@@ -267,7 +267,7 @@ _subsf3 (a, b)
 #endif
 
 #ifdef L_cmpsf2
-int
+SFVALUE
 _cmpsf2 (a, b)
      union flt_or_int a, b;
 {
@@ -281,7 +281,7 @@ _cmpsf2 (a, b)
 #endif
 
 #ifdef L_mulsf3
-int
+SFVALUE
 _mulsf3 (a, b)
      union flt_or_int a, b;
 {
@@ -291,7 +291,7 @@ _mulsf3 (a, b)
 #endif
 
 #ifdef L_divsf3
-int
+SFVALUE
 _divsf3 (a, b)
      union flt_or_int a, b;
 {
@@ -301,7 +301,7 @@ _divsf3 (a, b)
 #endif
 
 #ifdef L_truncdfsf2
-int
+SFVALUE
 _truncdfsf2 (a)
      double a;
 {

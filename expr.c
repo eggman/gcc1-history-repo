@@ -83,6 +83,7 @@ static rtx do_store_flag ();
 static void preexpand_calls ();
 static rtx expand_increment ();
 static void move_by_pieces_1 ();
+static int move_by_pieces_ninsns ();
 static void init_queue ();
 
 void do_pending_stack_adjust ();
@@ -1004,7 +1005,11 @@ emit_move_insn (x, y)
 
 /* Push a block of length SIZE (perhaps variable)
    and return an rtx to address the beginning of the block.
-   Note that it is not possible for the value returned to be a QUEUED.  */
+   Note that it is not possible for the value returned to be a QUEUED.
+   The value may be stack_pointer_rtx.
+
+   The value we return does not take account of STACK_POINTER_OFFSET,
+   so the caller must do so when using the value.  */
 
 static rtx
 push_block (size)
@@ -1178,10 +1183,14 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	    {
 	      /* Correct TEMP so it holds what will be a description of
 		 the address to copy to, valid after one arg is pushed.  */
+	      int xsize = ((PUSH_ROUNDING (GET_MODE_SIZE (Pmode))
+			    + PARM_BOUNDARY / BITS_PER_UNIT - 1)
+			   / (PARM_BOUNDARY / BITS_PER_UNIT)
+			   * (PARM_BOUNDARY / BITS_PER_UNIT));
 #ifdef STACK_GROWS_DOWNWARD
-	      temp = plus_constant (temp, GET_MODE_SIZE (Pmode));
+	      temp = plus_constant (temp, xsize);
 #else
-	      temp = plus_constant (temp, - GET_MODE_SIZE (Pmode));
+	      temp = plus_constant (temp, xsize);
 #endif
 	    }
 
@@ -1896,9 +1905,15 @@ expand_expr (exp, target, tmode, modifier)
 
   switch (code)
     {
+    case PARM_DECL:
+      if (DECL_RTL (exp) == 0)
+	{
+	  error_with_decl (exp, "prior parameter's size depends on `%s'");
+	  return const0_rtx;
+	}
+
     case FUNCTION_DECL:
     case VAR_DECL:
-    case PARM_DECL:
     case RESULT_DECL:
       if (DECL_RTL (exp) == 0)
 	abort ();
@@ -2399,8 +2414,8 @@ expand_expr (exp, target, tmode, modifier)
 	if (mode == HImode || mode == QImode)
 	  {
 	    register rtx temp = gen_reg_rtx (SImode);
-	    expand_fix (temp, op0, unsignedp);
-	    convert_move (target, temp, unsignedp);
+	    expand_fix (temp, op0, 1);
+	    convert_move (target, temp, 1);
 	  }
 	else
 	  expand_fix (target, op0, unsignedp);
@@ -2833,12 +2848,23 @@ expand_builtin (exp, target, subtarget, mode)
 	}
       /* Push that much space (rounding it up).  */
       do_pending_stack_adjust ();
+#ifdef STACK_GROWS_DOWNWARD
       anti_adjust_stack (round_push (op0));
+#endif
       /* Return a copy of current stack ptr, in TARGET if possible.  */
       if (target)
 	emit_move_insn (target, stack_pointer_rtx);
       else
 	target = copy_to_reg (stack_pointer_rtx);
+#ifdef STACK_POINTER_OFFSET
+      /* If the contents of the stack pointer reg are offset from the
+	 actual top-of-stack address, add the offset here.  */
+      emit_insn (gen_add2_insn (target, gen_rtx (CONST_INT, VOIDmode,
+						 STACK_POINTER_OFFSET)));
+#endif
+#ifndef STACK_GROWS_DOWNWARD
+      anti_adjust_stack (round_push (op0));
+#endif
       return target;
 
     case BUILT_IN_FFS:
@@ -3157,13 +3183,10 @@ init_pending_stack_adjust ()
 void
 clear_pending_stack_adjust ()
 {
-#if 0
-  /* Right now it's never considered safe, because
-     it loses in an inline function.  */
 #ifdef EXIT_IGNORE_STACK
-  if (!flag_omit_frame_pointer && EXIT_IGNORE_STACK)
+  if (!flag_omit_frame_pointer && EXIT_IGNORE_STACK
+      && ! TREE_INLINE (current_function_decl))
     pending_stack_adjust = 0;
-#endif
 #endif
 }
 
@@ -3249,9 +3272,12 @@ expand_call (exp, target, ignore)
 	      && DECL_SAVED_INSNS (fndecl))
 	    is_integrable = 1;
 	  else
-	    /* In case this function later becomes inlineable,
-	       record that there was already a non-inline call to it.  */
-	    TREE_ADDRESSABLE (fndecl) = 1;
+	    {
+	      /* In case this function later becomes inlineable,
+		 record that there was already a non-inline call to it.  */
+	      TREE_ADDRESSABLE (fndecl) = 1;
+	      TREE_ADDRESSABLE (DECL_NAME (fndecl)) = 1;
+	    }
 	}
     }
 
@@ -3277,13 +3303,7 @@ expand_call (exp, target, ignore)
 				     ignore, TREE_TYPE (exp),
 				     structure_value_addr);
 
-      /* If the inlining failed for whatever reason, we will just
-	 issue a normal call.  */
-      if (temp == (rtx)-1)
-	{
-	  warning_with_decl (fndecl, "inlining function `%s' failed, reverting to function call");
-	}
-      else
+      if (temp != (rtx)-1)
 	return temp;
     }
 
@@ -3381,6 +3401,13 @@ expand_call (exp, target, ignore)
       arg_size[i].var = 0;
       arg_offset[i] = args_size;
 
+#ifdef STACK_POINTER_OFFSET
+      /* ARG_OFFSET is used to index ARGS_ADDR, which is the stack ptr reg,
+	 so if there is a gap between that reg and the actual t.o.s. addr,
+	 we must include it in this offset.  */
+      arg_offset.constant += STACK_POINTER_OFFSET;
+#endif
+
       if (type == error_mark_node)
 	continue;
 
@@ -3416,6 +3443,9 @@ expand_call (exp, target, ignore)
 	      && ! CONSTANT_P (valvec[i])
 	      && GET_CODE (valvec[i]) != CONST_DOUBLE)
 	    valvec[i] = force_reg (TYPE_MODE (type), valvec[i]);
+	  /* ANSI doesn't require a sequence point here,
+	     but PCC has one, so this will avoid some problems.  */
+	  emit_queue ();
 	}
 
       /* Increment ARGS_SO_FAR, which has info about which arg-registers
@@ -3518,7 +3548,10 @@ expand_call (exp, target, ignore)
     funexp = XEXP (DECL_RTL (fndecl), 0);
   else
     /* Generate an rtx (probably a pseudo-register) for the address.  */
-    funexp = expand_expr (TREE_OPERAND (exp, 0), 0, VOIDmode, 0);
+    {
+      funexp = expand_expr (TREE_OPERAND (exp, 0), 0, VOIDmode, 0);
+      emit_queue ();
+    }
 
   /* Now actually compute the args, and push those that need pushing.  */
 
@@ -3583,7 +3616,12 @@ expand_call (exp, target, ignore)
 
 	  tem = valvec[i];
 	  if (tem == 0)
-	    tem = expand_expr (pval, 0, VOIDmode, 0);
+	    {
+	      tem = expand_expr (pval, 0, VOIDmode, 0);
+	      /* ANSI doesn't require a sequence point here,
+		 but PCC has one, so this will avoid some problems.  */
+	      emit_queue ();
+	    }
 
 	  /* Don't allow anything left on stack from computation
 	     of argument to alloca.  */
@@ -4203,12 +4241,17 @@ do_tablejump (index, range, table_label, default_label)
 
   emit_cmp_insn (range, index, 0);
   emit_jump_insn (gen_bltu (default_label));
-  index = memory_address (CASE_VECTOR_MODE,
-			  gen_rtx (PLUS, Pmode,
-				   gen_rtx (MULT, Pmode, index,
-					    gen_rtx (CONST_INT, VOIDmode,
-						     GET_MODE_SIZE (CASE_VECTOR_MODE))),
-				   gen_rtx (LABEL_REF, VOIDmode, table_label)));
+  /* If flag_force_addr were to affect this address
+     it could interfere with the tricky assumptions made
+     about addresses that contain label-refs,
+     which may be valid only very near the tablejump itself.  */
+  index = memory_address_noforce
+    (CASE_VECTOR_MODE,
+     gen_rtx (PLUS, Pmode,
+	      gen_rtx (MULT, Pmode, index,
+		       gen_rtx (CONST_INT, VOIDmode,
+				GET_MODE_SIZE (CASE_VECTOR_MODE))),
+	      gen_rtx (LABEL_REF, VOIDmode, table_label)));
   temp = gen_reg_rtx (CASE_VECTOR_MODE);
   convert_move (temp, gen_rtx (MEM, CASE_VECTOR_MODE, index), 0);
 

@@ -22,23 +22,27 @@ and this notice must be preserved on all copies.  */
 /*  To whomever it may concern: I have heard that such a thing was once
  written by AT&T, but I have never seen it.  */
 
-%expect 19
+%expect 23
 
-/* These are the 19 conflicts you should get in parse.output;
+/* These are the 23 conflicts you should get in parse.output;
    the state numbers may vary if minor changes in the grammar are made.
 
 State 41 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 96 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 100 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
-State 116 contains 1 shift/reduce conflict.  (See comment at component_decl.)
-State 166 contains 2 shift/reduce conflicts.  (make notype_declarator longer.)
-State 241 contains 2 shift/reduce conflicts.  (make absdcl1 longer if poss.)
-State 275 contains 2 shift/reduce conflicts.  (same for after_type_declarator).
-State 306 contains 2 shift/reduce conflicts.  (similar for absdcl1 again.)
-State 314 contains 2 shift/reduce conflicts.  (like 241, other context.)
-State 318 contains 2 shift/reduce conflicts.  (like 241, other context.)
+State 90 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 97 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 101 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 117 contains 1 shift/reduce conflict.  (See comment at component_decl.)
+State 169 contains 2 shift/reduce conflicts.  (make notype_declarator longer.)
+State 181 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 191 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 197 contains 1 shift/reduce conflict.  (Two ways to recover from error.)
+State 239 contains 2 shift/reduce conflicts.  (make absdcl1 longer if poss.)
+State 269 contains 2 shift/reduce conflicts.  (same for after_type_declarator).
+State 299 contains 2 shift/reduce conflicts.  (similar for absdcl1 again.)
 State 362 contains 1 shift/reduce conflict.  (dangling else.)
-State 369 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator).
+State 370 contains 2 shift/reduce conflicts.  (like 241, other context.)
+State 373 contains 2 shift/reduce conflicts.  (like 241, other context.)
+State 411 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator)?
 */
 
 %{
@@ -49,6 +53,9 @@ State 369 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator).
 #include "flags.h"
 
 #include <stdio.h>
+#include <errno.h>
+
+extern int errno;
 
 /* Cause the `yydebug' variable to be defined.  */
 #define YYDEBUG
@@ -124,7 +131,7 @@ State 369 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator).
 %type <ttype> SCSPEC TYPESPEC TYPE_QUAL nonempty_type_quals maybe_type_qual
 %type <ttype> initdecls notype_initdecls initdcl notype_initdcl
 %type <ttype> init initlist maybeasm
-%type <ttype> asm_operands asm_operand
+%type <ttype> asm_operands nonnull_asm_operands asm_operand
 
 %type <ttype> declarator
 %type <ttype> notype_declarator after_type_declarator
@@ -158,6 +165,8 @@ tree current_declspecs;
 
 char *input_filename;		/* source file current line is coming from */
 char *main_input_filename;	/* top-level source file */
+
+static int yylex ();
 %}
 
 %%
@@ -210,7 +219,7 @@ fndef:
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
-	  compstmt
+	  compstmt_or_error
 		{ finish_function (); }
 	| typed_declspecs setspecs declarator error
 		{ }
@@ -220,7 +229,7 @@ fndef:
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
-	  compstmt
+	  compstmt_or_error
 		{ finish_function (); }
 	| declmods setspecs notype_declarator error
 		{ }
@@ -230,7 +239,7 @@ fndef:
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
-	  compstmt
+	  compstmt_or_error
 		{ finish_function (); }
 	| setspecs notype_declarator error
 		{ }
@@ -499,11 +508,11 @@ typespec: TYPESPEC
 	| TYPEOF '(' expr ')'
 		{ $$ = TREE_TYPE ($3);
 		  if (pedantic)
-		    warning ("ANSI C forbids `typeof'") }
+		    warning ("ANSI C forbids `typeof'"); }
 	| TYPEOF '(' typename ')'
 		{ $$ = groktypename ($3);
 		  if (pedantic)
-		    warning ("ANSI C forbids `typeof'") }
+		    warning ("ANSI C forbids `typeof'"); }
 	;
 
 /* A typespec that is a reserved word, or a type qualifier.  */
@@ -825,6 +834,13 @@ pushlevel:  /* empty */
 		  expand_start_bindings (0); }
 	;
 
+/* This is the body of a function definition.
+   It causes syntax errors to ignore to the next openbrace.  */
+compstmt_or_error:
+	  compstmt
+	| error compstmt
+	;
+
 compstmt: '{' '}'
 	| '{' pushlevel decls xstmts '}'
 		{ expand_end_bindings (getdecls (), 1);
@@ -1003,15 +1019,21 @@ xexpr:
 	| expr
 	;
 
-/* These are the operands other than the first string and comma
-   in  asm ("addextend %2,%1", "=dm" (x), "0" (y), "g" (*x))  */
-asm_operands: asm_operand
-	| asm_operands ',' asm_operand
+/* These are the operands other than the first string and colon
+   in  asm ("addextend %2,%1": "=dm" (x), "0" (y), "g" (*x))  */
+asm_operands: /* empty */
+		{ $$ = NULL_TREE; }
+	| nonnull_asm_operands
+	;
+
+nonnull_asm_operands:
+	  asm_operand
+	| nonnull_asm_operands ',' asm_operand
 		{ $$ = chainon ($1, $3); }
 	;
 
 asm_operand:
-	| STRING '(' expr ')'
+	STRING '(' expr ')'
 		{ $$ = build_tree_list ($1, $3); }
 	;
 
@@ -1194,7 +1216,6 @@ FILE *finput;			/* input file.
 static int maxtoken;		/* Current nominal length of token buffer */
 static char *token_buffer;	/* Pointer to token buffer.
 				   Actual allocated length is maxtoken + 2.  */
-static dollar_seen = 0;		/* Nonzero if have warned about `$'.  */
 
 #define MAXRESERVED 9
 
@@ -1204,7 +1225,7 @@ static dollar_seen = 0;		/* Nonzero if have warned about `$'.  */
    at MAXRESERVED+1 for the case I == MAXRESERVED.  */
 
 static char frw[MAXRESERVED+2] =
-  { 0, 0, 0, 2, 5, 13, 19, 29, 32, 36, 37 };
+  { 0, 0, 0, 2, 5, 13, 19, 29, 31, 35, 36 };
 
 /* Table of reserved words.  */
 
@@ -1244,7 +1265,6 @@ static struct resword reswords[]
      {"inline", SCSPEC, RID_INLINE},
      {"typedef", SCSPEC, RID_TYPEDEF},
      {"default", DEFAULT, NORID},
-     {"noalias", TYPE_QUAL, RID_NOALIAS},
      {"unsigned", TYPESPEC, RID_UNSIGNED},
      {"continue", CONTINUE, NORID},
      {"register", SCSPEC, RID_REGISTER},
@@ -1257,9 +1277,7 @@ static struct resword reswords[]
 
 tree ridpointers[(int) RID_MAX];
 
-static tree line_identifier;   /* The identifier node named "line" */
-
-void check_newline ();
+int check_newline ();
 
 void
 init_lex ()
@@ -1269,7 +1287,6 @@ init_lex ()
   /* Start it at 0, because check_newline is called at the very beginning
      and will increment it to 1.  */
   lineno = 0;
-  line_identifier = get_identifier ("line");
 
   maxtoken = 40;
   token_buffer = malloc (maxtoken + 2);
@@ -1297,13 +1314,14 @@ reinit_parse_for_function ()
 {
 }
 
-static int
-skip_white_space ()
-{
-  register int c;
-  register int inside;
+/* If C is not whitespace, return C.
+   Otherwise skip whitespace and return first nonwhite char read.  */
 
-  c = getc (finput);
+static int
+skip_white_space (c)
+     register int c;
+{
+  register int inside;
 
   for (;;)
     {
@@ -1350,7 +1368,8 @@ skip_white_space ()
 	  break;
 
 	case '\n':
-	  check_newline ();
+	  c = check_newline ();
+	  break;
 
 	case ' ':
 	case '\t':
@@ -1395,11 +1414,12 @@ extend_token_buffer (p)
 
   return token_buffer + offset;
 }
-
+
 /* At the beginning of a line, increment the line number
-   and handle a #line directive immediately following  */
+   and handle a #line directive immediately following.
+   Return first nonwhite char of first non-# line following.  */
 
-void
+int
 check_newline ()
 {
   register int c;
@@ -1417,9 +1437,8 @@ check_newline ()
 
       if (c != '#')
 	{
-	  /* If not #, unread it.  */
-	  ungetc (c, finput);
-	  return;
+	  /* If not #, return it so caller will use it.  */
+	  return c;
 	}
 
       /* Read first nonwhite char after the `#'.  */
@@ -1464,7 +1483,7 @@ check_newline ()
 
     linenum:
       /* Here we have either `#line' or `# <nonletter>'.
-	 In either case, it should be a line number; a digit should follow.
+	 In either case, it should be a line number; a digit should follow.  */
 
       while (c == ' ' || c == '\t')
 	c = getc (finput);
@@ -1505,7 +1524,7 @@ check_newline ()
 	  if (token != STRING || TREE_CODE (yylval.ttype) != STRING_CST)
 	    {
 	      error ("invalid #line");
-	      return;
+	      return getc (finput);
 	    }
 
 	  input_filename
@@ -1523,9 +1542,7 @@ check_newline ()
       while ((c = getc (finput)) != '\n');
     }
 }
-
-
-
+
 #define isalnum(char) ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9'))
 #define isdigit(char) (char >= '0' && char <= '9')
 #define ENDFILE -1  /* token that represents end-of-file */
@@ -1617,7 +1634,7 @@ readescape ()
     warning ("unknown escape sequence: `\\' followed by char code 0x%x", c);
   return c;
 }
-
+
 void
 yyerror (string)
      char *string;
@@ -1640,6 +1657,8 @@ yyerror (string)
   error (buf, token_buffer);
 }
 
+static int nextchar = -1;
+
 static int
 yylex ()
 {
@@ -1648,9 +1667,13 @@ yylex ()
   register int value;
   int wide_flag = 0;
 
-  /* Effectively do c = skip_white_space ()
+  if (nextchar >= 0)
+    c = nextchar, nextchar = -1;
+  else
+    c = getc (finput);
+
+  /* Effectively do c = skip_white_space (c)
      but do it faster in the usual cases.  */
-  c = getc (finput);
   while (1)
     switch (c)
       {
@@ -1665,8 +1688,7 @@ yylex ()
       case '\n':
       case '/':
       case '\\':
-	ungetc (c, finput);
-	c = skip_white_space ();
+	c = skip_white_space (c);
       default:
 	goto found_nonwhite;
       }
@@ -1675,7 +1697,7 @@ yylex ()
   token_buffer[0] = c;
   token_buffer[1] = 0;
 
-  yylloc.first_line = lineno;
+/*  yylloc.first_line = lineno; */
 
   switch (c)
     {
@@ -1683,6 +1705,11 @@ yylex ()
       token_buffer[0] = 0;
       value = ENDFILE;
       break;
+
+    case '$':
+      if (dollars_in_ident)
+	goto letter;
+      return '$';
 
     case 'L':
       /* Capital L may start a wide-string or wide-character constant.  */
@@ -1714,28 +1741,21 @@ yylex ()
     case 'u':  case 'v':  case 'w':  case 'x':  case 'y':
     case 'z':
     case '_':
-    case '$':
+    letter:
       p = token_buffer;
       while (isalnum (c) || c == '_' || c == '$')
 	{
 	  if (p >= token_buffer + maxtoken)
 	    p = extend_token_buffer (p);
-	  if (c == '$')
-	    {
-	      if (pedantic)
-		{
-		  if (! dollar_seen)
-		    warning ("ANSI C forbids `$' (first use here)");
-		  dollar_seen = 1;
-		}
-	    }
+	  if (c == '$' && ! dollars_in_ident)
+	    break;
 
 	  *p++ = c;
 	  c = getc (finput);
 	}
 
       *p = 0;
-      ungetc (c, finput);
+      nextchar = c;
 
       value = IDENTIFIER;
       yylval.itype = 0;
@@ -1759,7 +1779,7 @@ yylex ()
 			 && (int) p->token != TYPEOF
 			 && strcmp (p->name, "inline")))
 		    /* -ftraditional means don't recognize
-		       typeof, const, volatile, noalias, signed or inline.  */
+		       typeof, const, volatile, signed or inline.  */
 		    && (! flag_traditional
 			|| ((int) p->token != TYPE_QUAL
 			    && (int) p->token != TYPEOF
@@ -1919,6 +1939,7 @@ yylex ()
 	    tree type = double_type_node;
 	    char f_seen = 0;
 	    char l_seen = 0;
+	    double value;
 
 	    /* Read explicit exponent if any, and put it in tokenbuf.  */
 
@@ -1945,8 +1966,14 @@ yylex ()
 	      }
 
 	    *p = 0;
-	    yylval.ttype = build_real (atof (token_buffer));
+	    errno = 0;
+	    value = atof (token_buffer);
+#ifdef ERANGE
+	    if (errno == ERANGE)
+	      error ("floating point number exceeds range of `double'");
+#endif
 
+	    /* Read the suffixes to choose a data type.  */
 	    while (1)
 	      {
 		if (c == 'f' || c == 'F')
@@ -1984,10 +2011,11 @@ yylex ()
 		c = getc (finput);
 	      }
 
+	    /* Create a node with determined type and value.  */
+	    yylval.ttype = build_real (type, value);
+
 	    ungetc (c, finput);
 	    *p = 0;
-
-	    TREE_TYPE (yylval.ttype) = type;
 	  }
 	else
 	  {
@@ -2258,7 +2286,7 @@ yylex ()
     }
 
 done:
-  yylloc.last_line = lineno;
+/*  yylloc.last_line = lineno; */
 
   return value;
 }

@@ -185,6 +185,17 @@ end_temporary_allocation ()
   rtl_obstack = saveable_obstack = &permanent_obstack;
 }
 
+/* Resume allocating on the temporary obstack, undoing
+   effects of `end_temporary_allocation'.  */
+
+void
+resume_temporary_allocation ()
+{
+  current_obstack = &temporary_obstack;
+  expression_obstack = &temporary_obstack;
+  rtl_obstack = saveable_obstack = &maybepermanent_obstack;
+}
+
 /* Go back to allocating on the permanent obstack
    and free everything in the temporary obstack.
    This is done in finish_function after fully compiling a function.  */
@@ -292,7 +303,7 @@ int
 suspend_momentary ()
 {
   register int tem = expression_obstack == &momentary_obstack;
-  expression_obstack = current_obstack;
+  expression_obstack = saveable_obstack;
   return tem;
 }
 
@@ -537,32 +548,46 @@ build_int_2 (low, hi)
   return t;
 }
 
-/* Return a newly constructed REAL_CST node whose value is D.
-   The TREE_TYPE is not initialized.  */
+/* Return a new REAL_CST node whose type is TYPE and value is D.  */
 
 tree
-build_real (d)
+build_real (type, d)
+     tree type;
      double d;
 {
   tree v;
 
+  /* Check for valid float value for this type on this target machine;
+     if not, can print error message and store a valid value in D.  */
+#ifdef CHECK_FLOAT_VALUE
+  CHECK_FLOAT_VALUE (TYPE_MODE (type), d);
+#endif
+
   v = make_node (REAL_CST);
+  TREE_TYPE (v) = type;
   TREE_REAL_CST (v) = d;
   return v;
 }
 
-/* Return a newly constructed REAL_CST node whose value
-   is the integer value of the INTEGER_CST node I.
-   The TREE_TYPE is not initialized.  */
+/* Return a new REAL_CST node whose type is TYPE
+   and whose value is the integer value of the INTEGER_CST node I.  */
 
 tree
-build_real_from_int_cst (i)
+build_real_from_int_cst (type, i)
+     tree type;
      tree i;
 {
   tree v;
   double d;
 
+  /* Check for valid float value for this type on this target machine;
+     if not, can print error message and store a valid value in D.  */
+#ifdef CHECK_FLOAT_VALUE
+  CHECK_FLOAT_VALUE (TYPE_MODE (type), d);
+#endif
+
   v = make_node (REAL_CST);
+  TREE_TYPE (v) = type;
 
   if (TREE_INT_CST_HIGH (i) < 0)
     {
@@ -1466,6 +1491,7 @@ build_pointer_type (to_type)
 {
   register tree t = TYPE_POINTER_TO (to_type);
   register struct obstack *ambient_obstack = current_obstack;
+  register struct obstack *ambient_saveable_obstack = saveable_obstack;
 
   /* First, if we already have a type for pointers to TO_TYPE, use it.  */
 
@@ -1473,9 +1499,11 @@ build_pointer_type (to_type)
     return t;
 
   /* We need a new one.  If TO_TYPE is permanent, make this permanent too.  */
-  current_obstack = (TREE_PERMANENT (to_type)
-		     ? &permanent_obstack
-		     : saveable_obstack);
+  if (TREE_PERMANENT (to_type))
+    {
+      current_obstack = &permanent_obstack;
+      saveable_obstack = &permanent_obstack;
+    }
 
   t = make_node (POINTER_TYPE);
   TREE_TYPE (t) = to_type;
@@ -1489,6 +1517,7 @@ build_pointer_type (to_type)
   layout_type (t);
 
   current_obstack = ambient_obstack;
+  saveable_obstack = ambient_saveable_obstack;
   return t;
 }
 
@@ -1986,6 +2015,47 @@ convert_to_integer (type, expr)
 	  /* If truncating after truncating, might as well do all at once.
 	     If truncating after extending, we may get rid of wasted work.  */
 	  return convert (type, get_unwidened (TREE_OPERAND (expr, 0), type));
+
+	case COND_EXPR:
+	  /* Can treat the two alternative values like the operands
+	     of an arithmetic expression.  */
+	  {
+	    tree arg1 = get_unwidened (TREE_OPERAND (expr, 1), type);
+	    tree arg2 = get_unwidened (TREE_OPERAND (expr, 2), type);
+
+	    if (outprec >= BITS_PER_WORD
+		|| TRULY_NOOP_TRUNCATION (outprec, inprec)
+		|| inprec > TYPE_PRECISION (TREE_TYPE (arg1))
+		|| inprec > TYPE_PRECISION (TREE_TYPE (arg2)))
+	      {
+		/* Do the arithmetic in type TYPEX,
+		   then convert result to TYPE.  */
+		register tree typex = type;
+
+		/* Can't do arithmetic in enumeral types
+		   so use an integer type that will hold the values.  */
+		if (TREE_CODE (typex) == ENUMERAL_TYPE)
+		  typex = type_for_size (TYPE_PRECISION (typex),
+					 TREE_UNSIGNED (typex));
+
+		/* But now perhaps TYPEX is as wide as INPREC.
+		   In that case, do nothing special here.
+		   (Otherwise would recurse infinitely in convert.  */
+		if (TYPE_PRECISION (typex) != inprec)
+		  {
+		    /* Don't do unsigned arithmetic where signed was wanted,
+		       or vice versa.  */
+		    typex = (TREE_UNSIGNED (TREE_TYPE (expr))
+			     ? unsigned_type (typex) : signed_type (typex));
+		    return convert (type,
+				    build (COND_EXPR, typex,
+					   TREE_OPERAND (expr, 0),
+					   convert (typex, arg1),
+					   convert (typex, arg2)));
+		  }
+	      }
+	  }
+
 	}
 
       return build (NOP_EXPR, type, expr);

@@ -115,8 +115,12 @@ typedef union rtunion_def
 
 typedef struct rtx_def
 {
+#ifdef SHORT_ENUM_BUG
+  unsigned short code;
+#else
   /* The kind of expression this is.  */
   enum rtx_code code : 16;
+#endif
   /* The kind of value the expression has.  */
   enum machine_mode mode : 8;
   /* 1 in an INSN if it can alter flow of control
@@ -154,8 +158,15 @@ typedef struct rtx_def
 
 #define NULL_RTX (rtx) NULL
 
+/* Define macros to access the `code' field of the rtx.  */
+
+#ifdef SHORT_ENUM_BUG
+#define GET_CODE(RTX)		((enum rtx_code) ((RTX)->code))
+#define PUT_CODE(RTX, CODE)	((RTX)->code = ((short) (CODE)))
+#else
 #define GET_CODE(RTX)		((RTX)->code)
 #define PUT_CODE(RTX, CODE)	((RTX)->code = (CODE))
+#endif
 
 #define GET_MODE(RTX)		((RTX)->mode)
 #define PUT_MODE(RTX, MODE)	((RTX)->mode = (MODE))

@@ -30,6 +30,9 @@ and this notice must be preserved on all copies.  */
    and GNU CPP is not used on VMS except with GNU C.  */
 #define CPP_PREDEFINES "-Dvax -Dvms -DVMS -D__GNU__ -D__GNUC__"
 
+/* By default, allow $ to be part of an identifier.  */
+#define DOLLARS_IN_IDENTIFIERS 1
+
 #define TARGET_DEFAULT 1
 #define TARGET_VERSION printf ("(vax vms)");
 

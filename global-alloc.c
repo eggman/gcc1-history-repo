@@ -134,6 +134,10 @@ static HARD_REG_SET *hard_reg_conflicts;
 static HARD_REG_SET *hard_reg_preferences;
 #endif
 
+/* Set of registers that global-alloc isn't supposed to use.  */
+
+static HARD_REG_SET no_global_alloc_regs;
+
 /* Test a bit in TABLE, a vector of HARD_REG_SETs,
    for vector element I, and hard register number J.  */
 
@@ -184,6 +188,16 @@ global_alloc (file)
   register int i;
 
   max_allocno = 0;
+
+  /* A machine may have certain hard registers that
+     are safe to use only within a basic block.  */
+
+  CLEAR_HARD_REG_SET (no_global_alloc_regs);
+#if 0
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (OVERLAPPING_REGNO_P (i))
+      SET_HARD_REG_BIT (no_global_alloc_regs, i);
+#endif
 
   /* Establish mappings from register number to allocation number
      and vice versa.  In the process, count the allocnos.  */
@@ -508,6 +522,9 @@ find_reg (allocno, losers, all_regs_p, prefreg)
   COPY_HARD_REG_SET (used,
 		     (reg_crosses_call[allocno_reg[allocno]]
 		      ? call_used_reg_set : fixed_reg_set));
+
+  /* Some registers should not be allocated in global-alloc.  */
+  IOR_HARD_REG_SET (used, no_global_alloc_regs);
 
   IOR_COMPL_HARD_REG_SET (used, reg_class_contents[(int) class]);
   IOR_HARD_REG_SET (used, hard_reg_conflicts[allocno]);
@@ -842,8 +859,7 @@ dump_conflicts (file)
   for (i = 0; i < max_allocno; i++)
     {
       register int j;
-      fprintf (file, ";; %d conflicts:", allocno_reg[i],
-	       reg_renumber[allocno_reg[i]]);
+      fprintf (file, ";; %d conflicts:", allocno_reg[i]);
       for (j = 0; j < max_allocno; j++)
 	if (CONFLICTP (i, j) || CONFLICTP (j, i))
 	  fprintf (file, " %d", allocno_reg[j]);

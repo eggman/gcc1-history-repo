@@ -211,6 +211,7 @@ save_for_inline (fndecl)
      Later we set TREE_READONLY to 0 if the parm is modified inside the fn.  */
 
   parmdecl_map = (tree *) alloca (max_parm_reg * sizeof (tree));
+  bzero (parmdecl_map, max_parm_reg * sizeof (tree));
 
   for (parms = DECL_ARGUMENTS (fndecl); parms; parms = TREE_CHAIN (parms))
     {
@@ -412,7 +413,8 @@ copy_for_inline (orig)
 
 	if (GET_CODE (dest) == REG
 	    && REGNO (dest) < max_parm_reg
-	    && REGNO (dest) >= FIRST_PSEUDO_REGISTER)
+	    && REGNO (dest) >= FIRST_PSEUDO_REGISTER
+	    && parmdecl_map[REGNO (dest)] != 0)
 	  TREE_READONLY (parmdecl_map[REGNO (dest)]) = 0;
       }
       break;
@@ -491,7 +493,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   rtx follows_call = 0;
 
   if (max_regno < FIRST_PSEUDO_REGISTER)
-    return (rtx)-1;
+    abort ();
 
   nargs = list_length (DECL_ARGUMENTS (fndecl));
 
@@ -607,10 +609,26 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 
   if (structure_value_addr != 0 || TYPE_MODE (type) == VOIDmode)
     inline_target = 0;
-  else if (target && GET_MODE (target) == TYPE_MODE (type))
-    inline_target = target;
   else
-    inline_target = gen_reg_rtx (TYPE_MODE (type));
+    {
+      /* Machine mode function was declared to return.   */
+      enum machine_mode departing_mode = TYPE_MODE (type);
+      /* (Possibly wider) machine mode it actually computes
+	 (for the sake of callers that fail to declare it right).  */
+      enum machine_mode arriving_mode
+	= TYPE_MODE (TREE_TYPE (DECL_RESULT (fndecl)));
+
+      if (target && GET_MODE (target) == departing_mode)
+	inline_target = target;
+      else
+	inline_target = target = gen_reg_rtx (departing_mode);
+
+      /* If function's value was promoted before return,
+	 avoid machine mode mismatch when we substitute INLINE_TARGET.
+	 But TARGET is what we will return to the caller.  */
+      if (arriving_mode != departing_mode)
+	inline_target = gen_rtx (SUBREG, arriving_mode, target, 0);
+    }
 
   /* We are about to make space in this function's stack frame
      for a copy of the stack frame of the inline function.
@@ -789,7 +807,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 		      memory_address (BLKmode, structure_value_addr));
     }
 
-  return inline_target;
+  return target;
 }
 
 /* Given a chain of PARM_DECLs, ARGS, and a vector of RTL homes VEC,

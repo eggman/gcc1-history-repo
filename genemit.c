@@ -322,7 +322,12 @@ gen_expand (expand)
 	  || GET_CODE (next) == RETURN)
 	printf ("  emit_jump_insn (");
       else if ((GET_CODE (next) == SET && GET_CODE (SET_SRC (next)) == CALL)
-	       || GET_CODE (next) == CALL)
+	       || GET_CODE (next) == CALL
+	       || (GET_CODE (next) == PARALLEL
+		   && GET_CODE (XVECEXP (next, 0, 0)) == SET
+		   && GET_CODE (SET_SRC (XVECEXP (next, 0, 0))) == CALL)
+	       || (GET_CODE (next) == PARALLEL
+		   && GET_CODE (XVECEXP (next, 0, 0)) == CALL))
 	printf ("  emit_call_insn (");
       else if (GET_CODE (next) == CODE_LABEL)
 	printf ("  emit_label (");

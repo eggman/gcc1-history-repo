@@ -349,7 +349,7 @@ from the machine description file `md'.  */\n\n");
   printf ("#include \"config.h\"\n\n");
   printf ("#include \"regs.h\"\n\n");
 
-  printf ("rtx peep_operand[];\n\n");
+  printf ("extern rtx peep_operand[];\n\n");
   printf ("#define operands peep_operand\n\n");
 
   printf ("int\npeephole (ins1)\n     rtx ins1;\n{\n");

@@ -111,8 +111,8 @@ software.
 #include <setjmp.h>
 /* #define YYDEBUG 1 */
 
-  static int yylex ();
-  static yyerror ();
+  int yylex ();
+  void yyerror ();
   int expression_value;
 
   static jmp_buf parse_return_error;
@@ -231,7 +231,7 @@ static char *lexptr;
 
 /* maybe needs to actually deal with floating point numbers */
 
-static int
+int
 parse_number (olen)
      int olen;
 {
@@ -309,7 +309,7 @@ static struct token tokentab2[] = {
 
 /* Read one token, getting characters through lexptr.  */
 
-static int
+int
 yylex ()
 {
   register int c;
@@ -423,7 +423,7 @@ yylex ()
    If \ is followed by 000, we return 0 and leave the string pointer
    after the zeros.  A value of 0 does not mean end of string.  */
 
-static int
+int
 parse_escape (string_ptr)
      char **string_ptr;
 {
@@ -490,7 +490,7 @@ parse_escape (string_ptr)
     }
 }
 
-static
+void
 yyerror (s)
      char *s;
 {

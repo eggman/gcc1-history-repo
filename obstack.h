@@ -269,7 +269,7 @@ int obstack_chunk_size (struct obstack *obstack);
 #define obstack_alignment_mask(h) ((h)->alignment_mask)
 
 #define obstack_init(h) \
-  _obstack_begin ((h), 4096 - 4, 0, obstack_chunk_alloc, obstack_chunk_free)
+  _obstack_begin ((h), 0, 0, obstack_chunk_alloc, obstack_chunk_free)
 
 #define obstack_begin(h, size) \
   _obstack_begin ((h), (size), 0, obstack_chunk_alloc, obstack_chunk_free)
@@ -345,8 +345,8 @@ int obstack_chunk_size (struct obstack *obstack);
 ({ struct obstack *__o = (OBSTACK);					\
    void *value = (void *) __o->object_base;				\
    __o->next_free							\
-     = (char*)((int)(__o->next_free+__o->alignment_mask)		\
-	       & ~ (__o->alignment_mask));				\
+     = (char *)0 + (((__o->next_free-(char *)0)+__o->alignment_mask)	\
+		    & ~ (__o->alignment_mask));				\
    ((__o->next_free - (char *)__o->chunk				\
      > __o->chunk_limit - (char *)__o->chunk)				\
     ? __o->next_free = __o->chunk_limit : 0);				\
@@ -409,15 +409,15 @@ extern struct obstack *_obstack;
  (obstack_grow0 ((h), (where), (length)), obstack_finish ((h)))
 
 #define obstack_finish(h)  						\
-( (h)->temp = (int) (h)->object_base,					\
+( (h)->temp = (h)->object_base - (char *)0,				\
   (h)->next_free							\
-    = (char*)((int)((h)->next_free+(h)->alignment_mask)			\
-	      & ~ ((h)->alignment_mask)),				\
+    = (char*)0 + ((((h)->next_free - (char *)0)+(h)->alignment_mask)	\
+		  & ~ ((h)->alignment_mask)),				\
   (((h)->next_free - (char *)(h)->chunk					\
     > (h)->chunk_limit - (char *)(h)->chunk)				\
    ? (h)->next_free = (h)->chunk_limit : 0),				\
   (h)->object_base = (h)->next_free,					\
-  (char *) (h)->temp)
+  (h)->temp + (char *)0)
 
 #ifdef __STDC__
 #define obstack_free(h,obj)						\

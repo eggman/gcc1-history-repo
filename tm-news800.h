@@ -35,9 +35,18 @@ and this notice must be preserved on all copies.  */
 
 #define TARGET_DEFAULT 7
 
+/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+   This will control the use of inline 68881 insns in certain macros.  */
+
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
+
 /* Names to predefine in the preprocessor for this target machine.  */
 
 #define CPP_PREDEFINES "-Dunix -Dmc68020 -Dnews800"
+
+/* This is BSD, so it wants DBX format.  */
+
+#define DBX_DEBUGGING_INFO
 
 /* Override parts of tm-m68k.h to fit Sony's assembler syntax.  */
 

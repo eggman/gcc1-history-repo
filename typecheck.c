@@ -781,7 +781,8 @@ build_array_ref (array, index)
       && TREE_CODE (array) != INDIRECT_REF)
     {
       index = default_conversion (index);
-      if (TREE_CODE (TREE_TYPE (index)) != INTEGER_TYPE)
+      if (index != error_mark_node
+	  && TREE_CODE (TREE_TYPE (index)) != INTEGER_TYPE)
 	{
 	  error ("array subscript is not an integer");
 	  return error_mark_node;
@@ -803,8 +804,22 @@ build_array_ref (array, index)
 					   array, index));
     }
 
-  return build_indirect_ref (build_binary_op (PLUS_EXPR, array, index),
-			     "array indexing");
+  {
+    tree ar = default_conversion (array);
+    tree ind = default_conversion (index);
+
+    if ((TREE_CODE (TREE_TYPE (ar)) == POINTER_TYPE
+	 && TREE_CODE (TREE_TYPE (ind)) != INTEGER_TYPE)
+	|| (TREE_CODE (TREE_TYPE (ind)) == POINTER_TYPE
+	    && TREE_CODE (TREE_TYPE (ar)) != INTEGER_TYPE))
+      {
+	error ("array subscript is not an integer");
+	return error_mark_node;
+      }
+
+    return build_indirect_ref (build_binary_op_nodefault (PLUS_EXPR, ar, ind),
+			       "array indexing");
+  }
 }
 
 /* Build a function call to function FUNCTION with parameters PARAMS.
@@ -1227,28 +1242,9 @@ build_binary_op_nodefault (code, op0, op1)
 	  if (! comp_target_types (dt0, dt1))
 	    warning ("comparison of distinct pointer types lacks a cast");
 	  else if (pedantic 
-		   && TREE_CODE (TREE_TYPE (dt0)) == VOID_TYPE)
-	    warning ("ANSI C forbids ordered comparisons of `void *'");
-	  else if (pedantic 
 		   && TREE_CODE (TREE_TYPE (dt0)) == FUNCTION_TYPE)
 	    warning ("ANSI C forbids ordered comparisons of pointers to functions");
 	  result_type = commontype (dt0, dt1);
-	}
-      else if (code0 == POINTER_TYPE && TREE_CODE (op1) == INTEGER_CST
-		&& integer_zerop (op1))
-	{
-	  result_type = dt0;
-	  op1 = null_pointer_node;
-	  if (pedantic)
-	    warning ("ordered comparison of pointer with integer zero");
-	}
-      else if (code1 == POINTER_TYPE && TREE_CODE (op0) == INTEGER_CST
-		&& integer_zerop (op0))
-	{
-	  result_type = dt1;
-	  op0 = null_pointer_node;
-	  if (pedantic)
-	    warning ("ordered comparison of pointer with integer zero");
 	}
       break;
 
@@ -1948,8 +1944,7 @@ build_unary_op (code, xarg, noconvert)
   switch (code)
     {
     case CONVERT_EXPR:
-      if (!(typecode == INTEGER_TYPE || typecode == REAL_TYPE
-	    || typecode == POINTER_TYPE))
+      if (!(typecode == INTEGER_TYPE || typecode == REAL_TYPE))
         errstring = "wrong type argument to unary plus";
       /* This is used for unary plus, because a CONVERT_EXPR
 	 is enough to prevent anybody from looking inside for
@@ -2378,6 +2373,7 @@ mark_addressable (exp)
 	/* drops in */
       case FUNCTION_DECL:
 	TREE_ADDRESSABLE (x) = 1;
+	TREE_ADDRESSABLE (DECL_NAME (x)) = 1;
 
       default:
 	return;
@@ -2406,6 +2402,29 @@ build_conditional_expr (ifexp, op1, op2)
     }
 
   ifexp = truthvalue_conversion (default_conversion (ifexp));
+
+  if (TREE_CODE (ifexp) == ERROR_MARK
+      || TREE_CODE (TREE_TYPE (op1)) == ERROR_MARK
+      || TREE_CODE (TREE_TYPE (op2)) == ERROR_MARK)
+    return error_mark_node;
+
+  /* Don't promote the operands separately if they promote
+     the same way.  Return the unpromoted type and let the combined
+     value get promoted if necessary.  */
+
+  if (TREE_TYPE (op1) == TREE_TYPE (op2)
+      && TREE_CODE (TREE_TYPE (op1)) != ARRAY_TYPE
+      && TREE_CODE (TREE_TYPE (op1)) != ENUMERAL_TYPE
+      && TREE_CODE (TREE_TYPE (op1)) != FUNCTION_TYPE)
+    {
+      if (TREE_LITERAL (ifexp))
+	return (integer_zerop (ifexp) ? op2 : op1);
+
+      return build (COND_EXPR, TREE_TYPE (op1), ifexp, op1, op2);
+    }
+
+  /* They don't match; promote them both and then try to reconcile them.  */
+
   if (TREE_CODE (TREE_TYPE (op1)) != VOID_TYPE)
     op1 = default_conversion (op1);
   if (TREE_CODE (TREE_TYPE (op2)) != VOID_TYPE)
@@ -2415,13 +2434,9 @@ build_conditional_expr (ifexp, op1, op2)
   code1 = TREE_CODE (type1);
   type2 = TREE_TYPE (op2);
   code2 = TREE_CODE (type2);
-
-  if (TREE_CODE (ifexp) == ERROR_MARK
-      || code1 == ERROR_MARK || code2 == ERROR_MARK)
-    return error_mark_node;
       
-  /* Quickly detect the usual case where op1 and op2 have the same type.
-     This is the only case that handles structures and unions.  */
+  /* Quickly detect the usual case where op1 and op2 have the same type
+     after promotion.  */
   if (type1 == type2)
     result_type = type1;
   else if ((code1 == INTEGER_TYPE || code1 == REAL_TYPE)
@@ -2774,30 +2789,30 @@ convert_for_assignment (type, rhs, errtype)
     {
       register tree ttl = TREE_TYPE (type);
       register tree ttr = TREE_TYPE (rhstype);
-      /* Anything converts to void *.  void * converts to anything.
-	 Otherwise, the targets must be the same except that the
-	 lhs target may be const or volatile while the rhs target isn't.  */
+      /* Any non-function converts to a [const][volatile] void *
+	 and vice versa; otherwise, targets must be the same.
+	 Meanwhile, the lhs target must have all the qualifiers of the rhs.  */
       if (TYPE_MAIN_VARIANT (ttl) == void_type_node
-	  || TYPE_MAIN_VARIANT (ttr) == void_type_node)
+	  || TYPE_MAIN_VARIANT (ttr) == void_type_node
+	  || comp_target_types (type, rhstype))
 	{
-	  if (!((TYPE_MAIN_VARIANT (ttl) == void_type_node
-		 && (!pedantic
-		     || (ttl == void_type_node
-			 && TREE_CODE (ttr) != FUNCTION_TYPE)))
-		||
-		(TYPE_MAIN_VARIANT (ttr) == void_type_node
-		 && (!pedantic
-		     || (ttr == void_type_node
-			 && TREE_CODE (ttl) != FUNCTION_TYPE)))))
+	  if (pedantic
+	      && ((TYPE_MAIN_VARIANT (ttl) == void_type_node
+		   && TREE_CODE (ttr) == FUNCTION_TYPE)
+		  ||
+		  (TYPE_MAIN_VARIANT (ttr) == void_type_node
+		   && TREE_CODE (ttl) == FUNCTION_TYPE)))
 	    warning ("%s between incompatible pointer types", errtype);
+	  else
+	    {
+	      if (! TREE_READONLY (ttl) && TREE_READONLY (ttr))
+		warning ("%s of non-const * pointer from const *", errtype);
+	      if (! TREE_VOLATILE (ttl) && TREE_VOLATILE (ttr))
+		warning ("%s of non-volatile * pointer from volatile *", errtype);
+	    }
 	}
-      else if (comp_target_types (type, rhstype))
-	{
-	  if (! TREE_READONLY (ttl) && TREE_READONLY (ttr))
-	    warning ("%s of non-const * pointer from const *", errtype);
-	  if (! TREE_VOLATILE (ttl) && TREE_VOLATILE (ttr))
-	    warning ("%s of non-volatile * pointer from volatile *", errtype);
-	}
+      else
+	warning ("%s between incompatible pointer types", errtype);
       return convert (type, rhs);
     }
   else if (codel == POINTER_TYPE && coder == INTEGER_TYPE)

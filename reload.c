@@ -162,6 +162,10 @@ static int hard_regs_live_known;
    and is not changed here.  */
 static short *static_reload_reg_p;
 
+/* Set to 1 in subst_reg_equivs if it changes anything.  */
+static int subst_reg_equivs_changed;
+
+static int alternative_allows_memconst ();
 static rtx find_dummy_reload ();
 static rtx find_reloads_toplev ();
 static void find_reloads_address ();
@@ -373,7 +377,7 @@ push_reload (in, out, inloc, outloc, class,
       if (reload_reg_rtx[i] == out
 	  && (GET_CODE (in) == REG || CONSTANT_P (in))
 	  && 0 != find_equiv_reg (in, this_insn, 0, REGNO (out),
-				  static_reload_reg_p, i))
+				  static_reload_reg_p, i, inmode))
 	reload_in[i] = out;
     }
 
@@ -677,8 +681,8 @@ strict_memory_address_p (mode, addr)
 }
 
 
-/* Like rtx_equal_p except that it considers two REGs as equal
-   if they renumber to the same value and has special hacks for
+/* Like rtx_equal_p except that it allows a REG and a SUBREG to match
+   if they are the same hard reg, and has special hacks for
    autoincrement and autodecrement.
    This is specifically intended for find_reloads to use
    in determining whether two operands match.
@@ -694,7 +698,7 @@ strict_memory_address_p (mode, addr)
 
 int
 operands_match_p (x, y)
-     rtx x, y;
+     register rtx x, y;
 {
   register int i;
   register RTX_CODE code = GET_CODE (x);
@@ -708,32 +712,27 @@ operands_match_p (x, y)
 				  && GET_CODE (SUBREG_REG (y)) == REG)))
     {
       register int j;
+
       if (code == SUBREG)
 	{
 	  i = REGNO (SUBREG_REG (x));
-	  if (reg_renumber[i] >= 0)
-	    i = reg_renumber[i];
+	  if (i >= FIRST_PSEUDO_REGISTER)
+	    goto slow;
 	  i += SUBREG_WORD (x);
 	}
       else
-	{
-	  i = REGNO (x);
-	  if (reg_renumber[i] >= 0)
-	    i = reg_renumber[i];
-	}
+	i = REGNO (x);
+
       if (GET_CODE (y) == SUBREG)
 	{
 	  j = REGNO (SUBREG_REG (y));
-	  if (reg_renumber[j] >= 0)
-	    j = reg_renumber[j];
+	  if (j >= FIRST_PSEUDO_REGISTER)
+	    goto slow;
 	  j += SUBREG_WORD (y);
 	}
       else
-	{
-	  j = REGNO (y);
-	  if (reg_renumber[j] >= 0)
-	    j = reg_renumber[j];
-	}
+	j = REGNO (y);
+
       return i == j;
     }
   /* If two operands must match, because they are really a single
@@ -760,6 +759,7 @@ operands_match_p (x, y)
   if (code == SYMBOL_REF)
     return XSTR (x, 0) == XSTR (y, 0);
 
+ slow:
   /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.  */
 
   if (GET_MODE (x) != GET_MODE (y))
@@ -815,7 +815,7 @@ operands_match_p (x, y)
    allocation has been done.
 
    RELOAD_REG_P if nonzero is a vector indexed by hard reg number
-   which is nonzero if the reg has been commandeered for reloading into.
+   which is nonnegative if the reg has been commandeered for reloading into.
    It is copied into STATIC_RELOAD_REG_P and referenced from there
    by various subroutines.  */
 
@@ -888,8 +888,14 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
     case ADDR_DIFF_VEC:
       return;
 
-    case PARALLEL:
     case SET:
+      /* Dispose quickly of (set (reg..) (reg..)) if both have hard regs.  */
+      if (GET_CODE (SET_DEST (body)) == REG
+	  && REGNO (SET_DEST (body)) < FIRST_PSEUDO_REGISTER
+	  && GET_CODE (SET_SRC (body)) == REG
+	  && REGNO (SET_SRC (body)) < FIRST_PSEUDO_REGISTER)
+	return;
+    case PARALLEL:
       noperands = asm_noperands (body);
       if (noperands > 0)
 	{
@@ -916,12 +922,23 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       insn_code_number = recog_memoized (insn);
       noperands = insn_n_operands[insn_code_number];
       insn_extract (insn);
-      for (i = 0; i < noperands; i++)
-	{
-	  constraints[i] = constraints1[i]
-	    = insn_operand_constraint[insn_code_number][i];
-	  operand_mode[i] = insn_operand_mode[insn_code_number][i];
-	}
+      {
+	/* Nonzero if some operand has a nonnull constraint.
+	   If none has, we have no work to do.
+	   Even a general_operand should have `g' in its constraint.  */
+	int have_constraints = 0;
+
+	for (i = 0; i < noperands; i++)
+	  {
+	    constraints[i] = constraints1[i]
+	      = insn_operand_constraint[insn_code_number][i];
+	    operand_mode[i] = insn_operand_mode[insn_code_number][i];
+	    if (constraints[i] != 0)
+	      have_constraints = 1;
+	  }
+	if (!have_constraints)
+	  return;
+      }
     }
 
   if (noperands == 0)
@@ -1351,13 +1368,12 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  recog_operand[1] = substed_operand[1];
 	  recog_operand[2] = substed_operand[2];
 	  for (i = 0; i < noperands; i++)
-	    goal_alternative_win[i] = 1;
-	  bcopy (this_alternative, goal_alternative,
-		 sizeof this_alternative);
-	  bcopy (this_alternative_offmemok, goal_alternative_offmemok,
-		 sizeof this_alternative_offmemok);
-	  bcopy (this_alternative_matches, goal_alternative_matches,
-		 sizeof this_alternative_matches);
+	    {
+	      goal_alternative_win[i] = 1;
+	      goal_alternative[i] = this_alternative[i];
+	      goal_alternative_offmemok[i] = this_alternative_offmemok[i];
+	      goal_alternative_matches[i] = this_alternative_matches[i];
+	    }
 	  goal_alternative_number = this_alternative_number;
 	  goal_alternative_swapped = swapped;
 	  goal_earlyclobber = this_earlyclobber;
@@ -1374,14 +1390,13 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	 record it as the chosen goal for reloading.  */
       if (! bad && best > losers)
 	{
-	  bcopy (this_alternative, goal_alternative,
-		 sizeof this_alternative);
-	  bcopy (this_alternative_win, goal_alternative_win,
-		 sizeof this_alternative_win);
-	  bcopy (this_alternative_offmemok, goal_alternative_offmemok,
-		 sizeof this_alternative_offmemok);
-	  bcopy (this_alternative_matches, goal_alternative_matches,
-		 sizeof this_alternative_matches);
+	  for (i = 0; i < noperands; i++)
+	    {
+	      goal_alternative[i] = this_alternative[i];
+	      goal_alternative_win[i] = this_alternative_win[i];
+	      goal_alternative_offmemok[i] = this_alternative_offmemok[i];
+	      goal_alternative_matches[i] = this_alternative_matches[i];
+	    }
 	  goal_alternative_swapped = swapped;
 	  best = losers;
 	  goal_alternative_number = this_alternative_number;
@@ -1423,7 +1438,14 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
      Reload so as to fit it.  */
 
   if (best == MAX_RECOG_OPERANDS + 100)
-    abort ();			/* No alternative works with reloads??  */
+    {
+      /* No alternative works with reloads??  */
+      if (insn_code_number >= 0)
+	abort ();
+      error ("inconsistent operand constraints in an `asm' in this function");
+      n_reloads = 0;
+      return;
+    }
 
   /* Jump to `finish' from above if all operands are valid already.
      In that case, goal_alternative_win is all 1.  */
@@ -1557,7 +1579,11 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	if (GET_CODE (operand) == REG
 	    && REGNO (operand) >= FIRST_PSEUDO_REGISTER
 	    && reg_renumber[REGNO (operand)] < 0
-	    && (enum reg_class) goal_alternative[i] != NO_REGS)
+	    && (enum reg_class) goal_alternative[i] != NO_REGS
+	    /* Don't make optional output reloads for jump insns
+	       (such as aobjeq on the vax).  */
+	    && (modified[i] == RELOAD_READ
+		|| GET_CODE (insn) != JUMP_INSN))
 	  operand_reloadnum[i]
 	    = push_reload (modified[i] != RELOAD_WRITE ? recog_operand[i] : 0,
 			   modified[i] != RELOAD_READ ? recog_operand[i] : 0,
@@ -1600,7 +1626,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       {
 	reload_reg_rtx[i]
 	  = find_equiv_reg (reload_in[i], insn, reload_reg_class[i], -1,
-			    static_reload_reg_p, 0);
+			    static_reload_reg_p, 0, reload_inmode[i]);
 	/* Prevent generation of insn to load the value
 	   because the one we found already has the value.  */
 	if (reload_reg_rtx[i])
@@ -1837,7 +1863,18 @@ find_reloads_address (mode, memrefloc, ad, loc)
 	 it has failed to get a hard reg.
 	 So do a tree-walk to find and eliminate all such regs.  */
 
+      /* But first quickly dispose of a common case.  */
+      if (GET_CODE (ad) == PLUS
+	  && GET_CODE (XEXP (ad, 1)) == CONST_INT
+	  && GET_CODE (XEXP (ad, 0)) == REG
+	  && reg_equiv_constant[REGNO (XEXP (ad, 0))] == 0)
+	return;
+
+      subst_reg_equivs_changed = 0;
       *loc = subst_reg_equivs (ad);
+
+      if (! subst_reg_equivs_changed)
+	return;
 
       /* Check result for validity after substitution.  */
       if (strict_memory_address_p (mode, ad))
@@ -1847,9 +1884,11 @@ find_reloads_address (mode, memrefloc, ad, loc)
   /* If we have address of a stack slot but it's not valid
      (displacement is too large), compute the sum in a register.  */
   if (GET_CODE (ad) == PLUS
-      && GET_CODE (XEXP (ad, 0)) == REG
-      && (REGNO (XEXP (ad, 0)) == FRAME_POINTER_REGNUM
-	  || REGNO (XEXP (ad, 0)) == ARG_POINTER_REGNUM)
+      && (XEXP (ad, 0) == frame_pointer_rtx
+#if FRAME_POINTER_REGNUM == ARG_POINTER_REGNUM
+	  || XEXP (ad, 0) == arg_pointer_rtx
+#endif
+	  )
       && GET_CODE (XEXP (ad, 1)) == CONST_INT)
     {
       /* Unshare the MEM rtx so we can safely alter it.  */
@@ -1866,17 +1905,20 @@ find_reloads_address (mode, memrefloc, ad, loc)
   /* See if address becomes valid when an eliminable register
      in a sum is replaced.  */
 
-  tem = subst_indexed_address (ad);
+  tem = ad;
+  if (GET_CODE (ad) == PLUS)
+    tem = subst_indexed_address (ad);
   if (tem != ad && strict_memory_address_p (mode, tem))
     {
       /* Ok, we win that way.  Replace any additional eliminable
 	 registers.  */
 
+      subst_reg_equivs_changed = 0;
       tem = subst_reg_equivs (tem);
 
       /* Make sure that didn't make the address invalid again.  */
 
-      if (strict_memory_address_p (mode, tem))
+      if (! subst_reg_equivs_changed || strict_memory_address_p (mode, tem))
 	{
 	  *loc = tem;
 	  return;
@@ -1923,11 +1965,19 @@ subst_reg_equivs (ad)
       {
 	register int regno = REGNO (ad);
 
-	if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] < 0
-	    && reg_equiv_constant[regno] != 0)
-	  return reg_equiv_constant[regno];
+	if (reg_equiv_constant[regno] != 0)
+	  {
+	    subst_reg_equivs_changed = 1;
+	    return reg_equiv_constant[regno];
+	  }
       }
       return ad;
+
+    case PLUS:
+      /* Quickly dispose of a common case.  */
+      if (XEXP (ad, 0) == frame_pointer_rtx
+	  && GET_CODE (XEXP (ad, 1)) == CONST_INT)
+	return ad;
     }
 
   fmt = GET_RTX_FORMAT (code);
@@ -1936,7 +1986,7 @@ subst_reg_equivs (ad)
       XEXP (ad, i) = subst_reg_equivs (XEXP (ad, i));
   return ad;
 }
-
+
 /* If ADDR is a sum containing a pseudo register that should be
    replaced with a constant (from reg_equiv_constant),
    return the result of doing so, and also apply the associative
@@ -2288,18 +2338,22 @@ forget_volatility (x)
    If GOAL is zero, then GOALREG is a register number; we look
    for an equivalent for that register.
 
+   MODE is the machine mode of the value we want an equivalence for.
+   If GOAL is nonzero and not VOIDmode, then it must have mode MODE.
+
    This function is used by jump.c as well as in the reload pass.
 
    If GOAL is a PLUS, we assume it adds the stack pointer to a constant.  */
 
 rtx
-find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
+find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
      register rtx goal;
      rtx insn;
      enum reg_class class;
      register int other;
      short *reload_reg_p;
      int goalreg;
+     enum machine_mode mode;
 {
   register rtx p = insn;
   rtx valtry, value, where;
@@ -2308,17 +2362,40 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
   int valueno;
   int goal_mem = 0;
   int goal_const = 0;
+  int goal_mem_addr_varies = 0;
+  int nregs;
+  int valuenregs;
 
   if (goal == 0)
     regno = goalreg;
   else if (GET_CODE (goal) == REG)
     regno = REGNO (goal);
   else if (GET_CODE (goal) == MEM)
-    goal_mem = 1;
+    {
+      enum rtx_code code = GET_CODE (XEXP (goal, 0));
+      /* An address with side effects must be reexecuted.  */
+      switch (code)
+	{
+	case POST_INC:
+	case PRE_INC:
+	case POST_DEC:
+	case PRE_DEC:
+	  return 0;
+	}
+      goal_mem = 1;
+    }
   else if (CONSTANT_P (goal))
     goal_const = 1;
   else
     return 0;
+
+  /* On some machines, certain regs must always be rejected
+     because they don't behave the way ordinary registers do.  */
+  
+#ifdef OVERLAPPING_REGNO_P
+   if (regno >= 0 && OVERLAPPING_REGNO_P (regno))
+     return 0;
+#endif      
 
   /* Scan insns back from INSN, looking for one that copies
      a value into or out of GOAL.
@@ -2346,12 +2423,12 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 	  if (GET_CODE (pat) == SET
 	      && ((regno >= 0
 		   && GET_CODE (SET_SRC (pat)) == REG
-		   && (goal == 0 ? true_regnum (SET_SRC (pat)) : REGNO (SET_SRC (pat))) == regno
+		   && REGNO (SET_SRC (pat)) == regno
 		   && GET_CODE (valtry = SET_DEST (pat)) == REG)
 		  ||
 		  (regno >= 0
 		   && GET_CODE (SET_DEST (pat)) == REG
-		   && (goal == 0 ? true_regnum (SET_DEST (pat)) : REGNO (SET_DEST (pat))) == regno
+		   && REGNO (SET_DEST (pat)) == regno
 		   && GET_CODE (valtry = SET_SRC (pat)) == REG)
 		  ||
 		  (goal_const && rtx_equal_p (SET_SRC (pat), goal)
@@ -2362,13 +2439,12 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 		  || (goal_mem
 		      && GET_CODE (valtry = SET_SRC (pat)) == REG
 		      && rtx_renumbered_equal_p (goal, SET_DEST (pat)))))
-	    if (other >= 0
-		? (goal == 0 ? true_regnum (valtry) : REGNO (valtry)) == other
-		: (valueno = REGNO (valtry),
-		   reg_renumber[valueno] >= 0 ? valueno = reg_renumber[valueno] : 0,
-		   valueno < FIRST_PSEUDO_REGISTER &&
-		   TEST_HARD_REG_BIT (reg_class_contents[(int) class],
-				      valueno)))
+	    if (valueno = REGNO (valtry),
+		other >= 0
+		? valueno == other
+		: ((unsigned) valueno < FIRST_PSEUDO_REGISTER
+		   && TEST_HARD_REG_BIT (reg_class_contents[(int) class],
+					 valueno)))
 	      {
 		value = valtry;
 		where = p;
@@ -2381,23 +2457,15 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
      (or copying VALUE into GOAL, if GOAL is also a register).
      Now verify that VALUE is really valid.  */
 
-  if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] >= 0)
-    regno = reg_renumber[regno];
-
-  /* VALUENO gets the register number of VALUE;
-     for a pseudo reg, it gets the hard reg number that the pseudo has,
-     and we give up if the pseudo has no hard reg.  */
-
-  valueno = REGNO (value);
-  if (valueno >= FIRST_PSEUDO_REGISTER)
-    valueno = reg_renumber[valueno];
-
-  if (valueno < 0)
-    return 0;
+  /* VALUENO is the register number of VALUE; a hard register.  */
 
   /* Don't find the sp as an equiv, since pushes that we don't notice
      would invalidate it.  */
   if (valueno == STACK_POINTER_REGNUM)
+    return 0;
+
+  /* Reject VALUE if the copy-insn moved the wrong sort of datum.  */
+  if (GET_MODE (value) != mode)
     return 0;
 
   /* Reject VALUE if it was loaded from GOAL
@@ -2417,6 +2485,14 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
       && reload_reg_p[valueno] >= 0)
     return 0;
 
+  /* On some machines, certain regs must always be rejected
+     because they don't behave the way ordinary registers do.  */
+  
+#ifdef OVERLAPPING_REGNO_P
+   if (OVERLAPPING_REGNO_P (valueno))
+     return 0;
+#endif      
+
   /* Reject VALUE if it is a register being used for an input reload
      even if it is not one of those reserved.  */
 
@@ -2427,12 +2503,16 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 	if (reload_reg_rtx[i] != 0 && reload_in[i])
 	  {
 	    int regno1 = REGNO (reload_reg_rtx[i]);
-	    if (reg_renumber[regno1] >= 0)
-	      regno1 = reg_renumber[regno1];
 	    if (valueno == regno1)
 	      return 0;
 	  }
     }
+
+  if (goal_mem)
+    goal_mem_addr_varies = rtx_addr_varies_p (goal);
+
+  nregs = HARD_REGNO_NREGS (regno, mode);
+  valuenregs = HARD_REGNO_NREGS (valueno, mode);
 
   /* Now verify that the values of GOAL and VALUE remain unaltered
      until INSN is reached.  */
@@ -2477,9 +2557,13 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 	      if (GET_CODE (dest) == REG)
 		{
 		  register int xregno = REGNO (dest);
-		  if (reg_renumber[xregno] >= 0)
-		    xregno = reg_renumber[xregno];
-		  if (xregno == regno || xregno == valueno || goal_mem)
+		  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE_SIZE (GET_MODE (dest)));
+		  if (xregno < regno + nregs && xregno + xnregs > regno)
+		    return 0;
+		  if (xregno < valueno + valuenregs
+		      && xregno + xnregs > valueno)
+		    return 0;
+		  if (goal_mem_addr_varies)
 		    return 0;
 		}
 	      else if (goal_mem && GET_CODE (dest) == MEM
@@ -2503,9 +2587,14 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 		      if (GET_CODE (dest) == REG)
 			{
 			  register int xregno = REGNO (dest);
-			  if (reg_renumber[xregno] >= 0)
-			    xregno = reg_renumber[xregno];
-			  if (xregno == regno || xregno == valueno || goal_mem)
+			  int xnregs = HARD_REGNO_NREGS (xregno, GET_MODE_SIZE (GET_MODE (dest)));
+			  if (xregno < regno + nregs
+			      && xregno + xnregs > regno)
+			    return 0;
+			  if (xregno < valueno + valuenregs
+			      && xregno + xnregs > valueno)
+			    return 0;
+			  if (goal_mem_addr_varies)
 			    return 0;
 			}
 		      else if (goal_mem && GET_CODE (dest) == MEM
@@ -2526,9 +2615,11 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg)
 	      if (REG_NOTE_KIND (link) == REG_INC)
 		{
 		  register int incno = REGNO (XEXP (link, 0));
-		  if (reg_renumber[incno] >= 0)
-		    incno = reg_renumber[incno];
-		  if (incno == regno || incno == valueno || goal_mem)
+		  if (incno < regno + nregs && incno >= regno)
+		    return 0;
+		  if (incno < valueno + valuenregs && incno >= valueno)
+		    return 0;
+		  if (goal_mem_addr_varies)
 		    return 0;
 		}
 	  }

@@ -96,6 +96,7 @@ static void find_cross_jump ();
 static void do_cross_jump ();
 static enum rtx_code reverse_condition ();
 static int jump_back_p ();
+static int condjump_p ();
 
 /* Delete no-op jumps and optimize jumps to jumps
    and jumps around jumps.
@@ -304,10 +305,18 @@ jump_optimize (f, cross_jump, noop_moves)
 		else if (sreg >= 0 && dreg >= 0)
 		  {
 		    rtx tem = find_equiv_reg (0, insn, 0,
-					      sreg, 0, dreg);
-		    if (tem != 0
-			&& GET_MODE (tem) == GET_MODE (SET_DEST (body)))
-		      delete_insn (insn);
+					      sreg, 0, dreg,
+					      GET_MODE (SET_SRC (body)));
+		    
+#ifdef PRESERVE_DEATH_INFO_REGNO_P
+		    /* Deleting insn could lose a death-note for SREG or DREG
+		       so don't do it if final needs accurate death-notes.  */
+		    if (! PRESERVE_DEATH_INFO_REGNO_P (dreg)
+			&& ! PRESERVE_DEATH_INFO_REGNO_P (dreg))
+#endif
+		      if (tem != 0
+			  && GET_MODE (tem) == GET_MODE (SET_DEST (body)))
+			delete_insn (insn);
 		  }
 	      }
 	  }
@@ -337,9 +346,9 @@ jump_optimize (f, cross_jump, noop_moves)
 	  if (GET_CODE (insn) == JUMP_INSN)
 	    {
 	      if (GET_CODE (PATTERN (insn)) == ADDR_VEC)
-		changed |= tension_vector_labels (PATTERN (insn), 0);
+		changed |= tension_vector_labels (PATTERN (insn), 0, noop_moves);
 	      if (GET_CODE (PATTERN (insn)) == ADDR_DIFF_VEC)
-		changed |= tension_vector_labels (PATTERN (insn), 1);
+		changed |= tension_vector_labels (PATTERN (insn), 1, noop_moves);
 	    }
 
 	  if (GET_CODE (insn) == JUMP_INSN && JUMP_LABEL (insn))
@@ -405,7 +414,8 @@ jump_optimize (f, cross_jump, noop_moves)
 		{
 		  /* Detect a jump to a jump.  */
 		  {
-		    register rtx nlabel = follow_jumps (JUMP_LABEL (insn));
+		    register rtx nlabel
+		      = follow_jumps (JUMP_LABEL (insn), noop_moves);
 		    if (nlabel != JUMP_LABEL (insn))
 		      {
 			redirect_jump (insn, nlabel);
@@ -912,11 +922,13 @@ next_label (insn)
 
 /* Follow any unconditional jump at LABEL;
    return the ultimate label reached by any such chain of jumps.
-   If LABEL is not followed by a jump, return LABEL.  */
+   If LABEL is not followed by a jump, return LABEL.
+   If IGNORE_LOOPS is 0, we do not chain across a NOTE_INSN_LOOP_BEG.  */
 
 static rtx
-follow_jumps (label)
+follow_jumps (label, ignore_loops)
      rtx label;
+     int ignore_loops;
 {
   register rtx insn;
   register rtx next;
@@ -932,6 +944,17 @@ follow_jumps (label)
 	&& GET_CODE (next) == BARRIER);
        depth++)
     {
+      /* Don't chain through the insn that jumps into a loop
+	 from outside the loop,
+	 since that would create multiple loop entry jumps
+	 and prevent loop optimization.  */
+      rtx tem;
+      if (!ignore_loops)
+	for (tem = value; tem != insn; tem = NEXT_INSN (tem))
+	  if (GET_CODE (tem) == NOTE
+	      && NOTE_LINE_NUMBER (tem) == NOTE_INSN_LOOP_BEG)
+	    return value;
+
       /* If we have found a cycle, make the insn jump to itself.  */
       if (JUMP_LABEL (insn) == label)
 	break;
@@ -942,19 +965,21 @@ follow_jumps (label)
 
 /* Assuming that field IDX of X is a vector of label_refs,
    replace each of them by the ultimate label reached by it.
-   Return nonzero if a change is made.  */
+   Return nonzero if a change is made.
+   If IGNORE_LOOPS is 0, we do not chain across a NOTE_INSN_LOOP_BEG.  */
 
 static int
-tension_vector_labels (x, idx)
+tension_vector_labels (x, idx, ignore_loops)
      register rtx x;
      register int idx;
+     int ignore_loops;
 {
   int changed = 0;
   register int i;
   for (i = XVECLEN (x, idx) - 1; i >= 0; i--)
     {
       register rtx olabel = XEXP (XVECEXP (x, idx, i), 0);
-      register rtx nlabel = follow_jumps (olabel);
+      register rtx nlabel = follow_jumps (olabel, ignore_loops);
       if (nlabel != olabel)
 	{
 	  XEXP (XVECEXP (x, idx, i), 0) = nlabel;
@@ -1335,13 +1360,26 @@ rtx_renumbered_equal_p (x, y)
      in which different rtx codes can match.  */
   if (code != GET_CODE (y))
     return 0;
-  /* Two label-refs are equivalent if they point at labels
-     in the same position in the instruction stream.  */
-  if (code == LABEL_REF)
-    return (next_real_insn (XEXP (x, 0))
-	    == next_real_insn (XEXP (y, 0)));
-  if (code == SYMBOL_REF)
-    return XSTR (x, 0) == XSTR (y, 0);
+  switch (code)
+    {
+    case PC:
+    case CC0:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
+      return 0;
+
+    case CONST_INT:
+      return XINT (x, 0) == XINT (y, 0);
+
+    case LABEL_REF:
+      /* Two label-refs are equivalent if they point at labels
+	 in the same position in the instruction stream.  */
+      return (next_real_insn (XEXP (x, 0))
+	      == next_real_insn (XEXP (y, 0)));
+
+    case SYMBOL_REF:
+      return XSTR (x, 0) == XSTR (y, 0);
+    }
 
   /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.  */
 
@@ -1383,9 +1421,6 @@ rtx_renumbered_equal_p (x, y)
 	      return 0;
 	  break;
 
-	  /* It is believed that rtx's at this level will never
-	     contain anything but integers and other rtx's,
-	     except for within LABEL_REFs and SYMBOL_REFs.  */
 	default:
 	  abort ();
 	}

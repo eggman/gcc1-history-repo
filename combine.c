@@ -168,10 +168,11 @@ static struct undobuf undobuf;
 static int n_occurrences;
 
 static void move_deaths ();
-static void remove_death ();
+void remove_death ();
 static void record_dead_and_set_regs ();
 int regno_dead_p ();
 static int use_crosses_set_p ();
+static int try_combine ();
 static rtx subst ();
 static void undo_all ();
 static void copy_substitutions ();
@@ -372,6 +373,9 @@ try_combine (i3, i2, i1)
       i2dest = SUBREG_REG (i2dest);
       i2src = gen_rtx (SUBREG, GET_MODE (i2dest), i2src, 0);
     }
+  /* Don't eliminate a store in the stack pointer.  */
+  if (i2dest == stack_pointer_rtx)
+    return 0;
   if (GET_CODE (i2dest) != CC0
       && (GET_CODE (i2dest) != REG
 	  || (GET_CODE (i2src) == REG
@@ -392,6 +396,8 @@ try_combine (i3, i2, i1)
 	  i1dest = SUBREG_REG (i1dest);
 	  i1src = gen_rtx (SUBREG, GET_MODE (i1dest), i1src, 0);
 	}
+      if (i1dest == stack_pointer_rtx)
+	return 0;
       if (GET_CODE (i1dest) != CC0
 	  && (GET_CODE (i1dest) != REG
 	      || (GET_CODE (i1src) == REG
@@ -787,10 +793,31 @@ subst (x, from, to)
 	    return SUBREG_REG (to);
 	  SUBST (SUBREG_REG (x), SUBREG_REG (to));
 	}
+      /* (subreg (sign_extend X)) is X, if it has same mode as X.  */
+      if (SUBREG_REG (x) == to
+	  && (GET_CODE (to) == SIGN_EXTEND || GET_CODE (to) == ZERO_EXTEND)
+	  && SUBREG_WORD (x) == 0
+	  && GET_MODE (x) == GET_MODE (XEXP (to, 0)))
+	return XEXP (to, 0);
       break;
 
     case NOT:
+      /* (not (minus X 1)) can become (neg X).  */
+      if (was_replaced[0]
+	  && ((GET_CODE (to) == PLUS && INTVAL (XEXP (to, 1)) == -1)
+	      || (GET_CODE (to) == MINUS && XEXP (to, 1) == const1_rtx)))
+	return gen_rtx (NEG, GET_MODE (to), XEXP (to, 0));
+      /* Don't let substitution introduce double-negatives.  */
+      if (was_replaced[0]
+          && GET_CODE (to) == code)
+        return XEXP (to, 0);
+      break;
+
     case NEG:
+      /* (neg (minus X Y)) can become (minus Y X).  */
+      if (was_replaced[0] && GET_CODE (to) == MINUS)
+          return gen_rtx (MINUS, GET_MODE (to),
+                          XEXP (to, 1), XEXP (to, 0));
       /* Don't let substitution introduce double-negatives.  */
       if (was_replaced[0]
 	  && GET_CODE (to) == code)
@@ -1217,7 +1244,8 @@ subst (x, from, to)
 	 True for all kinds of shifts and also for zero_extend.  */
       if (was_replaced[1]
 	  && (GET_CODE (to) == SIGN_EXTEND
-	      || GET_CODE (to) == ZERO_EXTEND))
+	      || GET_CODE (to) == ZERO_EXTEND)
+	  && GET_CODE (to) == REG)
 	{
 	  if (!undobuf.storage)
 	    undobuf.storage = (char *) oballoc (0);
@@ -1429,14 +1457,16 @@ simplify_and_const_int (x, to)
 		      XEXP (to, 0), XEXP (x, 1));
     }
   /* (and x const) may be converted to (zero_extend (subreg x 0)).  */
-  if (constop == GET_MODE_MASK (QImode))
+  if (constop == GET_MODE_MASK (QImode)
+      && GET_CODE (varop) == REG)
     {
       if (!undobuf.storage)
 	undobuf.storage = (char *) oballoc (0);
       return gen_rtx (ZERO_EXTEND, GET_MODE (x),
 		      gen_rtx (SUBREG, QImode, varop, 0));
     }
-  if (constop == GET_MODE_MASK (HImode))
+  if (constop == GET_MODE_MASK (HImode)
+      && GET_CODE (varop) == REG)
     {
       if (!undobuf.storage)
 	undobuf.storage = (char *) oballoc (0);
@@ -1738,7 +1768,7 @@ regno_dead_p (regno, insn)
 
 /* Remove register number REGNO from the dead registers list of INSN.  */
 
-static void
+void
 remove_death (regno, insn)
      int regno;
      rtx insn;

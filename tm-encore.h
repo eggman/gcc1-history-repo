@@ -29,6 +29,7 @@ and this notice must be preserved on all copies.  */
 
 #include "tm-ns32k.h"
 
+#define SDB_DEBUGGING_INFO
 
 #undef ASM_GENERATE_INTERNAL_LABEL
 #undef ASM_OUTPUT_ADDR_DIFF_ELT
@@ -47,7 +48,13 @@ and this notice must be preserved on all copies.  */
 
 #define TARGET_DEFAULT 1
 #define TARGET_VERSION printf (" (32000, Encore syntax)");
-#define CPP_PREDEFINES "-Dns32000 -Dencore -Dunix"
+/* Note Encore does not standardly do -Dencore.  */
+/* budd: should have a -ns32332 (or -apc) switch! but no harm for now */
+#define CPP_PREDEFINES "-Dns32000 -Dn16 -Dns16000 -Dns32332 -Dunix"
+
+/* Ignore certain cpp directives used in header files on sysV.  */
+#define IDENT_DIRECTIVE
+#define SCCS_DIRECTIVE
 
 #define FUNCTION_BOUNDARY 128		/* speed optimization */
 
@@ -80,7 +87,7 @@ and this notice must be preserved on all copies.  */
   fprintf (FILE, "\n"))
 
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)				\
- fprintf (FILE, "\t.long 0d%.20e\n", (VALUE))
+ fprintf (FILE, "\t.long 0l%.20e\n", (VALUE))
 
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE)			\
 ( fputs ("\t.bss ", (FILE)),					\
@@ -170,9 +177,9 @@ and this notice must be preserved on all copies.  */
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
 	fprintf (FILE, "$0l%.20e", u.d); }				\
-    else { union { float f; int i; } u;					\
-	   u.i = XINT (X, 0);						\
-	   fprintf (FILE, "$0f%.20e", u.f); }				\
+    else { union { double d; int i[2]; } u;				\
+	   u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	   fprintf (FILE, "$0f%.20e", u.d); }				\
   else if (GET_CODE (X) == CONST)					\
     output_addr_const (FILE, X);					\
   else { putc ('$', FILE); output_addr_const (FILE, X); }}

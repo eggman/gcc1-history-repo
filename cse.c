@@ -131,7 +131,7 @@ Other expressions:
    Precisely, this is necessary only when expressions have been
    entered in the hash table using this register, and then the value has
    changed, and then another expression wants to be added to refer to
-   teh register's new value.  This sequence of circumstances is rare
+   the register's new value.  This sequence of circumstances is rare
    within any one basic block.
 
    The vectors `reg_tick' and `reg_in_table' are used to detect this case.
@@ -140,7 +140,7 @@ Other expressions:
    entered in the table; otherwise, it contains the value reg_tick[i] had
    when the references were entered.  If we want to enter a reference
    and reg_in_table[i] != reg_tick[i], we must scan and remove old references.
-   Until we want to enter a new entry, the mere fact that the twovectors
+   Until we want to enter a new entry, the mere fact that the two vectors
    don't match makes the entries be ignored if anyone tries to match them.
 
    Registers themselves are entered in the hash table as well as in
@@ -396,6 +396,7 @@ int refers_to_p ();
 int refers_to_mem_p ();
 static void invalidate_from_clobbers ();
 static int safe_hash ();
+static int canon_hash ();
 static int get_integer_term ();
 static rtx get_related_value ();
 static void note_mem_written ();
@@ -848,7 +849,7 @@ lookup_as_function (x, code)
     {
       if (GET_CODE (p->exp) == code
 	  /* Make sure this is a valid entry in the table.  */
-	  && (exp_equiv_p (XEXP (p->exp, 0), XEXP (p->exp, 0))))
+	  && (exp_equiv_p (XEXP (p->exp, 0), XEXP (p->exp, 0), 1)))
 	return XEXP (p->exp, 0);
     }
   
@@ -933,8 +934,9 @@ insert (x, classp, hash, mode)
 	  /* Insert not at head of the class.  */
 	  /* Put it after the last element cheaper than X.  */
 	  register struct table_elt *p, *next;
-	  for (p = classp; (next = p->next_same_value) && CHEAPER (p, elt);
+	  for (p = classp; (next = p->next_same_value) && CHEAPER (next, elt);
 	       p = next);
+	  /* Put it after P and before NEXT.  */
 	  elt->next_same_value = next;
 	  if (next)
 	    next->prev_same_value = elt;
@@ -1406,27 +1408,31 @@ exp_equiv_p (x, y, validate)
   register RTX_CODE code = GET_CODE (x);
   register char *fmt;
 
-  /* An expression is usually equivalent to itself,
-     but not if it's a register that's invalid.  */
-  if (x == y)
-    return (code != REG
-	    || !validate
-	    || reg_in_table[REGNO (y)] == reg_tick[REGNO (y)]);
-
+  /* Note: it is incorrect to assume an expression is equivalent to itself
+     if VALIDATE is nonzero.  */
+  if (x == y && !validate)
+    return 1;
   if (code != GET_CODE (y))
     return 0;
-  if (code == REG)
-    return (reg_qty[REGNO (x)] == reg_qty[REGNO (y)]
-	    && (!validate
-		|| reg_in_table[REGNO (y)] == reg_tick[REGNO (y)]));
 
-  /* Assume there is only one rtx object to refer
-     to any given label.
-     We already know that X and Y are not the same object
-     so they must differ.  */
+  switch (code)
+    {
+    case PC:
+    case CC0:
+      return x == y;
 
-  if (code == LABEL_REF || code == SYMBOL_REF)
-    return XEXP (x, 0) == XEXP (y, 0);
+    case CONST_INT:
+      return XINT (x, 0) == XINT (y, 0);
+
+    case LABEL_REF:
+    case SYMBOL_REF:
+      return XEXP (x, 0) == XEXP (y, 0);
+
+    case REG:
+      return (reg_qty[REGNO (x)] == reg_qty[REGNO (y)]
+	      && (!validate
+		  || reg_in_table[REGNO (y)] == reg_tick[REGNO (y)]));
+    }
 
   /* (MULT:SI x y) and (MULT:HI x y) are NOT equivalent.  */
 
@@ -1621,17 +1627,31 @@ canon_reg (x)
   register RTX_CODE code = GET_CODE (x);
   register char *fmt;
 
-  if (code == REG)
+  switch (code)
     {
-      register int qty = reg_qty[REGNO (x)];
-      register rtx new = reg_rtx[qty_first_reg[qty]];
-      /* Never replace a hard reg, because hard regs can appear
-	 in more than one machine mode, and we must preserve the mode
-	 of each occurrence.  Also, some hard regs appear in
-	 MEMs that are shared and mustn't be altered.  */
-      if (REGNO (x) < FIRST_PSEUDO_REGISTER)
-	return x;
-      return new ? new : x;
+    case PC:
+    case CC0:
+    case CONST:
+    case CONST_INT:
+    case CONST_DOUBLE:
+    case SYMBOL_REF:
+    case LABEL_REF:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
+      return x;
+
+    case REG:
+      {
+	register rtx new;
+	/* Never replace a hard reg, because hard regs can appear
+	   in more than one machine mode, and we must preserve the mode
+	   of each occurrence.  Also, some hard regs appear in
+	   MEMs that are shared and mustn't be altered.  */
+	if (REGNO (x) < FIRST_PSEUDO_REGISTER)
+	  return x;
+	new = reg_rtx[qty_first_reg[reg_qty[REGNO (x)]]];
+	return new ? new : x;
+      }
     }
 
   fmt = GET_RTX_FORMAT (code);
@@ -1697,7 +1717,7 @@ fold_rtx (x, copyflag)
       return x;
 
   /* We must be careful when folding a memory address
-     to avoid making it invalid.  So fold nondestrictively
+     to avoid making it invalid.  So fold nondestructively
      and use the result only if it's valid.  */
     case MEM:
       {
@@ -1810,7 +1830,8 @@ fold_rtx (x, copyflag)
 	    enum machine_mode mode = GET_MODE (XEXP (x, 0));
 	    if (mode == VOIDmode)
 	      return x;
-	    val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
+	    if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+	      val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
 	    break;
 	  }
 
@@ -1819,9 +1840,12 @@ fold_rtx (x, copyflag)
 	    enum machine_mode mode = GET_MODE (XEXP (x, 0));
 	    if (mode == VOIDmode)
 	      return x;
-	    val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
-	    if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
-	      val -= 1 << GET_MODE_BITSIZE (mode);
+	    if (GET_MODE_BITSIZE (mode) < HOST_BITS_PER_INT)
+	      {
+		val = arg0 & ~((-1) << GET_MODE_BITSIZE (mode));
+		if (val & (1 << (GET_MODE_BITSIZE (mode) - 1)))
+		  val -= 1 << GET_MODE_BITSIZE (mode);
+	      }
 	    break;
 	  }
 
@@ -1969,7 +1993,8 @@ fold_rtx (x, copyflag)
 		    || GET_MODE (x) == SImode))
 	      {
 		arg0 = INTVAL (const_arg0);
-		arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
+		if (GET_MODE_BITSIZE (GET_MODE (x)) == 32)
+		  arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
 		if (arg0 == INTVAL (const_arg0))
 		  new = const_arg0;
 		else
@@ -2436,10 +2461,20 @@ cse_insn (insn)
       rtx tem;
       n_sets = 1;
       set[0] = x;
-      tem = find_reg_note (insn, REG_EQUIV, 0);
-      if (tem == 0)
-	tem = find_reg_note (insn, REG_EQUAL, 0);
-      if (tem) src_eqv = XEXP (tem, 0);
+
+      if (REG_NOTES (insn) != 0)
+	{
+	  /* Store the equivalent value (re REG_EQUAL or REG_EQUIV) in SRC_EQV.  */
+	  tem = find_reg_note (insn, REG_EQUIV, 0);
+	  if (tem == 0)
+	    tem = find_reg_note (insn, REG_EQUAL, 0);
+	  if (tem) src_eqv = XEXP (tem, 0);
+
+	  /* Ignore the REG_EQUAL or REG_EQUIV note if its contents
+	     are the same as the source.  */
+	  if (src_eqv && rtx_equal_p (src_eqv, SET_SRC (x)))
+	    src_eqv = 0;
+	}
 
       /* Return now for unconditional jumps.
 	 They never need cse processing, so this does not hurt.
@@ -2451,6 +2486,15 @@ cse_insn (insn)
       if (SET_DEST (x) == pc_rtx
 	  && GET_CODE (SET_SRC (x)) == LABEL_REF)
 	return;
+
+      /* Return now for call-insns, (set (reg 0) (call ...)).
+	 The hard function value register is used only once, to copy to
+	 someplace else, so it isn't worth cse'ing (and on 80386 is unsafe)! */
+      if (GET_CODE (SET_SRC (x)) == CALL)
+	{
+	  canon_reg (SET_SRC (x));
+	  return;
+	}
     }
   else if (GET_CODE (x) == PARALLEL)
     {
@@ -2508,13 +2552,16 @@ cse_insn (insn)
 	  int tem = reg_qty[REGNO (dest)];
 	  reg_qty[REGNO (dest)] = REGNO (dest);
 	  src = canon_reg (src);
+
 	  if (src_eqv)
 	    src_eqv = canon_reg (src_eqv);
+
 	  reg_qty[REGNO (dest)] = tem;
 	}
       else
 	{
 	  src = canon_reg (src);
+
 	  if (src_eqv)
 	    src_eqv = canon_reg (src_eqv);
 	}
@@ -2573,16 +2620,17 @@ cse_insn (insn)
 	    src = y;
 	}
 
+#if 0
       /* If storing a constant value in a register that
 	 previously held the constant value 0,
 	 record this fact with a REG_WAS_0 note on this insn.  */
       if (GET_CODE (src) == CONST_INT
 	  && GET_CODE (dest) == REG
-	  && n_sets == 0
 	  && qty_const[reg_qty[REGNO (dest)]] == const0_rtx)
 	REG_NOTES (insn) = gen_rtx (INSN_LIST, REG_WAS_0,
 				    qty_const_insn[reg_qty[REGNO (dest)]],
 				    REG_NOTES (insn));
+#endif
 
       src_hash_code[i] = HASH (src, mode);
 
@@ -2672,7 +2720,10 @@ cse_insn (insn)
 
 		  /* This would normally be inhibited by the REG_EQUIV
 		     note we are about to make.  */
+#if 0
+		  /* Deleted because the inhibition was deleted.  */
 		  SET_SRC (set[i]) = src;
+#endif
 
 		  /* Record the actual constant value in a REG_EQUIV note.  */
 		  if (GET_CODE (SET_DEST (set[i])) == REG)
@@ -2696,9 +2747,13 @@ cse_insn (insn)
       /* Also, if this insn is setting a "constant" register,
 	 we may not replace the value that is given to it.  */
       if (n_sets == 1)
+#if 0
+	/* Now that the REG_EQUIV contains the constant instead of the reg,
+	   it should be ok to modify the insn's actual source.  */
 	if (REG_NOTES (insn) == 0
 	    || REG_NOTE_KIND (REG_NOTES (insn)) != REG_EQUIV)
-	  SET_SRC (set[i]) = src;
+#endif
+	  SET_SRC (set[0]) = src;
 
       do_not_record = 0;
 
@@ -2749,11 +2804,11 @@ cse_insn (insn)
 	       because we don't know how long it is.  */
 	    note_mem_written (dest, &writes_memory);
 
-	  /* Do not consider addresses of local and argument slots.
+	  /* Do not try to replace addresses of local and argument slots.
 	     The MEM expressions for args and non-register local variables
 	     are made only once and inserted in many instructions,
 	     as well as being used to control symbol table output.
-	     It is not safe to clobber them.  */
+	     It is not safe to clobber them.  It also doesn't do any good!  */
 	  if ((GET_CODE (addr) == PLUS
 	       && GET_CODE (XEXP (addr, 0)) == REG
 	       && GET_CODE (XEXP (addr, 1)) == CONST_INT
@@ -2762,7 +2817,7 @@ cse_insn (insn)
 	      || (GET_CODE (addr) == REG
 		  && (hash = REGNO (addr),
 		      hash == FRAME_POINTER_REGNUM || hash == ARG_POINTER_REGNUM)))
-	    dest_hash_code[i] = safe_hash (dest) % NBUCKETS;
+	    dest_hash_code[i] = ((int)MEM + canon_hash (addr)) % NBUCKETS;
 	  else
 	    {
 	      /* Look for a simpler equivalent for the destination address.  */
@@ -2849,6 +2904,11 @@ cse_insn (insn)
       {
 	if (GET_CODE (SET_DEST (set[i])) == STRICT_LOW_PART)
 	  {
+	    /* REG_EQUAL in setting a STRICT_LOW_PART
+	       gives an equivalent for the entire destination register,
+	       not just for the subreg being stored in now.
+	       This is a more interesting equivalent, so we arrange later
+	       to treat the entire reg as the destination.  */
 	    src_elt[i] = src_eqv_elt;
 	    src_hash_code[i] = src_eqv_hash_code;
 	  }
@@ -2939,12 +2999,19 @@ cse_insn (insn)
 	if (GET_CODE (dest) == STRICT_LOW_PART)
 	  dest = SUBREG_REG (XEXP (dest, 0));
 
-	if (GET_CODE (dest) == REG || GET_CODE (dest) == SUBREG)
+	if (GET_CODE (dest) == REG)
 	  /* Registers must also be inserted into chains for quantities.  */
 	  if (insert_regs (dest, src_elt[i], 1))
 	    /* If `insert_regs' changes something, the hash code must be
 	       recalculated.  */
-	    dest_hash_code[i] = safe_hash (dest) % NBUCKETS;
+	    dest_hash_code[i] = HASHREG (dest);
+
+	if (GET_CODE (dest) == SUBREG)
+	  /* Registers must also be inserted into chains for quantities.  */
+	  if (insert_regs (dest, src_elt[i], 1))
+	    /* If `insert_regs' changes something, the hash code must be
+	       recalculated.  */
+	    dest_hash_code[i] = canon_hash (dest) % NBUCKETS;
 
 	elt = insert (dest, src_elt[i], dest_hash_code[i], GET_MODE (dest));
 	elt->in_memory = GET_CODE (inner_dest[i]) == MEM;
@@ -3166,6 +3233,8 @@ cse_main (f, nregs)
       register int i = 0;
       register int last_uid;
 
+      max_qty = 0;
+
       /* Find end of next basic block */
       while (p && GET_CODE (p) != CODE_LABEL)
 	{
@@ -3184,15 +3253,21 @@ cse_main (f, nregs)
 	      && NOTE_LINE_NUMBER (insn) == NOTE_INSN_LOOP_END)
 	    break;
 
+	  /* A PARALLEL can have lots of SETs in it,
+	     especially if it is really an ASM_OPERANDS.  */
+	  if (GET_CODE (p) == INSN && GET_CODE (PATTERN (p)) == PARALLEL)
+	    max_qty += XVECLEN (PATTERN (p), 0);
+	  else
+	    i++;
+
 	  last_uid = INSN_UID (p);
 	  p = NEXT_INSN (p);
-	  i++;
 	}
 
       cse_basic_block_end = last_uid;
       cse_basic_block_start = INSN_UID (insn);
 
-      max_qty = max_reg + i * MAX_SETS_PER_INSN;
+      max_qty += max_reg + i * MAX_SETS_PER_INSN;
 
       cse_basic_block (insn, p);
 

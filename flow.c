@@ -126,6 +126,8 @@ int max_regno;
    This information remains valid for the rest of the compilation
    of the current function; it is used to control register allocation.  */
 
+#define REG_BLOCK_UNKNOWN -1
+#define REG_BLOCK_GLOBAL -2
 short *reg_basic_block;
 
 /* Indexed by n, gives number of times (REG n) is used or set, each
@@ -362,6 +364,8 @@ find_basic_blocks (f)
 	if (code != NOTE)
 	  prev_code = code;
       }
+    if (i + 1 != n_basic_blocks)
+      abort ();
   }
 
   /* Record which basic blocks control can drop in to.  */
@@ -503,7 +507,7 @@ mark_label_ref (x, insn, checkdup)
       register rtx label = XEXP (x, 0);
       register rtx y;
       if (GET_CODE (label) != CODE_LABEL)
-	return;
+	abort ();
       /* If the label was never emitted, this insn is junk,
 	 but avoid a crash trying to refer to BLOCK_NUM (label).
 	 This can happen as a result of a syntax error
@@ -599,12 +603,20 @@ life_analysis (f, nregs)
   bzero (tem, n_basic_blocks * regset_bytes);
   init_regset_vector (basic_block_significant, tem, n_basic_blocks, regset_bytes);
 
-  /* Record which insns refer to any volatile memory.  */
+  /* Record which insns refer to any volatile memory
+     or for any reason can't be deleted just because they are dead stores.  */
 
   for (insn = f; insn; insn = NEXT_INSN (insn))
-    if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
-	|| GET_CODE (insn) == CALL_INSN)
-      INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
+    {
+      enum rtx_code code1 = GET_CODE (insn);
+      if (code1 == CALL_INSN)
+	INSN_VOLATILE (insn) = 1;
+      else if (code1 == INSN || code1 == JUMP_INSN)
+	{
+	  if (GET_CODE (PATTERN (insn)) != USE)
+	    INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
+	}
+    }
 
   if (n_basic_blocks > 0)
 #ifdef EXIT_IGNORE_STACK
@@ -738,7 +750,7 @@ life_analysis (f, nregs)
     for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
       if (basic_block_live_at_start[0][i / REGSET_ELT_BITS]
 	  & (1 << (i % REGSET_ELT_BITS)))
-	reg_basic_block[i] = -2;
+	reg_basic_block[i] = REG_BLOCK_GLOBAL;
 
   /* Now the life information is accurate.
      Make one more pass over each basic block
@@ -788,7 +800,7 @@ allocate_for_life_analysis ()
 
   reg_basic_block = (short *) oballoc (max_regno * sizeof (short));
   for (i = 0; i < max_regno; i++)
-    reg_basic_block[i] = -1;
+    reg_basic_block[i] = REG_BLOCK_UNKNOWN;
 
   basic_block_live_at_start = (regset *) oballoc (n_basic_blocks * sizeof (regset));
   tem = (regset) oballoc (n_basic_blocks * regset_bytes);
@@ -892,7 +904,7 @@ propagate_block (old, first, last, final, significant, bnum)
 	      break;
 	    if (old[offset] & bit)
 	      {
-		reg_basic_block[i] = -2;
+		reg_basic_block[i] = REG_BLOCK_GLOBAL;
 		regs_sometimes_live[sometimes_max].offset = offset;
 		regs_sometimes_live[sometimes_max].bit = i % REGSET_ELT_BITS;
 		sometimes_max++;
@@ -994,9 +1006,18 @@ propagate_block (old, first, last, final, significant, bnum)
 	     arguments are not marked live.  */
 	  if (note && insn_dead_p (PATTERN (insn), old, 1))
 	    {
+	      /* Mark the dest reg as `significant'.  */
+	      mark_set_regs (old, dead, PATTERN (insn), 0, significant);
+
 	      insn = XEXP (note, 0);
 	      prev = PREV_INSN (insn);
 	    }
+	  else if (SET_DEST (PATTERN (insn)) == stack_pointer_rtx
+		   && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
+		   && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx
+		   && GET_CODE (XEXP (SET_SRC (PATTERN (insn)), 1)) == CONST_INT)
+	    /* These insns, if not dead stores, have no effect on life.  */
+	    ;
 	  else
 	    {
 	      /* LIVE gets the regs used in INSN; DEAD gets those set by it.  */
@@ -1109,6 +1130,17 @@ insn_dead_p (x, needed, strict_low_ok)
   if (code == SET)
     {
       register rtx r = SET_DEST (x);
+      /* A SET that makes space on the stack cannot be dead.
+	 Even if this function never uses this stack pointer value,
+	 signal handlers do!  */
+      if (r == stack_pointer_rtx
+#ifdef STACK_GROWS_DOWNWARD
+	  && GET_CODE (SET_SRC (x)) == MINUS
+#else
+	  && GET_CODE (SET_SRC (x)) == PLUS
+#endif
+	  && XEXP (SET_SRC (x), 0) == r)
+	return 0;
       /* A SET that is a subroutine call cannot be dead.  */
       if (GET_CODE (SET_SRC (x)) == CALL)
 	return 0;
@@ -1252,7 +1284,14 @@ mark_set_1 (needed, dead, x, insn, significant)
 	 If so, mark all of them just like the first.  */
       if (regno < FIRST_PSEUDO_REGISTER)
 	{
-	  int n = HARD_REGNO_NREGS (regno, GET_MODE (reg));
+	  int n;
+
+	  /* Nothing below is needed for the stack pointer; get out asap.
+	     Eg, log links aren't needed, since combine won't use them.  */
+	  if (regno == STACK_POINTER_REGNUM)
+	    return;
+
+	  n = HARD_REGNO_NREGS (regno, GET_MODE (reg));
 	  while (--n > 0)
 	    {
 	      dead[(regno + n) / REGSET_ELT_BITS]
@@ -1279,14 +1318,27 @@ mark_set_1 (needed, dead, x, insn, significant)
 	      do
 		regs_ever_live[regno + --i] = 1;
 	      while (i > 0);
+
+	      if (! ((needed[offset] & bit) || is_needed))
+		{
+		  /* Note that dead stores have already been deleted if poss.
+		     If we get here, we have found a dead store that cannot
+		     be eliminated (because the insn does something useful).
+		     Indicate this by marking the reg set as dying here.  */
+		  REG_NOTES (insn)
+		    = gen_rtx (EXPR_LIST, REG_DEAD,
+			       reg, REG_NOTES (insn));
+		  reg_n_deaths[REGNO (reg)]++;
+		}
+	      return;
 	    }
 
 	  /* Keep track of which basic blocks each reg appears in.  */
 
-	  if (reg_basic_block[regno] == -1)
+	  if (reg_basic_block[regno] == REG_BLOCK_UNKNOWN)
 	    reg_basic_block[regno] = blocknum;
 	  else if (reg_basic_block[regno] != blocknum)
-	    reg_basic_block[regno] = -2;
+	    reg_basic_block[regno] = REG_BLOCK_GLOBAL;
 
 	  /* Count (weighted) references, stores, etc.  */
 	  reg_n_refs[regno] += loop_depth;
@@ -1349,9 +1401,13 @@ mark_used_regs (needed, live, x, final, insn)
     case SYMBOL_REF:
     case CONST_INT:
     case CONST:
+    case CONST_DOUBLE:
     case CC0:
     case PC:
     case CLOBBER:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
+    case ASM_INPUT:
       return;
 
 #if defined (HAVE_POST_INCREMENT) || defined (HAVE_POST_DECREMENT)
@@ -1448,7 +1504,14 @@ mark_used_regs (needed, live, x, final, insn)
 	     If so, mark all of them just like the first.  */
 	  if (regno < FIRST_PSEUDO_REGISTER)
 	    {
-	      int n = HARD_REGNO_NREGS (regno, GET_MODE (x));
+	      int n;
+
+	      /* For stack ptr, nothing below here can be necessary,
+		 so waste no more time.  */
+	      if (regno == STACK_POINTER_REGNUM)
+		return;
+
+	      n = HARD_REGNO_NREGS (regno, GET_MODE (x));
 	      while (--n > 0)
 		{
 		  live[(regno + n) / REGSET_ELT_BITS]
@@ -1459,36 +1522,37 @@ mark_used_regs (needed, live, x, final, insn)
 	    }
 	  if (final)
 	    {
-	      register int blocknum = BLOCK_NUM (insn);
-
-	      /* If a hard reg is being used,
-		 record that this function does use it.  */
-
 	      if (regno < FIRST_PSEUDO_REGISTER)
 		{
+		  /* If a hard reg is being used,
+		     record that this function does use it.  */
+
 		  register int i;
 		  i = HARD_REGNO_NREGS (regno, GET_MODE (x));
 		  do
 		    regs_ever_live[regno + --i] = 1;
 		  while (i > 0);
 		}
+	      else
+		{
+		  /* Keep track of which basic block each reg appears in.  */
 
-	      /* Keep track of which basic block each reg appears in.  */
+		  register int blocknum = BLOCK_NUM (insn);
 
-	      if (reg_basic_block[regno] == -1)
-		reg_basic_block[regno] = blocknum;
-	      else if (reg_basic_block[regno] != blocknum)
-		reg_basic_block[regno] = -2;
+		  if (reg_basic_block[regno] == REG_BLOCK_UNKNOWN)
+		    reg_basic_block[regno] = blocknum;
+		  else if (reg_basic_block[regno] != blocknum)
+		    reg_basic_block[regno] = REG_BLOCK_GLOBAL;
 
-	      /* Record where each reg is used
-		 so when the reg is set we know the next insn that uses it.  */
+		  /* Record where each reg is used, so when the reg
+		     is set we know the next insn that uses it.  */
 
-	      reg_next_use[regno] = insn;
+		  reg_next_use[regno] = insn;
 
-	      /* Count (weighted) number of uses of each reg.  */
+		  /* Count (weighted) number of uses of each reg.  */
 
-	      reg_n_refs[regno] += loop_depth;
-
+		  reg_n_refs[regno] += loop_depth;
+		}
 	      /* Record and count the insns in which a reg dies.
 		 If it is used in this insn and was dead below the insn
 		 then it dies in this insn.  */
@@ -1578,7 +1642,7 @@ mark_used_regs (needed, live, x, final, insn)
 	      }
 	    mark_used_regs (needed, live, XEXP (x, i), final, insn);
 	  }
-	if (fmt[i] == 'E')
+	else if (fmt[i] == 'E')
 	  {
 	    register int j;
 	    for (j = 0; j < XVECLEN (x, i); j++)
@@ -1604,10 +1668,14 @@ volatile_refs_p (x)
     case SYMBOL_REF:
     case CONST_INT:
     case CONST:
+    case CONST_DOUBLE:
     case CC0:
     case PC:
-    case CLOBBER:
     case REG:
+    case CLOBBER:
+    case ASM_INPUT:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
       return 0;
 
     case CALL:

@@ -85,7 +85,8 @@ enum reg_class reg_class_subclasses[N_REG_CLASSES][N_REG_CLASSES];
 enum reg_class reg_class_subunion[N_REG_CLASSES][N_REG_CLASSES];
 
 
-/* Function called only once to initialize the tables above.  */
+/* Function called only once to initialize the above data on reg usage.
+   Once this is done, various switches may override.  */
 
 void
 init_reg_sets ()
@@ -94,26 +95,6 @@ init_reg_sets ()
 
   bcopy (initial_fixed_regs, fixed_regs, sizeof fixed_regs);
   bcopy (initial_call_used_regs, call_used_regs, sizeof call_used_regs);
-
-  /* This macro allows the fixed or call-used registers
-     to depend on target flags.  */
-
-#ifdef CONDITIONAL_REGISTER_USAGE
-  CONDITIONAL_REGISTER_USAGE
-#endif
-
-  /* Initialize "constant" tables.  */
-
-  CLEAR_HARD_REG_SET (fixed_reg_set);
-  CLEAR_HARD_REG_SET (call_used_reg_set);
-
-  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    {
-      if (fixed_regs[i])
-	SET_HARD_REG_BIT (fixed_reg_set, i);
-      if (call_used_regs[i])
-	SET_HARD_REG_BIT (call_used_reg_set, i);
-    }
 
   /* Initialize the table of subunions.
      reg_class_subunion[I][J] gets the largest-numbered reg-class
@@ -179,6 +160,36 @@ init_reg_sets ()
 	  *p = (enum reg_class) i;
 	}
     }
+
+}
+
+/* After switches have been processed, which perhaps alter
+   `fixed_regs' and `call_used_regs', convert them to HARD_REG_SETs.  */
+
+void
+init_reg_sets_1 ()
+{
+  register int i;
+
+  /* This macro allows the fixed or call-used registers
+     to depend on target flags.  */
+
+#ifdef CONDITIONAL_REGISTER_USAGE
+  CONDITIONAL_REGISTER_USAGE;
+#endif
+
+  /* Initialize "constant" tables.  */
+
+  CLEAR_HARD_REG_SET (fixed_reg_set);
+  CLEAR_HARD_REG_SET (call_used_reg_set);
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    {
+      if (fixed_regs[i])
+	SET_HARD_REG_BIT (fixed_reg_set, i);
+      if (call_used_regs[i])
+	SET_HARD_REG_BIT (call_used_reg_set, i);
+    }
 }
 
 /* Specify the usage characteristics of the register named NAME.
@@ -208,19 +219,6 @@ fix_register (name, fixed, call_used)
     {
       warning ("unknown register name: %s", name);
       return;
-    }
-
-  /* Reinitialize the HARD_REG_SETs that have the same info.  */
-
-  CLEAR_HARD_REG_SET (fixed_reg_set);
-  CLEAR_HARD_REG_SET (call_used_reg_set);
-
-  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    {
-      if (fixed_regs[i])
-	SET_HARD_REG_BIT (fixed_reg_set, i);
-      if (call_used_regs[i])
-	SET_HARD_REG_BIT (call_used_reg_set, i);
     }
 }
 
@@ -499,6 +497,7 @@ reg_class_record (op, constraint_loc)
 	case '=':
 	case '?':
 	case '#':
+	case '&':
 	case '!':
 	case '%':
 	case 'F':
@@ -782,6 +781,8 @@ reg_scan_mark_refs (x, uid)
     case PC:
     case SYMBOL_REF:
     case LABEL_REF:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
       return;
 
     case REG:
@@ -802,7 +803,7 @@ reg_scan_mark_refs (x, uid)
 	  {
 	    if (fmt[i] == 'e')
 	      reg_scan_mark_refs (XEXP (x, i), uid);
-	    else if (fmt[i] == 'E')
+	    else if (fmt[i] == 'E' && XVEC (x, i) != 0)
 	      {
 		register int j;
 		for (j = XVECLEN (x, i) - 1; j >= 0; j--)

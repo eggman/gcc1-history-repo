@@ -23,6 +23,9 @@ and this notice must be preserved on all copies.  */
 
 #include "tm-ns32k.h"
 
+/* This is BSD, so it wants DBX format.  */
+#define DBX_DEBUGGING_INFO
+
 /* Sequent has some changes in the format of DBX symbols.  */
 #define DBX_NO_XREFS 1
 
@@ -88,9 +91,9 @@ and this notice must be preserved on all copies.  */
       { union { double d; int i[2]; } u;				\
 	u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
 	fprintf (FILE, "0d%.20e", u.d); }				\
-    else { union { float f; int i; } u;					\
-	   u.i = XINT (X, 0);						\
-	   fprintf (FILE, "0f%.20e", u.f); }				\
+    else { union { double d; int i[2]; } u;				\
+	   u.i[0] = XINT (X, 0); u.i[1] = XINT (X, 1);			\
+	   fprintf (FILE, "0f%.20e", u.d); }				\
   else output_addr_const (FILE, X); }
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  print_operand_address(FILE, ADDR)

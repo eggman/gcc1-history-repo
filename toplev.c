@@ -28,6 +28,9 @@ and this notice must be preserved on all copies.  */
 #include <stdio.h>
 #include <signal.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #ifdef USG
 #include <sys/param.h>
 #include <sys/times.h>
@@ -38,11 +41,6 @@ and this notice must be preserved on all copies.  */
 #include <sys/resource.h>
 #endif
 #endif
-
-#ifndef _TYPES_
-#include <sys/types.h>
-#endif
-#include <sys/stat.h>
 
 #include "tree.h"
 #include "c-tree.h"
@@ -111,7 +109,7 @@ int jump2_opt_dump = 0;
 /* 1 => write gdb debugging output (using symout.c).  -g
    2 => write dbx debugging output (using dbxout.c).  -G  */
 
-int write_symbols = 0;
+enum debugger write_symbols = NO_DEBUG;
 
 /* Nonzero means do optimizations.  -opt.  */
 
@@ -225,6 +223,14 @@ int profile_flag = 0;
    that standard C forbids.  */
 
 int pedantic = 0;
+
+/* Nonzero means `$' can be in an identifier.
+   See cccp.c for reasons why this breaks some obscure ANSI C programs.  */
+
+#ifndef DOLLARS_IN_IDENTIFIERS
+#define DOLLARS_IN_IDENTIFIERS 0
+#endif
+int dollars_in_ident = DOLLARS_IN_IDENTIFIERS;
 
 /* Nonzero for -finline-functions: ok to inline functions that look like
    good inline candidates.  */
@@ -750,7 +756,6 @@ compile_file (name)
     asm_out_file = fopen (asm_file_name, "w");
     if (asm_out_file == 0)
       pfatal_with_name (asm_file_name ? asm_file_name : dumpname);
-    fprintf (asm_out_file, ASM_FILE_START);
   }
 
   input_filename = name;
@@ -758,10 +763,12 @@ compile_file (name)
   /* the beginning of the file is a new line; check for # */
   /* With luck, we discover the real source file's name from that
      and put it in input_filename.  */
-  check_newline ();
+  ungetc (check_newline (), finput);
+
+  ASM_FILE_START (asm_out_file);
 
   /* If GDB symbol table desired, open the GDB symbol output file.  */
-  if (write_symbols == 1)
+  if (write_symbols == GDB_DEBUG)
     {
       register char *dumpname = (char *) xmalloc (dump_base_name_length + 6);
       int len = strlen (dump_base_name);
@@ -773,13 +780,19 @@ compile_file (name)
       strcat (dumpname, ".sym");
       if (sym_file_name == 0)
 	sym_file_name = dumpname;
-      symout_init (sym_file_name, asm_out_file, input_filename);
+      symout_init (sym_file_name, asm_out_file, main_input_filename);
     }
 
   /* If dbx symbol table desired, initialize writing it
      and output the predefined types.  */
-  if (write_symbols == 2)
+#ifdef DBX_DEBUGGING_INFO
+  if (write_symbols == DBX_DEBUG)
     dbxout_init (asm_out_file, main_input_filename);
+#endif
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    sdbout_init (asm_out_file, main_input_filename);
+#endif
 
   /* Initialize yet another pass.  */
 
@@ -821,15 +834,26 @@ compile_file (name)
   }
 
   /* Do dbx symbols */
-  if (write_symbols == 2)
+#ifdef DBX_DEBUGGING_INFO
+  if (write_symbols == DBX_DEBUG)
     TIMEVAR (symout_time,
 	     {
 	       dbxout_tags (gettags ());
 	       dbxout_types (get_permanent_types ());
 	     });
+#endif
+
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    TIMEVAR (symout_time,
+	     {
+	       sdbout_tags (gettags ());
+	       sdbout_types (get_permanent_types ());
+	     });
+#endif
 
   /* Do gdb symbols */
-  if (write_symbols == 1)
+  if (write_symbols == GDB_DEBUG)
     TIMEVAR (symout_time,
 	     {
 	       struct stat statbuf;
@@ -923,12 +947,18 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
 	     {
 	       assemble_variable (decl, asmspec, top_level, write_symbols, at_end);
 	     });
-  else if (write_symbols == 2 && TREE_CODE (decl) == TYPE_DECL)
+#ifdef DBX_DEBUGGING_INFO
+  else if (write_symbols == DBX_DEBUG && TREE_CODE (decl) == TYPE_DECL)
     TIMEVAR (varconst_time, dbxout_symbol (decl, 0));
+#endif
+#ifdef SDB_DEBUGGING_INFO
+  else if (write_symbols == SDB_DEBUG && TREE_CODE (decl) == TYPE_DECL)
+    TIMEVAR (varconst_time, sdbout_symbol (decl, 0));
+#endif
 
   if (top_level)
     {
-      if (write_symbols == 1)
+      if (write_symbols == GDB_DEBUG)
 	{
 	  TIMEVAR (symout_time,
 		   {
@@ -1245,7 +1275,7 @@ rest_of_compilation (decl)
 
   /* Write GDB symbols if requested */
 
-  if (write_symbols == 1)
+  if (write_symbols == GDB_DEBUG)
     {
       TIMEVAR (symout_time,
 	       {
@@ -1262,8 +1292,10 @@ rest_of_compilation (decl)
 
   /* Write DBX symbols if requested */
 
-  if (write_symbols == 2)
+#ifdef DBX_DEBUGGING_INFO
+  if (write_symbols == DBX_DEBUG)
     TIMEVAR (symout_time, dbxout_function (decl));
+#endif
 
  exit_rest_of_compilation:
 
@@ -1302,7 +1334,10 @@ main (argc, argv, envp)
   /* Initialize whether `char' is signed.  */
   flag_signed_char = DEFAULT_SIGNED_CHAR;
 
-  /* Initialize reg-sets now so switches may override.  */
+  /* This is zeroed by -O.  */
+  obey_regdecls = 1;
+
+  /* Initialize register usage now so switches may override.  */
   init_reg_sets ();
 
   target_flags = 0;
@@ -1368,7 +1403,7 @@ main (argc, argv, envp)
 	    if (!strcmp (p, "float-store"))
 	      flag_float_store = 1;
 	    else if (!strcmp (p, "traditional"))
-	      flag_traditional = 1;
+	      flag_traditional = 1, dollars_in_ident = 1;
 	    else if (!strcmp (p, "volatile"))
 	      flag_volatile = 1;
 	    else if (!strcmp (p, "defer-pop"))
@@ -1413,15 +1448,17 @@ main (argc, argv, envp)
 	      error ("Invalid option, `%s'", argv[i]);	      
 	  }
 	else if (!strcmp (str, "noreg"))
-	  obey_regdecls = 1;
+	  ;
 	else if (!strcmp (str, "opt"))
-	  optimize = 1;
+	  optimize = 1, obey_regdecls = 0;
+	else if (!strcmp (str, "O"))
+	  optimize = 1, obey_regdecls = 0;
 	else if (!strcmp (str, "pedantic"))
 	  pedantic = 1;
 	else if (!strcmp (str, "traditional"))
-	  flag_traditional = 1;
+	  flag_traditional = 1, dollars_in_ident = 1;
 	else if (!strcmp (str, "ansi"))
-	  flag_no_asm = 1;
+	  flag_no_asm = 1, dollars_in_ident = 0;
 	else if (!strcmp (str, "quiet"))
 	  quiet_flag = 1;
 	else if (!strcmp (str, "version"))
@@ -1450,6 +1487,8 @@ main (argc, argv, envp)
 	  warn_return_type = 1;
 	else if (!strcmp (str, "Wcomment"))
 	  ; /* cpp handles this one.  */
+	else if (!strcmp (str, "Wtrigraphs"))
+	  ; /* cpp handles this one.  */
 	else if (!strcmp (str, "Wall"))
 	  {
 	    extra_warnings = 1;
@@ -1458,14 +1497,24 @@ main (argc, argv, envp)
 	  }
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
+	else if (!strcmp (str, "gg"))
+	  write_symbols = GDB_DEBUG;
+#ifdef DBX_DEBUGGING_INFO
 	else if (!strcmp (str, "g"))
-	  write_symbols = 1;
+	  write_symbols = DBX_DEBUG;
 	else if (!strcmp (str, "G"))
-	  write_symbols = 2;
+	  write_symbols = DBX_DEBUG;
+#endif
+#ifdef SDB_DEBUGGING_INFO
+	else if (!strcmp (str, "g"))
+	  write_symbols = SDB_DEBUG;
+	else if (!strcmp (str, "G"))
+	  write_symbols = SDB_DEBUG;
+#endif
 	else if (!strcmp (str, "symout"))
 	  {
-	    if (write_symbols == 0)
-	      write_symbols = 1;
+	    if (write_symbols == NO_DEBUG)
+	      write_symbols = GDB_DEBUG;
 	    sym_file_name = argv[++i];
 	  }
 	else if (!strcmp (str, "o"))
@@ -1488,6 +1537,9 @@ main (argc, argv, envp)
   /* Some machines may reject certain combinations of options.  */
   OVERRIDE_OPTIONS;
 #endif
+
+  /* Now that register usage is specified, convert it to HARD_REG_SETs.  */
+  init_reg_sets_1 ();
 
   compile_file (filename);
 

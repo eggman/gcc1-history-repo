@@ -18,10 +18,12 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
-/* 1 => write gdb debugging output (using symout.c).  -g
-   2 => write dbx debugging output (using dbxout.c).  -G  */
+/* 1 => write gdb debugging output (using symout.c).
+   2 => write dbx debugging output (using dbxout.c).
+   3 => write sdb debugging output (using sdbout.c).  */
+enum debugger { NO_DEBUG = 0, GDB_DEBUG = 1, DBX_DEBUG = 2, SDB_DEBUG = 3};
 
-extern int write_symbols;
+extern enum debugger write_symbols;
 
 /* Nonzero means do optimizations.  -opt.  */
 
@@ -54,6 +56,10 @@ extern int profile_flag;
    that standard C forbids.  */
 
 extern int pedantic;
+
+/* Nonzero means `$' can be in an identifier.  */
+
+extern int dollars_in_ident;
 
 /* Now the symbols that are set with `-f' switches.  */
 

@@ -93,6 +93,7 @@ static HARD_REG_SET *after_insn_hard_regs;
 
 static void stupid_mark_refs ();
 static int stupid_reg_compare ();
+static int stupid_find_reg ();
 
 /* Stupid life analysis is for the case where only variables declared
    `register' go in registers.  For this case, we mark all

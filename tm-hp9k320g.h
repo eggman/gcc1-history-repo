@@ -3,6 +3,10 @@
    GNU linker and GNU debugger using DBX debugging information.
    (In other words, much of HPUX has been cast aside.)  */
 
+/* This wants DBX format.  */
+
+#define DBX_DEBUGGING_INFO
+
 #define USE_GAS
 
 #include "tm-hp9k320.h"

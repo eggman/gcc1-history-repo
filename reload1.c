@@ -92,6 +92,9 @@ static rtx *reg_equiv_init;
    with spill_regs.  */
 static int reg_reloaded_contents[FIRST_PSEUDO_REGISTER];
 
+/* Number of spill-regs so far; number of valid elements of spill_regs.  */
+static int n_spills;
+
 /* In parallel with spill_regs, contains REG rtx's for those regs.
    Holds the last rtx used for any given reg, or 0 if it has never
    been used for spilling yet.  This rtx is reused, provided it has
@@ -148,16 +151,18 @@ char *basic_block_needs;
    Used in find_equiv_reg.  */
 int reload_first_uid;
 
+void mark_home_live ();
 static void reload_as_needed ();
 static rtx alter_frame_pointer_addresses ();
 static void alter_reg ();
-void mark_home_live ();
+static int new_spill_reg();
 static int spill_hard_reg ();
 static void choose_reload_targets ();
 static void forget_old_reloads ();
 static void order_regs_for_reload ();
 static void eliminate_frame_pointer ();
 
+extern void remove_death ();
 extern rtx adj_offsetable_operand ();
 
 /* Main entry point for the reload pass, and only entry point
@@ -182,7 +187,6 @@ reload (first, global, dumpfile)
      int global;
      FILE *dumpfile;
 {
-  register int n_spills;
   register int class;
   register int i;
   register rtx insn;
@@ -337,11 +341,15 @@ reload (first, global, dumpfile)
       /* For each class, the machine mode which requires consecutive
 	 groups of regs of that class.
 	 If two different modes ever require groups of one class,
-	 we crash, not having the hair to deal with that case.  */
+	 they must be tieable and the same number of regs;
+	 otherwise we can't handle the complexity.  */
       enum machine_mode group_mode[N_REG_CLASSES];
       /* For each register, 1 if it was counted against the need for
 	 groups.  0 means it can count against max_nongroup instead.  */
       char counted_for_groups[FIRST_PSEUDO_REGISTER];
+      /* For each register, 1 if it was counted against the need for
+	 non-groups.  0 means it can become part of a new group.  */
+      char counted_for_nongroups[FIRST_PSEUDO_REGISTER];
 
       something_changed = 0;
       bzero (max_needs, sizeof max_needs);
@@ -436,16 +444,20 @@ reload (first, global, dumpfile)
 			insn_groups[(int) *p++]++;
 		      insn_total_groups++;
 
-		      /* Record size of a group.  */
-		      group_size[(int) reload_reg_class[i]] = size;
 		      /* If a group of consecutive regs are needed,
 			 record which machine mode needs them.
-			 Crash if two different machine modes both need
+			 Crash if two dissimilar machine modes both need
 			 groups of consecutive regs of the same class.  */
-		      if ((group_mode[(int) reload_reg_class[i]] != VOIDmode)
+
+		      if (group_mode[(int) reload_reg_class[i]] != VOIDmode
 			  &&
-			  (group_mode[(int) reload_reg_class[i]] != mode))
+			  (!MODES_TIEABLE_P (group_mode[(int) reload_reg_class[i]], mode)
+			   ||
+			   group_size[(int) reload_reg_class[i]] != size))
 			abort ();
+
+		      /* Record size and mode of a group of this class.  */
+		      group_size[(int) reload_reg_class[i]] = size;
 		      group_mode[(int) reload_reg_class[i]] = mode;
 		    }
 		  else if (size == 1)
@@ -490,6 +502,7 @@ reload (first, global, dumpfile)
 	 available (already spilled).  */
 
       bzero (counted_for_groups, sizeof counted_for_groups);
+      bzero (counted_for_nongroups, sizeof counted_for_nongroups);
 
       /* Find all consecutive groups of spilled registers
 	 and mark each group off against the need for such groups.  */
@@ -508,7 +521,10 @@ reload (first, global, dumpfile)
 		regmask[spill_regs[j]] = 1;
 	    /* Find each consecutive group of them.  */
 	    for (j = 0; j < FIRST_PSEUDO_REGISTER && max_groups[i] > 0; j++)
-	      if (regmask[j] && j + group_size[i] <= FIRST_PSEUDO_REGISTER)
+	      if (regmask[j] && j + group_size[i] <= FIRST_PSEUDO_REGISTER
+		  /* Next line in case group-mode for this class
+		     demands an even-odd pair.  */
+		  && HARD_REGNO_MODE_OK (j, group_mode[i]))
 		{
 		  int k;
 		  for (k = 1; k < group_size[i]; k++)
@@ -548,10 +564,16 @@ reload (first, global, dumpfile)
 
 	  if (! counted_for_groups[spill_regs[i]])
 	    {
+	      if (max_nongroups[class] > 0)
+		counted_for_nongroups[spill_regs[i]] = 1;
 	      max_nongroups[class]--;
 	      p = reg_class_superclasses[class];
 	      while (*p != LIM_REG_CLASSES)
-		max_nongroups[(int) *p++]--;
+		{
+		  if (max_nongroups[(int) *p] > 0)
+		    counted_for_nongroups[spill_regs[i]] = 1;
+		  max_nongroups[(int) *p++]--;
+		}
 	    }
 	}
 
@@ -574,16 +596,15 @@ reload (first, global, dumpfile)
 	  something_changed
 	    |= spill_hard_reg (spill_regs[i], global, dumpfile);
 
-      /* Now find more reload regs to satisfy the remaining need.
+      /* Now find more reload regs to satisfy the remaining need
+	 First satisfy all need for groups of registers.
 	 Count them in `spills', and add entries to
 	 `spill_regs' and `spill_reg_order'.  */
 
       for (class = 0; class < N_REG_CLASSES; class++)
-	while (max_needs[class] > 0 || max_groups[class] > 0
-	       || max_nongroups[class] > 0)
+	while (max_groups[class] > 0)
 	  {
 	    register enum reg_class *p;
-	    int in_a_group = 0;
 
 	    /* First, if we need more groups of consecutive regs, get them.
 	       Either get a spill register that completes a group
@@ -602,13 +623,15 @@ reload (first, global, dumpfile)
 			((j > 0 && spill_reg_order[j - 1] >= 0
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j)
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j - 1)
-			  && HARD_REGNO_MODE_OK (j - 1, group_mode[class]))
+			  && HARD_REGNO_MODE_OK (j - 1, group_mode[class])
+			  && ! counted_for_nongroups[j - 1])
 			 ||
 			 (j < FIRST_PSEUDO_REGISTER - 1
 			  && spill_reg_order[j + 1] >= 0
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j)
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j + 1)
-			  && HARD_REGNO_MODE_OK (j, group_mode[class]))))
+			  && HARD_REGNO_MODE_OK (j, group_mode[class])
+			  && ! counted_for_nongroups[j + 1])))
 		      {
 			/* We have found one that will complete a group,
 			   so count off one group as provided.  */
@@ -616,7 +639,6 @@ reload (first, global, dumpfile)
 			p = reg_class_superclasses[class];
 			while (*p != LIM_REG_CLASSES)
 			  max_groups[(int) *p++]--;
-			in_a_group = 1;
 			break;
 		      }
 		  }
@@ -629,75 +651,60 @@ reload (first, global, dumpfile)
 			  && spill_reg_order[j] < 0 && spill_reg_order[j + 1] < 0
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j)
 			  && TEST_HARD_REG_BIT (reg_class_contents[class], j + 1)
-			  && HARD_REGNO_MODE_OK (j, group_mode[class]))
-			{
-			  in_a_group = 1;
-			  break;
-			}
+			  && HARD_REGNO_MODE_OK (j, group_mode[class])
+			  && ! counted_for_nongroups[j + 1])
+			break;
 		    }
-	      }
-	    else
-	      {
-		/* We want a solitary register.  */
-
-		/* Consider the potential reload regs that aren't
-		   yet in use as reload regs, in order of preference.
-		   Find the most preferred one that's in this class.  */
-
-		for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-		  if (potential_reload_regs[i] >= 0
-		      && TEST_HARD_REG_BIT (reg_class_contents[class],
-					    potential_reload_regs[i]))
-		    break;
 	      }
 
 	    /* I should be the index in potential_reload_regs
 	       of the new reload reg we have found.  */
 
-	    if (i == FIRST_PSEUDO_REGISTER)
-	      abort ();	/* No reload reg possible? */
+	    something_changed
+	      |= new_spill_reg (i, class, max_needs, 0,
+				global, dumpfile);
+	}
 
-	    /* Make potential_reload_regs[i] an additional reload reg.  */
+      /* Now similarly satisfy all need for single registers.  */
 
-	    spill_regs[n_spills] = potential_reload_regs[i];
-	    spill_reg_order[potential_reload_regs[i]] = n_spills;
-	    forbidden_regs[potential_reload_regs[i]] = 1;
-	    potential_reload_regs[i] = -1;
-	    if (dumpfile)
-	      fprintf (dumpfile, "Spilling reg %d.\n", spill_regs[n_spills]);
+      for (class = 0; class < N_REG_CLASSES; class++)
+	while (max_needs[class] > 0 || max_nongroups[class] > 0)
+	  {
+	    /* Consider the potential reload regs that aren't
+	       yet in use as reload regs, in order of preference.
+	       Find the most preferred one that's in this class.  */
 
-	    /* Clear off the needs we just satisfied.  */
+	    for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+	      if (potential_reload_regs[i] >= 0
+		  && TEST_HARD_REG_BIT (reg_class_contents[class],
+					potential_reload_regs[i]))
+		break;
 
-	    max_needs[class]--;
-	    p = reg_class_superclasses[class];
-	    while (*p != LIM_REG_CLASSES)
-	      max_needs[(int) *p++]--;
+	    /* I should be the index in potential_reload_regs
+	       of the new reload reg we have found.  */
 
-	    if (! in_a_group)
-	      {
-		max_nongroups[class]--;
-		p = reg_class_superclasses[class];
-		while (*p != LIM_REG_CLASSES)
-		  max_nongroups[(int) *p++]--;
-	      }
-
-	    /* Spill every pseudo reg that was allocated to this reg
-	       or to something that overlaps this reg.  */
-
-	    something_changed |= spill_hard_reg (spill_regs[n_spills],
-						 global, dumpfile);
-
-	    regs_ever_live[spill_regs[n_spills]] = 1;
-	    n_spills++;
+	    something_changed
+	      |= new_spill_reg (i, class, max_needs, max_nongroups,
+				global, dumpfile);
 	}
     }
+
+  /* Now we know for certain whether we have a frame pointer.
+     If not, correct all references to go through the stack pointer.
+     This must be done before reloading, since reloading could generate
+     insns where sp+const cannot validly replace the frame pointer.
+     *This will lose if an insn might need more spill regs after
+     frame pointer elimination than it needed before.*  */
+
+  if (! frame_pointer_needed)
+    eliminate_frame_pointer (first);
 
   /* Use the reload registers where necessary
      by generating move instructions to move the must-be-register
      values into or out of the reload registers.  */
 
   if (something_needs_reloads)
-    reload_as_needed (first, n_spills, global);
+    reload_as_needed (first, global);
 
   /* Now eliminate all pseudo regs by modifying them into
      their equivalent memory references.
@@ -732,13 +739,64 @@ reload (first, global, dumpfile)
 	    }
 	}
     }
+}
+
+/* Add a new register REGNO to the tables of available spill-registers
+    (as well as spilling all pseudos allocated to the register).
+   CLASS is the regclass whose need is being satisfied.
+   MAX_NEEDS and MAX_NONGROUPS are the vectors of needs,
+    so that this register can count off against them.
+    MAX_NONGROUPS is 0 if this register is part of a group.
+   GLOBAL and DUMPFILE are the same as the args that `reload' got.  */
 
-  /* Sometimes the sole reference to a parameter has been combined into
-     another instruction, eliminating the parameter's register.
-     Find these memory references and fix their addresses.  */
+static int
+new_spill_reg (regno, class, max_needs, max_nongroups, global, dumpfile)
+     int regno;
+     int class;
+     int *max_needs;
+     int *max_nongroups;
+     int global;
+     FILE *dumpfile;
+{
+  register enum reg_class *p;
+  int val;
 
-  if (! frame_pointer_needed)
-    eliminate_frame_pointer (first);
+  if (regno >= FIRST_PSEUDO_REGISTER)
+    abort ();	/* Caller failed to find any register.  */
+
+  /* Make potential_reload_regs[REGNO] an additional reload reg.  */
+
+  spill_regs[n_spills] = potential_reload_regs[regno];
+  spill_reg_order[potential_reload_regs[regno]] = n_spills;
+  forbidden_regs[potential_reload_regs[regno]] = 1;
+  potential_reload_regs[regno] = -1;
+  if (dumpfile)
+    fprintf (dumpfile, "Spilling reg %d.\n", spill_regs[n_spills]);
+
+  /* Clear off the needs we just satisfied.  */
+
+  max_needs[class]--;
+  p = reg_class_superclasses[class];
+  while (*p != LIM_REG_CLASSES)
+    max_needs[(int) *p++]--;
+
+  if (max_nongroups)
+    {
+      max_nongroups[class]--;
+      p = reg_class_superclasses[class];
+      while (*p != LIM_REG_CLASSES)
+	max_nongroups[(int) *p++]--;
+    }
+
+  /* Spill every pseudo reg that was allocated to this reg
+     or to something that overlaps this reg.  */
+
+  val = spill_hard_reg (spill_regs[n_spills], global, dumpfile);
+
+  regs_ever_live[spill_regs[n_spills]] = 1;
+  n_spills++;
+
+  return val;
 }
 
 /* Scan all insns, computing the stack depth, and convert all
@@ -846,7 +904,6 @@ alter_frame_pointer_addresses (x, depth)
 
   switch (code)
     {
-    case REG:
     case CONST_INT:
     case CONST:
     case SYMBOL_REF:
@@ -854,6 +911,15 @@ alter_frame_pointer_addresses (x, depth)
     case CONST_DOUBLE:
     case CC0:
     case PC:
+      return x;
+
+    case REG:
+      /* Frame ptr can occur outside a PLUS if a stack slot
+	 can occur with offset 0.  */
+      if (x == frame_pointer_rtx)
+	{
+	  FIX_FRAME_POINTER_ADDRESS (x, depth);
+	}
       return x;
 
     case MEM:
@@ -1037,6 +1103,9 @@ order_regs_for_reload ()
 
   struct hard_reg_n_uses hard_reg_n_uses[FIRST_PSEUDO_REGISTER];
 
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    potential_reload_regs[i] = -1;
+
   /* Count number of uses of each hard reg by pseudo regs allocated to it
      and then order them by decreasing use.  */
 
@@ -1106,9 +1175,8 @@ order_regs_for_reload ()
    as the insns are scanned.  */
 
 static void
-reload_as_needed (first, n_spills, live_known)
+reload_as_needed (first, live_known)
      rtx first;
-     int n_spills;
      int live_known;
 {
   register rtx insn;
@@ -1178,6 +1246,15 @@ reload_as_needed (first, n_spills, live_known)
 	  if (call_used_regs[spill_regs[i]])
 	    reg_reloaded_contents[i] = -1;
 
+      /* In case registers overlap, allow certain insns to invalidate
+	 particular hard registers.  */
+
+#ifdef INSN_CLOBBERS_REGNO_P
+      for (i = 0 ; i < n_spills ; i++)
+	if (INSN_CLOBBERS_REGNO_P (insn, spill_regs[i]))
+	  reg_reloaded_contents[i] = -1;
+#endif
+
       insn = next;
     }
 }
@@ -1239,15 +1316,17 @@ reload_reg_class_lower (p1, p2)
   t = reload_optional[r1] - reload_optional[r2];
   if (t != 0)
     return t;
-  /* Consider reloads in order of increasing reg-class number.  */
-  t = (int) reload_reg_class[r1] - (int) reload_reg_class[r2];
-  if (t != 0)
-    return t;
-  /* For a given reg-class number, consider multi-reg groups first.  */
+  /* Consider all multi-reg groups first.
+     This is safe because `reload' fills all group-need before
+     filling all non-group need.  */
   mode1 = (reload_inmode[r1] == VOIDmode ? reload_outmode[r1] : reload_inmode[r1]);
   mode2 = (reload_inmode[r2] == VOIDmode ? reload_outmode[r2] : reload_inmode[r2]);
   t = (CLASS_MAX_NREGS (reload_reg_class[r2], mode2)
        - CLASS_MAX_NREGS (reload_reg_class[r1], mode1));
+  if (t != 0)
+    return t;
+  /* Consider reloads in order of increasing reg-class number.  */
+  t = (int) reload_reg_class[r1] - (int) reload_reg_class[r2];
   return t;
 }
 
@@ -1259,9 +1338,8 @@ reload_reg_class_lower (p1, p2)
    finding a reload reg in the proper class.  */
 
 static void
-choose_reload_targets (insn, n_spills)
+choose_reload_targets (insn)
      rtx insn;
-     int n_spills;
 {
   register int j;
   char reload_reg_in_use[FIRST_PSEUDO_REGISTER];
@@ -1339,7 +1417,8 @@ choose_reload_targets (insn, n_spills)
 	    {
 	      register rtx equiv
 		= find_equiv_reg (reload_in[r], insn, 0,
-				  REGNO (reload_reg_rtx[r]), 0, 0);
+				  REGNO (reload_reg_rtx[r]), 0, 0,
+				  reload_mode);
 	      if (equiv != 0)
 		reload_inherited[r] = 1;
 	    }
@@ -1403,7 +1482,7 @@ choose_reload_targets (insn, n_spills)
 	{
 	  register rtx equiv
 	    = find_equiv_reg (reload_in[r], insn, reload_reg_class[r],
-			      -1, (short *)1, 0);
+			      -1, (short *)1, 0, reload_mode);
 	  /* If we found an equivalent reg, say no code need be generated
 	     to load it, and use it as our reload reg.  */
 	  if (equiv != 0
@@ -1432,9 +1511,18 @@ choose_reload_targets (insn, n_spills)
 	 Here I is not a regno, it is an index into spill_regs.  */
       i = n_spills;
 
+#if 0
+      /* The following is no longer needed now that all multi-register
+	 (group) reloads are processed before all solitary register reloads
+	 (due to changes in `reg_class_lower_p' and `reload'.  */
+      /* The following also fails to test HARD_REGNO_MODE_OK appropriately,
+	 which was hard to fix because we don't know the mode that the
+	 group might have that would want this register.  */
+
       /* If we want just one reg, and other reloads want groups,
 	 first try to find a reg that can't be part of a group.  */
-      if (have_groups && HARD_REGNO_NREGS (spill_regs[i], reload_mode) == 1)
+      if (have_groups
+	  && CLASS_MAX_NREGS (reload_reg_class[r], reload_mode) == 1)
 	for (i = 0; i < n_spills; i++)
 	  {
 	    int regno = spill_regs[i];
@@ -1446,7 +1534,7 @@ choose_reload_targets (insn, n_spills)
 		     && spill_reg_order[regno + 1] >= 0
 		     && reload_reg_in_use[regno + 1] == 0
 		     && TEST_HARD_REG_BIT (reg_class_contents[class],
-					   regno - 1))
+					   regno + 1))
 		&& !(regno > 0
 		     && spill_reg_order[regno - 1] >= 0
 		     && reload_reg_in_use[regno - 1] == 0
@@ -1460,7 +1548,8 @@ choose_reload_targets (insn, n_spills)
 	 available registers are three consecutive ones, we avoid taking
 	 the middle one (which would leave us with no possible groups).  */
 
-      if (have_groups && HARD_REGNO_NREGS (spill_regs[i], reload_mode) == 1
+      if (have_groups
+	  && CLASS_MAX_NREGS (reload_reg_class[r], reload_mode) == 1
 	  && i == n_spills)
 	for (i = 0; i < n_spills; i++)
 	  {
@@ -1473,7 +1562,7 @@ choose_reload_targets (insn, n_spills)
 		      && spill_reg_order[regno + 1] >= 0
 		      && reload_reg_in_use[regno + 1] == 0
 		      && TEST_HARD_REG_BIT (reg_class_contents[class],
-					    regno - 1))
+					    regno + 1))
 		    || !(regno > 0
 			 && spill_reg_order[regno - 1] >= 0
 			 && reload_reg_in_use[regno - 1] == 0
@@ -1481,6 +1570,7 @@ choose_reload_targets (insn, n_spills)
 					       regno - 1))))
 	      break;
 	  }
+#endif
 
       /* Now, if we want a single register and haven't yet found one,
 	 take any reg in the right class and not in use.
@@ -1620,23 +1710,6 @@ choose_reload_targets (insn, n_spills)
 		     > GET_MODE_SIZE (GET_MODE (SUBREG_REG (old)))))
 	    old = SUBREG_REG (old);
 
-	  /* If reloading from memory, see if there is a register
-	     that already holds the same value.  If so, reload from there.
-	     We can pass 0 as the reload_reg_p argument because
-	     any other reload has either already been emitted,
-	     in which case find_equiv_reg will see the reload-insn,
-	     or has yet to be emitted, in which case it doesn't matter
-	     because we will use this equiv reg right away.  */
-
-	  if (GET_CODE (old) == MEM
-	      || (GET_CODE (old) == REG
-		  && REGNO (old) >= FIRST_PSEUDO_REGISTER
-		  && reg_renumber[REGNO (old)] < 0))
-	    oldequiv = find_equiv_reg (old, insn, GENERAL_REGS, -1, 0, 0);
-
-	  if (oldequiv == 0)
-	    oldequiv = old;
-
 	  /* Determine the mode to reload in.
 	     This is very tricky because we have three to choose from.
 	     There is the mode the insn operand wants (reload_inmode[J]).
@@ -1673,6 +1746,24 @@ choose_reload_targets (insn, n_spills)
 	  if (reload_strict_low[j])
 	    mode = GET_MODE (SUBREG_REG (reload_in[j]));
 
+	  /* If reloading from memory, see if there is a register
+	     that already holds the same value.  If so, reload from there.
+	     We can pass 0 as the reload_reg_p argument because
+	     any other reload has either already been emitted,
+	     in which case find_equiv_reg will see the reload-insn,
+	     or has yet to be emitted, in which case it doesn't matter
+	     because we will use this equiv reg right away.  */
+
+	  if (GET_CODE (old) == MEM
+	      || (GET_CODE (old) == REG
+		  && REGNO (old) >= FIRST_PSEUDO_REGISTER
+		  && reg_renumber[REGNO (old)] < 0))
+	    oldequiv = find_equiv_reg (old, insn, GENERAL_REGS,
+				       -1, 0, 0, mode);
+
+	  if (oldequiv == 0)
+	    oldequiv = old;
+
 	  /* Encapsulate both RELOADREG and OLDEQUIV into that mode,
 	     then load RELOADREG from OLDEQUIV.  */
 
@@ -1706,6 +1797,31 @@ choose_reload_targets (insn, n_spills)
 	    /* We can't do that, so output an insn to load RELOADREG.  */
 	    emit_insn_before (gen_move_insn (reloadreg, oldequiv), insn);
 
+	  /* For some registers it is important to keep the REG_DEATH
+	     notes accurate for the final pass.
+	     If we are inheriting an old output-reload out of such a reg,
+	     the reg no longer dies there, so remove the death note.  */
+	  
+#ifdef PRESERVE_DEATH_INFO_REGNO_P
+	  if (PRESERVE_DEATH_INFO_REGNO_P (REGNO (reloadreg)))
+	    {
+	      int was_dead = 0;
+	      if (REG_P (oldequiv)
+		  && regno_dead_p (REGNO (oldequiv), insn))
+		{
+		  was_dead = 1;
+		  remove_death (REGNO (oldequiv), insn);
+		}
+
+	      /* Add a death note to this insn, for an input reload.  */
+
+	      if (! dead_or_set_p (insn, reloadreg))
+		REG_NOTES (insn)
+		  = gen_rtx (EXPR_LIST, REG_DEAD,
+			     reloadreg, REG_NOTES (insn));
+	    }
+#endif
+
 	  /* If this reload wants reload_in[j] incremented by a constant,
 	     output code to get this done before the insn reloaded for.  */
 
@@ -1727,11 +1843,19 @@ choose_reload_targets (insn, n_spills)
 		   save that back, then decrement the reload register
 		   so it has its original contents.  */
 		{
+		  rtx oldreal = old;
+		  /* OLDREAL is OLDEQUIV encapsulated in that mode,
+		     in case we need to write back to it.
+		     OLDEQUIV is good only for reading.  */
+		  if (GET_MODE (old) != VOIDmode
+		      && mode != GET_MODE (old))
+		    oldreal = gen_rtx (SUBREG, mode, oldreal, 0);
+
 		  emit_insn_before (gen_add2_insn (reloadreg,
 						   gen_rtx (CONST_INT, VOIDmode,
 							    reload_inc[j])),
 				    insn);
-		  emit_insn_before (gen_move_insn (oldequiv, reloadreg), insn);
+		  emit_insn_before (gen_move_insn (oldreal, reloadreg), insn);
 		  emit_insn_before (gen_sub2_insn (reloadreg,
 						   gen_rtx (CONST_INT, VOIDmode,
 							    reload_inc[j])),
@@ -1837,6 +1961,14 @@ choose_reload_targets (insn, n_spills)
 	      && mode != GET_MODE (old))
 	    old = gen_rtx (SUBREG, mode, old, 0);
 	  store_insn = emit_insn_after (gen_move_insn (old, reloadreg), insn);
+	  /* If final will look at death notes for this reg,
+	     put one on each output-reload insn.  */
+#ifdef PRESERVE_DEATH_INFO_REGNO_P
+	  if (PRESERVE_DEATH_INFO_REGNO_P (REGNO (reloadreg)))
+	    REG_NOTES (store_insn)
+		= gen_rtx (EXPR_LIST, REG_DEAD,
+			   reloadreg, REG_NOTES (store_insn));
+#endif
 	}
       else store_insn = 0;
 
