@@ -370,6 +370,9 @@ gen_lowpart (mode, x)
     return x;
   if (GET_CODE (x) == CONST_INT)
     return gen_rtx (CONST_INT, VOIDmode, INTVAL (x) & GET_MODE_MASK (mode));
+  if (GET_CODE (x) == CONST_DOUBLE)
+    return gen_rtx (CONST_INT, VOIDmode,
+		    CONST_DOUBLE_LOW (x) & GET_MODE_MASK (mode));
   if (GET_CODE (x) == MEM)
     {
       register int offset = 0;

@@ -21,7 +21,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.22}
+\def\texinfoversion{1.23}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -499,8 +499,10 @@
 %
 }% unbind the catcode of @.
 
-% @headings on   turns them on.
-% @headings off  turns them off.
+% @headings double	turns headings on for double-sided printing.
+% @headings single	turns headings on for single-sided printing.
+% @headings off		turns them off.
+% @headings on		same as @headings double, retained for compatibility.
 % By default, they are off.
 
 \def\headings #1 {\csname HEADINGS#1\endcsname}
@@ -509,12 +511,12 @@
 \global\evenheadline={\hfil} \global\evenfootline={\hfil}
 \global\oddheadline={\hfil} \global\oddfootline={\hfil}}
 \HEADINGSoff
-% When we turn headings on, set the page number to 1,
-% Put current file name in lower left corner,
-% Put chapter name on inside top of right hand pages, document
+% When we turn headings on, set the page number to 1.
+% For double-sided printing, put current file name in lower left corner,
+% chapter name on inside top of right hand pages, document
 % title on inside top of left hand pages, and page numbers on outside top
 % edge of all pages.
-\def\HEADINGSon{
+\def\HEADINGSdouble{
 \pagealignmacro
 \global\pageno=1
 \global\evenfootline={\hfil}
@@ -522,6 +524,17 @@
 \global\evenheadline={\line{\folio\hfil\thistitle}}
 \global\oddheadline={\line{\thischapter\hfil\folio}}
 }
+% For single-sided printing, chapter title goes across top left of page,
+% page number on top right.
+\def\HEADINGSsingle{
+\pagealignmacro
+\global\pageno=1
+\global\evenfootline={\hfil}
+\global\oddfootline={\hfil}
+\global\evenheadline={\line{\thischapter\hfil\folio}}
+\global\oddheadline={\line{\thischapter\hfil\folio}}
+}
+\def\HEADINGSon{\HEADINGSdouble}
 
 % Subroutines used in generating headings
 % Produces Day Month Year style of output.
@@ -1169,11 +1182,13 @@ July\or August\or September\or October\or November\or December\fi
 
 \def\CHAPPAGon{
 \global\let\pchapsepmacro=\chappager
-\global\let\pagealignmacro=\chappager}
+\global\let\pagealignmacro=\chappager
+\global\def\HEADINGSon{\HEADINGSsingle}}
 
 \def\CHAPPAGodd{
 \global\let\pchapsepmacro=\chapoddpage
-\global\let\pagealignmacro=\chapoddpage}
+\global\let\pagealignmacro=\chapoddpage
+\global\def\HEADINGSon{\HEADINGSdouble}}
 
 \CHAPPAGon
 

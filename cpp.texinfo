@@ -4,7 +4,7 @@
 @ifinfo
 This file documents the GNU C Preprocessor.
 
-Copyright (C) 1987 Richard M. Stallman.
+Copyright (C) 1987, 1989 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -32,12 +32,12 @@ into another language, under the above conditions for modified versions.
 @sp 4
 @center First Edition
 @sp 1
-@center January 1987
+@center April 1989
 @sp 5
 @center Richard M. Stallman
 @page
 @vskip 0pt plus 1filll
-Copyright @copyright{} 1987 Richard M. Stallman.
+Copyright @copyright{} 1987, 1989 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -93,9 +93,9 @@ ANSI Standard C requires the rejection of many harmless constructs commonly
 used by today's C programs.  Such incompatibility would be inconvenient for
 users, so the GNU C preprocessor is configured to accept these constructs
 by default.  Strictly speaking, to get ANSI Standard C, you must use the
-options @samp{-T}, @samp{-undef} and @samp{-pedantic}, but in practice the
-consequences of having strict ANSI Standard C make it undesirable to do
-this.  @xref{Invocation}.
+options @samp{-trigraphs}, @samp{-undef} and @samp{-pedantic}, but in
+practice the consequences of having strict ANSI Standard C make it
+undesirable to do this.  @xref{Invocation}.
 
 @menu
 * Global Actions::    Actions made uniformly on all input files.
@@ -185,8 +185,8 @@ write what looks like a trigraph with a Backslash-Newline inside, the
 Backslash-Newline is deleted as usual, but it is then too late to
 recognize the trigraph.
 
-This exception is relevant only if you use the @samp{-T} option to
-enable trigraph processing.  @xref{Invocation}.
+This exception is relevant only if you use the @samp{-trigraphs}
+option to enable trigraph processing.  @xref{Invocation}.
 @end itemize
 
 @node Commands, Header Files, Global Actions, Top
@@ -231,6 +231,13 @@ A header file is a file containing C declarations and macro definitions
 (@pxref{Macros}) to be shared between several source files.  You request
 the use of a header file in your program with the C preprocessor command
 @samp{#include}.
+
+@menu
+* Header Uses::         What header files are used for.
+* Include Syntax::      How to write @samp{#include} commands.
+* Include Operation::   What @samp{#include} does.
+* Once-Only::		Preventing multiple inclusion of one header file.
+@end menu
 
 @node Header Uses, Include Syntax, Header Files, Header Files
 @subsection Uses of Header Files
@@ -324,7 +331,7 @@ porting the program to various operating systems in which the
 necessary system header files are found in different places.
 @end table
 
-@node Include Operation,, Include Syntax, Header Files
+@node Include Operation, Once-Only, Include Syntax, Header Files
 @subsection How @samp{#include} Works
 
 The @samp{#include} command works by directing the C preprocessor to scan
@@ -376,6 +383,48 @@ message) at the end of the file.
 The line following the @samp{#include} command is always treated as a
 separate line by the C preprocessor even if the included file lacks a final
 newline.
+
+@node Once-Only,, Include Operation, Header Files
+@subsection Once-Only Include Files
+@cindex repeated inclusion
+
+Very often, one header file includes another.  It can easily result that a
+certain header file is included more than once.  This may lead to errors,
+if the header file defines structure types or typedefs, and is certainly
+wasteful.  Therefore, we often wish to prevent multiple inclusion of a
+header file.
+
+The standard way to do this is to enclose the entire real contents of the
+file in a conditional, like this:
+
+@example
+#ifndef __FILE_FOO_SEEN__
+#define __FILE_FOO_SEEN__
+
+@var{the entire file}
+
+#endif /* __FILE_FOO_SEEN__ */
+@end example
+
+The macro @code{__FILE_FOO_SEEN__} indicates that the file has been
+included once already; its name should begin with @samp{__}, and should
+contain the name of the file to avoid accidental conflicts.
+
+A superior way which works only in GNU C is to include the following
+command in the file, preferably at the beginning:
+
+@example
+#pragma once
+@end example
+
+This command tells the preprocessor to ignore any future commands to
+include the same file (whichever file the command appears in).  The
+advantage of this is that it saves the preprocessor from even having to
+reread the file.
+
+Note that @samp{#pragma once} works by file name; if a file has more
+than one name, it can be included once under each name, despite
+@samp{#pragma once}.
 
 @node Macros, Conditionals, Header Files, Top
 @section Macros
@@ -646,6 +695,12 @@ GNU C extensions.
 This macro expands to the name of the current input file, in the form
 of a C string constant.
 
+@item __BASE_FILE__
+@findex __BASE_FILE__
+This macro expands to the name of the main input file, in the form
+of a C string constant.  This is the source file that was specified
+as an argument when the C compiler was invoked.
+
 @item __LINE__
 @findex __LINE__
 This macro expands to the current input line number, in the form of a
@@ -799,26 +854,36 @@ the system.  For example,
 @end table
 
 These predefined symbols are not only nonstandard, they are contrary to the
-ANSI standard because their names do not start with underscores.  However,
-the GNU C preprocessor would be useless if it did not predefine the same
-names that are normally predefined on the system and machine you are using.
-Even system header files check the predefined names and will generate
-incorrect declarations if they do not find the names that are expected.
+ANSI standard because their names do not start with underscores.
+Therefore, the option @samp{-ansi} inhibits the definition of these
+symbols.
+
+This tends to make @samp{-ansi} useless, since many programs depend on the
+customary nonstandard predefined symbols.  Even system header files check
+them and will generate incorrect declarations if they do not find the names
+that are expected.  You might think that the header files supplied for the
+Uglix computer would not need to test what machine they are running on,
+because they can simply assume it is the Uglix; but often they do, and they
+do so using the customary names.  As a result, very few C programs will not
+compile with @samp{-ansi}.  We intend to avoid such problems on the GNU
+system.
+
+What, then, should you do in an ANSI C program to test the type of machine
+it will run on?
+
+GNU C offers a parallel series of symbols for this purpose, whose names
+are made from the customary ones by adding @samp{__} at the beginning
+and end.  Thus, the symbol @code{__vax__} would be available on a vax,
+and so on.
 
 The set of nonstandard predefined names in the GNU C preprocessor is
 controlled by the macro @samp{CPP_PREDEFINES}, which should be a string
-containing @samp{-D} options, separated by spaces.  For example, on the Sun,
-the definition
+containing @samp{-D} options, separated by spaces.  For example, on the
+Sun 3, we use the following definition:
 
 @example
 #define CPP_PREDEFINES "-Dmc68000 -Dsun -Dunix -Dm68k"
 @end example
-
-@noindent
-is used.
-
-The @samp{-ansi} option which requests complete support for ANSI C
-inhibits the definition of these predefined symbols.
 
 @node Stringification, Concatenation, Predefined, Macros
 @subsection Stringification
@@ -1565,6 +1630,8 @@ on the situation at the time of compilation.
 @end menu
 
 @node Conditional Uses, Conditional Syntax, Conditionals, Conditionals
+@subsection Why Conditionals are Used
+
 Generally there are three kinds of reason to use a conditional.
 
 @itemize @bullet
@@ -1922,8 +1989,9 @@ Predefined}.
 @section Miscellaneous Preprocessor Commands
 
 @findex #pragma
+@findex #ident
 @cindex null command
-This section describes two additional preprocesor commands.  They are
+This section describes three additional preprocesor commands.  They are
 not very useful, but are mentioned for completeness.
 
 The @dfn{null command} consists of a @samp{#} followed by a Newline, with
@@ -1936,10 +2004,13 @@ some old C programs contain such lines.
 
 The @samp{#pragma} command is specified in the ANSI standard to have an
 arbitrary implementation-defined effect.  In the GNU C preprocessor,
-@samp{#pragma} first attempts to run the game @code{rogue}; if that fails,
-it tries to run the game @code{hack}; if that fails, it tries to run
-GNU Emacs displaying the Tower of Hanoi; if that fails, it reports a
-fatal error.  In any case, preprocessing does not continue.
+@samp{#pragma} commands are ignored, except for @samp{#pragma once}
+(@pxref{Once-Only}).
+
+The @samp{#ident} is supported for compatibility with certain other
+systems.  It is followed by a line of text.  On certain systems, the
+text is copied into a special place in the object file; on most systems,
+the text is ignored and this directive has no effect.
 
 @node Output, Invocation, Other Commands, Top
 @section C Preprocessor Output
@@ -1999,15 +2070,15 @@ Do not discard comments: pass them through to the output file.
 Comments appearing in arguments of a macro call will be copied to the
 output before the expansion of the macro call.
 
-@item -T
-@findex -T
+@item -trigraphs
+@findex -trigraphs
 Process ANSI standard trigraph sequences.  These are three-character
 sequences, all starting with @samp{??}, that are defined by ANSI C to
 stand for single characters.  For example, @samp{??/} stands for
-@samp{\}, so @samp{'??/n'} is a character constant for Newline.
+@samp{\}, so @samp{'??/n'} is a character constant for a newline.
 Strictly speaking, the GNU C preprocessor does not support all
-programs in ANSI Standard C unless @samp{-T} is used, but if you
-ever notice the difference it will be with relief.
+programs in ANSI Standard C unless @samp{-trigraphs} is used, but if
+you ever notice the difference it will be with relief.
 
 You don't want to know any more about trigraphs.
 

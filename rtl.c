@@ -132,7 +132,19 @@ char *rtx_format[] = {
 #include "rtl.def"		/* rtl expressions are defined here */
 #undef DEF_RTL_EXPR
 };
-
+
+/* Names for kinds of NOTEs and REG_NOTEs.  */
+
+char *note_insn_name[] = { "NOTE_INSN_FUNCTION_BEG", "NOTE_INSN_DELETED",
+			   "NOTE_INSN_BLOCK_BEG", "NOTE_INSN_BLOCK_END",
+			   "NOTE_INSN_LOOP_BEG", "NOTE_INSN_LOOP_END",
+			   "NOTE_INSN_FUNCTION_END", "NOTE_INSN_SETJMP",
+			   "NOTE_INSN_LOOP_CONT" };
+
+char *reg_note_name[] = { "", "REG_DEAD", "REG_INC", "REG_EQUIV", "REG_WAS_0",
+			  "REG_EQUAL", "REG_RETVAL", "REG_LIBCALL",
+			  "REG_NONNEG", "REG_ASM_LINE", "REG_ASM_FILE" };
+
 /* Allocate an rtx vector of N elements.
    Store the length, and initialize all elements to zero.  */
 
@@ -315,10 +327,14 @@ int
 rtx_addr_varies_p (x)
      rtx x;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register int i;
   register char *fmt;
 
+  if (x == 0)
+    return 0;
+
+  code = GET_CODE (x);
   if (code == MEM)
     return GET_MODE (x) == BLKmode || rtx_varies_p (XEXP (x, 0));
 
@@ -500,12 +516,15 @@ rtx_equal_p (x, y)
 {
   register int i;
   register int j;
-  register RTX_CODE code = GET_CODE (x);
+  register enum rtx_code code;
   register char *fmt;
 
   if (x == y)
     return 1;
+  if (x == 0 || y == 0)
+    return 0;
 
+  code = GET_CODE (x);
   /* Rtx's of different codes cannot be equal.  */
   if (code != GET_CODE (y))
     return 0;
@@ -822,7 +841,13 @@ print_rtx (in_rtx)
     fprintf (outfile, "/i");
 
   if (GET_MODE (in_rtx) != VOIDmode)
-    fprintf (outfile, ":%s", GET_MODE_NAME (GET_MODE (in_rtx)));
+    {
+      /* Print REG_NOTE names for EXPR_LIST and INSN_LIST.  */
+      if (GET_CODE (in_rtx) == EXPR_LIST || GET_CODE (in_rtx) == INSN_LIST)
+	fprintf (outfile, ":%s", GET_REG_NOTE_NAME (GET_MODE (in_rtx)));
+      else
+	fprintf (outfile, ":%s", GET_MODE_NAME (GET_MODE (in_rtx)));
+    }
 
   format_ptr = GET_RTX_FORMAT (GET_CODE (in_rtx));
 
@@ -881,6 +906,16 @@ print_rtx (in_rtx)
 
       case 'i':
 	fprintf (outfile, " %d", XINT (in_rtx, i));
+	sawclose = 0;
+	break;
+
+      /* Print NOTE_INSN names rather than integer codes.  */
+
+      case 'n':
+	if (XINT (in_rtx, i) <= 0)
+	  fprintf (outfile, " %s", GET_NOTE_INSN_NAME (XINT (in_rtx, i)));
+	else
+	  fprintf (outfile, " %d", XINT (in_rtx, i));
 	sawclose = 0;
 	break;
 
@@ -1243,6 +1278,7 @@ read_rtx (infile)
 	break;
 
       case 'i':
+      case 'n':
 	read_name (tmp_char, infile);
 	tmp_int = atoi (tmp_char);
 	XINT (return_rtx, i) = tmp_int;

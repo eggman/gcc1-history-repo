@@ -1530,6 +1530,8 @@ refers_to_p (x, y)
  repeat:
   if (x == y)
     return 1;
+  if (x == 0 || y == 0)
+    return 0;
 
   code = GET_CODE (x);
   /* If X as a whole has the same code as Y, they may match.
@@ -1589,6 +1591,9 @@ refers_to_mem_p (x, reg, start, end)
   register char *fmt;
 
  repeat:
+  if (x == 0)
+    return 0;
+
   code = GET_CODE (x);
   if (code == MEM)
     {
@@ -3117,6 +3122,8 @@ cse_insn (insn)
 		      dest = gen_rtx (MEM, GET_MODE (dest), addr);
 		      MEM_VOLATILE_P (dest)
 			= MEM_VOLATILE_P (sets[i].inner_dest);
+		      MEM_IN_STRUCT_P (dest)
+			= MEM_IN_STRUCT_P (sets[i].inner_dest);
 		      SET_DEST (sets[i].rtl) = dest;
 		      sets[i].inner_dest = dest;
 		    }
@@ -3130,7 +3137,20 @@ cse_insn (insn)
 
       if (GET_CODE (SET_DEST (sets[i].rtl)) == ZERO_EXTRACT
 	  || GET_CODE (SET_DEST (sets[i].rtl)) == SIGN_EXTRACT)
-	sets[i].src_volatile = 1, src_eqv = 0;
+	{
+	  rtx width = XEXP (SET_DEST (sets[i].rtl), 1);
+	  rtx value = equiv_constant (SET_SRC (sets[i].rtl));
+
+	  if (value != 0 && GET_CODE (value) == CONST_INT
+	      && GET_CODE (width) == CONST_INT
+	      && INTVAL (width) < HOST_BITS_PER_INT
+	      && ! (INTVAL (value) & (-1) << INTVAL (width)))
+	    /* Exception: if the value is constant,
+	       we can tell whether truncation would change it.  */
+	    ;
+	  else
+	    sets[i].src_volatile = 1, src_eqv = 0;
+	}
 
       /* No further processing for this assignment
 	 if destination is volatile or if the source and destination
@@ -3592,6 +3612,9 @@ cse_main (f, nregs)
       max_qty += max_reg;
 
       insn = cse_basic_block (insn, val.last);
+#ifdef USE_C_ALLOCA
+      alloca (0);
+#endif
     }
 
   /* Tell refers_to_mem_p that qty_const info is not available.  */

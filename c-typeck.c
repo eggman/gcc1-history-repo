@@ -552,13 +552,13 @@ c_sizeof (type)
 
   if (code == FUNCTION_TYPE)
     {
-      if (pedantic)
+      if (pedantic || warn_pointer_arith)
 	warning ("sizeof applied to a function type");
       return build_int (1);
     }
   if (code == VOID_TYPE)
     {
-      if (pedantic)
+      if (pedantic || warn_pointer_arith)
 	warning ("sizeof applied to a void type");
       return build_int (1);
     }
@@ -615,6 +615,7 @@ decl_constant_value (decl)
       && DECL_INITIAL (decl) != 0
       && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR
       && TREE_CODE (DECL_INITIAL (decl)) != ERROR_MARK
+      && ! TREE_VOLATILE (DECL_INITIAL (decl))
       && DECL_MODE (decl) != BLKmode)
     return DECL_INITIAL (decl);
   return decl;
@@ -846,7 +847,8 @@ build_array_ref (array, index)
 	 address arithmetic on its address.
 	 Likewise an array of elements of variable size.  */
       if (TREE_CODE (index) != INTEGER_CST
-	  || TREE_CODE (TYPE_SIZE (TREE_TYPE (TREE_TYPE (array)))) != INTEGER_CST)
+	  || (TYPE_SIZE (TREE_TYPE (TREE_TYPE (array))) != 0
+	      && TREE_CODE (TYPE_SIZE (TREE_TYPE (TREE_TYPE (array)))) != INTEGER_CST))
 	{
 	  if (mark_addressable (array) == 0)
 	    return error_mark_node;
@@ -885,7 +887,7 @@ build_array_ref (array, index)
 	return error_mark_node;
       }
 
-    return build_indirect_ref (build_binary_op_nodefault (PLUS_EXPR, ar, ind),
+    return build_indirect_ref (build_binary_op_nodefault (PLUS_EXPR, ar, ind, PLUS_EXPR),
 			       "array indexing");
   }
 }
@@ -1079,7 +1081,7 @@ build_binary_op (code, arg1, arg2)
      tree arg1, arg2;
 {
   return build_binary_op_nodefault (code, default_conversion (arg1),
-				    default_conversion (arg2));
+				    default_conversion (arg2), code);
 }
 
 /* Build a binary-operation expression without default conversions.
@@ -1092,15 +1094,19 @@ build_binary_op (code, arg1, arg2)
    are done in the narrower type when that gives the same result).
    Constant folding is also done before the result is returned.
 
+   ERROR_CODE is the code that determines what to say in error messages.
+   It is usually, but not always, the same as CODE.
+
    Note that the operands will never have enumeral types
    because either they have just had the default conversions performed
    or they have both just been converted to some other type in which
    the arithmetic is to be done.  */
 
 tree
-build_binary_op_nodefault (code, op0, op1)
+build_binary_op_nodefault (code, op0, op1, error_code)
      enum tree_code code;
      tree op0, op1;
+     enum tree_code error_code;
 {
   tree dt0 = datatype (op0), dt1 = datatype (op1);
 
@@ -1551,7 +1557,7 @@ build_binary_op_nodefault (code, op0, op1)
 
   if (!result_type)
     {
-      binary_op_error (code);
+      binary_op_error (error_code);
       return error_mark_node;
     }
 
@@ -1593,15 +1599,15 @@ pointer_int_sum (resultcode, ptrop, intop)
 
   register tree result_type = datatype (ptrop);
 
-  if (TREE_TYPE (result_type) == void_type_node)
+  if (TREE_CODE (TREE_TYPE (result_type)) == VOID_TYPE)
     {
-      if (pedantic)
+      if (pedantic || warn_pointer_arith)
 	warning ("pointer of type `void *' used in arithmetic");
       size_exp = integer_one_node;
     }
   else if (TREE_CODE (TREE_TYPE (result_type)) == FUNCTION_TYPE)
     {
-      if (pedantic)
+      if (pedantic || warn_pointer_arith)
 	warning ("pointer to a function used in arithmetic");
       size_exp = integer_one_node;
     }
@@ -1671,7 +1677,7 @@ pointer_diff (op0, op1)
 
   op0 = build_binary_op (MINUS_EXPR,
 			 convert (restype, op0), convert (restype, op1));
-  op1 = ((TREE_TYPE (dt0) == void_type_node
+  op1 = ((TREE_CODE (TREE_TYPE (dt0)) == VOID_TYPE
 	  || TREE_CODE (TREE_TYPE (dt0)) == FUNCTION_TYPE)
 	 ? integer_one_node
 	 : size_in_bytes (TREE_TYPE (dt0)));
@@ -1698,7 +1704,8 @@ pointer_diff (op0, op1)
   return folded;
 }
 
-/* Print an error message for invalid operands to arith operation CODE.  */
+/* Print an error message for invalid operands to arith operation CODE.
+   NOP_EXPR is used as a special case (see truthvalue_conversion).  */
 
 static void
 binary_op_error (code)
@@ -1707,6 +1714,10 @@ binary_op_error (code)
   register char *opname;
   switch (code)
     {
+    case NOP_EXPR:
+      error ("invalid truth-value expression");
+      return;
+
     case PLUS_EXPR:
       opname = "+"; break;
     case MINUS_EXPR:
@@ -2456,7 +2467,8 @@ truthvalue_conversion (expr)
 	  > TYPE_PRECISION (TREE_TYPE (TREE_OPERAND (expr, 0)))))
     return truthvalue_conversion (TREE_OPERAND (expr, 0));
 
-  return build_binary_op (NE_EXPR, expr, integer_zero_node);
+  return build_binary_op_nodefault (NE_EXPR, default_conversion (expr),
+				    integer_zero_node, NOP_EXPR);
 }
 
 /* Return a simplified tree node for the truth-negation of ARG
@@ -2551,12 +2563,13 @@ mark_addressable (exp)
       case RESULT_DECL:
 	if (TREE_REGDECL (x) && !TREE_ADDRESSABLE (x))
 	  {
-	    if (DECL_CONTEXT (x) == 0)
+	    if (TREE_PUBLIC (x))
 	      {
-		error ("address of global register variable requested");
+		error ("address of global register variable `%s' requested",
+		       IDENTIFIER_POINTER (DECL_NAME (x)));
 		return 0;
 	      }
-	    warning ("address requested for `%s', which is declared `register'",
+	    warning ("address of register variable `%s' requested",
 		     IDENTIFIER_POINTER (DECL_NAME (x)));
 	  }
 	put_var_into_stack (x);
@@ -2975,6 +2988,8 @@ build_modify_expr (lhs, modifycode, rhs)
   /* Convert new value to destination type.  */
 
   newrhs = convert_for_assignment (lhstype, newrhs, "assignment");
+  if (TREE_CODE (newrhs) == ERROR_MARK)
+    return error_mark_node;
 
   result = build (MODIFY_EXPR, lhstype, lhs, newrhs);
   TREE_VOLATILE (result) = 1;
@@ -3030,7 +3045,7 @@ convert_for_assignment (type, rhs, errtype)
   coder = TREE_CODE (rhstype);
 
   if (coder == ERROR_MARK)
-    return rhs;
+    return error_mark_node;
 
   if (TYPE_MAIN_VARIANT (type) == TYPE_MAIN_VARIANT (rhstype))
     return rhs;

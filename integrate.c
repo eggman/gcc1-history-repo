@@ -135,8 +135,9 @@ function_cannot_inline_p (fndecl)
   /* If the structure value address comes in the stack,
      we can't handle it.  */
 #if defined (STRUCT_VALUE) || defined (STRUCT_VALUE_INCOMING)
-  if (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))) == BLKmode)
-    return "function returning large aggregate cannot be inline";
+  if (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))) == BLKmode
+      || RETURN_IN_MEMORY (TREE_TYPE (TREE_TYPE (fndecl))))
+    return "inline functions not supported for this return value type";
 #endif
 
   /* Don't inline functions which have BLKmode arguments.
@@ -584,6 +585,23 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   /* We expect PARMS to have the right length; don't crash if not.  */
   if (list_length (parms) != nargs)
     return (rtx)-1;
+  /* Also check that the parms type match.  Since the appropriate
+     conversions or default promotions have already been applied,
+     the machine modes should match exactly.  */
+  for (formal = DECL_ARGUMENTS (fndecl),
+       actual = parms;
+       formal;
+       formal = TREE_CHAIN (formal),
+       actual = TREE_CHAIN (actual))
+    {
+      tree arg = TREE_VALUE (actual);
+      enum machine_mode mode = TYPE_MODE (DECL_ARG_TYPE (formal));
+      if (mode != TYPE_MODE (TREE_TYPE (arg)))
+	return (rtx)-1;
+      /* If they are block mode, the types should match exactly.  */
+      if (mode == BLKmode && TREE_TYPE (arg) != TREE_TYPE (formal))
+	return (rtx)-1;
+    }
 
   /* Make a fresh binding contour that we can easily remove.  */
   pushlevel (0);
@@ -602,7 +620,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
        i++)
     {
       tree arg = TREE_VALUE (actual); /* this has already been converted */
-      enum machine_mode tmode = TYPE_MODE (TREE_TYPE (formal));
+      enum machine_mode tmode = TYPE_MODE (DECL_ARG_TYPE (formal));
+      enum machine_mode imode = TYPE_MODE (TREE_TYPE (formal));
       rtx copy;
 
       emit_note (DECL_SOURCE_FILE (formal), DECL_SOURCE_LINE (formal));
@@ -636,6 +655,10 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	  if (GET_CODE (copy) != REG && ! CONSTANT_P (copy))
 	    copy = copy_to_reg (copy);
 	}
+      /* If passed mode != nominal mode, COPY is now the passed mode.
+	 Convert it to the nominal mode (i.e. truncate it).  */
+      if (tmode != imode)
+	copy = convert_to_mode (imode, copy);
       arg_vec[i] = copy;
     }
 

@@ -187,7 +187,7 @@ static rtx find_reloads_toplev ();
 static int find_reloads_address ();
 static int find_reloads_address_1 ();
 static int hard_reg_set_here_p ();
-static rtx forget_volatility ();
+/* static rtx forget_volatility (); */
 static rtx subst_reg_equivs ();
 static rtx subst_indexed_address ();
 rtx find_equiv_reg ();
@@ -348,7 +348,13 @@ push_reload (in, out, inloc, outloc, class,
 		   || GET_CODE (in) == PRE_INC
 		   || GET_CODE (in) == PRE_DEC)
 	       && MATCHES (XEXP (in, 0), reload_in[i]))))
-	break;
+	{
+	  /* Make sure reload_in ultimately has the increment,
+	     not the plain register.  */
+	  if (GET_CODE (in) == REG)
+	    in = reload_in[i];
+	  break;
+	}
 
   if (i == n_reloads)
     {
@@ -1310,6 +1316,14 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		  break;
 		if ((GET_CODE (operand) == MEM
 		     && offsetable_memref_p (operand))
+		    /* Certain mem addresses will become offsetable
+		       after they themselves are reloaded.  This is important;
+		       we don't want our own handling of unoffsetables
+		       to override the handling of reg_equiv_address.  */
+		    || (GET_CODE (operand) == MEM
+			&& GET_CODE (XEXP (operand, 0)) == REG
+			&& (! ind_ok
+			    || reg_equiv_address[REGNO (XEXP (operand, 0))] != 0))
 		    || (GET_CODE (operand) == REG
 			&& REGNO (operand) >= FIRST_PSEUDO_REGISTER
 			&& reg_renumber[REGNO (operand)] < 0))
@@ -1607,7 +1621,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 				    (enum reg_class) goal_alternative[i])
 	    == NO_REGS))
       {
-	enum machine_mode mode = GET_MODE (recog_operand[i]);
+	enum machine_mode mode = operand_mode[i];
 	*recog_operand_loc[i] = recog_operand[i]
 	  = (GET_CODE (recog_operand[i]) == CONST_DOUBLE
 	     ? force_const_double_mem (recog_operand[i])
@@ -2311,10 +2325,10 @@ find_reloads_address_1 (x, context, loc)
 	{
 	  if (REG_OK_FOR_INDEX_P (op0)
 	      && REG_OK_FOR_BASE_P (op1))
-	    return;
+	    return 0;
 	  else if (REG_OK_FOR_INDEX_P (op1)
 	      && REG_OK_FOR_BASE_P (op0))
-	    return;
+	    return 0;
 	  else if (REG_OK_FOR_BASE_P (op1))
 	    find_reloads_address_1 (op0, 1, &XEXP (x, 0));
 	  else if (REG_OK_FOR_BASE_P (op0))
@@ -2425,7 +2439,7 @@ find_reloads_address_1 (x, context, loc)
 	  push_reload (reg_equiv_mem[regno], 0, loc, 0,
 		       context ? INDEX_REG_CLASS : BASE_REG_CLASS,
 		       GET_MODE (x), 0, VOIDmode, 0);
-	  return;
+	  return 1;
 	}
 #endif
       if (reg_equiv_address[regno] != 0)

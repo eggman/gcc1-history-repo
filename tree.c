@@ -37,6 +37,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "tree.h"
 #include "obstack.h"
 #include "varargs.h"
+#include "flags.h"
 
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
@@ -515,24 +516,39 @@ get_identifier (text)
   register int hi;
   register int i;
   register tree idp;
-  register int len;
+  register int len, hash_len;
 
   /* Compute length of text in len.  */
   for (len = 0; text[len]; len++);
 
+  /* Decide how much of that length to hash on */
+  hash_len = len;
+  if (warn_id_clash && len > id_clash_len)
+    hash_len = id_clash_len;
+
   /* Compute hash code */
-  hi = len;
-  for (i = 0; i < len; i++)
+  hi = hash_len;
+  for (i = 0; i < hash_len; i++)
     hi = ((hi * 613) + (unsigned)(text[i]));
 
   hi &= (1 << HASHBITS) - 1;
   hi %= MAX_HASH_TABLE;
   
   /* Search table for identifier */
-  for (idp = hash_table[hi]; idp!=NULL; idp = TREE_CHAIN (idp))
-    if (IDENTIFIER_LENGTH (idp) == len &&
-	!strcmp (IDENTIFIER_POINTER (idp), text))
+  for (idp = hash_table[hi]; idp; idp = TREE_CHAIN (idp))
+    if (IDENTIFIER_LENGTH (idp) == len
+	&& !strcmp (IDENTIFIER_POINTER (idp), text))
       return idp;		/* <-- return if found */
+  
+  /* Not found; optionally warn about a similar identifier */
+  if (warn_id_clash && len > id_clash_len)
+    for (idp = hash_table[hi]; idp; idp = TREE_CHAIN (idp))
+      if (!strncmp (IDENTIFIER_POINTER (idp), text, id_clash_len))
+	{
+	  warning ("`%s' and `%s' identical in first n characters",
+		   IDENTIFIER_POINTER (idp), text);
+	  break;
+	}
 
   /* Not found, create one, add to chain */
   idp = make_node (IDENTIFIER_NODE);

@@ -304,6 +304,9 @@ local_alloc ()
       next_qty = FIRST_PSEUDO_REGISTER;
 
       block_alloc (b);
+#ifdef USE_C_ALLOCA
+      alloca (0);
+#endif
     }
 }
 

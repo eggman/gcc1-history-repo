@@ -1396,95 +1396,53 @@ fold (expr)
       goto associate;
 
     case TRUTH_NOT_EXPR:
-      if (wins)
+      /* Note that the operand of this must be an int
+	 and its values must be 0 or 1.
+	 ("true" is a fixed value perhaps depending on the language,
+	 but we don't handle values other than 1 correctly yet.)  */
+      if (TREE_CODE (arg0) == INTEGER_CST)
 	{
-	  if (TREE_CODE (arg0) == INTEGER_CST)
-	    {
-	      t = build_int_2 ((TREE_INT_CST_LOW (arg0) == 0
-				&& TREE_INT_CST_HIGH (arg0) == 0),
-			       0);
-	      TREE_TYPE (t) = integer_type_node;
-	    }
-#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-	  if (TREE_CODE (arg0) == REAL_CST)
-	    {
-	      t = build_int_2 (real_zerop (arg0), 0);
-	      TREE_TYPE (t) = integer_type_node;
-	    }
-#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+	  t = build_int_2 ((TREE_INT_CST_LOW (arg0) == 0
+			    && TREE_INT_CST_HIGH (arg0) == 0),
+			   0);
+	  TREE_TYPE (t) = integer_type_node;
 	}
       return t;
 
     case TRUTH_ANDIF_EXPR:
-      /* If first arg is constant zero, we know the answer.  */
+      /* Note that the operands of this must be ints
+	 and their values must be 0 or 1.
+	 ("true" is a fixed value perhaps depending on the language.)  */
+      /* If first arg is constant zero, return it.  */
       if (TREE_CODE (arg0) == INTEGER_CST && integer_zerop (arg0))
-	{
-	  t = build_int_2 (0, 0);
-	  TREE_TYPE (t) = type;
-	  return t;
-	}
-#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-      if (TREE_CODE (arg0) == REAL_CST && real_zerop (arg0))
-	{
-	  t = build_int_2 (0, 0);
-	  TREE_TYPE (t) = type;
-	  return t;
-	}
-#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+	return arg0;
     case TRUTH_AND_EXPR:
-      if (wins)
-	{
-	  if (TREE_CODE (arg0) == INTEGER_CST
-	      && TREE_CODE (arg1) == INTEGER_CST)
-	    {
-	      t = build_int_2 (! integer_zerop (arg0) && ! integer_zerop (arg1),
-			       0);
-	      TREE_TYPE (t) = type;
-	    }
-#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-	  if (TREE_CODE (arg0) == REAL_CST && TREE_CODE (arg1) == REAL_CST)
-	    {
-	      t = build_int_2 (! real_zerop (arg0) && ! real_zerop (arg1), 0);
-	      TREE_TYPE (t) = type;
-	    }
-#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
-	}
+      /* If either arg is constant true, drop it.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && ! integer_zerop (arg0))
+	return arg1;
+      if (TREE_CODE (arg1) == INTEGER_CST && ! integer_zerop (arg1))
+	return arg0;
+      /* Both known to be zero => return zero.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && TREE_CODE (arg1) == INTEGER_CST)
+	return arg0;
       return t;
 
     case TRUTH_ORIF_EXPR:
-      /* If first arg is nonzero constant, we know the answer.  */
+      /* Note that the operands of this must be ints
+	 and their values must be 0 or true.
+	 ("true" is a fixed value perhaps depending on the language.)  */
+      /* If first arg is constant true, return it.  */
       if (TREE_CODE (arg0) == INTEGER_CST && ! integer_zerop (arg0))
-	{
-	  t = build_int_2 (1, 0);
-	  TREE_TYPE (t) = type;
-	  return t;
-	}
-#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-      if (TREE_CODE (arg0) == REAL_CST && ! real_zerop (arg0))
-	{
-	  t = build_int_2 (1, 0);
-	  TREE_TYPE (t) = type;
-	  return t;
-	}
-#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
+	return arg0;
     case TRUTH_OR_EXPR:
-      if (wins)
-	{
-	  if (TREE_CODE (arg0) == INTEGER_CST
-	      && TREE_CODE (arg1) == INTEGER_CST)
-	    {
-	      t = build_int_2 (! integer_zerop (arg0) || ! integer_zerop (arg1),
-			       0);
-	      TREE_TYPE (t) = type;
-	    }
-#if !defined (REAL_IS_NOT_DOUBLE) || defined (REAL_ARITHMETIC)
-	  if (TREE_CODE (arg0) == REAL_CST && TREE_CODE (arg1) == REAL_CST)
-	    {
-	      t = build_int_2 (! real_zerop (arg0) || ! real_zerop (arg1), 0);
-	      TREE_TYPE (t) = type;
-	    }
-#endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
-	}
+      /* If either arg is constant zero, drop it.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && integer_zerop (arg0))
+	return arg1;
+      if (TREE_CODE (arg1) == INTEGER_CST && integer_zerop (arg1))
+	return arg0;
+      /* Both known to be true => return true.  */
+      if (TREE_CODE (arg0) == INTEGER_CST && TREE_CODE (arg1) == INTEGER_CST)
+	return arg0;
       return t;
 
     case EQ_EXPR:

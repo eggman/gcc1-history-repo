@@ -5,6 +5,9 @@
 #ifdef __spur__
 #include "va-spur.h"
 #else
+#ifdef __mips__
+#include "va-mips.h"
+#else
 
 /* These macros implement traditional (non-ANSI) varargs
    for GNU C.  */
@@ -29,5 +32,6 @@
  (AP += __va_rounded_size (TYPE),					\
   *((TYPE *) (AP - __va_rounded_size (TYPE))))
 
+#endif /* not mips */
 #endif /* not spur */
 #endif /* __GNUC__ */

@@ -1,5 +1,5 @@
 /* C Compatible Compiler Preprocessor (CCCP)
-Copyright (C) 1986, 1987, Free Software Foundation, Inc.
+Copyright (C) 1986, 1987, 1989 Free Software Foundation, Inc.
                     Written by Paul Rubin, June 1986
 		    Adapted to ANSI C, Richard Stallman, Jan 1987
 
@@ -88,12 +88,12 @@ extern char *version_string;
 
 int do_define (), do_line (), do_include (), do_undef (), do_error (),
   do_pragma (), do_if (), do_xifdef (), do_else (),
-  do_elif (), do_endif (), do_sccs ();
+  do_elif (), do_endif (), do_sccs (), do_once ();
 
 struct hashnode *install ();
 struct hashnode *lookup ();
 
-char *xmalloc (), *xrealloc (), *xcalloc ();
+char *xmalloc (), *xrealloc (), *xcalloc (), *savestring ();
 void fatal (), pfatal_with_name (), perror_with_name ();
 
 void conditional_skip ();
@@ -221,16 +221,16 @@ FILE_BUF outbuf;
   (((OBUF)->length - ((OBUF)->bufp - (OBUF)->buf) <= (NEEDED))   \
    ? grow_outbuf ((OBUF), (NEEDED)) : 0)
 
-struct directory_stack
+struct file_name_list
   {
-    struct directory_stack *next;
+    struct file_name_list *next;
     char *fname;
   };
 
 /* #include "file" looks in source file dir, then stack. */
 /* #include <file> just looks in the stack. */
 /* -I directories are added to the end, then the defaults are added. */
-struct directory_stack include_defaults[] =
+struct file_name_list include_defaults[] =
   {
 #ifndef VMS
     { &include_defaults[1], GCC_INCLUDE_DIR },
@@ -244,7 +244,7 @@ struct directory_stack include_defaults[] =
   };
 
 /* These are used instead of the above, for C++.  */
-struct directory_stack cplusplus_include_defaults[] =
+struct file_name_list cplusplus_include_defaults[] =
   {
 #ifndef VMS
     /* Pick up GNU C++ specific include files.  */
@@ -262,10 +262,16 @@ struct directory_stack cplusplus_include_defaults[] =
 #endif /* VMS */
   };
 
-struct directory_stack *include = 0;	/* First dir to search */
+struct file_name_list *include = 0;	/* First dir to search */
 	/* First dir to search for <file> */
-struct directory_stack *first_bracket_include = 0;
-struct directory_stack *last_include = 0;	/* Last in chain */
+struct file_name_list *first_bracket_include = 0;
+struct file_name_list *last_include = 0;	/* Last in chain */
+
+/* List of included files that contained #once.  */
+struct file_name_list *dont_repeat_files = 0;
+
+/* List of other included files.  */
+struct file_name_list *all_include_files = 0;
 
 /* Structure allocated for every #define.  For a simple replacement
    such as
@@ -334,10 +340,7 @@ enum node_type {
  T_IFNDEF,	/* the `#ifndef' keyword */
  T_IF,		/* the `#if' keyword */
  T_ELSE,	/* `#else' */
-#if 0
- /* cpp can pass #pragma through unchanged.  */
  T_PRAGMA,	/* `#pragma' */
-#endif
  T_ELIF,	/* `#else' */
  T_UNDEF,	/* `#undef' */
  T_LINE,	/* `#line' */
@@ -348,6 +351,7 @@ enum node_type {
  T_SPECLINE,	/* special symbol `__LINE__' */
  T_DATE,	/* `__DATE__' */
  T_FILE,	/* `__FILE__' */
+ T_BASE_FILE,	/* `__BASE_FILE__' */
  T_VERSION,	/* `__VERSION__' */
  T_TIME,	/* `__TIME__' */
  T_CONST,	/* Constant value, used by `__STDC__' */
@@ -400,6 +404,7 @@ struct directive {
   enum node_type type;		/* Code which describes which directive. */
   char angle_brackets;		/* Nonzero => <...> is special.  */
   char traditional_comments;	/* Nonzero: keep comments if -traditional.  */
+  char noscan;			/* Don't scan argument-line, just peek.  */
 };
 
 /* Here is the actual list of #-directives, most-often-used first.  */
@@ -419,9 +424,7 @@ struct directive directive_table[] = {
 #ifdef SCCS_DIRECTIVE
   {  4, do_sccs, "sccs", T_SCCS},
 #endif
-#if 0
-  {  6, do_pragma, "pragma", T_PRAGMA},
-#endif
+  {  6, do_pragma, "pragma", T_PRAGMA, 0, 0, 1},
   {  -1, 0, "", T_UNUSED},
 };
 
@@ -598,8 +601,12 @@ main (argc, argv)
 	break;
 
       case 't':
-	traditional = 1;
-	dollars_in_ident = 1;
+	if (!strcmp (argv[i], "-traditional")) {
+	  traditional = 1;
+	  dollars_in_ident = 1;
+	} else if (!strcmp (argv[i], "-trigraphs")) {
+	  no_trigraphs = 0;
+	}
 	break;
 
       case '+':
@@ -609,13 +616,13 @@ main (argc, argv)
       case 'W':
 	if (!strcmp (argv[i], "-Wtrigraphs")) {
 	  warn_trigraphs = 1;
-	  no_trigraphs = 0;
 	}
 	if (!strcmp (argv[i], "-Wcomments"))
 	  warn_comments = 1;
+	if (!strcmp (argv[i], "-Wcomment"))
+	  warn_comments = 1;
 	if (!strcmp (argv[i], "-Wall")) {
 	  warn_trigraphs = 1;
-	  no_trigraphs = 0;
 	  warn_comments = 1;
 	}
 	break;
@@ -670,23 +677,19 @@ main (argc, argv)
 	no_line_commands = 1;
 	break;
 
-      case 'T':			/* Enable ANSI trigraphs */
-	no_trigraphs = 0;
-	break;
-
       case '$':			/* Don't include $ in identifiers.  */
 	dollars_in_ident = 0;
 	break;
 
       case 'I':			/* Add directory to path for includes.  */
 	{
-	  struct directory_stack *dirtmp;
+	  struct file_name_list *dirtmp;
 
 	  if (! ignore_srcdir && !strcmp (argv[i] + 2, "-"))
 	    ignore_srcdir = 1;
 	  else {
-	    dirtmp = (struct directory_stack *)
-	      xmalloc (sizeof (struct directory_stack));
+	    dirtmp = (struct file_name_list *)
+	      xmalloc (sizeof (struct file_name_list));
 	    dirtmp->next = 0;		/* New one goes on the end */
 	    if (include == 0)
 	      include = dirtmp;
@@ -2017,6 +2020,13 @@ handle_directive (ip, op)
 	 #define needs this when -traditional.  */
       int keep_comments = traditional && kt->traditional_comments;
 
+      /* For #pragma, check whether `once' follows
+	 without really scanning anything.  */
+      if (kt->noscan) {
+	(*kt->func) (after_ident, after_ident, op, kt);
+	return 0;
+      }
+
       /* Find the end of this command (first newline not backslashed
 	 and not in a string or comment).
 	 Set COPY_COMMAND if the command must be copied
@@ -2223,9 +2233,24 @@ special_symbol (hp, op)
 
   switch (hp->type) {
   case T_FILE:
-    buf = (char *) alloca (3 + strlen (ip->fname));
-    sprintf (buf, "\"%s\"", ip->fname);
-    break;
+  case T_BASE_FILE:
+    {
+      char *string;
+      if (hp->type == T_FILE)
+	string = ip->fname;
+      else
+	string = instack[0].fname;
+
+      if (string)
+	{
+	  buf = (char *) alloca (3 + strlen (string));
+	  sprintf (buf, "\"%s\"", string);
+	}
+      else
+	buf = "\"\"";
+
+      break;
+    }
 
   case T_VERSION:
     buf = (char *) alloca (3 + strlen (version_string));
@@ -2314,8 +2339,8 @@ do_include (buf, limit, op, keyword)
   char *fname;		/* Dynamically allocated fname buffer */
   U_CHAR *fbeg, *fend;		/* Beginning and end of fname */
 
-  struct directory_stack *stackp = include; /* Chain of dirs to search */
-  struct directory_stack dsp[1];	/* First in chain, if #include "..." */
+  struct file_name_list *stackp = include; /* Chain of dirs to search */
+  struct file_name_list dsp[1];	/* First in chain, if #include "..." */
   int flen;
 
   int f;			/* file number */
@@ -2452,17 +2477,44 @@ get_filename:
     }
   }
 
-  /* For -M, print the name of the included file.  */
-  if (print_deps > system_header_p) {
-    deps_output (fname, strlen (fname));
-    deps_output (" ", 0);
-  }
-
   if (f < 0) {
     strncpy (fname, fbeg, flen);
     fname[flen] = 0;
-    error ("can't find include file `%s'", fname);
+    error_from_errno (fname);
   } else {
+
+    /* Check to see if this include file is a once-only include file.
+       If so, give up.  */
+
+    struct file_name_list* ptr;
+
+    for (ptr = dont_repeat_files; ptr; ptr = ptr->next) {
+      if (!strcmp (ptr->fname, fname))
+        return;				/* This file was once'd. */
+    }
+
+    for (ptr = all_include_files; ptr; ptr = ptr->next) {
+      if (!strcmp (ptr->fname, fname))
+        break;				/* This file was included before. */
+    }
+
+    if (ptr == 0) {
+      /* This is the first time for this file.  */
+      /* Add it to list of files included.  */
+
+      ptr = (struct file_name_list *) xmalloc (sizeof (struct file_name_list));
+      ptr->next = all_include_files;
+      all_include_files = ptr;
+      ptr->fname = savestring (fname);
+
+      /* For -M, add this file to the dependencies.  */
+      if (print_deps > system_header_p) {
+	deps_output (fname, strlen (fname));
+	deps_output (" ", 0);
+      }
+    }   
+
+    /* Actually process the file.  */
     finclude (f, fname, op);
     close (f);
   }
@@ -2559,10 +2611,10 @@ finclude (f, fname, op)
 
 nope:
 
-  close (f);
-  if (!success) {
+  if (!success)
     perror_with_name (fname);
-  }
+
+  close (f);
 }
 
 /* The arglist structure is built by do_define to tell
@@ -3055,24 +3107,6 @@ collect_expansion (buf, end, nargs, arglist)
   return defn;
 }
 
-#ifdef DEBUG
-/*
- * debugging routine ---- return a ptr to a string containing
- *   first n chars of s.  Returns a ptr to a static object
- *   since I happen to know it will fit.
- */
-U_CHAR *
-prefix (s, n)
-     U_CHAR *s;
-     int n;
-{
-  static U_CHAR buf[1000];
-  bcopy (s, buf, n);
-  buf[n] = '\0';		/* this should not be necessary! */
-  return buf;
-}
-#endif
-
 /*
  * interpret #line command.  Remembers previously seen fnames
  * in its very own hash table.
@@ -3188,7 +3222,7 @@ do_undef (buf, limit, op, keyword)
     delete_macro (hp);
   }
 }
-
+
 /*
  * Report a fatal error detected by the program we are processing.
  * Use the text of the line in the error message, then terminate.
@@ -3206,6 +3240,50 @@ do_error (buf, limit, op, keyword)
   SKIP_WHITE_SPACE (copy);
   error ("#error %s", copy);
   exit (FATAL_EXIT_CODE);
+}
+
+/* Remember the name of the current file being read from so that we can
+   avoid ever including it again.  */
+
+do_once ()
+{
+  int i;
+  FILE_BUF *ip = NULL;
+
+  for (i = indepth; i >= 0; i--)
+    if (instack[i].fname != NULL) {
+      ip = &instack[i];
+      break;
+    }
+
+  if (ip != NULL)
+    {
+      struct file_name_list *new;
+
+      new = (struct file_name_list *) xmalloc (sizeof (struct file_name_list));
+      new->next = dont_repeat_files;
+      dont_repeat_files = new;
+      new->fname = savestring (ip->fname);
+    }
+}
+
+/* #pragma receives as an argument the start of the rest of the line.
+   We use that to peek at what lies ahead without skipping any of it.
+   Thus, every #pragma is passed on to cc1, with macros expanded.
+   However, we also do something special here if the #pragma looks like
+   `#pragma once'.  */
+
+do_pragma (ptr)
+     U_CHAR *ptr;
+{
+  U_CHAR *bp = ptr;
+  while (*bp == ' ' || *bp == '\t') bp++;
+  if (!strncmp (bp, "once", 4)) {
+    bp += 4;
+    while (*bp == ' ' || *bp == '\t') bp++;
+    if (*bp == '\n')
+      do_once ();
+  }
 }
 
 #if 0
@@ -4462,6 +4540,34 @@ error (msg, arg1, arg2, arg3)
   return 0;
 }
 
+/* Error including a message from `errno'.  */
+
+error_from_errno (name)
+     char *name;
+{
+  int i;
+  FILE_BUF *ip = NULL;
+  extern int errno, sys_nerr;
+  extern char *sys_errlist[];
+
+  for (i = indepth; i >= 0; i--)
+    if (instack[i].fname != NULL) {
+      ip = &instack[i];
+      break;
+    }
+
+  if (ip != NULL)
+    fprintf (stderr, "%s:%d: ", ip->fname, ip->lineno);
+
+  if (errno < sys_nerr)
+    fprintf (stderr, "%s: %s\n", name, sys_errlist[errno]);
+  else
+    fprintf (stderr, "%s: undocumented I/O error\n", name);
+
+  errors++;
+  return 0;
+}
+
 /* Print error message but don't count it.  */
 
 warning (msg, arg1, arg2, arg3)
@@ -4871,6 +4977,7 @@ initialize_builtins ()
   install ("__LINE__", -1, T_SPECLINE, 0, -1);
   install ("__DATE__", -1, T_DATE, 0, -1);
   install ("__FILE__", -1, T_FILE, 0, -1);
+  install ("__BASE_FILE__", -1, T_BASE_FILE, 0, -1);
   install ("__VERSION__", -1, T_VERSION, 0, -1);
   install ("__TIME__", -1, T_TIME, 0, -1);
   if (!traditional)
@@ -4954,7 +5061,11 @@ deps_output (string, size)
      char *string;
      int size;
 {
-  if (size != 0 && deps_column > 50) {
+#ifndef MAX_OUTPUT_COLUMNS
+#define MAX_OUTPUT_COLUMNS 75
+#endif
+  if (size != 0 && deps_column != 0
+      && size + deps_column > MAX_OUTPUT_COLUMNS) {
     deps_output ("\\\n  ", 0);
     deps_column = 0;
   }
@@ -5061,9 +5172,10 @@ perror_with_name (name)
 
   fprintf (stderr, "%s: ", progname);
   if (errno < sys_nerr)
-    fprintf (stderr, "%s for `%s'\n", sys_errlist[errno], name);
+    fprintf (stderr, "%s: %s\n", name, sys_errlist[errno]);
   else
-    fprintf (stderr, "undocumented error for `%s'\n", name);
+    fprintf (stderr, "%s: undocumented I/O error\n", name);
+  errors++;
 }
 
 void
@@ -5134,6 +5246,15 @@ xcalloc (number, size)
   /*NOTREACHED*/
 }
 
+char *
+savestring (input)
+     char *input;
+{
+  int size = strlen (input);
+  char *output = xmalloc (size + 1);
+  strcpy (output, input);
+  return output;
+}
 
 /* Get the file-mode and data size of the file open on FD
    and store them in *MODE_POINTER and *SIZE_POINTER.  */

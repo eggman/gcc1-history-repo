@@ -219,7 +219,8 @@ convert_to_integer (type, expr)
 		    return convert (type,
 				    build_binary_op_nodefault (ex_form,
 							       convert (typex, arg0),
-							       convert (typex, arg1)));
+							       convert (typex, arg1),
+							       ex_form));
 		  }
 	      }
 	  }

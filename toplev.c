@@ -216,6 +216,20 @@ int extra_warnings = 0;
 
 int warn_unused;
 
+/* Nonzero means warn about all declarations which shadow others.   */
+
+int warn_shadow;
+
+/* Warn if a switch on an enum fails to have a case for every enum value.  */
+
+int warn_switch;
+
+/* Nonzero means warn about any identifiers that match in the first N
+   characters.  The value N is in `id_clash_len'.  */
+
+int warn_id_clash;
+int id_clash_len;
+
 /* Number of error messages and warning messages so far.  */
 
 int errorcount = 0;
@@ -528,7 +542,7 @@ error_with_decl (decl, s, v)
 /* Report an error at the line number of the insn INSN.
    S and V are a string and an arg for `printf'.
    This is used only when INSN is an `asm' with operands,
-   and we make sure there is always a line-NOTE for that kind of statement.  */
+   and each ASM_OPERANDS records its own source file and line.  */
 
 void
 error_for_asm (insn, s, v, v2)
@@ -540,13 +554,23 @@ error_for_asm (insn, s, v, v2)
   rtx temp;
   char *filename;
   int line;
+  rtx body = PATTERN (insn);
+  rtx asmop;
 
-  temp = find_reg_note (insn, REG_ASM_FILE, 0);
-  if (temp == 0)
-    abort ();
-  filename = XSTR (XEXP (temp, 0), 0);
-  temp = find_reg_note (insn, REG_ASM_LINE, 0);
-  line = INTVAL (XEXP (temp, 0));
+  /* Find the (or one of the) ASM_OPERANDS in the insn.  */
+  if (GET_CODE (body) == SET && GET_CODE (SET_SRC (body)) == ASM_OPERANDS)
+    asmop = SET_SRC (body);
+  else if (GET_CODE (body) == ASM_OPERANDS)
+    asmop = body;
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == SET)
+    asmop = SET_SRC (XVECEXP (body, 0, 0));
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == ASM_OPERANDS)
+    asmop = XVECEXP (body, 0, 0);
+
+  filename = ASM_OPERANDS_SOURCE_FILE (asmop);
+  line = ASM_OPERANDS_SOURCE_LINE (asmop);
   
   error_with_file_and_line (filename, line, s, v, v2);
 }
@@ -1014,12 +1038,25 @@ compile_file (name)
 	    && DECL_INITIAL (decl) != 0
 	    && TREE_ADDRESSABLE (decl))
 	  output_inline_function (decl);
+
+	/* Warn about any function declared static but not defined.  */
 	if (warn_unused
 	    && TREE_CODE (decl) == FUNCTION_DECL
 	    && DECL_INITIAL (decl) == 0
 	    && TREE_EXTERNAL (decl)
 	    && ! TREE_PUBLIC (decl))
 	  warning_with_decl (decl, "`%s' declared but never defined");
+	/* Warn about statics fns or vars defined but not used,
+	   but not about inline functions
+	   since unused inline statics is normal practice.  */
+	if (warn_unused
+	    && (TREE_CODE (decl) == FUNCTION_DECL
+		|| TREE_CODE (decl) == VAR_DECL)
+	    && ! TREE_EXTERNAL (decl)
+	    && ! TREE_PUBLIC (decl)
+	    && ! TREE_USED (decl)
+	    && ! TREE_INLINE (decl))
+	  warning_with_decl (decl, "`%s' defined but not used");
       }
   }
 
@@ -1689,6 +1726,24 @@ main (argc, argv, envp)
 	  extra_warnings = 1;
 	else if (!strcmp (str, "Wunused"))
 	  warn_unused = 1;
+	else if (!strcmp (str, "Wshadow"))
+	  warn_shadow = 1;
+	else if (!strcmp (str, "Wswitch"))
+	  warn_switch = 1;
+	else if (!strncmp (str, "Wid-clash-", 10))
+	  {
+	    char *endp = str + 10;
+
+	    while (*endp)
+	      {
+		if (*endp >= '0' && *endp <= '9')
+		  endp++;
+		else
+		  error ("Invalid option `%s'", argv[i]);
+	      }
+	    warn_id_clash = 1;
+	    id_clash_len = atoi (str + 10);
+	  }
 	else if (!strcmp (str, "p"))
 	  profile_flag = 1;
 	else if (!strcmp (str, "a"))

@@ -1,3 +1,10 @@
+0. Improved efficiency.
+
+* Parse and output array initializers an element at a time, freeing
+storage after each, instead of parsing the whole initializer first and
+then outputting.  This would reduce memory usage for large
+initializers.
+
 1. Better optimization.
 
 * Constants in unused inline functions
@@ -169,6 +176,13 @@ d0 can be a junk register.  The challenge is to fit this into
 a portable framework: when can you detect this situation and
 still be able to allocate a junk register?
 
+* For the 80387 floating point, perhaps it would be possible to use 3
+or 4 registers in the stack to hold register variables.  (It would be
+necessary to keep track of how those slots move in the stack as other
+pushes and pops are done.)  This is probably very tricky, but if
+you are a GCC wizard and you care about the speed of floating point on
+an 80386, you might want to work on it.
+
 2. Simpler porting.
 
 Right now, describing the target machine's instructions is done
@@ -278,20 +292,7 @@ of the text being divided up.
 
 JNC@lcs.mit.edu has some ideas on this subject also.
 
-6. Other possibly nice features.
-
-* cpp could have a #provide directive.
-#provide would have the same syntax as #include,
-and it would nullify any future #include directive
-with the same argument.  Thus, the file foo.h
-could contain #provide <foo> to prevent itself from
-being included twice.
-
-This is much cleaner than the alternative sometimes implemented,
-which is to require the user to use something other than #include
-in order to ensure inclusion only once.
-
-7. Better documentation of how GCC works and how to port it.
+6. Better documentation of how GCC works and how to port it.
 
 Here is an outline proposed by Allan Adler.
 

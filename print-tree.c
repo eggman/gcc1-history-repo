@@ -474,9 +474,9 @@ dump (node, indent)
 	{
 	  if (i >= first_rtl)
 	    {
-	      fprintf (outfile, "\n");
 	      skip (indent);
 	      print_rtl (outfile, TREE_OPERAND (node, i));
+	      fprintf (outfile, "\n");
 	    }
 	  else
 	    {
@@ -488,7 +488,7 @@ dump (node, indent)
       part ("chain", TREE_CHAIN (node));
       fputc ('\n', outfile);
       walk (TREE_TYPE (node), node, indent);
-      for (i = 0; i < len; i++)
+      for (i = 0; i < len && i < first_rtl; i++)
 	walk (TREE_OPERAND (node, i), node, indent);
       break;
 

@@ -269,18 +269,22 @@ typedef struct rtvec_def{
    The REG_WAS_0 note is actually an INSN_LIST, not an EXPR_LIST.
      REG_NONNEG means that the register is always nonnegative during
    the containing loop.  This is used in branches so that decrement and
-   branch instructions terminating on zero can be matched.
-     REG_ASM_LINE describes the source line number of an `asm' insn.
-     REG_ASM_FILE describes the source file name of an `asm' insn.  */
+   branch instructions terminating on zero can be matched.  */
 
 #define REG_NOTES(INSN)	((INSN)->fld[6].rtx)
 
+/* Don't forget to change reg_note_name in rtl.c.  */
 enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 		REG_EQUAL = 5, REG_RETVAL = 6, REG_LIBCALL = 7,
-		REG_NONNEG = 8, REG_ASM_LINE = 9, REG_ASM_FILE = 10 };
+		REG_NONNEG = 8 };
 
 /* Extract the reg-note kind from an EXPR_LIST.  */
 #define REG_NOTE_KIND(LINK) ((enum reg_note) GET_MODE (LINK))
+
+/* Names for REG_NOTE's in EXPR_LIST insn's.  */
+
+extern char *reg_note_name[];
+#define GET_REG_NOTE_NAME(MODE) (reg_note_name[(int)(MODE)])
 
 /* The label-number of a code-label.  The assembler label
    is made from `L' and the label-number printed in decimal.
@@ -315,12 +319,20 @@ enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 #define NOTE_INSN_FUNCTION_END -6
 /* This kind of note is generated just after each call to `setjmp', et al.  */
 #define NOTE_INSN_SETJMP -7
+/* Generated at the place in a loop that `continue' jumps to.  */
+#define NOTE_INSN_LOOP_CONT -8
+/* Don't forget to change note_insn_name in rtl.c.  */
 
 #define NOTE_DECL_NAME(INSN) ((INSN)->fld[3].rtstr)
 #define NOTE_DECL_CODE(INSN) ((INSN)->fld[4].rtint)
 #define NOTE_DECL_RTL(INSN) ((INSN)->fld[5].rtx)
 #define NOTE_DECL_IDENTIFIER(INSN) ((INSN)->fld[6].rtint)
 #define NOTE_DECL_TYPE(INSN) ((INSN)->fld[7].rtint)
+
+/* Names for NOTE insn's other than line numbers.  */
+
+extern char *note_insn_name[];
+#define GET_NOTE_INSN_NAME(NOTE_CODE) (note_insn_name[-(NOTE_CODE)])
 
 /* In jump.c, each label contains a count of the number
    of LABEL_REFs that point at it, so unused labels can be deleted.  */
@@ -369,6 +381,19 @@ enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 
 #define SUBREG_REG(RTX) ((RTX)->fld[0].rtx)
 #define SUBREG_WORD(RTX) ((RTX)->fld[1].rtint)
+
+/* Access various components of an ASM_OPERANDS rtx.  */
+
+#define ASM_OPERANDS_TEMPLATE(RTX) XSTR ((RTX), 0)
+#define ASM_OPERANDS_OUTPUT_CONSTRAINT(RTX) XSTR ((RTX), 1)
+#define ASM_OPERANDS_OUTPUT_IDX(RTX) XINT ((RTX), 2)
+#define ASM_OPERANDS_INPUT_VEC(RTX) XVEC ((RTX), 3)
+#define ASM_OPERANDS_INPUT_CONSTRAINT_VEC(RTX) XVEC ((RTX), 4)
+#define ASM_OPERANDS_INPUT(RTX, N) XVECEXP ((RTX), 3, (N))
+#define ASM_OPERANDS_INPUT_CONSTRAINT(RTX, N) XSTR (XVECEXP ((RTX), 4, (N)), 0)
+#define ASM_OPERANDS_INPUT_MODE(RTX, N) GET_MODE (XVECEXP ((RTX), 4, (N)))
+#define ASM_OPERANDS_SOURCE_FILE(RTX) XSTR ((RTX), 5)
+#define ASM_OPERANDS_SOURCE_LINE(RTX) XINT ((RTX), 6)
 
 /* For a MEM rtx, 1 if it's a volatile reference.
    Also in an ASM_OPERANDS rtx.  */
@@ -482,6 +507,14 @@ extern rtx const0_rtx;
 extern rtx const1_rtx;
 extern rtx fconst0_rtx;
 extern rtx dconst0_rtx;
+
+/* Returns a constant 0 rtx in mode MODE.  */
+
+#define CONST0_RTX(MODE) \
+ ((MODE == SFmode) ? fconst0_rtx			\
+  : ((MODE == DFmode) ? dconst0_rtx			\
+  : ((GET_MODE_CLASS (MODE) == MODE_INT) ? const0_rtx	\
+  : (rtx) abort ())))
 
 /* All references to certain hard regs, except those created
    by allocating pseudo regs into them (when that's possible),

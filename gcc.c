@@ -99,6 +99,9 @@ The conditional text X in a %{S:X} or %{!S:X} construct may contain
 other nested % constructs or spaces, or even newlines.
 They are processed as usual, as described above.
 
+The character | is used to indicate that a command should be piped to
+the following command, but only if -pipe is specified.
+
 Note that it is built into CC which switches take arguments and which
 do not.  You might think it would be useful to generalize this to
 allow each compiler's spec to say which switches take arguments.  But
@@ -108,12 +111,12 @@ take arguments, and it must know which input files to compile in order
 to tell which compilers to run.
 
 CC also knows implicitly that arguments starting in `-l' are to
-be treated as output files, and passed to the linker in their proper
+be treated as compiler output files, and passed to the linker in their proper
 position among the other output files.
 
 */
 
-/* This defines which switches take arguments.  */
+/* This defines which switch letters take arguments.  */
 
 #define SWITCH_TAKES_ARG(CHAR)      \
   ((CHAR) == 'D' || (CHAR) == 'U' || (CHAR) == 'o' \
@@ -121,10 +124,16 @@ position among the other output files.
    || (CHAR) == 'I' || (CHAR) == 'Y' || (CHAR) == 'm' \
    || (CHAR) == 'L')
 
+/* This defines which multi-letter switches take arguments.  */
+
+#define WORD_SWITCH_TAKES_ARG(STR) (!strcmp (STR, "Tdata"))
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/file.h>
+#include <varargs.h>
+
 #include "config.h"
 #include "obstack.h"
 
@@ -156,6 +165,8 @@ int do_spec ();
 int do_spec_1 ();
 char *find_file ();
 static char *find_exec_file ();
+void validate_switches ();
+void validate_all_switches ();
 
 /* config.h can define ASM_SPEC to provide extra args to the assembler
    or extra switch-translations.  */
@@ -214,10 +225,10 @@ struct compiler
 struct compiler compilers[] =
 {
   {".c",
-   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
-        -undef -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
+   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{trigraphs} -undef \
+        -D__GNUC__ %{ansi:-trigraphs -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
     %{!M*:%{!E:cc1 %{!pipe:%g.cpp} %1 \
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
@@ -226,13 +237,13 @@ struct compiler compilers[] =
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-                      %{!pipe:%g.s}\
-		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+                      %{!pipe:%g.s}\n }}}"},
   {".cc",
-   "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T}\
+   "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} \
         -undef -D__GNUC__ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
     %{!M*:%{!E:cc1plus %{!pipe:%g.cpp} %1\
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
@@ -241,26 +252,27 @@ struct compiler compilers[] =
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-                      %{!pipe:%g.s}\
-		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+                      %{!pipe:%g.s}\n }}}"},
   {".i",
    "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*} %{a}\
 	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 	%{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 	%{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
     %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-            %{!pipe:%g.s} %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
+            %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %{!pipe:%g.s}\n }"},
   {".s",
    "%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
-            %i %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }"},
+            %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %i\n }"},
   {".S",
-   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
+   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{trigraphs} \
         -undef -D__GNUC__ -$ %p %P\
         %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
         %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
-    %{!M*:%{!E:%{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{!pipe:%g.s} \
-                    %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+    %{!M*:%{!E:%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
+                    %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+		    %{!pipe:%g.s}\n }}}"},
   /* Mark end of table */
   {0, 0}
 };
@@ -293,50 +305,73 @@ struct temp_file
 {
   char *name;
   struct temp_file *next;
-  int success_only;		/* Nonzero means delete this file
-				   only if compilation succeeds fully.  */
-  int fail_only;		/* Nonzero means delete this file
-				   only if compilation fails.  */
 };
 
-struct temp_file *temp_file_queue;
+/* Queue of files to delete on success or failure of compilation.  */
+struct temp_file *always_delete_queue;
+/* Queue of files to delete on failure of compilation.  */
+struct temp_file *failure_delete_queue;
 
 /* Record FILENAME as a file to be deleted automatically.
-   SUCCESS_ONLY nonzero means delete it only if all compilation succeeds;
+   ALWAYS_DELETE nonzero means delete it if all compilation succeeds;
    otherwise delete it in any case.
-   FAIL_ONLY nonzero means delete it only if a compilation step fails;
+   FAIL_DELETE nonzero means delete it if a compilation step fails;
    otherwise delete it in any case.  */
 
 void
-record_temp_file (filename, success_only, fail_only)
+record_temp_file (filename, always_delete, fail_delete)
      char *filename;
-     int success_only;
-     int fail_only;
+     int always_delete;
+     int fail_delete;
 {
-  register struct temp_file *temp;
   register char *name;
-  temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
   name = (char *) xmalloc (strlen (filename) + 1);
   strcpy (name, filename);
-  temp->next = temp_file_queue;
-  temp->name = name;
-  temp->success_only = success_only;
-  temp->fail_only = fail_only;
-  temp_file_queue = temp;
+
+  if (always_delete)
+    {
+      register struct temp_file *temp;
+      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
+      temp->next = always_delete_queue;
+      temp->name = name;
+      always_delete_queue = temp;
+    }
+
+  if (fail_delete)
+    {
+      register struct temp_file *temp;
+      temp = (struct temp_file *) xmalloc (sizeof (struct temp_file));
+      temp->next = failure_delete_queue;
+      temp->name = name;
+      failure_delete_queue = temp;
+    }
 }
 
 /* Delete all the temporary files whose names we previously recorded.
-   SUCCESS nonzero means "delete on success only" files should be deleted.
-   When we use -pipe option, delete all tempoarry
-   without checking of success flag.  */
+   SUCCESS zero means "delete on failure only" files should be deleted.  */
 
 void
 delete_temp_files (success)
      int success;
 {
   register struct temp_file *temp;
-  for (temp = temp_file_queue; temp; temp = temp->next)
-    if (success ? !temp->fail_only : !temp->success_only)
+
+  for (temp = always_delete_queue; temp; temp = temp->next)
+    {
+#ifdef DEBUG
+      int i;
+      printf ("Delete %s? (y or n) ", temp->name);
+      fflush (stdout);
+      i = getchar ();
+      if (i != '\n')
+	while (getchar () != '\n') ;
+      if (i == 'y' || i == 'Y')
+#endif /* DEBUG */
+	unlink (temp->name);
+    }
+
+  if (! success)
+    for (temp = failure_delete_queue; temp; temp = temp->next)
       {
 #ifdef DEBUG
 	int i;
@@ -349,7 +384,15 @@ delete_temp_files (success)
 #endif /* DEBUG */
 	  unlink (temp->name);
       }
-  temp_file_queue = 0;
+
+  always_delete_queue = 0;
+  failure_delete_queue = 0;
+}
+
+void
+clear_failure_queue ()
+{
+  failure_delete_queue = 0;
 }
 
 /* Compute a string to use as the base of all temporary file names.
@@ -383,6 +426,10 @@ int argbuf_index;
 
 unsigned char vflag;
 
+/* Name with which this program was invoked.  */
+
+char *programname;
+
 /* User-specified -B prefix to attach to command names,
    or 0 if none specified.  */
 
@@ -403,11 +450,12 @@ char *standard_exec_prefix = STANDARD_EXEC_PREFIX;
 char *standard_exec_prefix_1 = "/usr/lib/gcc-";
 
 #ifndef STANDARD_STARTFILE_PREFIX
-#define STANDARD_STARTFILE_PREFIX "/lib/"
+#define STANDARD_STARTFILE_PREFIX "/usr/local/lib/"
 #endif /* !defined STANDARD_STARTFILE_PREFIX */
 
 char *standard_startfile_prefix = STANDARD_STARTFILE_PREFIX;
-char *standard_startfile_prefix_1 = "/usr/lib/";
+char *standard_startfile_prefix_1 = "/lib/";
+char *standard_startfile_prefix_2 = "/usr/lib/";
 
 /* Clear out the vector of arguments (after a command is executed).  */
 
@@ -419,17 +467,15 @@ clear_args ()
 
 /* Add one argument to the vector at the end.
    This is done when a space is seen or at the end of the line.
-   If TEMPNAMEP is nonzero, this arg is a file that should be deleted
-   at the end of compilation.
-   If TEMPNAMEP is 2, delete the file
-   only if compilation is fully successful.
-   If TEMPNAMEP is 3, delete the file
-   only if a compilation step fails.  */
+   If DELETE_ALWAYS is nonzero, the arg is a filename
+    and the file should be deleted eventually.
+   If DELETE_FAILURE is nonzero, the arg is a filename
+    and the file should be deleted if this compilation fails.  */
 
 void
-store_arg (arg, tempnamep)
+store_arg (arg, delete_always, delete_failure)
      char *arg;
-     int tempnamep;
+     int delete_always, delete_failure;
 {
   if (argbuf_index + 1 == argbuf_length)
     {
@@ -439,8 +485,8 @@ store_arg (arg, tempnamep)
   argbuf[argbuf_index++] = arg;
   argbuf[argbuf_index] = 0;
 
-  if (tempnamep)
-    record_temp_file (arg, tempnamep == 2, tempnamep == 3);
+  if (delete_always || delete_failure)
+    record_temp_file (arg, delete_always, delete_failure);
 }
 
 /* Search for an execute file through our search path.
@@ -577,6 +623,7 @@ pexecute (func, program, argv, not_last)
 
       /* Exec the program.  */
       (*func) (program, argv);
+      perror_exec (program);
       exit (-1);
       /* NOTREACHED */
 
@@ -730,12 +777,15 @@ execute ()
    and make a vector describing them.
    The elements of the vector a strings, one per switch given.
    If a switch uses the following argument, then the `part1' field
-   is the switch itself and the `part2' field is the following argument.  */
+   is the switch itself and the `part2' field is the following argument.
+   The `valid' field is nonzero if any spec has looked at this switch;
+   if it remains zero at the end of the run, it must be meaningless.  */
 
 struct switchstr
 {
   char *part1;
   char *part2;
+  int valid;
 };
 
 struct switchstr *switches;
@@ -751,27 +801,6 @@ int n_infiles;
 /* And a vector of corresponding output files is made up later.  */
 
 char **outfiles;
-
-char *
-make_switch (p1, s1, p2, s2)
-     char *p1;
-     int s1;
-     char *p2;
-     int s2;
-{
-  register char *new;
-  if (p2 && s2 == 0)
-    s2 = strlen (p2);
-  new = (char *) xmalloc (s1 + s2 + 2);
-  bcopy (p1, new, s1);
-  if (p2)
-    {
-      new[s1++] = ' ';
-      bcopy (p2, new + s1, s2);
-    }
-  new[s1 + s2] = 0;
-  return new;
-}
 
 /* Create the vector `switches' and its contents.
    Store its length in `n_switches'.  */
@@ -815,6 +844,8 @@ process_command (argc, argv)
 
 	      if (SWITCH_TAKES_ARG (c) && p[1] == 0)
 		i++;
+	      else if (WORD_SWITCH_TAKES_ARG (p))
+		i++;
 	    }
 	}
       else
@@ -843,10 +874,12 @@ process_command (argc, argv)
 	  if (c == 'B')
 	    continue;
 	  switches[n_switches].part1 = p;
-	  if (SWITCH_TAKES_ARG (c) && p[1] == 0)
+	  if ((SWITCH_TAKES_ARG (c) && p[1] == 0)
+	      || WORD_SWITCH_TAKES_ARG (p))
 	    switches[n_switches].part2 = argv[++i];
 	  else
 	    switches[n_switches].part2 = 0;
+	  switches[n_switches].valid = 0;
 	  n_switches++;
 	}
       else
@@ -957,10 +990,7 @@ do_spec_1 (spec, inswitch)
 	    string = obstack_finish (&obstack);
 	    if (this_is_library_file)
 	      string = find_file (string);
-	    if (this_is_output_file)
-	      store_arg (string, 3);
-	    else
-	      store_arg (string, delete_this_arg);
+	    store_arg (string, delete_this_arg, this_is_output_file);
 	    if (this_is_output_file)
 	      outfiles[input_file_number] = string;
 	  }
@@ -977,7 +1007,10 @@ do_spec_1 (spec, inswitch)
 	       but only if -pipe was specified.
 	       Otherwise, execute now and don't pass the `|' as an arg.  */
 	    if (i < n_switches)
-	      break;
+	      {
+		switches[i].valid = 1;
+		break;
+	      }
 	    else
 	      argbuf_index--;
 	  }
@@ -1004,10 +1037,7 @@ do_spec_1 (spec, inswitch)
 	    string = obstack_finish (&obstack);
 	    if (this_is_library_file)
 	      string = find_file (string);
-	    if (this_is_output_file)
-	      store_arg (string, 3);
-	    else
-	      store_arg (string, delete_this_arg);
+	    store_arg (string, delete_this_arg, this_is_output_file);
 	    if (this_is_output_file)
 	      outfiles[input_file_number] = string;
 	  }
@@ -1026,10 +1056,7 @@ do_spec_1 (spec, inswitch)
 	    string = obstack_finish (&obstack);
 	    if (this_is_library_file)
 	      string = find_file (string);
-	    if (this_is_output_file)
-	      store_arg (string, 3);
-	    else
-	      store_arg (string, delete_this_arg);
+	    store_arg (string, delete_this_arg, this_is_output_file);
 	    if (this_is_output_file)
 	      outfiles[input_file_number] = string;
 	  }
@@ -1084,7 +1111,7 @@ do_spec_1 (spec, inswitch)
 	    {
 	      register int f;
 	      for (f = 0; f < n_infiles; f++)
-		store_arg (outfiles[f], 0);
+		store_arg (outfiles[f], 0, 0);
 	    }
 	    break;
 
@@ -1239,9 +1266,7 @@ handle_braces (p)
       --p;
       for (i = 0; i < n_switches; i++)
 	if (!strncmp (switches[i].part1, filter, p - filter))
-	  {
-	    give_switch (i);
-	  }
+	  give_switch (i);
     }
   else
     {
@@ -1257,8 +1282,8 @@ handle_braces (p)
 	    {
 	      if (!strncmp (switches[i].part1, filter, p - filter - 1))
 		{
+		  switches[i].valid = 1;
 		  present = 1;
-		  break;
 		}
 	    }
 	}
@@ -1270,6 +1295,7 @@ handle_braces (p)
 	      if (!strncmp (switches[i].part1, filter, p - filter)
 		  && switches[i].part1[p - filter] == 0)
 		{
+		  switches[i].valid = 1;
 		  present = 1;
 		  break;
 		}
@@ -1319,6 +1345,7 @@ give_switch (switchnum)
       do_spec_1 (switches[switchnum].part2, 1);
       do_spec_1 (" ", 0);
     }
+  switches[switchnum].valid = 1;
 }
 
 /* Search for a file named NAME trying various prefixes including the
@@ -1340,12 +1367,16 @@ find_file (name)
     size = strlen (user_exec_prefix);
   if (env_exec_prefix != 0 && strlen (env_exec_prefix) > size)
     size = strlen (env_exec_prefix);
+  if (strlen (standard_exec_prefix) > size)
+    size = strlen (standard_exec_prefix);
   if (strlen (standard_exec_prefix_1) > size)
     size = strlen (standard_exec_prefix_1);
   if (strlen (standard_startfile_prefix) > size)
     size = strlen (standard_startfile_prefix);
   if (strlen (standard_startfile_prefix_1) > size)
     size = strlen (standard_startfile_prefix_1);
+  if (strlen (standard_startfile_prefix_2) > size)
+    size = strlen (standard_startfile_prefix_2);
   size += strlen (name) + 1;
 
   temp = (char *) alloca (size);
@@ -1394,6 +1425,13 @@ find_file (name)
 
   if (!win)
     {
+      strcpy (temp, standard_startfile_prefix_2);
+      strcat (temp, name);
+      win = (access (temp, R_OK) == 0);
+    }
+
+  if (!win)
+    {
       strcpy (temp, "./");
       strcat (temp, name);
       win = (access (temp, R_OK) == 0);
@@ -1404,10 +1442,6 @@ find_file (name)
   return name;
 }
 
-/* Name with which this program was invoked.  */
-
-char *programname;
-
 /* On fatal signals, delete all the temporary files.  */
 
 void
@@ -1520,6 +1554,10 @@ main (argc, argv)
 	  error ("%s: linker input file unused since linking not done",
 		 input_filename);
 	}
+
+      /* Failure of one compilation should not delete the delete-on-failure
+	 files of previous compilations.  */
+      clear_failure_queue ();
     }
 
   /* Run ld to link all the compiler output files.  */
@@ -1530,6 +1568,16 @@ main (argc, argv)
       if (value < 0)
 	error_count = 1;
     }
+
+  /* Set the `valid' bits for switches that match anything in any spec.  */
+
+  validate_all_switches ();
+
+  /* Warn about any switches that no pass was interested in.  */
+  
+  for (i = 0; i < n_switches; i++)
+    if (! switches[i].valid)
+      error ("unrecognized option `-%s'", switches[i].part1);
 
   /* Delete some or all of the temporary files we made.  */
 
@@ -1554,22 +1602,6 @@ xrealloc (ptr, size)
   if (value == 0)
     fatal ("Virtual memory full.");
   return value;
-}
-
-fatal (msg, arg1, arg2)
-     char *msg, *arg1, *arg2;
-{
-  error (msg, arg1, arg2);
-  delete_temp_files (0);
-  exit (1);
-}
-
-error (msg, arg1, arg2)
-     char *msg, *arg1, *arg2;
-{
-  fprintf (stderr, "%s: ", programname);
-  fprintf (stderr, msg, arg1, arg2);
-  fprintf (stderr, "\n");
 }
 
 /* Return a newly-allocated string whose contents concatenate those of s1, s2, s3.  */
@@ -1609,7 +1641,7 @@ pfatal_with_name (name)
   char *s;
 
   if (errno < sys_nerr)
-    s = concat ("", sys_errlist[errno], " for %s");
+    s = concat ("%s: ", sys_errlist[errno], "");
   else
     s = "cannot open %s";
   fatal (s, name);
@@ -1623,8 +1655,142 @@ perror_with_name (name)
   char *s;
 
   if (errno < sys_nerr)
-    s = concat ("", sys_errlist[errno], " for %s");
+    s = concat ("%s: ", sys_errlist[errno], "");
   else
     s = "cannot open %s";
   error (s, name);
+}
+
+perror_exec (name)
+     char *name;
+{
+  extern int errno, sys_nerr;
+  extern char *sys_errlist[];
+  char *s;
+
+  if (errno < sys_nerr)
+    s = concat ("installation problem, cannot exec %s: ",
+		sys_errlist[errno], "");
+  else
+    s = "installation problem, cannot exec %s";
+  error (s, name);
+}
+
+#ifdef HAVE_VPRINTF
+
+/* Output an error message and exit */
+
+int 
+fatal (va_alist)
+     va_dcl
+{
+  va_list ap;
+  char *format;
+  
+  va_start(ap);
+  format = va_arg (ap, char *);
+  vfprintf (stderr, format, ap);
+  va_end (ap);
+  fprintf (stderr, "\n");
+  delete_temp_files (0);
+  exit (1);
+}  
+
+error (va_alist) 
+     va_dcl
+{
+  va_list ap;
+  char *format;
+
+  va_start(ap);
+  format = va_arg (ap, char *);
+  fprintf (stderr, "%s: ", programname);
+  vfprintf (stderr, format, ap);
+  va_end (ap);
+
+  fprintf (stderr, "\n");
+}
+
+#else /* not HAVE_VPRINTF */
+
+fatal (msg, arg1, arg2)
+     char *msg, *arg1, *arg2;
+{
+  error (msg, arg1, arg2);
+  delete_temp_files (0);
+  exit (1);
+}
+
+error (msg, arg1, arg2)
+     char *msg, *arg1, *arg2;
+{
+  fprintf (stderr, "%s: ", programname);
+  fprintf (stderr, msg, arg1, arg2);
+  fprintf (stderr, "\n");
+}
+
+#endif /* not HAVE_VPRINTF */
+
+
+void
+validate_all_switches ()
+{
+  struct compiler *comp;
+  register char *p;
+  register char c;
+
+  for (comp = compilers; comp->spec; comp++)
+    {
+      p = comp->spec;
+      while (c = *p++)
+	if (c == '%' && *p == '{')
+	  /* We have a switch spec.  */
+	  validate_switches (p + 1);
+    }
+
+  p = link_spec;
+  while (c = *p++)
+    if (c == '%' && *p == '{')
+      /* We have a switch spec.  */
+      validate_switches (p + 1);
+}
+
+/* Look at the switch-name that comes after START
+   and mark as valid all supplied switches that match it.  */
+
+void
+validate_switches (start)
+     char *start;
+{
+  register char *p = start;
+  char *filter;
+  register int i;
+
+  if (*p == '|')
+    ++p;
+
+  if (*p == '!')
+    ++p;
+
+  filter = p;
+  while (*p != ':' && *p != '}') p++;
+
+  if (p[-1] == '*')
+    {
+      /* Mark all matching switches as valid.  */
+      --p;
+      for (i = 0; i < n_switches; i++)
+	if (!strncmp (switches[i].part1, filter, p - filter))
+	  switches[i].valid = 1;
+    }
+  else
+    {
+      /* Mark an exact matching switch as valid.  */
+      for (i = 0; i < n_switches; i++)
+	{
+	  if (!strncmp (switches[i].part1, filter, p - filter)
+	      && switches[i].part1[p - filter] == 0)
+	    switches[i].valid = 1;
+	}
+    }
 }

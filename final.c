@@ -104,10 +104,6 @@ static rtx this_is_asm_operands;
 /* Number of operands of this insn, for an `asm' with operands.  */
 static int insn_noperands;
 
-/* Indexed by hard register, the name of the register for assembler code.  */
-
-static char *reg_name[] = REGISTER_NAMES;
-
 /* File in which assembler code is being written.  */
 
 extern FILE *asm_out_file;
@@ -1051,6 +1047,7 @@ alter_subreg (x)
 		 - min (UNITS_PER_WORD, GET_MODE_SIZE (GET_MODE (y))));
 #endif
       PUT_CODE (x, MEM);
+      MEM_VOLATILE_P (x) = MEM_VOLATILE_P (y);
       XEXP (x, 0) = plus_constant (XEXP (y, 0), offset);
     }
   else if (GET_CODE (y) == CONST_DOUBLE)
@@ -1319,8 +1316,9 @@ output_asm_insn (template, operands)
 	      int letter = *p++;
 	      c = atoi (p);
 
-	      if (this_is_asm_operands
-		  && c >= (unsigned) insn_noperands && *p >= '0' && *p <= '9')
+	      if (! (*p >= '0' && *p <= '9'))
+		output_operand_lossage ("operand number missing after %-letter");
+	      else if (this_is_asm_operands && c >= (unsigned) insn_noperands)
 		output_operand_lossage ("operand number out of range");
 	      else if (letter == 'l')
 		output_asm_label (operands[c]);
@@ -1343,11 +1341,8 @@ output_asm_insn (template, operands)
 		      output_addr_const (asm_out_file, operands[c]);
 		    }
 		}
-	      else if (*p >= '0' && *p <= '9')
-		output_operand (operands[c], letter);
 	      else
-		/* No operand-number follows the letter.  */
-		output_operand (0, letter);
+		output_operand (operands[c], letter);
 
 	      while ((c = *p) >= '0' && c <= '9') p++;
 	    }

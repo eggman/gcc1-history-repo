@@ -453,6 +453,30 @@ try_combine (i3, i2, i1)
 	return 0;
     }
 
+  /* If I2 contains anything volatile, reject, unless nothing
+     volatile comes between it and I3.  */
+  if (volatile_refs_p (PATTERN (i2)))
+    {
+      rtx insn;
+      for (insn = NEXT_INSN (i2); insn != i3; insn = NEXT_INSN (insn))
+	if (GET_CODE (insn) == INSN || GET_CODE (insn) == CALL_INSN
+	    || GET_CODE (insn) == JUMP_INSN)
+	  if (volatile_refs_p (PATTERN (insn)))
+	    return 0;
+    }
+  /* Likewise for I1; nothing volatile can come between it and I3,
+     except optionally I2.  */
+  if (i1 && volatile_refs_p (PATTERN (i1)))
+    {
+      rtx insn;
+      rtx end = (volatile_refs_p (PATTERN (i2)) ? i2 : i3);
+      for (insn = NEXT_INSN (i1); insn != end; insn = NEXT_INSN (insn))
+	if (GET_CODE (insn) == INSN || GET_CODE (insn) == CALL_INSN
+	    || GET_CODE (insn) == JUMP_INSN)
+	  if (volatile_refs_p (PATTERN (insn)))
+	    return 0;
+    }
+
   /* If I1 or I2 contains an autoincrement or autodecrement,
      make sure that register is not used between there and I3,
      and not already used in I3 either.
@@ -887,12 +911,28 @@ subst (x, from, to)
 	  if (SUBREG_WORD (to) != 0)
 	    SUBST_INT (SUBREG_WORD (x), SUBREG_WORD (x) + SUBREG_WORD (to));
 	}
-      /* (subreg (sign_extend X)) is X, if it has same mode as X.  */
       if (SUBREG_REG (x) == to
 	  && (GET_CODE (to) == SIGN_EXTEND || GET_CODE (to) == ZERO_EXTEND)
-	  && SUBREG_WORD (x) == 0
-	  && GET_MODE (x) == GET_MODE (XEXP (to, 0)))
-	return XEXP (to, 0);
+	  && subreg_lowpart_p (x))
+	{
+	  /* (subreg (sign_extend X)) is X, if it has same mode as X.  */
+	  if (GET_MODE (x) == GET_MODE (XEXP (to, 0)))
+	    return XEXP (to, 0);
+	  /* (subreg (sign_extend X)), if it has a mode wider than X,
+	     can be done with (sign_extend X).  */
+	  if (GET_MODE_SIZE (GET_MODE (x)) > GET_MODE_SIZE (GET_MODE (XEXP (to, 0))))
+	    {
+	      if (!undobuf.storage)
+		undobuf.storage = (char *) oballoc (0);
+	      return gen_rtx (GET_CODE (to), GET_MODE (x), XEXP (to, 0));
+	    }
+	  /* Extend and then truncate smaller than it was to start with:
+	     no need to extend.  */
+	  if (GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (GET_MODE (XEXP (to, 0))))
+	    {
+	      SUBST (XEXP (x, 0), XEXP (to, 0));
+	    }
+	}
       /* (subreg:A (mem:B X) N) becomes a modified MEM.
 	 This avoids producing any (subreg (mem))s except in the special
 	 paradoxical case where gen_lowpart_for_combine makes them.  */
@@ -929,8 +969,8 @@ subst (x, from, to)
 	}
       /* Don't let substitution introduce double-negatives.  */
       if (was_replaced[0]
-          && GET_CODE (to) == code)
-        return XEXP (to, 0);
+	  && GET_CODE (to) == code)
+	return XEXP (to, 0);
       break;
 
     case NEG:
@@ -939,8 +979,8 @@ subst (x, from, to)
 	{
 	  if (!undobuf.storage)
 	    undobuf.storage = (char *) oballoc (0);
-          return gen_rtx (MINUS, GET_MODE (to),
-                          XEXP (to, 1), XEXP (to, 0));
+	  return gen_rtx (MINUS, GET_MODE (to),
+			  XEXP (to, 1), XEXP (to, 0));
 	}
       /* Don't let substitution introduce double-negatives.  */
       if (was_replaced[0]
@@ -1281,7 +1321,7 @@ subst (x, from, to)
 	  SUBST (XEXP (x, 1), XEXP (to, 0));
 	} 
       /* In (set (zero-extract <x> <n> <y>)
-	         (subreg (and <foo> <(2**n-1) | anything>)))
+		 (subreg (and <foo> <(2**n-1) | anything>)))
 	 the `and' can be deleted.  */
       if (GET_CODE (XEXP (x, 0)) == ZERO_EXTRACT
 	  && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT
@@ -1305,14 +1345,21 @@ subst (x, from, to)
 	      || GET_CODE (XEXP (x, 1)) == XOR)
 	  && rtx_equal_p (XEXP (x, 0), XEXP (XEXP (x, 1), 0))
 	  && GET_CODE (XEXP (XEXP (x, 1), 0)) == GET_CODE (XEXP (x, 0))
-	  && GET_CODE (XEXP (XEXP (x, 1), 1)) == CONST_INT)
+	  && GET_CODE (XEXP (XEXP (x, 1), 1)) == CONST_INT
+	  /* zero_extract can apply to a QImode even if the bits extracted
+	     don't fit inside that byte.  In such a case, we may not do this
+	     optimization, since the OR or AND insn really would need
+	     to fit in a byte.  */
+	  && (INTVAL (XEXP (XEXP (x, 0), 1)) + INTVAL (XEXP (XEXP (x, 0), 2))
+	      < GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))))
 	{
+	  int shiftcount;
 #ifdef BITS_BIG_ENDIAN
-	  int shiftcount
+	  shiftcount
 	    = GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))
 	      - INTVAL (XEXP (XEXP (x, 0), 1)) - INTVAL (XEXP (XEXP (x, 0), 2));
 #else
-	  int shiftcount
+	  shiftcount
 	    = INTVAL (XEXP (XEXP (x, 0), 2));
 #endif
 	  if (!undobuf.storage)
@@ -1356,6 +1403,26 @@ subst (x, from, to)
 	    return tem;
 	}
       break;
+
+    case IOR:
+    case XOR:
+      /* (ior (ior x c1) c2) => (ior x c1|c2); likewise for xor.  */
+      if (GET_CODE (XEXP (x, 1)) == CONST_INT
+	  && GET_CODE (XEXP (x, 0)) == code
+	  && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT)
+	{
+	  int c0 = INTVAL (XEXP (x, 1));
+	  int c1 = INTVAL (XEXP (XEXP (x, 0), 1));
+	  int combined = (code == IOR ? c0 | c1 : c0 ^ c1);
+
+	  if (combined == 0)
+	    return XEXP (XEXP (x, 0), 0);
+	  if (!undobuf.storage)
+	    undobuf.storage = (char *) oballoc (0);
+	  SUBST (XEXP (x, 1), gen_rtx (CONST_INT, VOIDmode, combined));
+	  SUBST (XEXP (x, 0), XEXP (XEXP (x, 0), 0));
+	  break;
+	}
 
     case FLOAT:
       /* (float (sign_extend <X>)) = (float <X>).  */
@@ -2399,13 +2466,13 @@ try_distrib (insn, xprev1, xprev2)
 
   switch (GET_CODE (src1))
     {
+    /* case XOR:  Does not distribute through anything!  */
     case LSHIFTRT:
     case ASHIFTRT:
       /* Right-shift can't distribute through addition
 	 since the round-off would happen differently.  */
     case AND:
     case IOR:
-    case XOR:
       /* Boolean ops don't distribute through addition.  */
       if (code == PLUS)
 	return 0;

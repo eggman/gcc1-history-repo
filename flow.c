@@ -768,6 +768,9 @@ life_analysis (f, nregs)
 		      |= basic_block_live_at_start[i][j];
 		}
 	  }
+#ifdef USE_C_ALLOCA
+	  alloca (0);
+#endif
 	}
       first_pass = 0;
     }
@@ -799,6 +802,9 @@ life_analysis (f, nregs)
     {
       propagate_block (basic_block_live_at_end[i],
 		       basic_block_head[i], basic_block_end[i], 1, 0, i);
+#ifdef USE_C_ALLOCA
+      alloca (0);
+#endif
     }
 }
 
@@ -1316,18 +1322,24 @@ mark_set_1 (needed, dead, x, insn, significant)
 {
   register int regno;
   register rtx reg = SET_DEST (x);
+  int subreg_p = 0;
 
   if (reg == 0)
     return;
 
-  if (GET_CODE (reg) == SUBREG)
+  if (GET_CODE (reg) == STRICT_LOW_PART)
+    reg = XEXP (reg, 0);
+
+  if (GET_CODE (reg) == SUBREG || GET_CODE (reg) == ZERO_EXTRACT
+      || GET_CODE (reg) == SIGN_EXTRACT)
     {
-      /* Modifying just one hardware register
-	 of a multi-register value does not count as "setting"
-	 for live-dead analysis.  Parts of the previous value
-	 might still be significant below this insn.  */
+      /* Modifying just one hardware register of a multi-reg value
+	 or just a byte field of a register
+	 does not mean the value from before this insn is now dead.
+	 But it does mean liveness of that register at the end of the block
+	 is significant.  */
       if (REG_SIZE (SUBREG_REG (reg)) > REG_SIZE (reg))
-	return;
+	subreg_p = 1;
 
       reg = SUBREG_REG (reg);
     }
@@ -1342,11 +1354,15 @@ mark_set_1 (needed, dead, x, insn, significant)
       register int bit = 1 << (regno % REGSET_ELT_BITS);
       int is_needed = 0;
 
-      /* Mark the reg being set as dead before this insn.  */
-      dead[offset] |= bit;
       /* Mark it as a significant register for this basic block.  */
       if (significant)
 	significant[offset] |= bit;
+      /* That's all we do, if we are setting only part of the register.  */
+      if (subreg_p)
+	return;
+
+      /* If entire register being set, mark it as as dead before this insn.  */
+      dead[offset] |= bit;
       /* A hard reg in a wide mode may really be multiple registers.
 	 If so, mark all of them just like the first.  */
       if (regno < FIRST_PSEUDO_REGISTER)

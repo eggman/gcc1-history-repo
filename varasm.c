@@ -212,13 +212,10 @@ make_decl_rtl (decl, asmspec, top_level)
 	 Also handle vars declared register invalidly.  */
       if (DECL_RTL (decl) == 0)
 	{
-	  if (DECL_RTL (decl) && asmspec == 0)
-	    name = XSTR (XEXP (DECL_RTL (decl), 0), 0);
-
 	  /* Can't use just the variable's own name for a variable
 	     whose scope is less than the whole file.
 	     Concatenate a distinguishing number.  */
-	  else if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
+	  if (!top_level && !TREE_EXTERNAL (decl) && asmspec == 0)
 	    {
 	      char *label;
 
@@ -466,11 +463,15 @@ assemble_variable (decl, top_level, write_symbols, at_end)
       int size = (TREE_INT_CST_LOW (DECL_SIZE (decl))
 		  * DECL_SIZE_UNIT (decl)
 		  / BITS_PER_UNIT);
+      int rounded = size;
+      /* Don't allocate zero bytes of common,
+	 since that means "undefined external" in the linker.  */
+      if (size == 0) rounded = 1;
       /* Round size up to multiple of BIGGEST_ALIGNMENT bits
 	 so that each uninitialized object starts on such a boundary.  */
-      int rounded = ((size + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
-		     / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
-		     * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
+      rounded = ((rounded + (BIGGEST_ALIGNMENT / BITS_PER_UNIT) - 1)
+		 / (BIGGEST_ALIGNMENT / BITS_PER_UNIT)
+		 * (BIGGEST_ALIGNMENT / BITS_PER_UNIT));
       if (flag_shared_data)
 	data_section ();
       if (TREE_PUBLIC (decl))
@@ -1431,6 +1432,9 @@ force_const_mem (mode, x)
 	  switch (mode)
 	    {
 	    case DImode:
+#ifdef ASM_OUTPUT_DOUBLE_INT
+	      ASM_OUTPUT_DOUBLE_INT (asm_out_file, u.i[0], u.i[1]);
+#else /* no ASM_OUTPUT_DOUBLE_INT */
 #ifndef WORDS_BIG_ENDIAN
 	      /* Output two ints.  */
 	      ASM_OUTPUT_INT (asm_out_file,
@@ -1443,7 +1447,8 @@ force_const_mem (mode, x)
 			      gen_rtx (CONST_INT, VOIDmode, u.i[1]));
 	      ASM_OUTPUT_INT (asm_out_file,
 			      gen_rtx (CONST_INT, VOIDmode, u.i[0]));
-#endif
+#endif /* WORDS_BIG_ENDIAN */
+#endif /* no ASM_OUTPUT_DOUBLE_INT */
 	      break;
 
 	    case DFmode:
@@ -1581,6 +1586,12 @@ output_constant (exp, size)
 
   if (size == 0)
     return;
+
+  /* Eliminate the NOP_EXPR that makes a cast not be an lvalue.
+     That way we get the constant (we hope) inside it.  */
+  if (TREE_CODE (exp) == NOP_EXPR
+      && TREE_TYPE (exp) == TREE_TYPE (TREE_OPERAND (exp, 0)))
+    exp = TREE_OPERAND (exp, 0);
 
   switch (code)
     {
@@ -1728,6 +1739,13 @@ output_constructor (exp, size)
        link = TREE_CHAIN (link),
        field = field ? TREE_CHAIN (field) : 0)
     {
+      tree val = TREE_VALUE (link);
+
+      /* Eliminate the NOP_EXPR that makes a cast not be an lvalue.  */
+      if (TREE_CODE (val) == NOP_EXPR
+	  && TREE_TYPE (val) == TREE_TYPE (TREE_OPERAND (val, 0)))
+	val = TREE_OPERAND (val, 0);
+
       if (field == 0
 	  || (DECL_MODE (field) != BImode))
 	{
@@ -1765,12 +1783,12 @@ output_constructor (exp, size)
 	  else
 	    fieldsize = int_size_in_bytes (TREE_TYPE (TREE_TYPE (exp)));
 
-	  output_constant (TREE_VALUE (link), fieldsize);
+	  output_constant (val, fieldsize);
 
 	  /* Count its size.  */
 	  total_bytes += fieldsize;
 	}
-      else if (TREE_CODE (TREE_VALUE (link)) != INTEGER_CST)
+      else if (TREE_CODE (val) != INTEGER_CST)
 	error ("invalid initial value for member `%s'",
 	       IDENTIFIER_POINTER (DECL_NAME (field)));
       else
@@ -1817,7 +1835,7 @@ output_constructor (exp, size)
 	      /* On big-endian machine, take the most significant bits
 		 first (of the bits that are significant)
 		 and put them into bytes from the most significant end.  */
-	      byte |= (((TREE_INT_CST_LOW (TREE_VALUE (link))
+	      byte |= (((TREE_INT_CST_LOW (val)
 			 >> (end_offset - next_offset - this_time))
 			& ((1 << this_time) - 1))
 		       << (BITS_PER_UNIT - this_time - next_bit));
@@ -1826,7 +1844,7 @@ output_constructor (exp, size)
 		 take first the least significant bits of the value
 		 and pack them starting at the least significant
 		 bits of the bytes.  */
-	      byte |= ((TREE_INT_CST_LOW (TREE_VALUE (link))
+	      byte |= ((TREE_INT_CST_LOW (val)
 			>> (next_offset - DECL_OFFSET (field)))
 		       & ((1 << this_time) - 1)) << next_bit;
 #endif

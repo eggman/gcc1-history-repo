@@ -214,7 +214,7 @@ DEF_RTL_EXPR(CODE_LABEL, "code_label", "iuui0")
       are really changed to NOTEs with a number of -1.
    -2 means beginning of a name binding contour; output N_LBRAC.
    -3 means end of a contour; output N_RBRAC.  */
-DEF_RTL_EXPR(NOTE, "note", "iuusi")
+DEF_RTL_EXPR(NOTE, "note", "iuusn")
 
 /* INLINE_HEADER is use by inline function machinery.  The information
    it contains helps to build the mapping function between the rtx's of
@@ -246,8 +246,10 @@ DEF_RTL_EXPR(ASM_INPUT, "asm_input", "s")
    4th is a vector of values of input operands.
    5th is a vector of modes and constraints for the input operands.
      Each element is an ASM_INPUT containing a constraint string
-     and whose mode indicates the mode of the input operand.  */
-DEF_RTL_EXPR(ASM_OPERANDS, "asm_operands", "ssiEE")
+     and whose mode indicates the mode of the input operand.
+   6th is the name of the containing source file.
+   7th is the source line number.  */
+DEF_RTL_EXPR(ASM_OPERANDS, "asm_operands", "ssiEEsi")
 
 /* Vector of addresses, stored as full words.  */
 /* Each element is a LABEL_REF to a CODE_LABEL whose address we want.  */

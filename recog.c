@@ -29,6 +29,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
 static int inequality_comparisons_p ();
+int strict_memory_address_p ();
+int memory_address_p ();
 
 /* Nonzero means allow operands to be volatile.
    This is 1 if you use recog_memoized, 0 if you don't.
@@ -318,10 +320,9 @@ nonmemory_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  if (CONSTANT_P (op)
-      || (GET_CODE (op) == CONST_DOUBLE
-	  && (GET_MODE (op) == mode || mode == VOIDmode)))
-    return LEGITIMATE_CONSTANT_P (op);
+  if (CONSTANT_P (op) || GET_CODE (op) == CONST_DOUBLE)
+    return ((GET_MODE (op) == VOIDmode || GET_MODE (op) == mode)
+	    && LEGITIMATE_CONSTANT_P (op));
 
   if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
@@ -705,14 +706,17 @@ find_constant_term_loc (p)
    of a positive integer less than the
    size of the object being referenced.
 
-   We assume that the original address is valid and do not check it.  */
+   We assume that the original address is valid and do not check it.
+
+   This uses strict_memory_address_p as a subroutine, so
+   don't use it before reload.  */
 
 int
 offsetable_memref_p (op)
      rtx op;
 {
   return ((GET_CODE (op) == MEM)
-	  && offsetable_address_p (GET_MODE (op), XEXP (op, 0)));
+	  && offsetable_address_p (1, GET_MODE (op), XEXP (op, 0)));
 }
 
 /* Return 1 if Y is a memory address which contains no side effects
@@ -721,10 +725,13 @@ offsetable_memref_p (op)
    size of that mode.
 
    We assume that the original address is valid and do not check it.
-   We require a strictly valid address, for the sake of use in reload.c.  */
+
+   If STRICTP is nonzero, we require a strictly valid address,
+   for the sake of use in reload.c.  */
 
 int
-offsetable_address_p (mode, y)
+offsetable_address_p (strictp, mode, y)
+     int strictp;
      enum machine_mode mode;
      register rtx y;
 {
@@ -732,6 +739,7 @@ offsetable_address_p (mode, y)
   register rtx z;
   rtx y1 = y;
   rtx *y2;
+  int (*addressp) () = (strictp ? strict_memory_address_p : memory_address_p);
 
   if (CONSTANT_ADDRESS_P (y))
     return 1;
@@ -744,7 +752,7 @@ offsetable_address_p (mode, y)
       int old = INTVAL (y1 = *y2);
       int good;
       INTVAL (y1) += GET_MODE_SIZE (mode) - 1;
-      good = strict_memory_address_p (mode, y);
+      good = (*addressp) (mode, y);
       /* In any case, restore old contents of memory.  */
       INTVAL (y1) = old;
       return good;
@@ -761,7 +769,7 @@ offsetable_address_p (mode, y)
 
   z = plus_constant (y, GET_MODE_SIZE (mode) - 1);
 
-  return strict_memory_address_p (mode, z);
+  return (*addressp) (mode, z);
 }
 
 /* Return 1 if ADDR is an address-expression whose effect depends

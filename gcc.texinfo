@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 23 Feb 1989
+@center last updated 22 April 1989
 @sp 1
-@center for version 1.34
+@center for version 1.35
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988, 1989 Free Software Foundation, Inc.
@@ -458,6 +458,9 @@ Christopher Smith did the port for Convex machines.
 
 @item
 Paul Petersen wrote the machine description for the Alliant FX/8.
+
+@item
+Alain Lichnewsky ported GNU CC to the MIPS cpu.
 @end itemize
 
 @node Options, Installation, Contributors, Top
@@ -564,6 +567,13 @@ keywords, and predefined macros such as @code{unix} and @code{vax}
 that identify the type of system you are using.  It also enables the
 undesirable and rarely used ANSI trigraph feature.
 
+The alternate keywords @code{__asm}, @code{__inline} and
+@code{__typeof} continue to work despite @samp{-ansi}.  You would not
+want to use them in an ANSI C program, of course, but it useful to put
+them in header files that might be included in compilations done with
+@samp{-ansi}.  Alternate predefined macros such as @code{__unix} and
+@code{__vax} are also available, with or without @samp{-ansi}.
+
 The @samp{-ansi} option does not cause non-ANSI programs to be
 rejected gratuitously.  For that, @samp{-pedantic} is required in
 addition to @samp{-ansi}.
@@ -571,8 +581,8 @@ addition to @samp{-ansi}.
 The macro @code{__STRICT_ANSI__} is predefined when the @samp{-ansi}
 option is used.  Some header files may notice this macro and refrain
 from declaring certain functions or defining certain macros that the
-ANSI standard doesn't call for; this is to avoid interfering with
-any programs that might use these names for other things.
+ANSI standard doesn't call for; this is to avoid interfering with any
+programs that might use these names for other things.
 
 @item -traditional
 Attempt to support some aspects of traditional C compilers.
@@ -786,8 +796,26 @@ return-value in a function whose return-type is not @code{void}.
 Warn whenever a local variable is unused aside from its declaration,
 and whenever a function is declared static but never defined.
 
+@item -Wshadow
+Warn whenever a local variable shadows another local variable.
+
+@item -Wid-clash-@var{len}
+Warn whenever two distinct identifiers match in the first @var{len}
+characters.  This may help you prepare a program that will compile
+with certain obsolete, brain-damaged compilers.
+
+@item -Wswitch
+Warn whenever a @code{switch} statement has an index of enumeral type
+and lacks a @code{case} for one or more of the named codes of that
+enumeration.  (The presence of a @code{default} label prevents this
+warning.)  @code{case} labels outside the enumeration range also
+provoke warnings when this option is used.
+
 @item -Wcomment
 Warn whenever a comment-start sequence @samp{/*} appears in a comment.
+
+@item -Wtrigraphs
+Warn if any trigraphs are encountered (assuming they are enabled).
 
 @item -Wall
 All of the above @samp{-W} options combined.
@@ -941,15 +969,6 @@ Generate output containing library calls for floating point.
 Generate separate return instructions for @code{return} statements.
 This has both advantages and disadvantages; I don't recall what they
 are.
-
-@item -meager
-Do eager conditional branch scheduling to fill no-op slots.  This
-optimization is new, so we suspect it has bugs; some day it will be
-done by default, but it is optional now so you can test it when you
-are ready.
-
-@emph{Test it now}, and report the bugs; otherwise we won't find them,
-and this option may become the default with bugs still in it!
 @end table
 
 These @samp{-m} options are defined in the Convex machine description:
@@ -1001,7 +1020,8 @@ Use @samp{-ffloat-store} for such programs.
 
 @item -fno-asm
 Do not recognize @code{asm}, @code{inline} or @code{typeof} as a
-keyword.  These words may then be used as identifiers.
+keyword.  These words may then be used as identifiers.  You can
+use @code{__asm}, @code{__inline} and @code{__typeof} instead.
 
 @item -fno-defer-pop
 Always pop the arguments to each function call as soon as that
@@ -1272,7 +1292,7 @@ Define macro @var{macro} as @var{defn}.
 @item -U@var{macro}
 Undefine macro @var{macro}.
 
-@item -T
+@item -trigraphs
 Support ANSI C trigraphs.  You don't want to know about this
 brain-damage.  The @samp{-ansi} option also has this effect.
 @end table
@@ -1322,10 +1342,12 @@ Sequent with Intel 386 processors.
 Sun 2 running system version 2 or 3.
 @item sun3
 Sun 3 running system version 2 or 3, with 68881.
+
+Note there we do not provide a configuration file to use an FPA
+by default because programs that establish signal handlers for
+floating point traps inherently cannot work with the FPA.
 @item sun3-nfp
 Sun 3 running system version 2 or 3, without 68881.
-@item sun3-fpa
-Sun 3 running system version 2 or 3, with 68881 and fpa.
 @item sun4
 Sun 4 running system version 2 or 3.
 @item sun2-os4
@@ -1334,34 +1356,47 @@ Sun 2 running system version 4.
 Sun 3 running system version 4, with 68881.
 @item sun3-nfp-os4
 Sun 3 running system version 4, without 68881.
-@item sun3-fpa-os4
-Sun 3 running system version 4, with 68881 and fpa.
 @item sun4-os4
 Sun 4 running system version 4.
 @item sun386
 Sun 386 (``roadrunner'').
 @item alliant
-Alliant FX/8 computer.  Currently, there are bugs in the support for
-floating point.  Also note that Alliant's version of dbx does not
-manage to work with the output from GNU CC.
+Alliant FX/8 computer.  Currently, there are bugs in the support
+for floating point.  Also note that Alliant's version of dbx does
+not manage to work with the output from GNU CC.
+@item mips
+Some variant of MIPS computer (but not the one from DEC).  Note
+that this machine description was written for GNU CC version 1.32
+and may require some updating to work with the current version.
 @item convex-c1
 Convex C1 computer.
 @item convex-c2
 Convex C2 computer.
 @item hp9k320
-HP 9000 series 300 using HPUX assembler.
+HP 9000 series 300 using HPUX assembler.  Note there is no
+support in GNU CC for HP's debugger; thus, @samp{-g} is not
+available in this configuration.
 @item hp9k320g
 HP 9000 series 300 using GNU assembler, linker and debugger.
-This requires the HP-adapt package which is or will soon be
-available along with the linker.
+This requires the HP-adapt package, which is available along with
+the GNU linker as part of the ``binutils'' distribution.
+This is on the GNU CC distribution tape.
 @item isi68
 ISI 68000 or 68020 system.
 @item news800
 Sony NEWS 68020 system.
 @item next
 NeXT system.
+@item altos
+Altos 3068.  Note that you must use the GNU assembler, linker and
+debugger, with COFF-encapsulation.  Also, you must fix a kernel
+bug.  Details in the file @file{ALTOS-README}.
 @item 3b1
-AT&T 3b1, a.k.a. 7300 PC.
+AT&T 3b1, a.k.a. 7300 PC.  Note that the current version of GNU
+CC cannot be compiled with the Unix compiler on this machine, due
+to bugs in the Unix comiler.  GNU CC does work correctly,
+however, if you can compile it with older version of GNU CC or
+cross-compile it.
 @item sequent-ns32k
 Sequent containing ns32000 processors.
 @item encore
@@ -1381,8 +1416,8 @@ config file for the machine you are using (@pxref{Config}).  This
 file is responsible for defining information about the host
 machine.  It includes @file{tm.h}.
 
-The file's name should be @file{xm-@var{machine}.h}, with these
-exceptions:
+The file is located in the subdirectory @file{config}.  Its name
+should be @file{xm-@var{machine}.h}, with these exceptions:
 
 @table @file
 @item xm-vms.h
@@ -1408,8 +1443,8 @@ refers to the appropriate file.
 
 @item
 Make a symbolic link named @file{tm.h} to the machine-description
-macro file for your machine (its name should be
-@file{tm-@var{machine}.h}).
+macro file for your machine.  It should be in the subdirectory
+@file{config} and its name should be @file{tm-@var{machine}.h}.
 
 If your system is a 68000, don't use the file @file{tm-m68k.h}
 directly.  Instead, use one of these files:
@@ -1417,8 +1452,6 @@ directly.  Instead, use one of these files:
 @table @file
 @item tm-sun3.h
 for Sun 3 machines with 68881.
-@item tm-sun3-fpa.h
-for Sun 3 machines with floating point accelerator.
 @item tm-sun3-nfp.h
 for Sun 3 machines with no hardware floating point.
 @item tm-sun2.h
@@ -1471,14 +1504,15 @@ version 4, and @file{tm-sun4os3.h} with system version 3.
 
 @item
 Make a symbolic link named @file{md} to the machine description
-pattern file.  Its name should be @file{@var{machine}.md}, but
-@var{machine} is often not the same as the name used in the
-@file{tm.h} file because the @file{md} files are more general.
+pattern file.  It should be in the @file{config} subdirectory and its
+name should be @file{@var{machine}.md}; but @var{machine} is often not
+the same as the name used in the @file{tm.h} file because the
+@file{md} files are more general.
 
 @item
 Make a symbolic link named @file{aux-output.c} to the output
-subroutine file for your machine (its name should be
-@file{output-@var{machine}.c}).
+subroutine file for your machine.  It should be in the @file{config}
+subdirectory and its name should be @file{out-@var{machine}.c}.
 @end itemize
 
 @item
@@ -1504,6 +1538,12 @@ Ignore any warnings you may see about ``statement not reached'' in the
 @file{insn-emit.c}; they are normal.  Any other compilation errors may
 represent bugs in the port to your machine or operating system, and
 should be investigated and reported (@pxref{Bugs}).
+
+@item
+Optionally, install the library functions for 64-bit integer
+arithmetic.  You do this with the command @samp{make gnulib2}.  In the
+future this will happen automatically; for now, it is optional, until
+we are sure it works on all machines.
 
 @item
 If you are using COFF-encapsulation, you must convert @file{gnulib} to
@@ -1540,7 +1580,7 @@ make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
 
 @item
 If you wish to test the compiler by compiling it with itself one more
-time, do this:
+time, do this (in C shell):
 
 @example
 make stage2
@@ -1550,14 +1590,28 @@ cmp $file stage2/$file
 end
 @end example
 
-This will notify you if any of these stage 3 object files differs from
-those of stage 2.  Any difference, no matter how innocuous, indicates
-that the stage 2 compiler has compiled GNU CC incorrectly, and is
-therefore a potentially serious bug which you should investigate and
-report (@pxref{Bugs}).
-
+@noindent
 Aside from the @samp{-B} option, the options should be the same as
 when you made stage 2.
+
+The @code{foreach} command (written in C shell) will notify you if any of
+these stage 3 object files differs from those of stage 2.  On BSD systems,
+any difference, no matter how innocuous, indicates that the stage 2
+compiler has compiled GNU CC incorrectly, and is therefore a potentially
+serious bug which you should investigate and report (@pxref{Bugs}).
+
+On systems that use COFF object files, bytes 5 to 8 will always be
+different, since it is a timestamp.  On these systems, you can do the
+comparison as follows (in Bourne shell):
+
+@example
+for file in *.o; do
+echo $file
+tail +10 $file > foo1
+tail +10 stage2/$file > foo2
+cmp foo1 foo2
+done
+@end example
 
 @item
 Install the compiler driver, the compiler's passes and run-time support.
@@ -1667,6 +1721,13 @@ Install the @samp{GCC} command with the command line:
 $ set command /table=sys$library:dcltables gnu_cc:gcc
 @end example
 
+@item
+To install the help file, do the following:
+
+@example
+$ lib/help sys$library:helplib.hlb gcc.hlp
+@end example
+
 @noindent
 Now you can invoke the compiler with a command like @samp{gcc /verbose
 file.c}, which is equivalent to the command @samp{gcc -v -c file.c} in
@@ -1676,6 +1737,12 @@ Unix.
 There is a known problem on VMS: @code{const} global variables don't
 work compatibly with the VMS C compiler; we don't know a way to get
 them to the linker properly.
+
+Note that GNU CC on VMS does not generate debugging information to
+describe the program's symbols.  It is not straightforward to implement
+this, and we have no time to spend on it, but we might consent to
+install a very modular implementation if you write it.  You will
+probably have to modify GAS as well as GNU CC.
 
 @node Trouble, Incompatibilities, Installation, Top
 @chapter Known Causes of Trouble with GNU CC.
@@ -1954,6 +2021,7 @@ features in conditional compilation, check for a predefined macro
 			 (With them you can define ``built-in'' functions.)
 * Asm Labels::		Specifying the assembler name to use for a C symbol.
 * Global Reg Vars::     Defining global variables which reside in registers.
+* Alternate Keywords::  @code{__const}, @code{__asm}, etc., for header files.
 @end menu
 
 @node Statement Exprs, Naming Types, Extensions, Extensions
@@ -2057,6 +2125,10 @@ typeof (int *)
 
 @noindent
 Here the type described is that of pointers to @code{int}.
+
+If you are writing a header file that must work when included in ANSI C
+programs, write @code{__typedef} instead of @code{typedef}.
+@xref{Alternate Keywords}.
 
 A @code{typeof}-construct can be used anywhere a typedef name could be
 used.  For example, you can use it in a declaration, in a cast, or inside
@@ -2249,31 +2321,15 @@ FILE *concat_fopen (char *s1, char *s2, char *mode)
 @}
 @end example
 
-You can also define structure types containing variable-length arrays, and
-use them even for arguments or function values, as shown here:
+You can also use variable-length arrays as arguments to functions:
 
 @example
-int foo;
-
 struct entry
+tester (int len, char data[len])
 @{
-  char data[foo];
-@};
-
-struct entry
-tester (struct entry arg)
-@{
-  struct entry new;
-  int i;
-  for (i = 0; i < foo; i++)
-    new.data[i] = arg.data[i] + 1;
-  return new;
+  @dots{}
 @}
 @end example
-
-@noindent
-(Eventually there will be a way to say that the size of the array is
-another member of the same structure.)
 
 The length of an array is computed on entry to the brace-level where the
 array is declared and is remembered for the scope of the array in case you
@@ -2498,9 +2554,12 @@ inc (int *a)
 @}
 @end example
 
-You can also make all ``simple enough'' functions inline with the
-option @samp{-finline-functions}.  Note that certain usages in a
-function definition can make it unsuitable for inline substitution.
+(If you are writing a header file to be included in ANSI C programs, write
+@code{__inline} instead of @code{inline}.  @xref{Alternate Keywords}.)
+
+You can also make all ``simple enough'' functions inline with the option
+@samp{-finline-functions}.  Note that certain usages in a function
+definition can make it unsuitable for inline substitution.
 
 When a function is both inline and @code{static}, if all calls to the
 function are integrated into the caller, then the function's own assembler
@@ -2622,12 +2681,14 @@ asm volatile ("movc3 %0,%1,%2"
 @end example
 
 You can put multiple assembler instructions together in a single @code{asm}
-template, separated with semicolons.  The input operands are guaranteed not
-to use any of the clobbered registers, and neither will the output
-operands' addresses, so you can read and write the clobbered registers as
-many times as you like.  Here is an example of multiple instructions in a
-template; it assumes that the subroutine @code{_foo} accepts arguments in
-registers 9 and 10:
+template, separated either with newlines (written as @samp{\n}) or with
+semicolons if the assembler allows such semicolons.  The GNU assembler
+allows semicolons and all Unix assemblers seem to do so.  The input
+operands are guaranteed not to use any of the clobbered registers, and
+neither will the output operands' addresses, so you can read and write the
+clobbered registers as many times as you like.  Here is an example of
+multiple instructions in a template; it assumes that the subroutine
+@code{_foo} accepts arguments in registers 9 and 10:
 
 @example
 asm ("movl %0,r9;movl %1,r10;call _foo"
@@ -2635,6 +2696,19 @@ asm ("movl %0,r9;movl %1,r10;call _foo"
      : "g" (from), "g" (to)
      : "r9", "r10");
 @end example
+
+If you want to test the condition code produced by an assembler instruction,
+you must include a branch and a label in the @code{asm} construct, as follows:
+
+@example
+asm ("clr %0;frob %1;beq 0f;mov #1,%0;0:"
+     : "g" (result)
+     : "g" (input));
+@end example
+
+@noindent
+This assumes your assembler supports local labels, as the GNU assembler
+and most Unix assemblers do.
 
 Usually the most convenient way to use these @code{asm} instructions is to
 encapsulate them in macros that look like functions.  For example,
@@ -2678,8 +2752,9 @@ example:
 asm volatile ("set_priority %0": /* no outputs */ : "g" (x))
 @end example
 
-If there are no output operands, the instruction will not be deleted or
-moved.
+@noindent
+(However, an instruction without output operands will not be deleted
+or moved, regardless, unless it is unreachable.)
 
 It is a natural idea to look for a way to give access to the condition
 code left by the assembler instruction.  However, when we attempted to
@@ -2690,12 +2765,16 @@ instructions would alter the condition code before there was time to
 test it.  This problem doesn't arise for ordinary ``test'' and
 ``compare'' instructions because they don't have any output operands.
 
+If you are writing a header file that should be includable in ANSI C
+programs, write @code{__asm} instead of @code{asm}.  @xref{Alternate
+Keywords}.
+
 @node Asm Labels, Global Reg Vars, Extended Asm, Extensions
 @section Controlling Names Used in Assembler Code
 
 You can specify the name to be used in the assembler code for a C function
-or variable by writing the @code{asm} keyword after the declarator as
-follows:
+or variable by writing the @code{asm} (or @code{__asm}) keyword after the
+declarator as follows:
 
 @example
 int foo asm ("myfoo") = 2;
@@ -2728,7 +2807,7 @@ register name; that would produce completely invalid assembler code.  GNU
 CC does not as yet have the ability to store static variables in registers.
 Perhaps that will be added.
 
-@node Global Reg Vars,, Asm Labels, Extensions
+@node Global Reg Vars, Alternate Keywords, Asm Labels, Extensions
 @section Global Variables in Registers
 
 A few programs, such as programming language interpreters, may have a
@@ -2812,6 +2891,34 @@ being used for other purposes in the preceding functions.
 
 Global register variables may not have initial values, because an
 executable file has no means to supply initial contents for a register.
+
+@node Alternate Keywords,, Global Reg Vars, Extensions
+@section Alternate Keywords
+
+The option @samp{-traditional} disables certain keywords; @samp{-ansi}
+disables certain others.  This causes trouble when you want to use GNU C
+extensions, or ANSI C features, in a general-purpose header file that
+should be usable by all programs, including ANSI C programs and traditional
+ones.  The keywords @code{asm}, @code{typeof} and @code{inline} cannot be
+used since they won't work in a program compiled with @samp{-ansi}, while
+the keywords @code{const}, @code{volatile}, @code{signed}, @code{typeof}
+and @code{inline} won't work in a program compiled with
+@samp{-traditional}.@refill
+
+The way to solve these problems is to put @samp{__} in front of each
+problematical keyword.  For example, use @code{__asm} instead of @code{asm},
+@code{__const} instead of @code{const}, and @code{__inline} instead of
+@code{inline}.
+
+Other C compilers won't accept these alternative keywords; if you want to
+compile with another compiler, you can define the alternate keywords as
+macros to replace them with the customary keywords.  It looks like this:
+
+@example
+#ifndef __GNUC__
+#define __asm asm
+#endif
+@end example
 
 @node Bugs, Portability, Extensions, Top
 @chapter Reporting Bugs
@@ -3808,8 +3915,18 @@ Here is a table of machine modes.
 @item HImode
 ``Half-Integer'' mode represents a two-byte integer.
 
+@item PSImode
+``Partial Single Integer'' mode represents an integer which occupies
+four bytes but which doesn't really use all four.  On some machines,
+this is the right mode to use for pointers.
+
 @item SImode
 ``Single Integer'' mode represents a four-byte integer.
+
+@item PDImode
+``Partial Double Integer'' mode represents an integer which occupies
+eight bytes but which doesn't really use all eight.  On some machines,
+this is the right mode to use for certain pointers.
 
 @item DImode
 ``Double Integer'' mode represents an eight-byte integer.
@@ -3824,6 +3941,11 @@ point number.
 @item DFmode
 ``Double Floating'' mode represents a double-precision (eight byte) floating
 point number.
+
+@item XFmode
+``Extended Floating'' mode represents a triple-precision (twelve byte)
+floating point number.  This mode is used for IEEE extended floating
+point.
 
 @item TFmode
 ``Tetra Floating'' mode represents a quadruple-precision (sixteen byte)
@@ -3870,12 +3992,12 @@ into the machine mode used for addresses.  Normally this is @code{SImode}.
 The only modes which a machine description @i{must} support are
 @code{QImode}, @code{SImode}, @code{SFmode} and @code{DFmode}.  The
 compiler will attempt to use @code{DImode} for two-word structures and
-unions, but it would not be hard to program it to avoid this.  Likewise,
-you can arrange for the C type @code{short int} to avoid using
-@code{HImode}.  In the long term it would be desirable to make the set of
-available machine modes machine-dependent and eliminate all assumptions
-about specific machine modes or their uses from the machine-independent
-code of the compiler.
+unions, but this can be prevented by overriding the definition of
+@code{MAX_FIXED_MODE_SIZE}.  Likewise, you can arrange for the C type
+@code{short int} to avoid using @code{HImode}.  In the long term it
+might be desirable to make the set of available machine modes
+machine-dependent and eliminate all assumptions about specific machine
+modes or their uses from the machine-independent code of the compiler.
 
 To help begin this process, the machine modes are divided into mode
 classes.  These are represented by the enumeration type @code{enum
@@ -3982,8 +4104,11 @@ u.i[1] = XINT (x, 1);
 and then refer to @code{u.d}.
 
 The global variables @code{dconst0_rtx} and @code{fconst0_rtx} hold
-@samp{const_double} expressions with value 0, in modes @code{DFmode} and
-@code{SFmode}, respectively.
+@samp{const_double} expressions with value 0, in modes @code{DFmode}
+and @code{SFmode}, respectively.  The macro @code{CONST0_RTX
+(@var{mode})} refers to a @samp{const_double} expression with value 0
+in mode @var{mode}.  The mode @var{mode} must be of mode class
+@code{MODE_FLOAT}.
 
 @item (symbol_ref @var{symbol})
 Represents the value of an assembler label for data.  @var{symbol} is
@@ -4856,7 +4981,12 @@ does not suffice for returning).  This note may be deleted by jump
 optimization.
 @item NOTE_INSN_SETJMP
 Appears following each call to @code{setjmp} or a related function.
+
+@item NOTE_INSN_LOOP_BEG
+Appears at the place in a loop that @code{continue} statements jump to.
 @end table
+
+These codes are printed symbolically when they appear in debugging dumps.
 @end table
 
 The machine mode of an insn is normally zero (@code{VOIDmode}), but the
@@ -4971,11 +5101,14 @@ The register @var{op} is known to have nonnegative value when this
 insn is reached.
 @end table
 
-(The only difference between the expression codes @samp{insn_list} and
+For convenience, the machine mode in an @samp{insn_list} or
+@samp{expr_list} is printed using these symbolic codes in debugging dumps.
+
+The only difference between the expression codes @samp{insn_list} and
 @samp{expr_list} is that the first operand of an @samp{insn_list} is
 assumed to be an insn and is printed in debugging dumps as the insn's
 unique id; the first operand of an @samp{expr_list} is printed in the
-ordinary way as an expression.)
+ordinary way as an expression.
 
 @node Calls, Sharing, Insns, RTL
 @section RTL Representation of Function-Call Insns
@@ -6980,7 +7113,19 @@ Width of a pointer, in bits.
 Alignment required for pointers stored in memory, in bits.
 
 @item PARM_BOUNDARY
-Alignment required for function parameters on the stack, in bits.
+Normal alignment required for function parameters on the stack, in
+bits.  All stack parameters receive least this much alignment
+regardless of data type.  On most machines, this is the same as the
+size of an integer.
+
+@item MAX_PARM_BOUNDARY
+Largest alignment required for any stack parameters, in bits.  If the
+data type of the parameter calls for more alignment than
+@code{PARM_BOUNDARY}, then it is given extra padding up to this limit.
+
+Don't define this macro if it would be equal to @code{PARM_BOUNDARY};
+in other words, if the alignment of a stack parameter should not
+depend on its data type (as is the case on most machines).
 
 @item STACK_BOUNDARY
 Define this macro if you wish to preserve a certain alignment for
@@ -7018,6 +7163,11 @@ structure as an actual @code{int} would have.
 Just what effect that is in GNU CC depends on other parameters, but on
 most machines it would force the structure's alignment and size to a
 multiple of 32 or @code{BIGGEST_ALIGNMENT} bits.
+
+@item MAX_FIXED_MODE_SIZE
+An integer expression for the largest integer machine mode that should
+actually be used.  All integer machine modes of this size or smaller
+can be used for structures and unions with the appropriate sizes.
 
 @item CHECK_FLOAT_VALUE (@var{mode}, @var{value})
 A C statement to validate the value @var{value} (or type
@@ -7592,9 +7742,20 @@ Define this macro if the machine requires padding on the stack for
 certain function calls.  This is padding on a per-function-call basis,
 not padding for individual arguments.
 
-The definition should be a C expression for the total size to be
-pushed on the stack in a call whose arguments (including their
-individual padding) occupy @var{size} bytes.
+The argument @var{size} will be a C variable of type @code{struct
+arg_data} which contains two fields, an integer named @code{constant}
+and an RTX named @code{var}.  These together represent a size measured
+in bytes which is the sum of the integer and the RTX.  Most of the
+time @code{var} is 0, which means that the size is simply the integer.
+
+The definition should be a C statement or compound statement
+which alters the variable supplied in whatever way you wish.
+
+Note that the value you leave in the variable @code{size} will
+ultimately be rounded up to a multiple of @code{STACK_BOUNDARY} bits.
+
+This macro is not fully implemented for machines which have push
+instructions (i.e., on which @code{PUSH_ROUNDING} is defined).
 
 @item RETURN_POPS_ARGS (@var{funtype})
 A C expression that should be 1 if a function pops its own arguments
@@ -7651,6 +7812,19 @@ to tell the function where to put the value.@refill
 
 If @code{FUNCTION_OUTGOING_VALUE} is not defined,
 @code{FUNCTION_VALUE} serves both purposes.@refill
+
+@item RETURN_IN_MEMORY (@var{type})
+A C expression which can inhibit the returning of certain function
+values in registers, based on the type of value.  A nonzero value says
+to return the function value in memory, just as large structures are
+always returned.  Here @var{type} will be a C expression of type
+@code{tree}, representing the data type of the value.
+
+Note that values of mode @code{BLKmode} are returned in memory
+regardless of this macro.  Also, the option @samp{-fpcc-struct-return}
+takes effect regardless of this macro.  On most systems, it is
+possible to leave the macro undefined; this causes a default
+definition to be used, whose value is the constant 0.
 
 @item LIBCALL_VALUE (@var{mode})
 A C expression to create an RTX representing the place where a library
@@ -7748,11 +7922,11 @@ for the data type of the function which will receive the args, or 0
 if the args are to a compiler support library function.
 
 @item FUNCTION_ARG_ADVANCE (@var{cum}, @var{mode}, @var{type}, @var{named})
-Update the summarizer variable @var{cum} to advance past an argument
-in the argument list.  The values @var{mode}, @var{type} and
-@var{named} describe that argument.  Once this is done, the variable
-@var{cum} is suitable for analyzing the @emph{following} argument
-with @code{FUNCTION_ARG}, etc.@refill
+A C statement (sans semicolon) to update the summarizer variable
+@var{cum} to advance past an argument in the argument list.  The
+values @var{mode}, @var{type} and @var{named} describe that argument.
+Once this is done, the variable @var{cum} is suitable for analyzing
+the @emph{following} argument with @code{FUNCTION_ARG}, etc.@refill
 
 @item FUNCTION_ARG_REGNO_P (@var{regno})
 A C expression that is nonzero if @var{regno} is the number of a hard
@@ -8244,9 +8418,9 @@ and @samp{-funsigned-char}.
 Define this if the preprocessor should ignore @code{#sccs} directives
 and print no error message.
 
-@item IDENT_DIRECTIVE
-Define this if the preprocessor should ignore @code{#ident} directives
-and print no error message.
+@item HAVE_VPRINTF
+Define this if the library function @code{vprintf} is available on your
+system.
 
 @item MOVE_MAX
 The maximum number of bytes that a single instruction can move quickly
@@ -8346,6 +8520,31 @@ obtained with @code{GET_CODE (@var{x})}.
 @item DOLLARS_IN_IDENTIFIERS
 Define this to be nonzero if the character @samp{$} should be allowed
 by default in identifier names.
+
+@item USE_C_ALLOCA
+Define this macro to indicate that the compiler is running with the
+@code{alloca} implemented in C.  This version of @code{alloca} can be
+found in the file @file{alloca.c}; to use it, you must also edit the
+@file{Makefile}.
+
+This macro, unlike most, describes the machine that the compiler is
+running on, rather than the one the compiler is compiling for.
+Therefore, it should be set in the @file{xm-@var{machine}.h} file
+rather than in the @file{xm-@var{machine}.h} file.
+
+If you do define this macro, you should probably do it as follows:
+
+@example
+#ifndef __GNUC__
+#define USE_C_ALLOCA
+#else
+#deifne alloca __builtin_alloca
+#endif
+@end example
+
+@noindent
+so that when the compiler is compiled with GNU CC it uses the more
+efficient built-in @code{alloca} function.
 @end table
 
 @node Condition Code, Assembler Format, Misc, Machine Macros
@@ -8435,10 +8634,25 @@ the very beginning of the command given to the linker.
 If this macro is not defined, a default is provided that loads the
 standard C startup file from the usual place.  See @file{gcc.c}.
 
+@item STANDARD_EXEC_PREFIX
+Define this macro as a C string constant if you wish to override the
+standard choice of @file{/usr/local/lib/gcc-} as the default prefix to
+try when searching for the executable files of the compiler.
+
+The prefix specified by the @samp{-B} option, if any, is tried before
+the default prefix.  After the default prefix, if the executable is
+not found that way, @file{/usr/lib/gcc-} is tried next; then the
+directories in your search path for shell commands are searched.
+
 @item STANDARD_STARTFILE_PREFIX
 Define this macro as a C string constant if you wish to override the
-standard choice of @file{/lib/} as the default prefix for where to
-find the startup files such as @file{crt0.o}.
+standard choice of @file{/usr/local/lib/} as the default prefix to try
+when searching for startup files such as @file{crt0.o}.
+
+In this search, all the prefixes tried for executable files are tried
+first.  Then comes the default startfile prefix specified by this
+macro, followed by the prefixes @file{/lib/} and @file{/usr/lib/} as
+last resorts.
 
 @item ASM_FILE_START (@var{stream})
 A C expression which outputs to the stdio stream @var{stream}
@@ -8728,24 +8942,28 @@ A C statement to output to the stdio stream @var{stream} an assembler
 instruction to advance the location counter to a multiple of 2 to the
 @var{power} bytes.  @var{power} will be a C expression of type @code{int}.
 
-@item ASM_OUTPUT_COMMON (@var{stream}, @var{name}, @var{size})
+@item ASM_OUTPUT_COMMON (@var{stream}, @var{name}, @var{size}, @var{rounded})
 A C statement (sans semicolon) to output to the stdio stream
-@var{stream} the assembler definition of a common-label named @var{name}
-whose size is @var{size} bytes.  Use the expression
-@code{assemble_name (@var{stream}, @var{name})} to output the name
-itself; before and after that, output the additional assembler syntax
-for defining the name, and a newline.
+@var{stream} the assembler definition of a common-label named
+@var{name} whose size is @var{size} bytes.  The variable @var{rounded}
+is the size rounded up to whatever alignment the caller wants.
+
+Use the expression @code{assemble_name (@var{stream}, @var{name})} to
+output the name itself; before and after that, output the additional
+assembler syntax for defining the name, and a newline.
 
 This macro controls how the assembler definitions of uninitialized
 global variables are output.
 
-@item ASM_OUTPUT_LOCAL (@var{stream}, @var{name}, @var{size})
+@item ASM_OUTPUT_LOCAL (@var{stream}, @var{name}, @var{size}, @var{rounded})
 A C statement (sans semicolon) to output to the stdio stream
 @var{stream} the assembler definition of a local-common-label named
-@var{name} whose size is @var{size} bytes.  Use the expression
-@code{assemble_name (@var{stream}, @var{name})} to output the name
-itself; before and after that, output the additional assembler syntax
-for defining the name, and a newline.
+@var{name} whose size is @var{size} bytes.  The variable @var{rounded}
+is the size rounded up to whatever alignment the caller wants.
+
+Use the expression @code{assemble_name (@var{stream}, @var{name})} to
+output the name itself; before and after that, output the additional
+assembler syntax for defining the name, and a newline.
 
 This macro controls how the assembler definitions of uninitialized
 static variables are output.
@@ -8761,10 +8979,7 @@ information for the debugger in use is appropriate.
 @item ASM_OUTPUT_IDENT (@var{stream}, @var{string})
 A C statement to output something to the assembler file to handle a
 @samp{#ident} directive containing the text @var{string}.  If this
-macro is not defined, the assembler code @samp{.ident "@var{string}"}
-will be output by default.
-
-This macro is significant only if @code{IDENT_DIRECTIVE} is defined.
+macro is not defined, nothing is output for a @samp{#ident} directive.
 
 @item TARGET_BELL
 A C constant expression for the integer value for escape sequence

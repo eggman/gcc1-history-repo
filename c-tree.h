@@ -78,7 +78,6 @@ extern tree string_type_node, char_array_type_node, int_array_type_node;
 extern int current_function_returns_value;
 extern int current_function_returns_null;
 
-extern void yyerror();
 extern int lineno;
 
 extern tree ridpointers[];
@@ -117,6 +116,15 @@ extern int warn_return_type;
    to be useful, except in thoroughly ANSIfied programs.  */
 
 extern int warn_write_strings;
+
+/* Nonzero means warn about sizeof(function) or addition/subtraction
+   of function pointers.  */
+
+extern int warn_pointer_arith;
+
+/* Nonzero means warn for all old-style non-prototype function decls.  */
+
+extern int warn_strict_prototypes;
 
 /* Nonzero means warn about pointer casts that can drop a type qualifier
    from the pointer target type.  */

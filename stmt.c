@@ -808,7 +808,8 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
   constraints = rtvec_alloc (ninputs);
 
   body = gen_rtx (ASM_OPERANDS, VOIDmode,
-		  TREE_STRING_POINTER (string), "", 0, argvec, constraints);
+		  TREE_STRING_POINTER (string), "", 0, argvec, constraints,
+		  filename, line);
   MEM_VOLATILE_P (body) = vol;
 
   /* Eval the inputs and put them into ARGVEC.
@@ -891,7 +892,8 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 		       gen_rtx (ASM_OPERANDS, VOIDmode,
 				TREE_STRING_POINTER (string),
 				TREE_STRING_POINTER (TREE_PURPOSE (tail)),
-				i, argvec, constraints));
+				i, argvec, constraints,
+				filename, line));
 	  MEM_VOLATILE_P (SET_SRC (XVECEXP (body, 0, i))) = vol;
 	}
 
@@ -926,16 +928,6 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 
       insn = emit_insn (body);
     }
-
-  /* Record the source file and line number in the insn,
-     for the sake of errors generated at reload or final time.  */
-
-  REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_ASM_FILE,
-			      gen_rtx (SYMBOL_REF, VOIDmode, filename),
-			      REG_NOTES (insn));
-  REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_ASM_LINE,
-			      gen_rtx (CONST_INT, VOIDmode, line),
-			      REG_NOTES (insn));
 
   last_expr_type = 0;
 }
@@ -1008,6 +1000,8 @@ expand_end_stmt_expr (t)
      tree t;
 {
   rtx saved = RTL_EXPR_RTL (t);
+
+  do_pending_stack_adjust ();
 
   if (last_expr_type == 0)
     {
@@ -1160,6 +1154,7 @@ void
 expand_loop_continue_here ()
 {
   do_pending_stack_adjust ();
+  emit_note (0, NOTE_INSN_LOOP_CONT);
   emit_label (loop_stack->data.loop.continue_label);
 }
 
@@ -1308,23 +1303,27 @@ expand_null_return_1 (last_insn)
 {
   clear_pending_stack_adjust ();
   do_pending_stack_adjust ();
-#ifdef FUNCTION_EPILOGUE
+  last_expr_type = 0;
+
+  /* PCC-struct return always uses an epilogue.  */
+  if (current_function_returns_pcc_struct)
+    {
+      expand_goto_internal (0, return_label, last_insn);
+      return;
+    }
+
+  /* Otherwise output a simple return-insn if one is available.  */ 
 #ifdef HAVE_return
-  if (! HAVE_return || current_function_returns_pcc_struct)
-    expand_goto_internal (0, return_label, last_insn);
-  else
+  if (HAVE_return)
     {
       emit_jump_insn (gen_return ());
       emit_barrier ();
+      return;
     }
-#else
+#endif
+
+  /* Otherwise jump to the epilogue.  */
   expand_goto_internal (0, return_label, last_insn);
-#endif
-#else /* no FUNCTION_EPILOGUE */
-  emit_jump_insn (gen_return ());
-  emit_barrier ();
-#endif
-  last_expr_type = 0;
 }
 
 /* Generate RTL to evaluate the expression RETVAL and return it
@@ -1421,7 +1420,10 @@ expand_return (retval)
     }
 #endif /* HAVE_return */
 
-  if (cleanups && GET_CODE (DECL_RTL (DECL_RESULT (this_function))) == REG)
+  if (cleanups
+      && retval_rhs != 0
+      && TREE_TYPE (retval_rhs) != void_type_node
+      && GET_CODE (DECL_RTL (DECL_RESULT (this_function))) == REG)
     {
       rtx last_insn;
       /* Calculate the return value into a pseudo reg.  */
@@ -1866,8 +1868,17 @@ expand_decl (decl, cleanup)
 #ifdef STACK_BOUNDARY
       /* Avoid extra code if we can prove it's a multiple already.  */
       if (DECL_SIZE_UNIT (decl) % STACK_BOUNDARY)
-	size = round_push (size);
+	{
+#ifdef STACK_POINTER_OFFSET
+	  /* Avoid extra code if we can prove that adding STACK_POINTER_OFFSET
+	     will not give this address invalid alignment.  */
+	  if (DECL_ALIGN (decl) > ((STACK_POINTER_OFFSET * BITS_PER_UNIT) % STACK_BOUNDARY))
+	    size = plus_constant (size,
+				  STACK_POINTER_OFFSET % (STACK_BOUNDARY / BITS_PER_UNIT));
 #endif
+	  size = round_push (size);
+	}
+#endif /* STACK_BOUNDARY */
 
       /* Make space on the stack, and get an rtx for the address of it.  */
 #ifdef STACK_GROWS_DOWNWARD
@@ -1875,11 +1886,25 @@ expand_decl (decl, cleanup)
 #endif
       address = copy_to_reg (stack_pointer_rtx);
 #ifdef STACK_POINTER_OFFSET
-      /* If the contents of the stack pointer reg are offset from the
-	 actual top-of-stack address, add the offset here.  */
-      emit_insn (gen_add2_insn (address, gen_rtx (CONST_INT, VOIDmode,
-						  STACK_POINTER_OFFSET)));
-#endif
+      {
+	/* If the contents of the stack pointer reg are offset from the
+	   actual top-of-stack address, add the offset here.  */
+	rtx sp_offset = gen_rtx (CONST_INT, VOIDmode, STACK_POINTER_OFFSET);
+#ifdef STACK_BOUNDARY
+#ifdef STACK_GROWS_DOWNWARD
+	int direction = 1;
+#else /* not STACK_GROWS_DOWNWARD */
+	int direction = 0;
+#endif /* not STACK_GROWS_DOWNWARD */
+	if (DECL_ALIGN (decl) > ((STACK_POINTER_OFFSET * BITS_PER_UNIT) % STACK_BOUNDARY))
+	  sp_offset = plus_constant (sp_offset,
+				     (STACK_POINTER_OFFSET
+				      % (STACK_BOUNDARY / BITS_PER_UNIT)
+				      * direction));
+#endif /* STACK_BOUNDARY */
+	emit_insn (gen_add2_insn (address, sp_offset));
+      }
+#endif /* STACK_POINTER_OFFSET */
 #ifndef STACK_GROWS_DOWNWARD
       anti_adjust_stack (size);
 #endif
@@ -2277,12 +2302,73 @@ pushcase_range (value1, value2, label)
   return 0;
 }
 
+/* Check that all enumeration literals are covered by the case
+   expressions of a switch.  Also, warn if there are any extra
+   switch cases that are *not* elements of the enumerated type. */
+
+void
+check_for_full_enumeration_handling ()
+{
+  tree index_expr = case_stack->data.case_stmt.index_expr;
+
+  if (TREE_CODE (index_expr) == INTEGER_CST)
+    return;
+  else
+    {
+      register struct case_node *n;
+      register tree chain;
+      tree enum_node = TREE_OPERAND (index_expr, 0);
+          
+      /* The time complexity of this loop is currently O(N * M), with
+         N being the number of enumerals in the enumerated type, and 
+         M being the number of case expressions in the switch. */
+             
+      for (chain = TYPE_VALUES (TREE_TYPE (enum_node));
+           chain; 
+           chain = TREE_CHAIN (chain))
+        {
+          /* Find a match between enumeral and case expression, if possible.
+             Quit looking when we've gone too far (since case expressions
+             are kept sorted in ascending order).  Warn about enumerals not
+             handled in the switch statement case expression list. */
+
+          for (n = case_stack->data.case_stmt.case_list; 
+               n && tree_int_cst_lt (n->high, TREE_VALUE (chain));
+               n = n->right)
+            ;
+
+          if (!(n && tree_int_cst_equal (n->low, TREE_VALUE (chain))))
+	    warning ("enumerated value `%s' not handled in switch",
+		     IDENTIFIER_POINTER (TREE_PURPOSE (chain)));
+        }
+
+      /* Now we go the other way around; we warn if there are case 
+         expressions that don't correspond to enumerals.  This can
+         occur since C and C++ don't enforce type-checking of 
+         assignments to enumeration variables. */
+
+      for (n = case_stack->data.case_stmt.case_list; n; n = n->right)
+        {
+          for (chain = TYPE_VALUES ( TREE_TYPE (enum_node));
+               chain && !tree_int_cst_equal (n->low, TREE_VALUE (chain)); 
+               chain = TREE_CHAIN (chain))
+            ;
+
+          if (!chain)
+	    warning ("case value `%d' not in enumerated type `%s'",
+		     TREE_INT_CST_LOW (n->low), 
+		     IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (TREE_TYPE (enum_node)))));
+        }
+    }
+}
+
 /* Terminate a case (Pascal) or switch (C) statement
    in which CASE_INDEX is the expression to be tested.
    Generate the code to test it and jump to the right place.  */
 
 void
-expand_end_case ()
+expand_end_case (orig_index)
+     tree orig_index;
 {
   tree minval, maxval, range;
   rtx default_label = 0;
@@ -2302,6 +2388,15 @@ expand_end_case ()
   /* An ERROR_MARK occurs for various reasons including invalid data type.  */
   if (TREE_TYPE (index_expr) != error_mark_node)
     {
+      /* If switch expression was an enumerated type, check that all
+	 enumeration literals are covered by the cases.
+	 No sense trying this if there's a default case, however.  */
+
+      if (!thiscase->data.case_stmt.default_label 
+	  && TREE_CODE (TREE_TYPE (orig_index)) == ENUMERAL_TYPE
+	  && warn_switch)
+	check_for_full_enumeration_handling ();
+
       /* If we don't have a default-label, create one here,
 	 after the body of the switch.  */
       if (thiscase->data.case_stmt.default_label == 0)
@@ -2777,7 +2872,7 @@ static void
 emit_case_nodes (index, node, default_label, unsignedp)
      rtx index;
      case_node_ptr node;
-     tree default_label;
+     rtx default_label;
      int unsignedp;
 {
   /* If INDEX has an unsigned type, we must make unsigned branches.  */
@@ -3366,6 +3461,9 @@ walk_fixup_memory_subreg (x, insn)
   register char *fmt;
   register int i;
 
+  if (x == 0)
+    return 0;
+
   code = GET_CODE (x);
 
   if (code == SUBREG && GET_CODE (SUBREG_REG (x)) == MEM)
@@ -3515,7 +3613,7 @@ optimize_bit_field (body, insn, equiv_mem)
 
       if (memref
 	  && ! mode_dependent_address_p (XEXP (memref, 0))
-	  && offsetable_address_p (GET_MODE (bitfield), XEXP (memref, 0)))
+	  && offsetable_address_p (0, GET_MODE (bitfield), XEXP (memref, 0)))
 	{
 	  /* Now adjust the address, first for any subreg'ing
 	     that we are now getting rid of,
@@ -3680,7 +3778,8 @@ assign_parms (fndecl)
   stack_args_size.var = 0;
 
   /* If struct value address comes on the stack, count it in size of args.  */
-  if (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode
+  if ((DECL_MODE (DECL_RESULT (fndecl)) == BLKmode
+       || RETURN_IN_MEMORY (TREE_TYPE (DECL_RESULT (fndecl))))
       && GET_CODE (struct_value_incoming_rtx) == MEM)
     stack_args_size.constant += GET_MODE_SIZE (Pmode);
 
@@ -3721,14 +3820,48 @@ assign_parms (fndecl)
       stack_offset = stack_args_size;
       stack_offset.constant += first_parm_offset;
 
-      /* Find out if the parm needs padding, and whether above or below.  */
+      /* If this argument needs more than the usual parm alignment, do
+	 extrinsic padding to reach that alignment.  */
+
+#ifdef MAX_PARM_BOUNDARY
+      /* If MAX_PARM_BOUNDARY is not defined, it means that the usual
+	 alignment requirements are relaxed for parms, and that no parm
+	 needs more alignment than PARM_BOUNDARY, regardless of data type.  */
+
+      if (PARM_BOUNDARY < TYPE_ALIGN (TREE_TYPE (parm)))
+	{
+	  int boundary = PARM_BOUNDARY;
+
+	  /* Determine the boundary to pad up to.  */
+	  if (TYPE_ALIGN (TREE_TYPE (parm)) > boundary)
+	    boundary = TYPE_ALIGN (TREE_TYPE (parm));
+	  if (boundary > MAX_PARM_BOUNDARY)
+	    boundary = MAX_PARM_BOUNDARY;
+
+	  /* If the previous args don't reach such a boundary,
+	     advance to the next one.  */
+	  stack_offset.constant += boundary - 1;
+	  stack_offset.constant &= boundary - 1;
+
+	  if (stack_offset.var != 0)
+	    abort ();		/* This case not implemented yet */
+	}
+#endif /* MAX_PARM_BOUNDARY */
+
+      /* Find out if the parm needs intrinsic padding (up to PARM_BOUNDARY),
+	 and whether above or below.  */
+
       where_pad
 	= FUNCTION_ARG_PADDING (passed_mode,
 				expand_expr (size_in_bytes (DECL_ARG_TYPE (parm)),
 					     0, VOIDmode, 0));
 
-      /* If it is padded below, adjust the stack address
-	 upward over the padding.  */
+      /* If arg should be padded below, adjust the stack address upward.
+	 This padding is considered part of the space occupied by the
+	 argument.  It pads only up to PARM_BOUNDARY, and it does not
+	 depend on the previous arguments, since they are assumed to
+	 occupy a multiple of PARM_BOUNDARY.  */
+
       if (where_pad == downward)
 	{
 	  if (passed_mode != BLKmode)
@@ -4160,17 +4293,6 @@ expand_function_start (subr)
   current_function_returns_pcc_struct = 0;
   current_function_returns_struct = 0;
 
-  /* Make the label for return statements to jump to, if this machine
-     does not have a one-instruction return.  */
-#ifdef HAVE_return
-  if (HAVE_return && ! current_function_returns_pcc_struct)
-    return_label = 0;
-  else
-    return_label = gen_label_rtx ();
-#else
-  return_label = gen_label_rtx ();
-#endif
-
   /* No space assigned yet for structure values.  */
   max_structure_value_size = 0;
   structure_value = 0;
@@ -4218,12 +4340,11 @@ expand_function_start (subr)
   /* Initialize rtx used to return the value.  */
 
   /* Decide whether to return the value in memory or in a register.  */
-  if (DECL_MODE (DECL_RESULT (current_function_decl)) == BLKmode
+  if (DECL_MODE (DECL_RESULT (subr)) == BLKmode
+      || RETURN_IN_MEMORY (TREE_TYPE (DECL_RESULT (subr)))
       || (flag_pcc_struct_return
-	  && ((TREE_CODE (TREE_TYPE (DECL_RESULT (current_function_decl)))
-	       == RECORD_TYPE)
-	      || (TREE_CODE (TREE_TYPE (DECL_RESULT (current_function_decl)))
-		  == UNION_TYPE))))
+	  && (TREE_CODE (TREE_TYPE (DECL_RESULT (subr))) == RECORD_TYPE
+	      || TREE_CODE (TREE_TYPE (DECL_RESULT (subr))) == UNION_TYPE)))
     {
       /* Returning something that won't go in a register.  */
       register rtx value_address;
@@ -4260,6 +4381,17 @@ expand_function_start (subr)
   /* Mark this reg as the function's return value.  */
   if (GET_CODE (DECL_RTL (DECL_RESULT (subr))) == REG)
     REG_FUNCTION_VALUE_P (DECL_RTL (DECL_RESULT (subr))) = 1;
+
+  /* Make the label for return statements to jump to, if this machine
+     does not have a one-instruction return.  */
+#ifdef HAVE_return
+  if (HAVE_return && ! current_function_returns_pcc_struct)
+    return_label = 0;
+  else
+    return_label = gen_label_rtx ();
+#else
+  return_label = gen_label_rtx ();
+#endif
 
   /* If doing stupid allocation, mark parms as born here.  */
 
@@ -4366,6 +4498,14 @@ expand_function_end (filename, line)
 
       emit_move_insn (outgoing, value_address);
       use_variable (outgoing);
+
+#ifdef HAVE_return
+      if (HAVE_return)
+	{
+	  emit_jump_insn (gen_return ());
+	  emit_barrier ();
+	}
+#endif
     }
 
   /* Fix up any gotos that jumped out to the outermost

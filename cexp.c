@@ -15,7 +15,7 @@
 #define	RSH	269
 #define	UNARY	270
 
-#line 109 "cexp.y"
+#line 26 "cexp.y"
 
 #include "config.h"
 #include <setjmp.h>
@@ -31,7 +31,7 @@
   extern unsigned char is_idstart[], is_idchar[];
 
 
-#line 125 "cexp.y"
+#line 42 "cexp.y"
 typedef union {
   long lval;
   int voidval;
@@ -41,7 +41,7 @@ typedef union {
 #ifndef YYLTYPE
 typedef
   struct yyltype
-    {
+ {
       int timestamp;
       int first_line;
       int first_column;
@@ -49,14 +49,11 @@ typedef
       int last_column;
       char *text;
    }
-  yyltype;
+ yyltype;
 
 #define YYLTYPE yyltype
 #endif
 
-#define	YYACCEPT	return(0)
-#define	YYABORT	return(1)
-#define	YYERROR	return(1)
 #include <stdio.h>
 
 #ifndef __STDC__
@@ -102,9 +99,9 @@ static const char yytranslate[] = {     0,
 };
 
 static const short yyrline[] = {     0,
-   154,   159,   160,   165,   167,   169,   171,   176,   178,   180,
-   182,   184,   186,   188,   190,   192,   194,   196,   198,   200,
-   202,   204,   206,   208,   210,   212,   214,   216,   218
+    71,    76,    77,    82,    84,    86,    88,    93,    95,   102,
+   109,   111,   113,   115,   117,   119,   121,   123,   125,   127,
+   129,   131,   133,   135,   137,   139,   141,   143,   145
 };
 
 static const char * const yytname[] = {     0,
@@ -201,7 +198,8 @@ static const short yycheck[] = {     4,
 };
 #define YYPURE 1
 
-#line 2 "bison.simple"
+/* -*-C-*-  Note some compilers choke on comments on `#line' lines.  */
+#line 3 "bison.simple"
 
 /* Skeleton output parser for bison,
    copyright (C) 1984 Bob Corbett and Richard Stallman
@@ -307,6 +305,10 @@ In other words, you are welcome to use, share and improve this program.
 You are forbidden to forbid anyone else to use, share and improve
 what you give them.   Help stamp out software-hoarding!  */
 
+#if (!defined (__STDC__) && defined (sparc)) || defined (__sparc__)
+#include <alloca.h>
+#endif
+
 /* This is the parser code that is written into each bison parser
   when the %semantic_parser declaration is not specified in the grammar.
   It was written by Richard Stallman by simplifying the hairy parser
@@ -321,6 +323,9 @@ what you give them.   Help stamp out software-hoarding!  */
 #define YYEMPTY		-2
 #define YYEOF		0
 #define YYFAIL		goto yyerrlab;
+#define YYACCEPT	return(0)
+#define YYABORT 	return(1)
+#define YYERROR		goto yyerrlab
 
 #define YYTERROR	1
 
@@ -343,14 +348,14 @@ YYSTYPE	yylval;			/*  the semantic value of the		*/
 YYLTYPE yylloc;			/*  location data for the lookahead	*/
 				/*  symbol				*/
 
-int yynerr;			/*  number of parse errors so far       */
-
-#ifdef YYDEBUG
-int yydebug = 0;		/*  nonzero means print parse trace	*/
-#endif
-
+int yynerrs;			/*  number of parse errors so far       */
 #endif  /* YYIMPURE */
 
+#if YYDEBUG != 0
+int yydebug;			/*  nonzero means print parse trace	*/
+/* Since this is uninitialized, it does not stop multiple parsers
+   from coexisting.  */
+#endif
 
 /*  YYMAXDEPTH indicates the initial size of the parser's stacks	*/
 
@@ -366,7 +371,7 @@ int yydebug = 0;		/*  nonzero means print parse trace	*/
 #endif
 
 
-#line 165 "bison.simple"
+#line 175 "bison.simple"
 int
 yyparse()
 {
@@ -392,12 +397,8 @@ yyparse()
   int yychar;
   YYSTYPE yylval;
   YYLTYPE yylloc;
+  int yynerrs;
 #endif
-
-#ifdef YYDEBUG
-  extern int yydebug;
-#endif
-
 
   YYSTYPE yyval;		/*  the variable used to return		*/
 				/*  semantic values from the action	*/
@@ -405,14 +406,14 @@ yyparse()
 
   int yylen;
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     fprintf(stderr, "Starting parse\n");
 #endif
 
   yystate = 0;
   yyerrstatus = 0;
-  yynerr = 0;
+  yynerrs = 0;
   yychar = YYEMPTY;		/* Cause a token to be read.  */
 
   /* Initialize stack pointers.
@@ -474,16 +475,16 @@ yynewstate:
       yylsp = yyls + size - 1;
 #endif
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
       if (yydebug)
 	fprintf(stderr, "Stack size increased to %d\n", yymaxdepth);
 #endif
 
       if (yyssp >= yyss + yymaxdepth - 1)
-	YYERROR;
+	YYABORT;
     }
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     fprintf(stderr, "Entering state %d\n", yystate);
 #endif
@@ -505,7 +506,7 @@ yyresume:
 
   if (yychar == YYEMPTY)
     {
-#ifdef YYDEBUG
+#if YYDEBUG != 0
       if (yydebug)
 	fprintf(stderr, "Reading a token: ");
 #endif
@@ -519,7 +520,7 @@ yyresume:
       yychar1 = 0;
       yychar = YYEOF;		/* Don't call YYLEX any more */
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
       if (yydebug)
 	fprintf(stderr, "Now at end of input.\n");
 #endif
@@ -528,7 +529,7 @@ yyresume:
     {
       yychar1 = YYTRANSLATE(yychar);
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
       if (yydebug)
 	fprintf(stderr, "Next token is %d (%s)\n", yychar, yytname[yychar1]);
 #endif
@@ -562,7 +563,7 @@ yyresume:
 
   /* Shift the lookahead token.  */
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     fprintf(stderr, "Shifting token %d (%s), ", yychar, yytname[yychar1]);
 #endif
@@ -594,7 +595,7 @@ yyreduce:
   yylen = yyr2[yyn];
   yyval = yyvsp[1-yylen]; /* implement default value of the action */
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     {
       if (yylen == 1)
@@ -610,120 +611,130 @@ yyreduce:
   switch (yyn) {
 
 case 1:
-#line 155 "cexp.y"
+#line 72 "cexp.y"
 { expression_value = yyvsp[0].lval; ;
     break;}
 case 3:
-#line 161 "cexp.y"
+#line 78 "cexp.y"
 { yyval.lval = yyvsp[0].lval; ;
     break;}
 case 4:
-#line 166 "cexp.y"
+#line 83 "cexp.y"
 { yyval.lval = - yyvsp[0].lval; ;
     break;}
 case 5:
-#line 168 "cexp.y"
+#line 85 "cexp.y"
 { yyval.lval = ! yyvsp[0].lval; ;
     break;}
 case 6:
-#line 170 "cexp.y"
+#line 87 "cexp.y"
 { yyval.lval = ~ yyvsp[0].lval; ;
     break;}
 case 7:
-#line 172 "cexp.y"
+#line 89 "cexp.y"
 { yyval.lval = yyvsp[-1].lval; ;
     break;}
 case 8:
-#line 177 "cexp.y"
+#line 94 "cexp.y"
 { yyval.lval = yyvsp[-2].lval * yyvsp[0].lval; ;
     break;}
 case 9:
-#line 179 "cexp.y"
-{ yyval.lval = yyvsp[-2].lval / yyvsp[0].lval; ;
+#line 96 "cexp.y"
+{ if (yyvsp[0].lval == 0)
+			    {
+			      error ("division by zero in #if");
+			      yyvsp[0].lval = 1;
+			    }
+			  yyval.lval = yyvsp[-2].lval / yyvsp[0].lval; ;
     break;}
 case 10:
-#line 181 "cexp.y"
-{ yyval.lval = yyvsp[-2].lval % yyvsp[0].lval; ;
+#line 103 "cexp.y"
+{ if (yyvsp[0].lval == 0)
+			    {
+			      error ("division by zero in #if");
+			      yyvsp[0].lval = 1;
+			    }
+			  yyval.lval = yyvsp[-2].lval % yyvsp[0].lval; ;
     break;}
 case 11:
-#line 183 "cexp.y"
+#line 110 "cexp.y"
 { yyval.lval = yyvsp[-2].lval + yyvsp[0].lval; ;
     break;}
 case 12:
-#line 185 "cexp.y"
+#line 112 "cexp.y"
 { yyval.lval = yyvsp[-2].lval - yyvsp[0].lval; ;
     break;}
 case 13:
-#line 187 "cexp.y"
+#line 114 "cexp.y"
 { yyval.lval = yyvsp[-2].lval << yyvsp[0].lval; ;
     break;}
 case 14:
-#line 189 "cexp.y"
+#line 116 "cexp.y"
 { yyval.lval = yyvsp[-2].lval >> yyvsp[0].lval; ;
     break;}
 case 15:
-#line 191 "cexp.y"
+#line 118 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval == yyvsp[0].lval); ;
     break;}
 case 16:
-#line 193 "cexp.y"
+#line 120 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval != yyvsp[0].lval); ;
     break;}
 case 17:
-#line 195 "cexp.y"
+#line 122 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval <= yyvsp[0].lval); ;
     break;}
 case 18:
-#line 197 "cexp.y"
+#line 124 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval >= yyvsp[0].lval); ;
     break;}
 case 19:
-#line 199 "cexp.y"
+#line 126 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval < yyvsp[0].lval); ;
     break;}
 case 20:
-#line 201 "cexp.y"
+#line 128 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval > yyvsp[0].lval); ;
     break;}
 case 21:
-#line 203 "cexp.y"
+#line 130 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval & yyvsp[0].lval); ;
     break;}
 case 22:
-#line 205 "cexp.y"
+#line 132 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval ^ yyvsp[0].lval); ;
     break;}
 case 23:
-#line 207 "cexp.y"
+#line 134 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval | yyvsp[0].lval); ;
     break;}
 case 24:
-#line 209 "cexp.y"
+#line 136 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval && yyvsp[0].lval); ;
     break;}
 case 25:
-#line 211 "cexp.y"
+#line 138 "cexp.y"
 { yyval.lval = (yyvsp[-2].lval || yyvsp[0].lval); ;
     break;}
 case 26:
-#line 213 "cexp.y"
+#line 140 "cexp.y"
 { yyval.lval = yyvsp[-4].lval ? yyvsp[-2].lval : yyvsp[0].lval; ;
     break;}
 case 27:
-#line 215 "cexp.y"
+#line 142 "cexp.y"
 { yyval.lval = yylval.lval; ;
     break;}
 case 28:
-#line 217 "cexp.y"
+#line 144 "cexp.y"
 { yyval.lval = yylval.lval; ;
     break;}
 case 29:
-#line 219 "cexp.y"
+#line 146 "cexp.y"
 { yyval.lval = 0; ;
     break;}
 }
    /* the action file gets copied in in place of this dollarsign */
-#line 303 "bison.simple"
+#line 412 "bison.simple"
 
   yyvsp -= yylen;
   yyssp -= yylen;
@@ -731,11 +742,11 @@ case 29:
   yylsp -= yylen;
 #endif
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
-      fprintf (stderr, "state stack now", yyssp-yyss);
+      fprintf (stderr, "state stack now");
       while (ssp1 != yyssp)
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
@@ -781,7 +792,7 @@ yyerrlab:   /* here on detecting error */
   if (! yyerrstatus)
     /* If not already recovering from an error, report this error.  */
     {
-      ++yynerr;
+      ++yynerrs;
       yyerror("parse error");
     }
 
@@ -791,9 +802,9 @@ yyerrlab:   /* here on detecting error */
 
       /* return failure if at end of input */
       if (yychar == YYEOF)
-	YYERROR;
+	YYABORT;
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
       if (yydebug)
 	fprintf(stderr, "Discarding token %d (%s).\n", yychar, yytname[yychar1]);
 #endif
@@ -819,18 +830,18 @@ yyerrdefault:  /* current state does not do anything special for the error token
 
 yyerrpop:   /* pop the current state because it cannot handle the error token */
 
-  if (yyssp == yyss) YYERROR;
+  if (yyssp == yyss) YYABORT;
   yyvsp--;
   yystate = *--yyssp;
 #ifdef YYLSP_NEEDED
   yylsp--;
 #endif
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     {
       short *ssp1 = yyss - 1;
-      fprintf (stderr, "Error: state stack now", yyssp-yyss);
+      fprintf (stderr, "Error: state stack now");
       while (ssp1 != yyssp)
 	fprintf (stderr, " %d", *++ssp1);
       fprintf (stderr, "\n");
@@ -861,7 +872,7 @@ yyerrhandle:
   if (yyn == YYFINAL)
     YYACCEPT;
 
-#ifdef YYDEBUG
+#if YYDEBUG != 0
   if (yydebug)
     fprintf(stderr, "Shifting error token, ");
 #endif
@@ -874,7 +885,7 @@ yyerrhandle:
   yystate = yyn;
   goto yynewstate;
 }
-#line 221 "cexp.y"
+#line 148 "cexp.y"
 
 
 /* During parsing of a C expression, the pointer to the next character
@@ -897,7 +908,6 @@ parse_number (olen)
   register int c;
   register int base = 10;
   register len = olen;
-  char *err_copy;
 
   extern double atof ();
 

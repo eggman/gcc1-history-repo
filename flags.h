@@ -58,6 +58,20 @@ extern int extra_warnings;
 
 extern int warn_unused;
 
+/* Nonzero means warn about all declarations which shadow others.   */
+
+extern int warn_shadow;
+
+/* Warn if a switch on an enum fails to have a case for every enum value.  */
+
+extern int warn_switch;
+
+/* Nonzero means warn about any identifiers that match in the first N
+   characters.  The value N is in `id_clash_len'.  */
+
+extern int warn_id_clash;
+extern int id_clash_len;
+
 /* Nonzero if generating code to do profiling.  */
 
 extern int profile_flag;

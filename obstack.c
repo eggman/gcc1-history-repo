@@ -157,13 +157,12 @@ _obstack_allocated_p (h, obj)
 void
 #ifdef __STDC__
 #undef obstack_free
-obstack_free (h, obj)
-
+obstack_free (struct obstack *h, POINTER obj)
 #else
 _obstack_free (h, obj)
-#endif
      struct obstack *h;
      POINTER obj;
+#endif
 {
   register struct _obstack_chunk*  lp;	/* below addr of any objects in this chunk */
   register struct _obstack_chunk*  plp;	/* point to previous chunk if any */

@@ -688,7 +688,7 @@ dbxout_symbol (decl, local)
 	 S for static storage and file scope,
 	 V for static storage and local scope,
 	    for those two, use N_LCSYM if data is in bss segment,
-	    N_STSYM if it is in data segment, or N_FUN if in text segment.
+	    N_STSYM otherwise.  (N_FUN confuses GDB.)
 	 no letter at all, and N_LSYM, for auto variable,
 	 r and N_RSYM for register variable.  */
 
@@ -708,10 +708,15 @@ dbxout_symbol (decl, local)
 
 	      if (!DECL_INITIAL (decl))
 		current_sym_code = N_LCSYM;
+#if 0  /* Note: N_FUN confuses GDB, since GDB expects it to start a new
+	  nest of N_LBRAC/N_RBRAC, etc.  But N_STSYM probably does not
+	  work either, since it relocates as data segment.
+	  Probably no standard N_ code works, so we must invent one.  */
 	      else if (TREE_READONLY (decl) && ! TREE_VOLATILE (decl))
 		/* This is not quite right, but it's the closest
 		   of all the codes that Unix defines.  */
 		current_sym_code = N_FUN;
+#endif
 	      else
 		current_sym_code = N_STSYM;
 	    }
@@ -1089,8 +1094,12 @@ dbxout_block (stmt, depth, args)
 	     that final will define around the code in this block.  */
 	  if (depth > 0)
 	    {
+	      char buf[20];
 	      blocknum = next_block_number++;
-	      fprintf (asmfile, ".stabn %d,0,0,LBB%d\n", N_LBRAC, blocknum);
+	      ASM_GENERATE_INTERNAL_LABEL (buf, "LBB", blocknum);
+	      fprintf (asmfile, ".stabn %d,0,0,", N_LBRAC);
+	      assemble_name (asmfile, buf);
+	      fprintf (asmfile, "\n");
 	    }
 
 	  /* Output the interior of the block.  */
@@ -1098,7 +1107,13 @@ dbxout_block (stmt, depth, args)
 
 	  /* Refer to the marker for the end of the block.  */
 	  if (depth > 0)
-	    fprintf (asmfile, ".stabn %d,0,0,LBE%d\n", N_RBRAC, blocknum);
+	    {
+	      char buf[20];
+	      ASM_GENERATE_INTERNAL_LABEL (buf, "LBE", blocknum);
+	      fprintf (asmfile, ".stabn %d,0,0,", N_RBRAC);
+	      assemble_name (asmfile, buf);
+	      fprintf (asmfile, "\n");
+	    }
 	}
       stmt = TREE_CHAIN (stmt);
     }
@@ -1117,6 +1132,10 @@ dbxout_function (decl)
   dbxout_symbol (decl, 0);
   dbxout_parms (DECL_ARGUMENTS (decl));
   dbxout_block (DECL_INITIAL (decl), 0, DECL_ARGUMENTS (decl));
+  
+  /* If we made any temporary types in this fn that weren't
+     output, output them now.  */
+  dbxout_types (get_temporary_types ());
 }
 
 #else /* not DBX_DEBUGGING_INFO */

@@ -21,7 +21,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* To whomever it may concern: I have heard that such a thing was once
 written by AT&T, but I have never seen it.  */
 
-%expect 23
+%expect 8
 
 /* These are the 23 conflicts you should get in parse.output;
    the state numbers may vary if minor changes in the grammar are made.
@@ -56,6 +56,8 @@ State 411 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator)?
 #ifndef errno
 extern int errno;
 #endif
+
+void yyerror ();
 
 /* Cause the `yydebug' variable to be defined.  */
 #define YYDEBUG 1
@@ -101,6 +103,10 @@ extern int errno;
 %token SIZEOF ENUM STRUCT UNION IF ELSE WHILE DO FOR SWITCH CASE DEFAULT
 %token BREAK CONTINUE RETURN GOTO ASM TYPEOF ALIGNOF
 
+/* Add precedence rules to solve dangling else s/r conflict */
+%nonassoc IF
+%nonassoc ELSE
+
 /* Define the operator tokens and their precedences.
    The value is an integer because, if used, it is the tree code
    to use in the expression made from the operator.  */
@@ -119,7 +125,7 @@ extern int errno;
 %left <code> '*' '/' '%'
 %right <code> UNARY PLUSPLUS MINUSMINUS
 %left HYPERUNARY
-%left <code> POINTSAT '.'
+%left <code> POINTSAT '.' '(' '['
 
 %type <code> unop
 
@@ -770,7 +776,9 @@ component_decl:
 
 components:
 	  /* empty */
-		{ $$ = NULL_TREE; }
+		{ if (pedantic)
+		    warning ("ANSI C forbids member declarations with no members");
+		  $$ = NULL_TREE; }
 	| component_declarator
 	| components ',' component_declarator
 		{ $$ = chainon ($1, $3); }
@@ -917,7 +925,7 @@ stmt:
 		{ expand_start_else (); }
 	  stmt
 		{ expand_end_else (); }
-	| simple_if
+	| simple_if %prec IF
 		{ expand_end_cond (); }
 	| WHILE
 		{ emit_line_note (input_filename, lineno);
@@ -965,7 +973,7 @@ stmt:
 		     clear_momentary during the parsing of the next stmt.  */
 		  push_momentary (); }
 	  stmt
-		{ expand_end_case ();
+		{ expand_end_case ($3);
 		  pop_momentary (); }
 	| CASE expr ':'
 		{ register tree value = fold ($2);
@@ -1050,6 +1058,7 @@ stmt:
 		{ tree decl;
 		  emit_line_note (input_filename, lineno);
 		  decl = lookup_label ($2);
+		  TREE_USED (decl) = 1;
 		  expand_goto (decl); }
 	| identifier ':'
 		{ tree label = define_label (input_filename, lineno, $1);
@@ -1311,8 +1320,8 @@ struct resword { char *name; short token; enum rid rid; };
 
 #define MIN_WORD_LENGTH     2      /* minimum size for C keyword */
 #define MAX_WORD_LENGTH     9      /* maximum size for C keyword */
-#define MIN_HASH_VALUE      4      /* range of the hash keys values for the */
-#define MAX_HASH_VALUE      39     /* minimum perfect hash generator */
+#define MIN_HASH_VALUE      4      /* range of the hash keys values  */
+#define MAX_HASH_VALUE      52     /* for the perfect hash generator */
 #define NORID RID_UNUSED
 
 /* This function performs the minimum-perfect hash mapping from input
@@ -1327,14 +1336,13 @@ inline
 #endif
 static int 
 hash (str, len)
-   register char	*str;
-   register int	len;
+     register char *str;
+     register int len;
 {
-
 /* This table is used to build the hash table index that recognizes
    reserved words in 0(1) steps.  It is larger than strictly necessary, 
    but I'm trading off the space for the time-saving luxury of avoiding 
-   subtraction of an offset.  All those ``39's'' (actually just a
+   subtraction of an offset.  All those ``52's'' (actually just a
    short-hand for MAX_HASH_VALUE #defined above) are used to speed up 
    the search when the string found on the input stream doesn't have a 
    first or last character that is part of the set of alphabetic 
@@ -1343,25 +1351,25 @@ hash (str, len)
 
   static int hash_table[] = 
     {
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,  39,  39,  39,  39,  39,
-      39,  39,  39,  39,  39,   5,  39,  32,  33,  18,
-       2,   0,  13,  28,  19,  18,  39,   0,   5,   1,
-      11,   3,  39,  39,  12,   6,   0,   0,   7,   1,
-      39,  39,  39,  39,  39,  39,  39,  39,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,  52,  52,  52,  52,  52,
+      52,  52,  52,  52,  52,   7,  52,  12,   0,  18,
+       5,   0,  13,   2,   2,  29,  52,   0,   7,  37,
+      25,   0,  52,  52,  17,  19,   0,  21,   1,   3,
+      52,  52,  52,  52,  52,  52,  52,  52,
     };
 
-/* The hash function is very simple: add the length of STR
-   to the hash_table value of its first and last character. 
-   Putting LEN near LEN - 1 generates slightly better 
-   code... */
+  /* The hash function is very simple: add the length of STR
+     to the hash_table value of its first and last character. 
+     Putting LEN near LEN - 1 generates slightly better 
+     code... */
 
   return len + hash_table[str[len - 1]] + hash_table[str[0]];
 }
@@ -1375,61 +1383,67 @@ hash (str, len)
 #ifdef __GNUC__
 inline 
 #endif
-static struct resword *
+struct resword *
 is_reserved_word (str, len)
-   register char *str;
-   register int len;
+     register char *str;
+     register int len;
 {
+  /* This is the hash table of keywords.
+     The order of keywords has been chosen for perfect hashing.
+     Therefore, this table cannot be updated by hand.
+     Use the program ``gperf,'' available with the latest libg++ 
+     distribution, to generate an updated table.  The command-line
+     arguments to build this table were: gperf -g -o -j1 -t gnuc.input  */
 
-/* This is the hash table of keywords.
-   The order of keywords has been chosen for perfect hashing.
-   Therefore, this table cannot be updated by hand.
-   Use the program ``gperf,'' available with the latest libg++ 
-   distribution, to generate an updated table.  The command-line
-   arguments to build this table were: gperf -g -o -j1 -t gnuc.input  */
-
-  static struct resword reswords[] =
+  static struct resword reswords[] = 
     {
-
-      /* These first locations are unused, they simplify the hashing. */
-
-		{ "",},{ "",},{ "",},{ "",},
-		{ "else", ELSE, NORID },
-		{ "enum", ENUM, NORID },
-		{ "while", WHILE, NORID },
-		{ "do", DO, NORID },
-		{ "double", TYPESPEC, RID_DOUBLE },
-		{ "default", DEFAULT, NORID },
-		{ "unsigned", TYPESPEC, RID_UNSIGNED },
-		{ "short", TYPESPEC, RID_SHORT },
-		{ "struct", STRUCT, NORID },
-		{ "void", TYPESPEC, RID_VOID },
-		{ "signed", TYPESPEC, RID_SIGNED },
-		{ "volatile", TYPE_QUAL, RID_VOLATILE },
-		{ "union", UNION, NORID },
-		{ "extern", SCSPEC, RID_EXTERN },
-		{ "float", TYPESPEC, RID_FLOAT },
-		{ "typeof", TYPEOF, NORID },
-		{ "typedef", SCSPEC, RID_TYPEDEF },
-		{ "int", TYPESPEC, RID_INT },
-		{ "case", CASE, NORID },
-		{ "const", TYPE_QUAL, RID_CONST },
-		{ "inline", SCSPEC, RID_INLINE },
-		{ "sizeof", SIZEOF, NORID },
-		{ "continue", CONTINUE, NORID },
-		{ "__alignof", ALIGNOF, NORID },
-		{ "for", FOR, NORID },
-		{ "return", RETURN, NORID },
-		{ "static", SCSPEC, RID_STATIC },
-		{ "switch", SWITCH, NORID },
-		{ "register", SCSPEC, RID_REGISTER },
-		{ "if", IF, NORID },
-		{ "char", TYPESPEC, RID_CHAR },
-		{ "goto", GOTO, NORID },
-		{ "asm", ASM, NORID },
-		{ "long", TYPESPEC, RID_LONG },
-		{ "break", BREAK, NORID },
-		{ "auto", SCSPEC, RID_AUTO },
+      { "",},{ "",},{ "",},{ "",},
+      { "else", ELSE, NORID },
+      { "break", BREAK, NORID },
+      { "goto", GOTO, NORID },
+      { "do", DO, NORID },
+      { "while", WHILE, NORID },
+      { "volatile", TYPE_QUAL, RID_VOLATILE },
+      { "void", TYPESPEC, RID_VOID },
+      { "double", TYPESPEC, RID_DOUBLE },
+      { "default", DEFAULT, NORID },
+      { "long", TYPESPEC, RID_LONG },
+      { "__const", TYPE_QUAL, RID_CONST },
+      { "__inline", SCSPEC, RID_INLINE },
+      { "auto", SCSPEC, RID_AUTO },
+      { "__volatile", TYPE_QUAL, RID_VOLATILE },
+      { "float", TYPESPEC, RID_FLOAT },
+      { "typeof", TYPEOF, NORID },
+      { "typedef", SCSPEC, RID_TYPEDEF },
+      { "",},
+      { "case", CASE, NORID },
+      { "const", TYPE_QUAL, RID_CONST },
+      { "short", TYPESPEC, RID_SHORT },
+      { "struct", STRUCT, NORID },
+      { "continue", CONTINUE, NORID },
+      { "switch", SWITCH, NORID },
+      { "__typeof", TYPEOF, NORID },
+      { "__alignof", ALIGNOF, NORID },
+      { "signed", TYPESPEC, RID_SIGNED },
+      { "extern", SCSPEC, RID_EXTERN },
+      { "int", TYPESPEC, RID_INT },
+      { "for", FOR, NORID },
+      { "unsigned", TYPESPEC, RID_UNSIGNED },
+      { "inline", SCSPEC, RID_INLINE },
+      { "",},{ "",},
+      { "sizeof", SIZEOF, NORID },
+      { "char", TYPESPEC, RID_CHAR },
+      { "",},
+      { "enum", ENUM, NORID },
+      { "register", SCSPEC, RID_REGISTER },
+      { "static", SCSPEC, RID_STATIC },
+      { "if", IF, NORID },
+      { "",},{ "",},{ "",},
+      { "return", RETURN, NORID },
+      { "__asm", ASM, NORID },
+      { "",},
+      { "union", UNION, NORID },
+      { "asm", ASM, NORID },
     };
 
   if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH) 
@@ -1640,7 +1654,7 @@ check_newline ()
 	      && getc (finput) == 'g'
 	      && getc (finput) == 'm'
 	      && getc (finput) == 'a'
-	      && ((c = getc (finput)) == ' ' || c == '\t'))
+	      && ((c = getc (finput)) == ' ' || c == '\t' || c == '\n'))
 	    goto skipline;
 	}
 
@@ -1652,7 +1666,6 @@ check_newline ()
 	      && ((c = getc (finput)) == ' ' || c == '\t'))
 	    goto linenum;
 	}
-#ifdef IDENT_DIRECTIVE
       else if (c == 'i')
 	{
 	  if (getc (finput) == 'd'
@@ -1687,16 +1700,12 @@ check_newline ()
 
 #ifdef ASM_OUTPUT_IDENT
 	      ASM_OUTPUT_IDENT (asm_out_file, TREE_STRING_POINTER (yylval.ttype));
-#else
-	      fprintf (asm_out_file, "\t.ident \"%s\"\n",
-		       TREE_STRING_POINTER (yylval.ttype));
 #endif
 
 	      /* Skip the rest of this line.  */
 	      goto skipline;
 	    }
 	}
-#endif
 
       error ("undefined or invalid # directive");
       goto skipline;
@@ -1761,6 +1770,8 @@ linenum:
 
   /* skip the rest of this line.  */
  skipline:
+  if (c == '\n')
+    return c;
   while ((c = getc (finput)) != EOF && c != '\n');
   return c;
 }
@@ -2011,14 +2022,18 @@ yylex ()
 		 /* -fno-asm means don't recognize the non-ANSI keywords.  */
 		 || ((int) ptr->token != ASM
 		     && (int) ptr->token != TYPEOF
-		     && ptr->rid != RID_INLINE))
+		     && ptr->rid != RID_INLINE)
+		 /* Recognize __asm and __inline despite -fno-asm.  */
+		 || token_buffer[0] == '_')
 		/* -ftraditional means don't recognize nontraditional keywords
 		   typeof, const, volatile, signed or inline.  */
 		&& (! flag_traditional
 		    || ((int) ptr->token != TYPE_QUAL
 			&& (int) ptr->token != TYPEOF
 			&& ptr->rid != RID_SIGNED
-			&& ptr->rid != RID_INLINE)))
+			&& ptr->rid != RID_INLINE)
+		    /* Recognize __inline, etc. despite -ftraditional.  */
+		    || token_buffer[0] == '_'))
 	      value = (int) ptr->token;
 	  }
       }

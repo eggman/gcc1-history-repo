@@ -108,6 +108,14 @@ enum direction {none, upward, downward};  /* Value has this type.  */
 #define FUNCTION_ARG_PADDING(mode, size) upward
 #endif
 #endif
+
+/* Nonzero if type TYPE should be returned in memory
+   (even though its mode is not BLKmode).
+   Most machines can use the following default definition.  */
+
+#ifndef RETURN_IN_MEMORY
+#define RETURN_IN_MEMORY(type) 0
+#endif
 
 /* Optabs are tables saying how to generate insn bodies
    for various machine modes and numbers of operands.

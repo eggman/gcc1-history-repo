@@ -28,6 +28,10 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "insn-config.h"
 #include "recog.h"
 
+/* In ANSI C we could write MODE + 1, but traditional C compilers
+   seem to reject it.  */
+#define INC_MODE(MODE) (enum machine_mode) ((int)(MODE) + 1)
+
 /* Each optab contains info on how this target machine
    can perform a particular operation
    for all sizes and kinds of operands.
@@ -105,8 +109,12 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
      int unsignedp;
      enum optab_methods methods;
 {
+  enum mode_class class;
+  enum machine_mode wider_mode;
   register rtx temp;
   rtx last = get_last_insn ();
+
+  class = GET_MODE_CLASS (mode);
 
   op0 = protect_from_queue (op0, 0);
   op1 = protect_from_queue (op1, 0);
@@ -245,91 +253,69 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
       return temp;
     }
 
+  delete_insns_since (last);
+
   /* It can't be done in this mode.  Can we do it in a wider mode?  */
 
   if (! (methods == OPTAB_WIDEN || methods == OPTAB_LIB_WIDEN))
-    {
-      delete_insns_since (last);
-      return 0;			/* Caller says, don't even try.  */
-    }
+    return 0;			/* Caller says, don't even try.  */
 
   /* Compute the value of METHODS to pass to recursive calls.
      Don't allow widening to be tried recursively.  */
 
   methods = (methods == OPTAB_LIB_WIDEN ? OPTAB_LIB : OPTAB_DIRECT);
 
-  if ((mode == HImode || mode == QImode)
-      && (binoptab->handlers[(int) SImode].insn_code != CODE_FOR_nothing
-	  || (methods == OPTAB_LIB
-	      && binoptab->handlers[(int) SImode].lib_call)))
+  /* Widening is now independent of specific machine modes.
+     It is assumed that widening may be performed to any
+     higher numbered mode in the same mode class.  */
+
+  if (class == MODE_INT || class == MODE_FLOAT)
     {
-      rtx xop0 = op0, xop1 = op1;
-
-      if (GET_MODE (xop0) != VOIDmode)
+      for (wider_mode = INC_MODE (mode);
+	   ((int) wider_mode < (int) MAX_MACHINE_MODE
+	    && GET_MODE_CLASS (wider_mode) == class);
+	   wider_mode = INC_MODE (wider_mode))
 	{
-	  temp = gen_reg_rtx (SImode);
-	  convert_move (temp, xop0, unsignedp);
-	  xop0 = temp;
-	}
-      if (GET_MODE (xop1) != VOIDmode)
-	{
-	  temp = gen_reg_rtx (SImode);
-	  convert_move (temp, xop1, unsignedp);
-	  xop1 = temp;
-	}
+	  if ((binoptab->handlers[(int) wider_mode].insn_code
+	       != CODE_FOR_nothing)
+	      || (methods == OPTAB_LIB
+		  && binoptab->handlers[(int) wider_mode].lib_call))
+	    {
+	      rtx xop0 = op0, xop1 = op1;
 
-      temp = expand_binop (SImode, binoptab, xop0, xop1, 0,
-			   unsignedp, methods);
-      if (temp)
-	return gen_lowpart (mode, temp);
-      else
-	delete_insns_since (last);
-    }
-  if ((mode == HImode || mode == QImode || mode == SImode)
-      && (binoptab->handlers[(int) DImode].insn_code != CODE_FOR_nothing
-	  || (methods == OPTAB_LIB
-	      && binoptab->handlers[(int) DImode].lib_call)))
-    {
-      rtx xop0 = op0, xop1 = op1;
+	      if (GET_MODE (xop0) != VOIDmode)
+		{
+		  temp = gen_reg_rtx (wider_mode);
+		  convert_move (temp, xop0, unsignedp);
+		  xop0 = temp;
+		}
+	      if (GET_MODE (xop1) != VOIDmode)
+		{
+		  temp = gen_reg_rtx (wider_mode);
+		  convert_move (temp, xop1, unsignedp);
+		  xop1 = temp;
+		}
 
-      temp = gen_reg_rtx (DImode);
-      convert_move (temp, xop0, unsignedp);
-      xop0 = temp;
-      temp = gen_reg_rtx (DImode);
-      convert_move (temp, xop1, unsignedp);
-      xop1 = temp;
-
-      temp = expand_binop (DImode, binoptab, xop0, xop1, 0,
-			   unsignedp, methods);
-      if (temp)
-	return gen_lowpart (mode, temp);
-      else
-	delete_insns_since (last);
-    }
-  if (mode == SFmode
-      && (binoptab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing
-	  || (methods == OPTAB_LIB
-	      && binoptab->handlers[(int) DFmode].lib_call)))
-    {
-      rtx xop0 = op0, xop1 = op1;
-
-      temp = gen_reg_rtx (DFmode);
-      convert_move (temp, xop0, 0);
-      xop0 = temp;
-      temp = gen_reg_rtx (DFmode);
-      convert_move (temp, xop1, 0);
-      xop1 = temp;
-
-      temp = expand_binop (DFmode, binoptab, xop0, xop1, 0, 0, methods);
-      if (temp)
-	{
-	  if (target == 0)
-	    target = gen_reg_rtx (SFmode);
-	  convert_move (target, temp, 0);
-	  return target;
+	      temp = expand_binop (wider_mode, binoptab, xop0, xop1, 0,
+				   unsignedp, methods);
+	      if (temp)
+		{
+		  if (class == MODE_FLOAT)
+		    {
+		      if (target == 0)
+			target = gen_reg_rtx (mode);
+		      convert_move (target, temp, 0);
+		      return target;
+		    }
+		  else
+		    return gen_lowpart (mode, temp);
+		}
+	      else
+		delete_insns_since (last);
+	    }
 	}
     }
-  delete_insns_since (last);
+
   return 0;
 }
 
@@ -410,6 +396,10 @@ expand_twoval_binop (binoptab, op0, op1, targ0, targ1, unsignedp)
      int unsignedp;
 {
   enum machine_mode mode = GET_MODE (targ0 ? targ0 : targ1);
+  enum mode_class class;
+  enum machine_mode wider_mode;
+
+  class = GET_MODE_CLASS (mode);
 
   op0 = protect_from_queue (op0, 0);
   op1 = protect_from_queue (op1, 0);
@@ -438,26 +428,21 @@ expand_twoval_binop (binoptab, op0, op1, targ0, targ1, unsignedp)
 
   /* It can't be done in this mode.  Can we do it in a wider mode?  */
 
-  if ((mode == HImode || mode == QImode)
-      && binoptab->handlers[(int) SImode].insn_code != CODE_FOR_nothing)
+  if (class == MODE_INT || class == MODE_FLOAT)
     {
-      expand_twoval_binop_convert (binoptab, SImode, op0, op1,
-				   targ0, targ1, unsignedp);
-      return 1;
-    }
-  if ((mode == HImode || mode == QImode || mode == SImode)
-      && binoptab->handlers[(int) DImode].insn_code != CODE_FOR_nothing)
-    {
-      expand_twoval_binop_convert (binoptab, DImode, op0, op1,
-				   targ0, targ1, unsignedp);
-      return 1;
-    }
-  if (mode == SFmode
-      && binoptab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing)
-    {
-      expand_twoval_binop_convert (binoptab, DFmode, op0, op1,
-				   targ0, targ1, unsignedp);
-      return 1;
+      for (wider_mode = INC_MODE (mode);
+	   ((int) wider_mode < (int) MAX_MACHINE_MODE
+	    && GET_MODE_CLASS (wider_mode) == class);
+	   wider_mode = INC_MODE (wider_mode))
+	{
+	  if (binoptab->handlers[(int) wider_mode].insn_code
+	      != CODE_FOR_nothing)
+	    {
+	      expand_twoval_binop_convert (binoptab, wider_mode, op0, op1,
+					   targ0, targ1, unsignedp);
+	      return 1;
+	    }
+	}
     }
   return 0;
 }
@@ -504,7 +489,11 @@ expand_unop (mode, unoptab, op0, target, unsignedp)
      rtx target;
      int unsignedp;
 {
+  enum mode_class class;
+  enum machine_mode wider_mode;
   register rtx temp;
+
+  class = GET_MODE_CLASS (mode);
 
   op0 = protect_from_queue (op0, 0);
 
@@ -578,44 +567,36 @@ expand_unop (mode, unoptab, op0, target, unsignedp)
 
   /* It can't be done in this mode.  Can we do it in a wider mode?  */
 
-  if ((mode == HImode || mode == QImode)
-      && (unoptab->handlers[(int) SImode].insn_code != CODE_FOR_nothing
-	  || unoptab->handlers[(int) SImode].lib_call))
+  if (class == MODE_INT || class == MODE_FLOAT)
     {
-      if (GET_MODE (op0) != VOIDmode)
+      for (wider_mode = INC_MODE (mode);
+	   ((int) wider_mode < (int) MAX_MACHINE_MODE
+	    && GET_MODE_CLASS (wider_mode) == class);
+	   wider_mode = INC_MODE (wider_mode))
 	{
-	  temp = gen_reg_rtx (SImode);
-	  convert_move (temp, op0, unsignedp);
-	  op0 = temp;
+	  if ((unoptab->handlers[(int) wider_mode].insn_code
+	       != CODE_FOR_nothing)
+	      || unoptab->handlers[(int) wider_mode].lib_call)
+	    {
+	      if (GET_MODE (op0) != VOIDmode)
+		{
+		  temp = gen_reg_rtx (wider_mode);
+		  convert_move (temp, op0, unsignedp);
+		  op0 = temp;
+		}
+	      
+	      target = expand_unop (wider_mode, unoptab, op0, 0, unsignedp);
+	      if (class == MODE_FLOAT)
+		{
+		  if (target == 0)
+		    target = gen_reg_rtx (mode);
+		  convert_move (target, temp, 0);
+		  return target;
+		}
+	      else
+		return gen_lowpart (mode, target);
+	    }
 	}
-
-      target = expand_unop (SImode, unoptab, op0, 0, unsignedp);
-      return gen_lowpart (mode, target);
-    }
-  if ((mode == HImode || mode == QImode || mode == SImode)
-      && (unoptab->handlers[(int) DImode].insn_code != CODE_FOR_nothing
-	  || unoptab->handlers[(int) DImode].lib_call))
-    {
-      temp = gen_reg_rtx (DImode);
-      convert_move (temp, op0, unsignedp);
-      op0 = temp;
-
-      target = expand_unop (DImode, unoptab, op0, 0, unsignedp);
-      return gen_lowpart (mode, target);
-    }
-  if (mode == SFmode
-      && (unoptab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing
-	  || unoptab->handlers[(int) DFmode].lib_call))
-    {
-      temp = gen_reg_rtx (DFmode);
-      convert_move (temp, op0, 0);
-      op0 = temp;
-
-      temp = expand_unop (DFmode, unoptab, op0, 0, 0);
-      if (target == 0)
-	target = gen_reg_rtx (SFmode);
-      convert_move (target, temp, 0);
-      return target;
     }
 
   return 0;
@@ -706,6 +687,11 @@ emit_cmp_insn (x, y, size, unsignedp, align)
      int align;
 {
   enum machine_mode mode = GET_MODE (x);
+  enum mode_class class;
+  enum machine_mode wider_mode;
+
+  class = GET_MODE_CLASS (mode);
+
   if (mode == VOIDmode) mode = GET_MODE (y);
   /* They could both be VOIDmode if both args are immediate constants,
      but we should fold that at an earlier stage.
@@ -717,6 +703,8 @@ emit_cmp_insn (x, y, size, unsignedp, align)
       x = force_not_mem (x);
       y = force_not_mem (y);
     }
+
+  /* Handle all BLKmode compares.  */
 
   if (mode == BLKmode)
     {
@@ -758,9 +746,13 @@ emit_cmp_insn (x, y, size, unsignedp, align)
 #endif
 	  emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0, 0);
 	}
+      return;
     }
-  else if ((y == const0_rtx || y == fconst0_rtx || y == dconst0_rtx)
-	   && tst_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
+
+  /* Handle some compares against zero.  */
+
+  if ((y == const0_rtx || y == fconst0_rtx || y == dconst0_rtx)
+      && tst_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
     {
       int icode = (int) tst_optab->handlers[(int) mode].insn_code;
 
@@ -774,8 +766,12 @@ emit_cmp_insn (x, y, size, unsignedp, align)
 	x = force_reg (insn_operand_mode[icode][0], x);
 
       emit_insn (GEN_FCN (icode) (x));
+      return;
     }
-  else if (cmp_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
+
+  /* Handle compares for which there is a directly suitable insn.  */
+
+  if (cmp_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
     {
       int icode = (int) cmp_optab->handlers[(int) mode].insn_code;
 
@@ -793,29 +789,32 @@ emit_cmp_insn (x, y, size, unsignedp, align)
 	y = force_reg (insn_operand_mode[icode][1], y);
 
       emit_insn (GEN_FCN (icode) (x, y));
+      return;
     }
-  else if ((mode == QImode || mode == HImode)
-	   && cmp_optab->handlers[(int) SImode].insn_code != CODE_FOR_nothing)
+
+  /* Try widening if we can find a direct insn that way.  */
+
+  if (class == MODE_INT || class == MODE_FLOAT)
     {
-      x = convert_to_mode (SImode, x, unsignedp);
-      y = convert_to_mode (SImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp, 0);
+      for (wider_mode = INC_MODE (mode);
+	   ((int) wider_mode < (int) MAX_MACHINE_MODE
+	    && GET_MODE_CLASS (wider_mode) == class);
+	   wider_mode = INC_MODE (wider_mode))
+	{
+	  if (cmp_optab->handlers[(int) wider_mode].insn_code
+	      != CODE_FOR_nothing)
+	    {
+	      x = convert_to_mode (wider_mode, x, unsignedp);
+	      y = convert_to_mode (wider_mode, y, unsignedp);
+	      emit_cmp_insn (x, y, 0, unsignedp);
+	      return;
+	    }
+	}
     }
-  else if ((mode == QImode || mode == HImode || mode == SImode)
-	   && cmp_optab->handlers[(int) DImode].insn_code != CODE_FOR_nothing)
-    {
-      x = convert_to_mode (DImode, x, unsignedp);
-      y = convert_to_mode (DImode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp, 0);
-    }
-  else if (mode == SFmode
-	   && cmp_optab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing)
-    {
-      x = convert_to_mode (DFmode, x, unsignedp);
-      y = convert_to_mode (DFmode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp, 0);
-    }
-  else if (cmp_optab->handlers[(int) mode].lib_call)
+
+  /* Handle a lib call just for the mode we are using.  */
+
+  if (cmp_optab->handlers[(int) mode].lib_call)
     {
       char *string = cmp_optab->handlers[(int) mode].lib_call;
       /* If we want unsigned, and this mode has a distinct unsigned
@@ -833,17 +832,31 @@ emit_cmp_insn (x, y, size, unsignedp, align)
 	emit_cmp_insn (hard_libcall_value (SImode), const1_rtx, 0, unsignedp, 0);
       else
 	emit_cmp_insn (hard_libcall_value (SImode), const0_rtx, 0, 0, 0);
+      return;
     }
-  else if (mode == SFmode
-	   && (cmp_optab->handlers[(int) DFmode].insn_code != CODE_FOR_nothing
-	       || cmp_optab->handlers[(int) DFmode].lib_call != 0))
+
+  /* Try widening and then using a libcall.  */
+
+  if (class == MODE_FLOAT)
     {
-      x = convert_to_mode (DFmode, x, unsignedp);
-      y = convert_to_mode (DFmode, y, unsignedp);
-      emit_cmp_insn (x, y, 0, unsignedp, 0);
+      for (wider_mode = INC_MODE (mode);
+	   ((int) wider_mode < (int) MAX_MACHINE_MODE
+	    && GET_MODE_CLASS (wider_mode) == class);
+	   wider_mode = INC_MODE (wider_mode))
+	{
+	  if ((cmp_optab->handlers[(int) wider_mode].insn_code
+	       != CODE_FOR_nothing)
+	      || (cmp_optab->handlers[(int) wider_mode].lib_call != 0))
+	    {
+	      x = convert_to_mode (wider_mode, x, unsignedp);
+	      y = convert_to_mode (wider_mode, y, unsignedp);
+	      emit_cmp_insn (x, y, 0, unsignedp);
+	    }
+	}
+      return;
     }
-  else
-    abort ();
+
+  abort ();
 }
 
 /* These three functions generate an insn body and return it

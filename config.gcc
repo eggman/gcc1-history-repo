@@ -146,27 +146,39 @@ case $# in
 		cpu_type=m68k
 		configuration_file=xm-hp9k320.h
 		;;
-	hp9k320g)			#    with gnu as, ld and gdb
+	hp9k320-gas | hp9k320g)		#    with gnu as, ld and gdb
 		cpu_type=m68k
 		configuration_file=xm-hp9k320.h
 		;;
 	isi68)
 		cpu_type=m68k
 		;;
-	news800)
+	news | news800)
+	        configuration_file=xm-news.h
+	        target_machine=tm-news.h
 		cpu_type=m68k
 		;;
+	news-gas | news-g)
+	        configuration_file=xm-news.h
+	        target_machine=tm-newsgas.h
+		cpu_type=m68k
+		;;
+	altos | altos3068)        # Altos 3068 with gnu as, ld and gdb
+        	cpu_type=m68k
+	        configuration_file=xm-altos3068.h
+	        target_machine=tm-altos3068.h
+	        ;;
 	3b1)
 		cpu_type=m68k
 		configuration_file=xm-${machine}.h
 		;;
 	sequent-ns32k | sequent)
 		cpu_type=ns32k
-		aux_output=output-ns32k.c
+		aux_output=out-ns32k.c
 		;;
 	encore)
 		cpu_type=ns32k
-		aux_output=output-ns32k.c
+		aux_output=out-ns32k.c
 		;;
 	genix)
 		machine=ns32k
@@ -187,6 +199,9 @@ case $# in
 		target_machine=tm-convex2.h
 		cpu_type=convex
 		;;
+	mips)
+		machine=mips
+		;;
 #	370)
 #		machine=370
 #		;;
@@ -194,11 +209,11 @@ case $# in
 
 		# if cpu_type is not set, define cpu_type to machine.
 		#
-	cpu_type=${cpu_type=$machine}
-	configuration_file=${configuration_file=xm-$cpu_type.h}
-	target_machine=${target_machine=tm-$machine.h}
+	cpu_type=${cpu_type-$machine}
+	configuration_file=${configuration_file-xm-$cpu_type.h}
+	target_machine=${target_machine-tm-$machine.h}
 	machine_description=${cpu_type}.md
-	aux_output=${aux_output=output-$cpu_type.c}
+	aux_output=${aux_output-out-$cpu_type.c}
 
 	if [ xx${vint} = xx ]
 	then
@@ -217,24 +232,24 @@ case $# in
 		set $files; file=$1; shift; files=$*
 		set $links; link=$1; shift; links=$*
 
-		if [ ! -r $file ]
+		if [ ! -r config/$file ]
 		then
 			echo "$progname: cannot create a link \`$link',"
-			echo "since the file \`$file' does not exist."
+			echo "since the file \`config/$file' does not exist."
 			exit 1
 		fi
 
 		$remove -f $link
 		rm -f config.status
 		# Make a symlink if possible, otherwise try a hard link
-		$symbolic_link $file $link 2>/dev/null || $hard_link $file $link
+		$symbolic_link config/$file $link 2>/dev/null || $hard_link config/$file $link
 
 		if [ ! -r $link ]
 		then
-			echo "$progname: unable to link \`$link' to \`$file'."
+			echo "$progname: unable to link \`$link' to \`config/$file'."
 			exit 1
 		fi
-		echo "Linked \`$link' to \`$file'."
+		echo "Linked \`$link' to \`config/$file'."
 	done
 
 	if [ xx${vint} = xx ]

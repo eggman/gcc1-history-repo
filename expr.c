@@ -292,8 +292,8 @@ convert_move (to, from, unsignedp)
 {
   enum machine_mode to_mode = GET_MODE (to);
   enum machine_mode from_mode = GET_MODE (from);
-  int to_real = to_mode == SFmode || to_mode == DFmode;
-  int from_real = from_mode == SFmode || from_mode == DFmode;
+  int to_real = GET_MODE_CLASS (to_mode) == MODE_FLOAT;
+  int from_real = GET_MODE_CLASS (from_mode) == MODE_FLOAT;
   int extending = (int) to_mode > (int) from_mode;
 
   to = protect_from_queue (to, 1);
@@ -386,7 +386,8 @@ convert_move (to, from, unsignedp)
       else if (HAVE_extendsidi2)
 	{
 	  convert_move (gen_lowpart (SImode, to), from, unsignedp);
-	  emit_unop_insn (CODE_FOR_extendsidi2, to, to, SIGN_EXTEND);
+	  emit_unop_insn (CODE_FOR_extendsidi2, to,
+			  gen_lowpart (SImode, to), SIGN_EXTEND);
 	}
 #endif
 #ifdef HAVE_slt
@@ -432,8 +433,10 @@ convert_move (to, from, unsignedp)
       && TRULY_NOOP_TRUNCATION (GET_MODE_BITSIZE (to_mode),
 				GET_MODE_BITSIZE (from_mode))
       && ((GET_CODE (from) == MEM
+	   && ! MEM_VOLATILE_P (from)
 	   && ! mode_dependent_address_p (XEXP (from, 0)))
-	  || GET_CODE (from) == REG))
+	  || GET_CODE (from) == REG
+	  || GET_CODE (from) == SUBREG))
     {
       emit_move_insn (to, gen_lowpart (to_mode, from));
       return;
@@ -530,6 +533,8 @@ convert_move (to, from, unsignedp)
       abort ();
     }
 
+#if 0 /* This seems to be redundant with code 100 lines up.  */
+
   /* Now we are truncating an integer to a smaller one.
      If the result is a temporary, we might as well just copy it,
      since only the low-order part of the result needs to be valid
@@ -562,6 +567,7 @@ convert_move (to, from, unsignedp)
 	}
 #endif /* not BYTES_BIG_ENDIAN */
     }
+#endif /* 0 */
 
   if (from_mode == SImode && to_mode == HImode)
     {
@@ -620,7 +626,8 @@ convert_to_mode (mode, x, unsignedp)
   if (mode == GET_MODE (x))
     return x;
   if (integer_mode_p (mode)
-      && GET_MODE_SIZE (mode) <= GET_MODE_SIZE (GET_MODE (x)))
+      && GET_MODE_SIZE (mode) <= GET_MODE_SIZE (GET_MODE (x))
+      && ! (GET_CODE (x) == MEM && MEM_VOLATILE_P (x)))
     return gen_lowpart (mode, x);
   temp = gen_reg_rtx (mode);
   convert_move (temp, x, unsignedp);
@@ -1278,7 +1285,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	    {
 	      move_by_pieces (gen_rtx (MEM, BLKmode, temp), xinner,
 			      INTVAL (size), align);
-	      return;
+	      goto ret;
 	    }
 	  /* Try the most limited insn first, because there's no point
 	     including more than one in the machine description unless
@@ -1292,7 +1299,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      emit_insn (gen_movstrqi (gen_rtx (MEM, BLKmode, temp),
 				       xinner, size,
 				       gen_rtx (CONST_INT, VOIDmode, align)));
-	      return;
+	      goto ret;
 	    }
 #endif
 #ifdef HAVE_movstrhi
@@ -1304,7 +1311,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      emit_insn (gen_movstrhi (gen_rtx (MEM, BLKmode, temp),
 				       xinner, size,
 				       gen_rtx (CONST_INT, VOIDmode, align)));
-	      return;
+	      goto ret;
 	    }
 #endif
 #ifdef HAVE_movstrsi
@@ -1313,7 +1320,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      emit_insn (gen_movstrsi (gen_rtx (MEM, BLKmode, temp),
 				       xinner, size,
 				       gen_rtx (CONST_INT, VOIDmode, align)));
-	      return;
+	      goto ret;
 	    }
 #endif
 
@@ -1441,6 +1448,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
       emit_move_insn (gen_rtx (MEM, mode, addr), x);
     }
 
+ ret:
   if (extra && args_addr == 0 && where_pad == stack_direction)
     anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
 }
@@ -1497,7 +1505,7 @@ emit_library_call (va_alist)
       if (GET_MODE (val) != mode && GET_MODE (val) != VOIDmode)
 	{
 	  val = gen_reg_rtx (mode);
-	  convert_move (val, argvec[argnum].value, 0);
+	  convert_move (val, argvec[count].value, 0);
 	}
       else if (GET_CODE (val) != REG && GET_CODE (val) != MEM
 	       
@@ -1536,8 +1544,11 @@ emit_library_call (va_alist)
   if (args_size != 0)
     {
 #ifdef STACK_ARGS_ADJUST
-      stack_padding = STACK_ARGS_ADJUST (args_size);
-      args_size += stack_padding;
+      struct args_size size;
+      size.constant = args_size;
+      size.var = 0;
+      STACK_ARGS_ADJUST (size);
+      args_size = size.constant;
 #endif
       argblock
 	= push_block (round_push (gen_rtx (CONST_INT, VOIDmode, args_size)));
@@ -2167,7 +2178,7 @@ expand_expr (exp, target, tmode, modifier)
 	 See expand_decl.  */
       if (GET_CODE (DECL_RTL (exp)) == MEM
 	  && GET_CODE (XEXP (DECL_RTL (exp), 0)) == REG)
-	return change_address (DECL_RTL (exp), BLKmode,
+	return change_address (DECL_RTL (exp), GET_MODE (DECL_RTL (exp)),
 			       XEXP (DECL_RTL (exp), 0));
       if (GET_CODE (DECL_RTL (exp)) == MEM
 	  && modifier != EXPAND_CONST_ADDRESS)
@@ -2539,9 +2550,19 @@ expand_expr (exp, target, tmode, modifier)
       if (GET_CODE (op1) == PLUS
 	  && CONSTANT_P (XEXP (op1, 1)))
 	{
+	  rtx tem;
+	  int constant_term = 0;
+
 	  op0 = gen_rtx (PLUS, mode, XEXP (op1, 0), op0);
+	  /* Let's also eliminate constants from op0 if possible.  */
+	  tem = eliminate_constant_term (op0, &constant_term);
 	  if (GET_CODE (XEXP (op1, 1)) == CONST_INT)
-	    return plus_constant (op0, INTVAL (XEXP (op1, 1)));
+	    {
+	      if (constant_term != 0)
+		return plus_constant (tem, INTVAL (XEXP (op1, 1)) + constant_term);
+	      else
+		return plus_constant (op0, INTVAL (XEXP (op1, 1)));
+	    }
 	  else
 	    return gen_rtx (PLUS, mode, op0, XEXP (op1, 1));
 	}
@@ -3387,8 +3408,10 @@ preexpand_calls (exp)
 	  && (DECL_FUNCTION_CODE (TREE_OPERAND (TREE_OPERAND (exp, 0), 0))
 	      != NOT_BUILT_IN))
 	return;
+      /* Precompute calls that don't return values in memory.  */
       if (CALL_EXPR_RTL (exp) == 0
-	  && TYPE_MODE (TREE_TYPE (exp)) != BLKmode)
+	  && TYPE_MODE (TREE_TYPE (exp)) != BLKmode
+	  && ! RETURN_IN_MEMORY (TREE_TYPE (exp)))
 	CALL_EXPR_RTL (exp) = expand_call (exp, 0, 0);
       return;
 
@@ -3651,8 +3674,6 @@ expand_call (exp, target, ignore)
   int starting_args_size;
   /* Nonzero means count reg-parms' size in ARGS_SIZE.  */
   int stack_count_regparms = 0;
-  /* Number of bytes of padding BELOW the first argument.  */
-  int stack_padding = 0;
   /* Data on reg parms scanned so far.  */
   CUMULATIVE_ARGS args_so_far;
   /* Nonzero if a reg parm has been scanned.  */
@@ -3733,6 +3754,7 @@ expand_call (exp, target, ignore)
   /* Set up a place to return a structure.  */
 
   if (TYPE_MODE (TREE_TYPE (exp)) == BLKmode
+      || RETURN_IN_MEMORY (TREE_TYPE (exp))
       || (flag_pcc_struct_return
 	  && (TREE_CODE (TREE_TYPE (exp)) == RECORD_TYPE
 	      || TREE_CODE (TREE_TYPE (exp)) == UNION_TYPE)))
@@ -3747,7 +3769,7 @@ expand_call (exp, target, ignore)
       else
 #endif
 	{
-	  if (target)
+	  if (target && GET_CODE (target) == MEM)
 	    {
 	      structure_value_addr = XEXP (target, 0);
 	      if (reg_mentioned_p (stack_pointer_rtx, structure_value_addr))
@@ -3834,14 +3856,18 @@ expand_call (exp, target, ignore)
   /* If the address for a structure value should be in memory,
      and it would go in memory if treated as an extra parameter,
      treat it that way.  */
-  if (structure_value_addr && GET_CODE (struct_value_rtx) == MEM)
+  if (structure_value_addr && GET_CODE (struct_value_rtx) == MEM
+      && (GET_CODE (XEXP (struct_value_rtx, 0)) == PRE_DEC
+	  || GET_CODE (XEXP (struct_value_rtx, 0)) == PRE_INC
+	  || GET_CODE (XEXP (struct_value_rtx, 0)) == POST_DEC
+	  || GET_CODE (XEXP (struct_value_rtx, 0)) == POST_INC))
     {
       rtx tem;
 
       INIT_CUMULATIVE_ARGS (args_so_far, funtype);
       tem = FUNCTION_ARG (args_so_far, Pmode,
 			  build_pointer_type (TREE_TYPE (funtype)), 1);
-      if (tem != 0 && GET_CODE (tem) == MEM)
+      if (tem == 0)
 	{
 	  actparms = tree_cons (error_mark_node,
 				build (SAVE_EXPR,
@@ -3915,6 +3941,36 @@ expand_call (exp, target, ignore)
 	{
 	  args[i].reg = FUNCTION_ARG (args_so_far, TYPE_MODE (type), type,
 				      i < n_named_args);
+	  /* If this argument needs more than the usual parm alignment, do
+	     extrinsic padding to reach that alignment.  */
+
+#ifdef MAX_PARM_BOUNDARY
+	  /* If MAX_PARM_BOUNDARY is not defined, it means that the usual
+	     alignment requirements are relaxed for parms, and that no parm
+	     needs more than PARM_BOUNDARY, regardless of data type.  */
+
+	  if (PARM_BOUNDARY < TYPE_ALIGN (type))
+	    {
+	      int boundary = PARM_BOUNDARY;
+
+	      /* Determine the boundary to pad up to.  */
+	      if (TYPE_ALIGN (type) > boundary)
+		boundary = TYPE_ALIGN (type);
+	      if (boundary > MAX_PARM_BOUNDARY)
+		boundary = MAX_PARM_BOUNDARY;
+
+	      /* If the previous args don't reach such a boundary,
+		 advance to the next one.  */
+	      args[i].offset.constant += boundary - 1;
+	      args[i].offset.constant &= boundary - 1;
+	      args_size.constant += boundary - 1;
+	      args_size.constant &= boundary - 1;
+
+	      if (args_size.var != 0)
+		abort ();		/* This case not implemented yet */
+	    }
+#endif /* MAX_PARM_BOUNDARY */
+
 #ifdef FUNCTION_ARG_PARTIAL_NREGS
 	  args[i].partial
 	    = FUNCTION_ARG_PARTIAL_NREGS (args_so_far,
@@ -3942,7 +3998,7 @@ expand_call (exp, target, ignore)
 #endif
 	  /* Compute how much space the argument should get:
 	     maybe pad to a multiple of the alignment for arguments.  */
-	  if (none == FUNCTION_ARG_PADDING (TYPE_MODE (type), (rtx)0))
+	  if (none == FUNCTION_ARG_PADDING (TYPE_MODE (type), const0_rtx))
 	    args[i].size.constant = size;
 	  else
 	    args[i].size.constant
@@ -4040,10 +4096,12 @@ expand_call (exp, target, ignore)
 
 	/* First, see if this is a precomputed struct-returning function call
 	   and other subsequent parms are also such.  */
-	if (TYPE_MODE (TREE_TYPE (args[i].tree_value)) == BLKmode
+	if ((TYPE_MODE (TREE_TYPE (args[i].tree_value)) == BLKmode
+	     || RETURN_IN_MEMORY (TREE_TYPE (args[i].tree_value)))
 	    && TREE_CODE (args[i].tree_value) == CALL_EXPR)
 	  for (j = i + 1; j < num_actuals; j++)
-	    if (TYPE_MODE (TREE_TYPE (args[j].tree_value)) == BLKmode
+	    if ((TYPE_MODE (TREE_TYPE (args[j].tree_value)) == BLKmode
+		 || RETURN_IN_MEMORY (TREE_TYPE (args[j].tree_value)))
 		&& TREE_CODE (args[j].tree_value) == CALL_EXPR
 		&& args[j].reg != 0 || is_const)
 	      {
@@ -4095,6 +4153,11 @@ expand_call (exp, target, ignore)
      if the libcall is deleted.  */
   insn_before = get_last_insn ();
 
+  /* Maybe do additional rounding on the size of the arguments.  */
+#ifdef STACK_ARGS_ADJUST
+  STACK_ARGS_ADJUST (args_size);
+#endif
+
   /* If we have no actual push instructions, or shouldn't use them,
      or we need a variable amount of space, make space for all args right now.
      Round the needed size up to multiple of STACK_BOUNDARY.  */
@@ -4103,20 +4166,12 @@ expand_call (exp, target, ignore)
     {
       old_stack_level = copy_to_mode_reg (Pmode, stack_pointer_rtx);
       old_pending_adj = pending_stack_adjust;
-#ifdef STACK_ARGS_ADJUST
-      stack_padding = STACK_ARGS_ADJUST (args_size.constant);
-      args_size.constant += stack_padding;
-#endif
       argblock = push_block (round_push (ARGS_SIZE_RTX (args_size)));
     }
   else if (args_size.constant > 0)
     {
       int needed = args_size.constant;
 
-#ifdef STACK_ARGS_ADJUST
-      stack_padding = STACK_ARGS_ADJUST (needed);
-      needed += stack_padding;
-#endif
 #ifdef STACK_BOUNDARY
       needed = (needed + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
 #endif
@@ -4156,7 +4211,7 @@ expand_call (exp, target, ignore)
     }
 #endif
 
-#ifdef STACK_ARGS_ADJUST
+#if 0
   /* If stack needs padding below the args, increase all arg offsets
      so the args are stored above the padding.  */
   if (stack_padding)
@@ -4326,19 +4381,17 @@ expand_call (exp, target, ignore)
     }
   else if (structure_value_addr)
     {
-      if (target == 0)
-	target = gen_rtx (MEM, BLKmode,
+      if (target == 0 || GET_CODE (target) != MEM)
+	target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
 			  memory_address (BLKmode, structure_value_addr));
     }
   else if (pcc_struct_value)
     {
-      if (target != 0)
-	{
-	  valreg = hard_function_value (build_pointer_type (TREE_TYPE (exp)),
-					fndecl);
-	  target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
-			    copy_to_reg (valreg));
-	}
+      valreg = hard_function_value (build_pointer_type (TREE_TYPE (exp)),
+				    fndecl);
+      if (target == 0)
+	target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
+			  copy_to_reg (valreg));
       else if (TYPE_MODE (TREE_TYPE (exp)) != BLKmode)
 	emit_move_insn (target, gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
 					 copy_to_reg (valreg)));
@@ -4501,7 +4554,7 @@ store_one_arg (arg, argblock, may_be_alloca)
 #endif
       /* Compute how much space the argument should get:
 	 round up to a multiple of the alignment for arguments.  */
-      if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), (rtx)0))
+      if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), const0_rtx))
 	used = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
 		 / (PARM_BOUNDARY / BITS_PER_UNIT))
 		* (PARM_BOUNDARY / BITS_PER_UNIT));
@@ -4777,13 +4830,7 @@ do_jump (exp, if_false_label, if_true_label)
 	temp = copy_to_reg (temp);
       do_pending_stack_adjust ();
       {
-	rtx zero;
-	if (GET_MODE (temp) == SFmode)
-	  zero = fconst0_rtx;
-	else if (GET_MODE (temp) == DFmode)
-	  zero = dconst0_rtx;
-	else
-	  zero = const0_rtx;
+	rtx zero = CONST0_RTX (GET_MODE (temp));
 
 	if (GET_CODE (temp) == CONST_INT)
 	  comparison = compare_constants (NE, 0,
@@ -4842,7 +4889,8 @@ do_jump (exp, if_false_label, if_true_label)
 	      for (i = 0; i < XVECLEN (pat, 0) - 1; i++)
 		if (GET_CODE (XVECEXP (pat, 0, i)) == JUMP_INSN)
 		  abort ();
-	      invert_exp (PATTERN (XVECEXP (pat, 0, XVECLEN (pat, 0) - 1)));
+	      invert_exp (PATTERN (XVECEXP (pat, 0, XVECLEN (pat, 0) - 1)),
+			  0, 0);
 	    }
 	  else
 	    invert_exp (pat, 0, 0);
@@ -4944,7 +4992,8 @@ compare (exp, signed_forward, unsigned_forward,
 
   /* If one operand is 0, make it the second one.  */
 
-  if (op0 == const0_rtx || op0 == fconst0_rtx || op0 == dconst0_rtx)
+  if (op0 == const0_rtx
+      || (GET_MODE_CLASS (mode) == MODE_FLOAT && op0 == CONST0_RTX (mode)))
     {
       rtx tem = op0;
       op0 = op1;
@@ -4991,7 +5040,8 @@ compare1 (op0, op1, forward_op, reverse_op, unsignedp, mode)
 {
   /* If one operand is 0, make it the second one.  */
 
-  if (op0 == const0_rtx || op0 == fconst0_rtx || op0 == dconst0_rtx)
+  if (op0 == const0_rtx
+      || (GET_MODE_CLASS (mode) == MODE_FLOAT && op0 == CONST0_RTX (mode)))
     {
       rtx tem = op0;
       op0 = op1;

@@ -172,23 +172,32 @@ variable_size (size)
    size was less than DImode but more than SImode.  This does not work
    because DImode moves cannot be used to store such objects in memory.  */
 
+#ifndef MAX_FIXED_MODE_SIZE
+#define MAX_FIXED_MODE_SIZE GET_MODE_BITSIZE (DImode)
+#endif
+
 static
 enum machine_mode
 agg_mode (size)
      unsigned int size;
 {
   register int units = size / BITS_PER_UNIT;
-  register enum machine_mode t;
+  register enum machine_mode t, val;
 
   if (size % BITS_PER_UNIT != 0)
     return BLKmode;
 
-  for (t = QImode; (int) t <= (int) DImode;
+  if (size > MAX_FIXED_MODE_SIZE)
+    return BLKmode;
+
+  /* Get the last mode which has this size.  */
+  val = BLKmode;
+  for (t = QImode; GET_MODE_CLASS (t) == MODE_INT;
        t = (enum machine_mode) ((int) t + 1))
     if (GET_MODE_SIZE (t) == units)
-      return t;
+      val = t;
 
-  return BLKmode;
+  return val;
 }
 
 /* Return an INTEGER_CST with value V and type from `sizetype'.  */

@@ -685,6 +685,11 @@ find_cross_jump (e1, e2, minimum, f1, f2)
       if (i1 == 0)
 	break;
 
+      /* Don't allow the range of insns preceding E1 or E2
+	 to include the other (E2 or E1).  */
+      if (i2 == e1 || i1 == e2)
+	break;
+
       /* If we will get to this code by jumping, those jumps will be
 	 tensioned to go directly to the new label (before I2),
 	 so this cross-jumping won't cost extra.  So reduce the minimum.  */
@@ -1341,10 +1346,14 @@ invert_exp (x, olabel, nlabel)
      rtx x;
      rtx olabel, nlabel;
 {
-  register RTX_CODE code = GET_CODE (x);
+  register RTX_CODE code;
   register int i;
   register char *fmt;
 
+  if (x == 0)
+    return;
+
+  code = GET_CODE (x);
   if (code == IF_THEN_ELSE)
     {
       /* Inverting the jump condition of an IF_THEN_ELSE

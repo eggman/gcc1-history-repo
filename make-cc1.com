@@ -112,6 +112,8 @@ $ genoutput md
 $!
 $ gcc/debug/cc1_options="-mpcc-alignment" insn-output.c
 $ gcc/debug/cc1_options="-mpcc-alignment" integrate.c
+$ gcc/debug/cc1_options="-mpcc-alignment" caller-save.c
+$!
 $!
 $!	Link it
 $!
@@ -124,7 +126,7 @@ toplev,c-parse_tab,tree,print-tree,c-decl,c-typeck,c-convert,stor-layout,fold-co
 varasm,rtl,expr,stmt,expmed,explow,optabs,symout,dbxout,emit-rtl,insn-emit,-
 jump,cse,loop,flow,stupid,combine,regclass,local-alloc,global-alloc,reload,-
 reload1,insn-peep,final,recog,insn-recog,insn-extract,insn-output,obstack,-
-integrate,-
+integrate,caller-save,-
 gnu_cc:[000000]gcclib/lib,sys$share:vaxcrtl/lib
 $!
 $!	Done
