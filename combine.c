@@ -2613,12 +2613,21 @@ try_distrib (insn, xprev1, xprev2)
       /* Boolean ops don't distribute through addition.  */
       if (code == PLUS)
 	return 0;
+      goto do_distrib;
 
     case LSHIFT:
     case ASHIFT:
       /* Left shifts are multiplication; they distribute through
 	 addition.  Also, since they work bitwise, they
 	 distribute through boolean operations.  */
+#ifdef NEGATIVE_SHIFT_COUNTS
+      /* Negative count is really a right-shift.  */
+      if (NEGATIVE_SHIFT_COUNTS
+	  && code == PLUS
+	  && !(GET_CODE (XEXP (src1, 1))
+	       == CONST_INT && INTVAL (XEXP (src1, 1)) >= 0))
+	return 0;
+#endif
       goto do_distrib;
 
     case MULT:

@@ -1,4 +1,4 @@
-This is a copy of one node from the Info file gcc.info-2.
+This is a copy of one node from the Info file gcc.info-3.
 For full information on installing and porting GCC, refer to the
 GCC manual:
 
@@ -16,10 +16,11 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Other Dir::     Compiling in a separate directory (not where the source is).
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
-* SCO Install::   See below for installation on SCO System V 3.2.
+* SCO Install::   See below for installation on SCO System V 3.2.  (Or ESIX.)
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
 * MIPS Install::  See below for installation on MIPS.
+* Tower Install:: See below for installation on an NCR Tower.
 
   1. Edit `Makefile'.  If you are using HPUX, or any form of system
      V, you must make a few changes described in comments at the
@@ -554,14 +555,31 @@ To avoid this bug, install the binaries of GNU CC that were compiled
 by GNU CC.  They use `alloca' as a built-in function and never the
 one in the library.
 
-Some versions of the Sun compiler crash when compiling GNU CC.  The
-problem is a segmentation fault in cpp.
-
-This problem seems to be due to the bulk of data in the environment
-variables.  You may be able to avoid it by using the following
-command to compile GNU CC with Sun CC:
+Some versions of the Sun compiler crash when compiling GNU CC, with a
+segmentation fault in cpp.  This can sometimes be due to the bulk of
+data in the environment variables.  You may be able to avoid it by
+using the following command to compile GNU CC with Sun CC:
 
      make CC="TERMCAP=x OBJS=x LIBFUNCS=x STAGESTUFF=x cc"
+
+Another problem that often happens on Suns is that you get a crash
+when building stage 2, when `genflags' is run.
+
+One reason for such as crash is if you configured GNU CC for the
+wrong version of SunOS.  Starting with version 1.38, configurations
+`sun3' and `sun4' are for SunOS 4, so this problem should no longer
+happen.
+
+Another cause of the same symptom is having installed the GNU linker
+with an earlier version of SunOS.  The version that worked before
+stopped working due to a change in the format of executables in SunOS
+4.1.  Many sites have installed the GNU linker as
+`/usr/local/lib/gcc-ld', often as part of installing GNU C++.  So if
+you get such crashes and you have used the proper configuration, try
+deleting `/usr/local/lib/gcc-ld'.
+
+The current version of the GNU linker, found in the current binutils
+release, does work with SunOS 4.1.
 
 
 
@@ -614,19 +632,17 @@ The compiler that comes with this system does not work properly with
 `-O'.  Therefore, you should redefine the Make variable `CCLIBFLAGS'
 not to use `-O'.
 
-In addition, the compiler produces incorrect output when compiling
-parts of GNU CC; the resulting executable `cc1' does not work
-properly when it is used with `-O'.
+You should also edit `Makefile' to enable the lines that set `CLIB'
+to `-lPW', and the ones specifically labeled as being for SCO, that
+set `RANLIB', and that set `CC' and `OLDCC' to `rcc'.
 
-Therefore, what you must do after building the first stage is use GNU
-CC to compile itself without optimization.  Here is how:
+Also, edit the definition of `USER_H' to remove the file `limits.h'.
 
-     make -k cc1 CC="./gcc -B./"
+Then you can run `config.gcc i386-sco' and finish building GNU CC
+normally.
 
-You can think of this as "stage 1.1" of the installation process. 
-However, using this command has the effect of discarding the faulty
-stage 1 executable for `cc1' and replacing it with stage 1.1.  You
-can then proceed with `make stage1' and the rest of installation.
+The same recipe should work on ESIX, but use `config.gcc i386-esix'
+instead.
 
 
 
@@ -758,7 +774,7 @@ Instead, an `-I' option needs to be added to `CFLAGS' as follows:
 
 
 
-File: gcc.info,  Node: MIPS Install,  Prev: HPUX Install,  Up: Installation
+File: gcc.info,  Node: MIPS Install,  Next: Tower Install,  Prev: HPUX Install,  Up: Installation
 
 Installing GNU CC on MIPS
 =========================
@@ -767,3 +783,21 @@ To avoid errors when linking programs with `-g', create an empty
 library named `libg.a'.  An easy way to do this is:
 
      ar rc /usr/local/lib/libg.a
+
+
+
+File: gcc.info,  Node: Tower Install,  Prev: MIPS Install,  Up: Installation
+
+Installing GNU CC on an NCR Tower
+=================================
+
+On an NCR Tower model 4x0 or 6x0, you may have trouble because the
+default maximum virtual address size of a process is just 1 Mb.  Most
+often you will find this problem while compiling GNU CC with itself.
+
+The only way to solve the problem is to reconfigure the kernel.  Add
+a line such as this to the configuration file:
+
+     MAXUMEM = 4096
+
+and then relink the kernel and reboot the machine.

@@ -4093,7 +4093,16 @@ assign_parms (fndecl)
   /* If struct value address comes on the stack, count it in size of args.  */
   if (aggregate_value_p (DECL_RESULT (fndecl))
       && GET_CODE (struct_value_incoming_rtx) == MEM)
-    stack_args_size.constant += GET_MODE_SIZE (Pmode);
+    {
+#ifdef FIRST_PARM_CALLER_OFFSET
+      /* Make the right thing happen on the sparc
+	 in a function with a struct value and struct arg.  */
+      if (first_parm_caller_offset < 0)
+	first_parm_offset += GET_MODE_SIZE (Pmode);
+      else
+#endif
+	stack_args_size.constant += GET_MODE_SIZE (Pmode);
+    }
 
   parm_reg_stack_loc = (rtx *) oballoc (nparmregs * sizeof (rtx));
   bzero (parm_reg_stack_loc, nparmregs * sizeof (rtx));

@@ -676,7 +676,7 @@ read_rtx (infile)
 	  /* get vector length and allocate it */
 	  XVEC (return_rtx, i) = (list_counter
 				  ? rtvec_alloc (list_counter)
-				  : NULL);
+				  : (struct rtvec_def *) NULL);
 	  if (list_counter > 0) 
 	    {
 	      next_rtx = list_rtx;

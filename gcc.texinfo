@@ -42,9 +42,9 @@ Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 4 December 1990
+@center last updated 15 January 1991
 @sp 1
-@center for version 1.38
+@center for version 1.39
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988, 1989, 1990 Free Software Foundation, Inc.
@@ -514,7 +514,7 @@ the courts, the precedent will hobble the software industry:
 
 @itemize @bullet
 @item
-Gratuitous incompatibilites will burden users.  Imagine if each
+Gratuitous incompatibilities will burden users.  Imagine if each
 car manufacturer had to arrange the pedals in a different order.
 
 @item
@@ -602,16 +602,17 @@ Above all, don't work for the look-and-feel plaintiffs, and don't
 accept contracts from them.
 
 @item
-Write to or phone your elected representatives to show them how
-important this issue is.
+Write to Congress to explain the importance of this issue.
 
 @example
-Senator So and So       Representative So and So
-United States Senate    House of Representatives
-Washington, DC 20510    Washington, DC 20515
-@end example
+House Subcommittee on Intellectual Property
+2137 Rayburn Bldg
+Washington, DC 20515
 
-You can phone senators and representatives at (202) 225-3121.
+Senate Subcommittee on Patents, Trademarks and Copyrights
+United States Senate
+Washington, DC 20510
+@end example
 @end itemize
 
 Express your opinion!  You can make a difference.
@@ -1518,10 +1519,11 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Other Dir::     Compiling in a separate directory (not where the source is).
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
-* SCO Install::   See below for installation on SCO System V 3.2.
+* SCO Install::   See below for installation on SCO System V 3.2.  (Or ESIX.)
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
 * MIPS Install::  See below for installation on MIPS.
+* Tower Install:: See below for installation on an NCR Tower.
 @end menu
 @iftex
 See below for VMS systems, and modified procedures needed on Sun
@@ -2042,16 +2044,32 @@ To avoid this bug, install the binaries of GNU CC that were compiled by
 GNU CC.  They use @code{alloca} as a built-in function and never the one
 in the library.  
 
-Some versions of the Sun compiler crash when compiling GNU CC.
-The problem is a segmentation fault in cpp.
-
-This problem seems to be due to the bulk of data in the environment
-variables.  You may be able to avoid it by using the following
-command to compile GNU CC with Sun CC:
+Some versions of the Sun compiler crash when compiling GNU CC, with a
+segmentation fault in cpp.  This can sometimes be due to the bulk of
+data in the environment variables.  You may be able to avoid it by using
+the following command to compile GNU CC with Sun CC:
 
 @example
 make CC="TERMCAP=x OBJS=x LIBFUNCS=x STAGESTUFF=x cc"
 @end example
+
+Another problem that often happens on Suns is that you get a crash when
+building stage 2, when @code{genflags} is run.
+
+One reason for such as crash is if you configured GNU CC for the wrong
+version of SunOS.  Starting with version 1.38, configurations @code{sun3}
+and @code{sun4} are for SunOS 4, so this problem should no longer happen.
+
+Another cause of the same symptom is having installed the GNU linker
+with an earlier version of SunOS.  The version that worked before
+stopped working due to a change in the format of executables in SunOS
+4.1.  Many sites have installed the GNU linker as
+@file{/usr/local/lib/gcc-ld}, often as part of installing GNU C++.  So
+if you get such crashes and you have used the proper configuration, try
+deleting @file{/usr/local/lib/gcc-ld}.
+
+The current version of the GNU linker, found in the current binutils
+release, does work with SunOS 4.1.
 
 @node 3b1 Install, SCO Install, Sun Install, Installation
 @section Installing GNU CC on the 3b1
@@ -2109,21 +2127,18 @@ The compiler that comes with this system does not work properly with
 @samp{-O}.  Therefore, you should redefine the Make variable
 @code{CCLIBFLAGS} not to use @samp{-O}.
 
-In addition, the compiler produces incorrect output when compiling parts
-of GNU CC; the resulting executable @file{cc1} does not work properly
-when it is used with @samp{-O}.
+You should also edit @file{Makefile} to enable the lines that set
+@code{CLIB} to @code{-lPW}, and the ones specifically labeled as being
+for SCO, that set @code{RANLIB}, and that set @code{CC} and @code{OLDCC}
+to @code{rcc}.
 
-Therefore, what you must do after building the first stage
-is use GNU CC to compile itself without optimization.  Here is how:
+Also, edit the definition of @code{USER_H} to remove the file @file{limits.h}.
 
-@example
-make -k cc1 CC="./gcc -B./"
-@end example
+Then you can run @samp{config.gcc i386-sco} and finish building GNU CC
+normally.
 
-You can think of this as ``stage 1.1'' of the installation process.
-However, using this command has the effect of discarding the faulty
-stage 1 executable for @file{cc1} and replacing it with stage 1.1.  You
-can then proceed with @samp{make stage1} and the rest of installation.
+The same recipe should work on ESIX, but use @samp{config.gcc i386-esix}
+instead.
 
 @node VMS Install, HPUX Install, SCO Install, Installation
 @section Installing GNU CC on VMS
@@ -2275,7 +2290,7 @@ follows:
 make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -I../binutils/hp-include"
 @end example
 
-@node MIPS Install,, HPUX Install, Installation
+@node MIPS Install, Tower Install, HPUX Install, Installation
 @section Installing GNU CC on MIPS
 
 To avoid errors when linking programs with @samp{-g}, create an empty
@@ -2284,6 +2299,24 @@ library named @file{libg.a}.  An easy way to do this is:
 @example
 ar rc /usr/local/lib/libg.a
 @end example
+
+@node Tower Install,, MIPS Install, Installation
+@section Installing GNU CC on an NCR Tower
+
+On an NCR Tower model 4x0 or 6x0, you may have trouble because the
+default maximum virtual address size of a process is just 1 Mb.  Most
+often you will find this problem while compiling GNU CC with itself.
+
+The only way to solve the problem is to reconfigure the kernel.
+Add a line such as this to the configuration file:
+
+@example
+MAXUMEM = 4096
+@end example
+
+@noindent
+and then relink the kernel and reboot the machine.
+
 
 @node Trouble, Service, Installation, Top
 @chapter Known Causes of Trouble with GNU CC
@@ -2372,7 +2405,6 @@ specifies.  It is easy enough for you to make your code work by moving
 the definition of @code{struct mumble} above the prototype.  I don't
 think it's worth being incompatible for.
 @end itemize
-
 
 @node Service, Incompatibilities, Trouble, Top
 @chapter How To Get Help with GNU CC
@@ -3598,10 +3630,16 @@ macros to replace them with the customary keywords.  It looks like this:
 
 Your bug reports play an essential role in making GNU CC reliable.
 
-Reporting a bug may help you by bringing a solution to your problem, or it
-may not.  But in any case the important function of a bug report is to help
-the entire community by making the next version of GNU CC work better.  Bug
-reports are your contribution to the maintenance of GNU CC.
+When you encounter a problem, the first thing to do is to see if it is
+already known.  @xref{Trouble}.  Also look in @ref{Incompatibilities}.
+If it isn't known, then you should report the problem.
+
+Reporting a bug may help you by bringing a solution to your problem, or
+it may not.  (If it does not, look in the service directory; see
+@ref{Service}.)  In any case, the principal function of a bug report
+is to help the entire community by making the next version of GNU CC
+work better.  Bug reports are your contribution to the maintenance of
+GNU CC.
 
 In order for a bug report to serve its purpose, you must include the
 information that makes for fixing the bug.
@@ -3609,8 +3647,6 @@ information that makes for fixing the bug.
 @menu
 * Criteria:  Bug Criteria.   Have you really found a bug?
 * Reporting: Bug Reporting.  How to report a bug effectively.
-* Known: Trouble.            A list of known problems.
-* Help: Service.             How to get help.
 @end menu
 
 @node Bug Criteria, Bug Reporting, Bugs, Bugs
@@ -7808,9 +7844,9 @@ compiler source files include @file{config.h}.
 * Addressing Modes::    Defining addressing modes valid for memory operands.
 * Delayed Branch::      Do branches execute the following instruction?
 * Condition Code::      Defining how insns update the condition code.
-* Assembler Format::    Defining how to write insns and pseudo-ops to output.
 * Cross-compilation::   Handling floating point for cross-compilers.
 * Misc::                Everything else.
+* Assembler Format::    Defining how to write insns and pseudo-ops to output.
 @end menu
 
 @node Run-time Target, Storage Layout, Machine Macros, Machine Macros

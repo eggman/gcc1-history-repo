@@ -108,6 +108,12 @@ DIR = ../gcc
 # CC = rcc
 # OLDCC = rcc
 
+# On a 386 running an ISC system, uncomment the following lines.
+# You also need to add -D_POSIX_SOURCE to CFLAGS
+# when compiling with GCC.
+# INSTALL = cp
+# CLIB = -lPW -lcposix
+
 # If you are making gcc for the first time, and if you are compiling it with
 # a non-gcc compiler, and if your system doesn't have a working alloca() in any
 # of the standard libraries (as is true for HP/UX or Genix),
@@ -234,6 +240,11 @@ CPLUS_TREE_H = $(TREE_H) cplus-tree.h c-tree.h
 
 all: config.status gnulib gcc cc1 cpp float.h gnulib2 libg # cc1plus
 
+# Use this instead of `all' if you need to convert the libraries
+# before you can use the compiler.
+# Don't forget to do `make gnulib2' before installation.
+all-libconvert: config.status gnulib gcc cc1 cpp float.h libg # cc1plus
+
 lang-c: config.status gnulib gcc cc1 cpp gnulib2 libg
 # lang-cplus: config.status gnulib gcc cc1plus cpp gnulib2 libg
 
@@ -265,7 +276,7 @@ libg:
 #Library of arithmetic subroutines
 # Don't compile this with gcc!
 # (That would cause most arithmetic functions to call themselves.)
-gnulib: gnulib.c $(CONFIG_H)
+gnulib: gnulib.c $(CONFIG_H) config.status
 	-rm -f stamp-gnulib2
 	rm -f tmpgnulib gnulib; \
 	for name in $(LIBFUNCS); \
@@ -615,7 +626,7 @@ install: all $(USER_H) float.h gvarargs.h gstdarg.h gcc.1
 	-chmod ugo+rx $(libdir)/gcc-include
 	for file in $(USER_H); do \
 	     for eachfile in  $(srcdir)/$${file} ; do \
-		$(INSTALL) $${eachfile} $(libdir)/gcc-include/`basename $${eachfile}`; \
+		$(INSTALL) $(srcdir)/`basename $${eachfile}` $(libdir)/gcc-include/`basename $${eachfile}`; \
 	     done ; done
 	$(INSTALL) float.h $(libdir)/gcc-include/float.h
 	$(INSTALL) $(srcdir)/gvarargs.h $(libdir)/gcc-include/varargs.h

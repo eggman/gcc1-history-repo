@@ -614,6 +614,8 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   rtx local_return_label = 0;
   rtx follows_call = 0;
   rtx this_struct_value_rtx = 0;
+  /* List of tree_list nodes with parm as purpose and its index as value.  */
+  tree must_load_parms = 0;
 
   if (max_regno < FIRST_PSEUDO_REGISTER)
     abort ();
@@ -790,8 +792,12 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 			offset = XEXP (frtx, 0);
 #endif
 		    }
-		  if (offset)
+		  if (offset && INTVAL (offset) >= first_parm_offset)
 		    parm_map[INTVAL (offset) / UNITS_PER_WORD] = arg_vec[i];
+		  else if (offset)
+		    must_load_parms
+		      = tree_cons (formal, build_int_2 (i, 0),
+				   must_load_parms);
 		  else if (TREE_TYPE (formal) != error_mark_node)
 		    abort ();
 		}
@@ -899,6 +905,18 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
   /* Now allocate the space for that to point at.  */
 
   assign_stack_local (VOIDmode, DECL_FRAME_SIZE (fndecl));
+
+  /* Load any parms represented as locals with the supplied values.
+     We couldn't do this above where the other parms' values are handled
+     because we need fp_delta to do it right.  */
+  while (must_load_parms)
+    {
+      rtx dest = DECL_RTL (TREE_PURPOSE (must_load_parms));
+      int parm_num = TREE_INT_CST_LOW (TREE_VALUE (must_load_parms));
+      emit_insn (gen_move_insn (copy_rtx_and_substitute (dest),
+				arg_vec[parm_num]));
+      must_load_parms = TREE_CHAIN (must_load_parms);
+    }
 
   /* Now copy the insns one by one.  */
 

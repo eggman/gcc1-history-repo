@@ -42,12 +42,14 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define TARGET_DEFAULT 1
 
+#if 0 /* These aren't right for GNU ld.  */
 /* Use crt1.o as a startup file and crtn.o as a closing file.  */
 
 #define STARTFILE_SPEC  \
   "%{pg:gcrt1.o%s}%{!pg:%{p:mcrt1.o%s}%{!p:crt1.o%s}}"
 
 #define LIB_SPEC "%{p:-L/usr/lib/libp}%{pg:-L/usr/lib/libp} -lc crtn.o%s"
+#endif
 
 /* Specify predefined symbols in preprocessor.  */
 

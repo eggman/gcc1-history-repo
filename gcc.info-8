@@ -26,6 +26,179 @@ Free Software Foundation instead of in the original English.
 
 
 
+File: gcc.info,  Node: Dependent Patterns,  Next: Jump Patterns,  Prev: Pattern Ordering,  Up: Machine Desc
+
+Interdependence of Patterns
+===========================
+
+Every machine description must have a named pattern for each of the
+conditional branch names `bCOND'.  The recognition template must
+always have the form
+
+     (set (pc)
+          (if_then_else (COND (cc0) (const_int 0))
+                        (label_ref (match_operand 0 "" ""))
+                        (pc)))
+
+In addition, every machine description must have an anonymous pattern
+for each of the possible reverse-conditional branches.  These
+patterns look like
+
+     (set (pc)
+          (if_then_else (COND (cc0) (const_int 0))
+                        (pc)
+                        (label_ref (match_operand 0 "" ""))))
+
+They are necessary because jump optimization can turn
+direct-conditional branches into reverse-conditional branches.
+
+The compiler does more with RTL than just create it from patterns and
+recognize the patterns: it can perform arithmetic expression codes
+when constant values for their operands can be determined.  As a
+result, sometimes having one pattern can require other patterns.  For
+example, the Vax has no `and' instruction, but it has `and not'
+instructions.  Here is the definition of one of them:
+
+     (define_insn "andcbsi2"
+       [(set (match_operand:SI 0 "general_operand" "")
+             (and:SI (match_dup 0)
+                     (not:SI (match_operand:SI
+                               1 "general_operand" ""))))]
+       ""
+       "bicl2 %1,%0")
+
+If operand 1 is an explicit integer constant, an instruction
+constructed using that pattern can be simplified into an `and' like
+this:
+
+     (set (reg:SI 41)
+          (and:SI (reg:SI 41)
+                  (const_int 0xffff7fff)))
+
+(where the integer constant is the one's complement of what appeared
+in the original instruction).
+
+To avoid a fatal error, the compiler must have a pattern that
+recognizes such an instruction.  Here is what is used:
+
+     (define_insn ""
+       [(set (match_operand:SI 0 "general_operand" "")
+             (and:SI (match_dup 0)
+                     (match_operand:SI 1 "general_operand" "")))]
+       "GET_CODE (operands[1]) == CONST_INT"
+       "*
+     { operands[1]
+         = gen_rtx (CONST_INT, VOIDmode, ~INTVAL (operands[1]));
+       return \"bicl2 %1,%0\";
+     }")
+
+Whereas a pattern to match a general `and' instruction is impossible
+to support on the Vax, this pattern is possible because it matches
+only a constant second argument: a special case that can be output as
+an `and not' instruction.
+
+A "compare" instruction whose RTL looks like this:
+
+     (set (cc0) (compare OPERAND (const_int 0)))
+
+may be simplified by optimization into a "test" like this:
+
+     (set (cc0) OPERAND)
+
+So in the machine description, each "compare" pattern for an integer
+mode must have a corresponding "test" pattern that will match the
+result of such simplification.
+
+In some cases machines support instructions identical except for the
+machine mode of one or more operands.  For example, there may be
+"sign-extend halfword" and "sign-extend byte" instructions whose
+patterns are
+
+     (set (match_operand:SI 0 ...)
+          (extend:SI (match_operand:HI 1 ...)))
+     
+     (set (match_operand:SI 0 ...)
+          (extend:SI (match_operand:QI 1 ...)))
+
+Constant integers do not specify a machine mode, so an instruction to
+extend a constant value could match either pattern.  The pattern it
+actually will match is the one that appears first in the file.  For
+correct results, this must be the one for the widest possible mode
+(`HImode', here).  If the pattern matches the `QImode' instruction,
+the results will be incorrect if the constant value does not actually
+fit that mode.
+
+Such instructions to extend constants are rarely generated because
+they are optimized away, but they do occasionally happen in
+nonoptimized compilations.
+
+When an instruction has the constraint letter `o', the reload pass
+may generate instructions which copy a nonoffsettable address into an
+index register.  The idea is that the register can be used as a
+replacement offsettable address.  In order for these generated
+instructions to work, there must be patterns to copy any kind of
+valid address into a register.
+
+Most older machine designs have "load address" instructions which do
+just what is needed here.  Some RISC machines do not advertise such
+instructions, but the possible addresses on these machines are very
+limited, so it is easy to fake them.
+
+Auto-increment and auto-decrement addresses are an exception; there
+need not be an instruction that can copy such an address into a
+register, because reload handles these cases in a different manner.
+
+
+
+File: gcc.info,  Node: Jump Patterns,  Next: Peephole Definitions,  Prev: Dependent Patterns,  Up: Machine Desc
+
+Defining Jump Instruction Patterns
+==================================
+
+GNU CC assumes that the machine has a condition code.  A comparison
+insn sets the condition code, recording the results of both signed
+and unsigned comparison of the given operands.  A separate branch
+insn tests the condition code and branches or not according its
+value.  The branch insns come in distinct signed and unsigned
+flavors.  Many common machines, such as the Vax, the 68000 and the
+32000, work this way.
+
+Some machines have distinct signed and unsigned compare instructions,
+and only one set of conditional branch instructions.  The easiest way
+to handle these machines is to treat them just like the others until
+the final stage where assembly code is written.  At this time, when
+outputting code for the compare instruction, peek ahead at the
+following branch using `NEXT_INSN (insn)'.  (The variable `insn'
+refers to the insn being output, in the output-writing code in an
+instruction pattern.)  If the RTL says that is an unsigned branch,
+output an unsigned compare; otherwise output a signed compare.  When
+the branch itself is output, you can treat signed and unsigned
+branches identically.
+
+The reason you can do this is that GNU CC always generates a pair of
+consecutive RTL insns, one to set the condition code and one to test
+it, and keeps the pair inviolate until the end.
+
+To go with this technique, you must define the machine-description
+macro `NOTICE_UPDATE_CC' to do `CC_STATUS_INIT'; in other words, no
+compare instruction is superfluous.
+
+Some machines have compare-and-branch instructions and no condition
+code.  A similar technique works for them.  When it is time to
+"output" a compare instruction, record its operands in two static
+variables.  When outputting the branch-on-condition-code instruction
+that follows, actually output a compare-and-branch instruction that
+uses the remembered operands.
+
+It also works to define patterns for compare-and-branch instructions.
+In optimizing compilation, the pair of compare and branch
+instructions will be combined according to these patterns.  But this
+does not happen if optimization is not requested.  So you must use
+one of the solutions above in addition to any special patterns you
+define.
+
+
+
 File: gcc.info,  Node: Peephole Definitions,  Next: Expander Definitions,  Prev: Jump Patterns,  Up: Machine Desc
 
 Defining Machine-Specific Peephole Optimizers
@@ -374,9 +547,9 @@ compiler source files include `config.h'.
 * Addressing Modes::    Defining addressing modes valid for memory operands.
 * Delayed Branch::      Do branches execute the following instruction?
 * Condition Code::      Defining how insns update the condition code.
-* Assembler Format::    Defining how to write insns and pseudo-ops to output.
 * Cross-compilation::   Handling floating point for cross-compilers.
 * Misc::                Everything else.
+* Assembler Format::    Defining how to write insns and pseudo-ops to output.
 
  
 
@@ -907,217 +1080,5 @@ Register Usage
      instruction supports only sequences of consecutive registers. 
      This macro is defined to cause the highest numbered allocatable
      registers to be used first.
-
-
-
-File: gcc.info,  Node: Register Classes,  Next: Stack Layout,  Prev: Registers,  Up: Machine Macros
-
-Register Classes
-================
-
-On many machines, the numbered registers are not all equivalent.  For
-example, certain registers may not be allowed for indexed addressing;
-certain registers may not be allowed in some instructions.  These
-machine restrictions are described to the compiler using "register
-classes".
-
-You define a number of register classes, giving each one a name and
-saying which of the registers belong to it.  Then you can specify
-register classes that are allowed as operands to particular
-instruction patterns.
-
-In general, each register will belong to several classes.  In fact,
-one class must be named `ALL_REGS' and contain all the registers. 
-Another class must be named `NO_REGS' and contain no registers. 
-Often the union of two classes will be another class; however, this
-is not required.
-
-One of the classes must be named `GENERAL_REGS'.  There is nothing
-terribly special about the name, but the operand constraint letters
-`r' and `g' specify this class.  If `GENERAL_REGS' is the same as
-`ALL_REGS', just define it as a macro which expands to `ALL_REGS'.
-
-The way classes other than `GENERAL_REGS' are specified in operand
-constraints is through machine-dependent operand constraint letters. 
-You can define such letters to correspond to various classes, then
-use them in operand constraints.
-
-You should define a class for the union of two classes whenever some
-instruction allows both classes.  For example, if an instruction
-allows either a floating-point (coprocessor) register or a general
-register for a certain operand, you should define a class
-`FLOAT_OR_GENERAL_REGS' which includes both of them.  Otherwise you
-will get suboptimal code.
-
-You must also specify certain redundant information about the
-register classes: for each class, which classes contain it and which
-ones are contained in it; for each pair of classes, the largest class
-contained in their union.
-
-When a value occupying several consecutive registers is expected in a
-certain class, all the registers used must belong to that class. 
-Therefore, register classes cannot be used to enforce a requirement
-for a register pair to start with an even-numbered register.  The way
-to specify this requirement is with `HARD_REGNO_MODE_OK'.
-
-Register classes used for input-operands of bitwise-and or shift
-instructions have a special requirement: each such class must have,
-for each fixed-point machine mode, a subclass whose registers can
-transfer that mode to or from memory.  For example, on some machines,
-the operations for single-byte values (`QImode') are limited to
-certain registers.  When this is so, each register class that is used
-in a bitwise-and or shift instruction must have a subclass consisting
-of registers from which single-byte values can be loaded or stored. 
-This is so that `PREFERRED_RELOAD_CLASS' can always have a possible
-value to return.
-
-`enum reg_class'
-     An enumeral type that must be defined with all the register
-     class names as enumeral values.  `NO_REGS' must be first. 
-     `ALL_REGS' must be the last register class, followed by one more
-     enumeral value, `LIM_REG_CLASSES', which is not a register class
-     but rather tells how many classes there are.
-
-     Each register class has a number, which is the value of casting
-     the class name to type `int'.  The number serves as an index in
-     many of the tables described below.
-
-`N_REG_CLASSES'
-     The number of distinct register classes, defined as follows:
-
-          #define N_REG_CLASSES (int) LIM_REG_CLASSES
-
-`REG_CLASS_NAMES'
-     An initializer containing the names of the register classes as C
-     string constants.  These names are used in writing some of the
-     debugging dumps.
-
-`REG_CLASS_CONTENTS'
-     An initializer containing the contents of the register classes,
-     as integers which are bit masks.  The Nth integer specifies the
-     contents of class N.  The way the integer MASK is interpreted is
-     that register R is in the class if `MASK & (1 << R)' is 1.
-
-     When the machine has more than 32 registers, an integer does not
-     suffice.  Then the integers are replaced by sub-initializers,
-     braced groupings containing several integers.  Each
-     sub-initializer must be suitable as an initializer for the type
-     `HARD_REG_SET' which is defined in `hard-reg-set.h'.
-
-`REGNO_REG_CLASS (REGNO)'
-     A C expression whose value is a register class containing hard
-     register REGNO.  In general there is more that one such class;
-     choose a class which is "minimal", meaning that no smaller class
-     also contains the register.
-
-`BASE_REG_CLASS'
-     A macro whose definition is the name of the class to which a
-     valid base register must belong.  A base register is one used in
-     an address which is the register value plus a displacement.
-
-`INDEX_REG_CLASS'
-     A macro whose definition is the name of the class to which a
-     valid index register must belong.  An index register is one used
-     in an address where its value is either multiplied by a scale
-     factor or added to another register (as well as added to a
-     displacement).
-
-`REG_CLASS_FROM_LETTER (CHAR)'
-     A C expression which defines the machine-dependent operand
-     constraint letters for register classes.  If CHAR is such a
-     letter, the value should be the register class corresponding to
-     it.  Otherwise, the value should be `NO_REGS'.
-
-`REGNO_OK_FOR_BASE_P (NUM)'
-     A C expression which is nonzero if register number NUM is
-     suitable for use as a base register in operand addresses.  It
-     may be either a suitable hard register or a pseudo register that
-     has been allocated such a hard register.
-
-`REGNO_OK_FOR_INDEX_P (NUM)'
-     A C expression which is nonzero if register number NUM is
-     suitable for use as an index register in operand addresses.  It
-     may be either a suitable hard register or a pseudo register that
-     has been allocated such a hard register.
-
-     The difference between an index register and a base register is
-     that the index register may be scaled.  If an address involves
-     the sum of two registers, neither one of them scaled, then
-     either one may be labeled the "base" and the other the "index";
-     but whichever labeling is used must fit the machine's
-     constraints of which registers may serve in each capacity.  The
-     compiler will try both labelings, looking for one that is valid,
-     and will reload one or both registers only if neither labeling
-     works.
-
-`PREFERRED_RELOAD_CLASS (X, CLASS)'
-     A C expression that places additional restrictions on the
-     register class to use when it is necessary to copy value X into
-     a register in class CLASS.  The value is a register class;
-     perhaps CLASS, or perhaps another, smaller class.  On many
-     machines, the definition
-
-          #define PREFERRED_RELOAD_CLASS(X,CLASS) CLASS
-
-     is safe.
-
-     Sometimes returning a more restrictive class makes better code. 
-     For example, on the 68000, when X is an integer constant that is
-     in range for a `moveq' instruction, the value of this macro is
-     always `DATA_REGS' as long as CLASS includes the data registers.
-     Requiring a data register guarantees that a `moveq' will be used.
-
-     If X is a `const_double', by returning `NO_REGS' you can force X
-     into a memory constant.  This is useful on certain machines
-     where immediate floating values cannot be loaded into certain
-     kinds of registers.
-
-     In a shift instruction or a bitwise-and instruction, the mode of
-     X, the value being reloaded, may not be the same as the mode of
-     the instruction's operand.  (They will both be fixed-point
-     modes, however.)  In such a case, CLASS may not be a safe value
-     to return.  CLASS is certainly valid for the instruction, but it
-     may not be valid for reloading X.  This problem can occur on
-     machines such as the 68000 and 80386 where some registers can
-     handle full-word values but cannot handle single-byte values.
-
-     On such machines, this macro must examine the mode of X and
-     return a subclass of CLASS which can handle loads and stores of
-     that mode.  On the 68000, where address registers cannot handle
-     `QImode', if X has `QImode' then you must return `DATA_REGS'. 
-     If CLASS is `ADDR_REGS', then there is no correct value to
-     return; but the shift and bitwise-and instructions don't use
-     `ADDR_REGS', so this fatal case never arises.
-
-`CLASS_MAX_NREGS (CLASS, MODE)'
-     A C expression for the maximum number of consecutive registers
-     of class CLASS needed to hold a value of mode MODE.
-
-     This is closely related to the macro `HARD_REGNO_NREGS'.  In
-     fact, the value of the macro `CLASS_MAX_NREGS (CLASS, MODE)'
-     should be the maximum value of `HARD_REGNO_NREGS (REGNO, MODE)'
-     for all REGNO values in the class CLASS.
-
-     This macro helps control the handling of multiple-word values in
-     the reload pass.
-
-Two other special macros describe which constants fit which
-constraint letters.
-
-`CONST_OK_FOR_LETTER_P (VALUE, C)'
-     A C expression that defines the machine-dependent operand
-     constraint letters that specify particular ranges of integer
-     values.  If C is one of those letters, the expression should
-     check that VALUE, an integer, is in the appropriate range and
-     return 1 if so, 0 otherwise.  If C is not one of those letters,
-     the value should be 0 regardless of VALUE.
-
-`CONST_DOUBLE_OK_FOR_LETTER_P (VALUE, C)'
-     A C expression that defines the machine-dependent operand
-     constraint letters that specify particular ranges of floating
-     values.  If C is one of those letters, the expression should
-     check that VALUE, an RTX of code `const_double', is in the
-     appropriate range and return 1 if so, 0 otherwise.  If C is not
-     one of those letters, the value should be 0 regardless of VALUE.
 
 

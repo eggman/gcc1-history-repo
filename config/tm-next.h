@@ -28,11 +28,13 @@
 
 /* Machine dependent libraries.  */
 
-#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lsys_p}%{pg:-lsys_p}"
+#define LIB_SPEC "%{!p:%{!pg:-lsys_s}} %{pg:-lsys_p}"
  
 /* We specify crt0.o as -lcrt0.o so that ld will search the library path. */
 #define STARTFILE_SPEC  \
-  "%{pg:-lgcrt0.o}%{!pg:%{p:-lmcrt0.o}%{!p:-lcrt0.o}}"
+  "%{pg:-lgcrt0.o}%{!pg: \
+     %{p:%e-p profiling is no longer supported.  Use -pg instead.} \
+     %{!p:-lcrt0.o}}"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 

@@ -26,6 +26,31 @@ Free Software Foundation instead of in the original English.
 
 
 
+File: gcc.info,  Node: Zero-Length,  Next: Variable-Length,  Prev: Conditionals,  Up: Extensions
+
+Arrays of Length Zero
+=====================
+
+Zero-length arrays are allowed in GNU C.  They are very useful as the
+last element of a structure which is really a header for a
+variable-length object:
+
+     struct line {
+       int length;
+       char contents[0];
+     };
+     
+     {
+       struct line *thisline 
+         = (struct line *) malloc (sizeof (struct line) + this_length);
+       thisline->length = this_length;
+     }
+
+In standard C, you would have to give `contents' a length of 1, which
+means either you waste space or complicate the argument to `malloc'.
+
+
+
 File: gcc.info,  Node: Variable-Length,  Next: Subscripting,  Prev: Zero-Length,  Up: Extensions
 
 Arrays of Variable Length
@@ -736,8 +761,14 @@ Reporting Bugs
 
 Your bug reports play an essential role in making GNU CC reliable.
 
+When you encounter a problem, the first thing to do is to see if it
+is already known.  *Note Trouble::.  Also look in *Note
+Incompatibilities::.  If it isn't known, then you should report the
+problem.
+
 Reporting a bug may help you by bringing a solution to your problem,
-or it may not.  But in any case the important function of a bug
+or it may not.  (If it does not, look in the service directory; see
+*Note Service::.)  In any case, the principal function of a bug
 report is to help the entire community by making the next version of
 GNU CC work better.  Bug reports are your contribution to the
 maintenance of GNU CC.
@@ -749,8 +780,6 @@ information that makes for fixing the bug.
 
 * Criteria:  Bug Criteria.   Have you really found a bug?
 * Reporting: Bug Reporting.  How to report a bug effectively.
-* Known: Trouble.            A list of known problems.
-* Help: Service.             How to get help.
 
  
 
@@ -1085,95 +1114,5 @@ new target may require additional strategies.  You will know if this
 happens because the compiler will call `abort'.  Fortunately, the new
 strategies can be added in a machine-independent fashion, and will
 affect only the target machines that need them.
-
-
-
-File: gcc.info,  Node: Interface,  Next: Passes,  Prev: Portability,  Up: Top
-
-Interfacing to GNU CC Output
-****************************
-
-GNU CC is normally configured to use the same function calling
-convention normally in use on the target system.  This is done with
-the machine-description macros described (*note Machine Macros::.).
-
-However, returning of structure and union values is done differently
-on some target machines.  As a result, functions compiled with PCC
-returning such types cannot be called from code compiled with GNU CC,
-and vice versa.  This does not cause trouble often because few Unix
-library routines return structures or unions.
-
-GNU CC code returns structures and unions that are 1, 2, 4 or 8 bytes
-long in the same registers used for `int' or `double' return values. 
-(GNU CC typically allocates variables of such types in registers
-also.)  Structures and unions of other sizes are returned by storing
-them into an address passed by the caller (usually in a register). 
-The machine-description macros `STRUCT_VALUE' and
-`STRUCT_INCOMING_VALUE' tell GNU CC where to pass this address.
-
-By contrast, PCC on most target machines returns structures and
-unions of any size by copying the data into an area of static
-storage, and then returning the address of that storage as if it were
-a pointer value.  The caller must copy the data from that memory area
-to the place where the value is wanted.  This is slower than the
-method used by GNU CC, and fails to be reentrant.
-
-On some target machines, such as RISC machines and the 80386, the
-standard system convention is to pass to the subroutine the address
-of where to return the value.  On these machines, GNU CC has been
-configured to be compatible with the standard compiler, when this
-method is used.  It may not be compatible for structures of 1, 2, 4
-or 8 bytes.
-
-GNU CC uses the system's standard convention for passing arguments. 
-On some machines, the first few arguments are passed in registers; in
-others, all are passed on the stack.  It would be possible to use
-registers for argument passing on any machine, and this would
-probably result in a significant speedup.  But the result would be
-complete incompatibility with code that follows the standard
-convention.  So this change is practical only if you are switching to
-GNU CC as the sole C compiler for the system.  We may implement
-register argument passing on certain machines once we have a complete
-GNU system so that we can compile the libraries with GNU CC.
-
-If you use `longjmp', beware of automatic variables.  ANSI C says
-that automatic variables that are not declared `volatile' have
-undefined values after a `longjmp'.  And this is all GNU CC promises
-to do, because it is very difficult to restore register variables
-correctly, and one of GNU CC's features is that it can put variables
-in registers without your asking it to.
-
-If you want a variable to be unaltered by `longjmp', and you don't
-want to write `volatile' because old C compilers don't accept it,
-just take the address of the variable.  If a variable's address is
-ever taken, even if just to compute it and ignore it, then the
-variable cannot go in a register:
-
-     {
-       int careful;
-       &careful;
-       ...
-     }
-
-Code compiled with GNU CC may call certain library routines.  Most of
-them handle arithmetic for which there are no instructions.  This
-includes multiply and divide on some machines, and floating point
-operations on any machine for which floating point support is
-disabled with `-msoft-float'.  Some standard parts of the C library,
-such as `bcopy' or `memcpy', are also called automatically.  The
-usual function call interface is used for calling the library routines.
-
-These library routines should be defined in the library `gnulib',
-which GNU CC automatically searches whenever it links a program.  On
-machines that have multiply and divide instructions, if hardware
-floating point is in use, normally `gnulib' is not needed, but it is
-searched just in case.
-
-Each arithmetic function is defined in `gnulib.c' to use the
-corresponding C arithmetic operator.  As long as the file is compiled
-with another C compiler, which supports all the C arithmetic
-operators, this file will work portably.  However, `gnulib.c' does
-not work if compiled with GNU CC, because each arithmetic function
-would compile into a call to itself!
 
 

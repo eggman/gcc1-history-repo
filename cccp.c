@@ -4285,7 +4285,7 @@ macroexpand (hp, op)
       for (ap = defn->pattern; ap != NULL; ap = ap->next) {
 	if (ap->stringify)
 	  xbuf_len += args[ap->argno].stringified_length;
-	else if (ap->raw_before || ap->raw_after)
+	else if (ap->raw_before || ap->raw_after || traditional)
 	  xbuf_len += args[ap->argno].raw_length;
 	else
 	  xbuf_len += args[ap->argno].expand_length;
@@ -4372,6 +4372,7 @@ macroexpand (hp, op)
 	} else if (ap->raw_before || ap->raw_after || traditional) {
 	  U_CHAR *p1 = arg->raw;
 	  U_CHAR *l1 = p1 + arg->raw_length;
+
 	  if (ap->raw_before) {
 	    while (p1 != l1 && is_space[*p1]) p1++;
 	    while (p1 != l1 && is_idchar[*p1])

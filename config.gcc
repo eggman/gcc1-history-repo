@@ -130,6 +130,11 @@ then
 		cpu_type=i386
 		configuration_file=xm-i386v.h
 		;;
+	i386-esix)			# for Intel 80386's running ESIX system
+		machine=i386esix
+		cpu_type=i386
+		configuration_file=xm-i386v.h
+		;;
 	i386-aix | ps2-aix | aix386 | ps2aix )		# for IBM PS/2 running AIX
 		machine=aix386
 		cpu_type=i386
@@ -160,6 +165,10 @@ then
 	sun2 | sun-2 | sun2-os3 | sun-2-os3)
 		cpu_type=m68k
 		target_machine=tm-sun2.h
+		;;
+	sun2-os4 | sun-2-os4)
+		cpu_type=m68k
+		target_machine=tm-sun2os4.h
 		;;
 	sun386 | sun386i | roadrunner)
 		cpu_type=i386
@@ -229,6 +238,11 @@ then
 		machine=3b1g
 		cpu_type=m68k
 		configuration_file=xm-3b1.h
+		;;
+	delta68k | motorola-3300 | delta)
+		cpu_type=m68k
+		configuration_file=xm-delta68k.h
+		target_machine=tm-delta68k.h
 		;;
 	sequent-ns32k | sequent)
 		machine=sequent

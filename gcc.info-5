@@ -26,6 +26,96 @@ Free Software Foundation instead of in the original English.
 
 
 
+File: gcc.info,  Node: Interface,  Next: Passes,  Prev: Portability,  Up: Top
+
+Interfacing to GNU CC Output
+****************************
+
+GNU CC is normally configured to use the same function calling
+convention normally in use on the target system.  This is done with
+the machine-description macros described (*note Machine Macros::.).
+
+However, returning of structure and union values is done differently
+on some target machines.  As a result, functions compiled with PCC
+returning such types cannot be called from code compiled with GNU CC,
+and vice versa.  This does not cause trouble often because few Unix
+library routines return structures or unions.
+
+GNU CC code returns structures and unions that are 1, 2, 4 or 8 bytes
+long in the same registers used for `int' or `double' return values. 
+(GNU CC typically allocates variables of such types in registers
+also.)  Structures and unions of other sizes are returned by storing
+them into an address passed by the caller (usually in a register). 
+The machine-description macros `STRUCT_VALUE' and
+`STRUCT_INCOMING_VALUE' tell GNU CC where to pass this address.
+
+By contrast, PCC on most target machines returns structures and
+unions of any size by copying the data into an area of static
+storage, and then returning the address of that storage as if it were
+a pointer value.  The caller must copy the data from that memory area
+to the place where the value is wanted.  This is slower than the
+method used by GNU CC, and fails to be reentrant.
+
+On some target machines, such as RISC machines and the 80386, the
+standard system convention is to pass to the subroutine the address
+of where to return the value.  On these machines, GNU CC has been
+configured to be compatible with the standard compiler, when this
+method is used.  It may not be compatible for structures of 1, 2, 4
+or 8 bytes.
+
+GNU CC uses the system's standard convention for passing arguments. 
+On some machines, the first few arguments are passed in registers; in
+others, all are passed on the stack.  It would be possible to use
+registers for argument passing on any machine, and this would
+probably result in a significant speedup.  But the result would be
+complete incompatibility with code that follows the standard
+convention.  So this change is practical only if you are switching to
+GNU CC as the sole C compiler for the system.  We may implement
+register argument passing on certain machines once we have a complete
+GNU system so that we can compile the libraries with GNU CC.
+
+If you use `longjmp', beware of automatic variables.  ANSI C says
+that automatic variables that are not declared `volatile' have
+undefined values after a `longjmp'.  And this is all GNU CC promises
+to do, because it is very difficult to restore register variables
+correctly, and one of GNU CC's features is that it can put variables
+in registers without your asking it to.
+
+If you want a variable to be unaltered by `longjmp', and you don't
+want to write `volatile' because old C compilers don't accept it,
+just take the address of the variable.  If a variable's address is
+ever taken, even if just to compute it and ignore it, then the
+variable cannot go in a register:
+
+     {
+       int careful;
+       &careful;
+       ...
+     }
+
+Code compiled with GNU CC may call certain library routines.  Most of
+them handle arithmetic for which there are no instructions.  This
+includes multiply and divide on some machines, and floating point
+operations on any machine for which floating point support is
+disabled with `-msoft-float'.  Some standard parts of the C library,
+such as `bcopy' or `memcpy', are also called automatically.  The
+usual function call interface is used for calling the library routines.
+
+These library routines should be defined in the library `gnulib',
+which GNU CC automatically searches whenever it links a program.  On
+machines that have multiply and divide instructions, if hardware
+floating point is in use, normally `gnulib' is not needed, but it is
+searched just in case.
+
+Each arithmetic function is defined in `gnulib.c' to use the
+corresponding C arithmetic operator.  As long as the file is compiled
+with another C compiler, which supports all the C arithmetic
+operators, this file will work portably.  However, `gnulib.c' does
+not work if compiled with GNU CC, because each arithmetic function
+would compile into a call to itself!
+
+
+
 File: gcc.info,  Node: Passes,  Next: RTL,  Prev: Interface,  Up: Top
 
 Passes and Files of the Compiler
@@ -991,135 +1081,5 @@ registers and to main memory.
      This RTX represents a reference to main memory at an address
      represented by the expression ADDR.  M specifies how large a
      unit of memory is accessed.
-
-
-
-File: gcc.info,  Node: Arithmetic,  Next: Comparisons,  Prev: Regs and Memory,  Up: RTL
-
-RTL Expressions for Arithmetic
-==============================
-
-`(plus:M X Y)'
-     Represents the sum of the values represented by X and Y carried
-     out in machine mode M.  This is valid only if X and Y both are
-     valid for mode M.
-
-`(minus:M X Y)'
-     Like `plus' but represents subtraction.
-
-`(compare X Y)'
-     Represents the result of subtracting Y from X for purposes of
-     comparison.  The absence of a machine mode in the `compare'
-     expression indicates that the result is computed without
-     overflow, as if with infinite precision.
-
-     Of course, machines can't really subtract with infinite precision.
-     However, they can pretend to do so when only the sign of the
-     result will be used, which is the case when the result is stored
-     in `(cc0)'.  And that is the only way this kind of expression
-     may validly be used: as a value to be stored in the condition
-     codes.
-
-`(neg:M X)'
-     Represents the negation (subtraction from zero) of the value
-     represented by X, carried out in mode M.  X must be valid for
-     mode M.
-
-`(mult:M X Y)'
-     Represents the signed product of the values represented by X and
-     Y carried out in machine mode M.  If X and Y are both valid for
-     mode M, this is ordinary size-preserving multiplication. 
-     Alternatively, both X and Y may be valid for a different,
-     narrower mode.  This represents the kind of multiplication that
-     generates a product wider than the operands.  Widening
-     multiplication and same-size multiplication are completely
-     distinct and supported by different machine instructions;
-     machines may support one but not the other.
-
-     `mult' may be used for floating point multiplication as well. 
-     Then M is a floating point machine mode.
-
-`(umult:M X Y)'
-     Like `mult' but represents unsigned multiplication.  It may be
-     used in both same-size and widening forms, like `mult'.  `umult'
-     is used only for fixed-point multiplication.
-
-`(div:M X Y)'
-     Represents the quotient in signed division of X by Y, carried
-     out in machine mode M.  If M is a floating-point mode, it
-     represents the exact quotient; otherwise, the integerized
-     quotient.  If X and Y are both valid for mode M, this is
-     ordinary size-preserving division.  Some machines have division
-     instructions in which the operands and quotient widths are not
-     all the same; such instructions are represented by `div'
-     expressions in which the machine modes are not all the same.
-
-`(udiv:M X Y)'
-     Like `div' but represents unsigned division.
-
-`(mod:M X Y)'
-`(umod:M X Y)'
-     Like `div' and `udiv' but represent the remainder instead of the
-     quotient.
-
-`(not:M X)'
-     Represents the bitwise complement of the value represented by X,
-     carried out in mode M, which must be a fixed-point machine mode.
-     x must be valid for mode M, which must be a fixed-point mode.
-
-`(and:M X Y)'
-     Represents the bitwise logical-and of the values represented by
-     X and Y, carried out in machine mode M.  This is valid only if X
-     and Y both are valid for mode M, which must be a fixed-point mode.
-
-`(ior:M X Y)'
-     Represents the bitwise inclusive-or of the values represented by
-     X and Y, carried out in machine mode M.  This is valid only if X
-     and Y both are valid for mode M, which must be a fixed-point mode.
-
-`(xor:M X Y)'
-     Represents the bitwise exclusive-or of the values represented by
-     X and Y, carried out in machine mode M.  This is valid only if X
-     and Y both are valid for mode M, which must be a fixed-point mode.
-
-`(lshift:M X C)'
-     Represents the result of logically shifting X left by C places. 
-     X must be valid for the mode M, a fixed-point machine mode.  C
-     must be valid for a fixed-point mode; which mode is determined
-     by the mode called for in the machine description entry for the
-     left-shift instruction.  For example, on the Vax, the mode of C
-     is `QImode' regardless of M.
-
-     On some machines, negative values of C may be meaningful; this
-     is why logical left shift and arithmetic left shift are
-     distinguished.  For example, Vaxes have no right-shift
-     instructions, and right shifts are represented as left-shift
-     instructions whose counts happen to be negative constants or
-     else computed (in a previous instruction) by negation.
-
-`(ashift:M X C)'
-     Like `lshift' but for arithmetic left shift.
-
-`(lshiftrt:M X C)'
-`(ashiftrt:M X C)'
-     Like `lshift' and `ashift' but for right shift.
-
-`(rotate:M X C)'
-`(rotatert:M X C)'
-     Similar but represent left and right rotate.
-
-`(abs:M X)'
-     Represents the absolute value of X, computed in mode M.  X must
-     be valid for M.
-
-`(sqrt:M X)'
-     Represents the square root of X, computed in mode M.  X must be
-     valid for M.  Most often M will be a floating point mode.
-
-`(ffs:M X)'
-     Represents one plus the index of the least significant 1-bit in
-     X, represented as an integer of mode M.  (The value is zero if X
-     is zero.)  The mode of X need not be M; depending on the target
-     machine, various mode combinations may be valid.
 
 

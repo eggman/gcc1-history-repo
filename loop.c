@@ -200,6 +200,7 @@ struct induction;
 struct iv_class;
 
 static rtx loop_find_reg_equal ();
+static int reg_in_basic_block_p ();
 static rtx verify_loop ();
 static int invariant_p ();
 static int consec_sets_invariant_p ();
@@ -507,16 +508,15 @@ scan_loop (loop_start, end, nregs)
 	     We don't know its life-span, so we can't compute the benefit.  */
 	  if (REGNO (SET_DEST (PATTERN (p))) >= old_max_reg)
 	    ;
-	  /* If this register is used or set outside the loop,
-	     then we can move it only if we know this insn is
-	     executed exactly once per iteration,
-	     and we can check all the insns executed before it
-	     to make sure none of them used the value that
-	     was lying around at entry to the loop.  */
-	  else if ((uid_luid[regno_last_uid[REGNO (SET_DEST (PATTERN (p)))]] > INSN_LUID (end)
-		    || uid_luid[regno_first_uid[REGNO (SET_DEST (PATTERN (p)))]] < INSN_LUID (loop_start))
-		   && (maybe_never
-		       || loop_reg_used_before_p (p, loop_start, scan_start, end)))
+	  /* IN order to move a register, we need to have one of three cases:
+	     (1) it is used only in the same basic block as the set
+	     (2) it is not a user variable.
+	     (3) the set is guaranteed to be executed once the loop starts,
+	         and the reg is not used until after that.  */
+	  else if (! ((! maybe_never
+		       && ! loop_reg_used_before_p (p, loop_start, scan_start, end))
+		      || ! REG_USERVAR_P (SET_DEST (PATTERN (p)))
+		      || reg_in_basic_block_p (p, SET_DEST (PATTERN (p)))))
 	    ;
 	  else if (((tem = invariant_p (SET_SRC (PATTERN (p))))
 		    || ((temp = loop_find_reg_equal (p)) 
@@ -700,6 +700,52 @@ scan_loop (loop_start, end, nregs)
   if (flag_strength_reduce)
     strength_reduce (scan_start, end, loop_top,
 		     insn_count, loop_start, end, nregs);
+}
+
+/* Return 1 if all uses of REG
+   are between INSN and the end of the basic block.  */
+
+static int 
+reg_in_basic_block_p (insn, reg)
+     rtx insn, reg;
+{
+  int regno = REGNO (reg);
+  rtx p;
+
+  if (regno_first_uid[regno] != INSN_UID (insn))
+    return 0;
+
+  /* Search this basic block for the already recorded last use of the reg.  */
+  for (p = insn; p; p = NEXT_INSN (p))
+    {
+      switch (GET_CODE (p))
+	{
+	case NOTE:
+	  break;
+
+	case INSN:
+	case CALL_INSN:
+	  /* Ordinary insn: if this is the last use, we win.  */
+	  if (regno_last_uid[regno] == INSN_UID (p))
+	    return 1;
+	  break;
+
+	case JUMP_INSN:
+	  /* Jump insn: if this is the last use, we win.  */
+	  if (regno_last_uid[regno] == INSN_UID (p))
+	    return 1;
+	  /* Otherwise, it's the end of the basic block, so we lose.  */
+	  return 0;
+
+	case CODE_LABEL:
+	case BARRIER:
+	  /* It's the end of the basic block, so we lose.  */
+	  return 0;
+	}
+    }
+
+  /* The "last use" doesn't follow the "first use"??  */
+  abort ();
 }
 
 /* Skip COUNT insns from INSN, counting library calls as 1 insn.  */
@@ -1343,7 +1389,16 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
   for (p = new_start; p != end; p = NEXT_INSN (p))
     if (GET_CODE (p) == INSN || GET_CODE (p) == JUMP_INSN
 	|| GET_CODE (p) == CALL_INSN)
-      replace_regs (PATTERN (p), reg_map, nregs);
+      {
+	rtx tail;
+
+	replace_regs (PATTERN (p), reg_map, nregs);
+	/* Subsitute registers in the equivalent expression also.  */
+	for (tail = REG_NOTES (p); tail; tail = XEXP (tail, 1))
+	  if (REG_NOTE_KIND (tail) == REG_EQUAL
+	      || REG_NOTE_KIND (tail) == REG_EQUIV)
+	    replace_regs (XEXP (tail, 0), reg_map, nregs);
+      }
 }
 
 /* Optionally change a loop which enters just before the endtest

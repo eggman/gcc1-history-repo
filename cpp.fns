@@ -24,15 +24,10 @@
 \entry {\code {-undef}}{37}
 \initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}BASE{@fam @ttfam @tentt @char '137}FILE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
-\initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}DATE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
-\initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}FILE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
-\initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}LINE{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
-\initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}STDC{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
-\initial {{@fam @ttfam @tentt @char '137}}
 \entry {\code {{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}TIME{@fam @ttfam @tentt @char '137}{@fam @ttfam @tentt @char '137}}}{12}
 \initial {B}
 \entry {\code {BSD}}{13}

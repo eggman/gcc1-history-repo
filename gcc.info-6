@@ -26,6 +26,136 @@ Free Software Foundation instead of in the original English.
 
 
 
+File: gcc.info,  Node: Arithmetic,  Next: Comparisons,  Prev: Regs and Memory,  Up: RTL
+
+RTL Expressions for Arithmetic
+==============================
+
+`(plus:M X Y)'
+     Represents the sum of the values represented by X and Y carried
+     out in machine mode M.  This is valid only if X and Y both are
+     valid for mode M.
+
+`(minus:M X Y)'
+     Like `plus' but represents subtraction.
+
+`(compare X Y)'
+     Represents the result of subtracting Y from X for purposes of
+     comparison.  The absence of a machine mode in the `compare'
+     expression indicates that the result is computed without
+     overflow, as if with infinite precision.
+
+     Of course, machines can't really subtract with infinite precision.
+     However, they can pretend to do so when only the sign of the
+     result will be used, which is the case when the result is stored
+     in `(cc0)'.  And that is the only way this kind of expression
+     may validly be used: as a value to be stored in the condition
+     codes.
+
+`(neg:M X)'
+     Represents the negation (subtraction from zero) of the value
+     represented by X, carried out in mode M.  X must be valid for
+     mode M.
+
+`(mult:M X Y)'
+     Represents the signed product of the values represented by X and
+     Y carried out in machine mode M.  If X and Y are both valid for
+     mode M, this is ordinary size-preserving multiplication. 
+     Alternatively, both X and Y may be valid for a different,
+     narrower mode.  This represents the kind of multiplication that
+     generates a product wider than the operands.  Widening
+     multiplication and same-size multiplication are completely
+     distinct and supported by different machine instructions;
+     machines may support one but not the other.
+
+     `mult' may be used for floating point multiplication as well. 
+     Then M is a floating point machine mode.
+
+`(umult:M X Y)'
+     Like `mult' but represents unsigned multiplication.  It may be
+     used in both same-size and widening forms, like `mult'.  `umult'
+     is used only for fixed-point multiplication.
+
+`(div:M X Y)'
+     Represents the quotient in signed division of X by Y, carried
+     out in machine mode M.  If M is a floating-point mode, it
+     represents the exact quotient; otherwise, the integerized
+     quotient.  If X and Y are both valid for mode M, this is
+     ordinary size-preserving division.  Some machines have division
+     instructions in which the operands and quotient widths are not
+     all the same; such instructions are represented by `div'
+     expressions in which the machine modes are not all the same.
+
+`(udiv:M X Y)'
+     Like `div' but represents unsigned division.
+
+`(mod:M X Y)'
+`(umod:M X Y)'
+     Like `div' and `udiv' but represent the remainder instead of the
+     quotient.
+
+`(not:M X)'
+     Represents the bitwise complement of the value represented by X,
+     carried out in mode M, which must be a fixed-point machine mode.
+     x must be valid for mode M, which must be a fixed-point mode.
+
+`(and:M X Y)'
+     Represents the bitwise logical-and of the values represented by
+     X and Y, carried out in machine mode M.  This is valid only if X
+     and Y both are valid for mode M, which must be a fixed-point mode.
+
+`(ior:M X Y)'
+     Represents the bitwise inclusive-or of the values represented by
+     X and Y, carried out in machine mode M.  This is valid only if X
+     and Y both are valid for mode M, which must be a fixed-point mode.
+
+`(xor:M X Y)'
+     Represents the bitwise exclusive-or of the values represented by
+     X and Y, carried out in machine mode M.  This is valid only if X
+     and Y both are valid for mode M, which must be a fixed-point mode.
+
+`(lshift:M X C)'
+     Represents the result of logically shifting X left by C places. 
+     X must be valid for the mode M, a fixed-point machine mode.  C
+     must be valid for a fixed-point mode; which mode is determined
+     by the mode called for in the machine description entry for the
+     left-shift instruction.  For example, on the Vax, the mode of C
+     is `QImode' regardless of M.
+
+     On some machines, negative values of C may be meaningful; this
+     is why logical left shift and arithmetic left shift are
+     distinguished.  For example, Vaxes have no right-shift
+     instructions, and right shifts are represented as left-shift
+     instructions whose counts happen to be negative constants or
+     else computed (in a previous instruction) by negation.
+
+`(ashift:M X C)'
+     Like `lshift' but for arithmetic left shift.
+
+`(lshiftrt:M X C)'
+`(ashiftrt:M X C)'
+     Like `lshift' and `ashift' but for right shift.
+
+`(rotate:M X C)'
+`(rotatert:M X C)'
+     Similar but represent left and right rotate.
+
+`(abs:M X)'
+     Represents the absolute value of X, computed in mode M.  X must
+     be valid for M.
+
+`(sqrt:M X)'
+     Represents the square root of X, computed in mode M.  X must be
+     valid for M.  Most often M will be a floating point mode.
+
+`(ffs:M X)'
+     Represents one plus the index of the least significant 1-bit in
+     X, represented as an integer of mode M.  (The value is zero if X
+     is zero.)  The mode of X need not be M; depending on the target
+     machine, various mode combinations may be valid.
+
+
+
 File: gcc.info,  Node: Comparisons,  Next: Bit Fields,  Prev: Arithmetic,  Up: RTL
 
 Comparison Operations
@@ -1019,173 +1149,5 @@ output template to return based on the kind of operand and the
 specific type of CPU for which code is being generated.
 
 `"rm"' is an operand constraint.  Its meaning is explained below.
-
-
-
-File: gcc.info,  Node: RTL Template,  Next: Output Template,  Prev: Example,  Up: Machine Desc
-
-RTL Template for Generating and Recognizing Insns
-=================================================
-
-The RTL template is used to define which insns match the particular
-pattern and how to find their operands.  For named patterns, the RTL
-template also says how to construct an insn from specified operands.
-
-Construction involves substituting specified operands into a copy of
-the template.  Matching involves determining the values that serve as
-the operands in the insn being matched.  Both of these activities are
-controlled by special expression types that direct matching and
-substitution of the operands.
-
-`(match_operand:M N PRED CONSTRAINT)'
-     This expression is a placeholder for operand number N of the
-     insn.  When constructing an insn, operand number N will be
-     substituted at this point.  When matching an insn, whatever
-     appears at this position in the insn will be taken as operand
-     number N; but it must satisfy PRED or this instruction pattern
-     will not match at all.
-
-     Operand numbers must be chosen consecutively counting from zero
-     in each instruction pattern.  There may be only one
-     `match_operand' expression in the pattern for each operand
-     number.  Usually operands are numbered in the order of
-     appearance in `match_operand' expressions.
-
-     PRED is a string that is the name of a C function that accepts
-     two arguments, an expression and a machine mode.  During
-     matching, the function will be called with the putative operand
-     as the expression and M as the mode argument.  If it returns
-     zero, this instruction pattern fails to match.  PRED may be an
-     empty string; then it means no test is to be done on the
-     operand, so anything which occurs in this position is valid.
-
-     CONSTRAINT controls reloading and the choice of the best
-     register class to use for a value, as explained later (*note
-     Constraints::.).
-
-     People are often unclear on the difference between the
-     constraint and the predicate.  The predicate helps decide
-     whether a given insn matches the pattern.  The constraint plays
-     no role in this decision; instead, it controls various decisions
-     in the case of an insn which does match.
-
-     Most often, PRED is `"general_operand"'.  This function checks
-     that the putative operand is either a constant, a register or a
-     memory reference, and that it is valid for mode M.
-
-     For an operand that must be a register, PRED should be
-     `"register_operand"'.  It would be valid to use
-     `"general_operand"', since the reload pass would copy any
-     non-register operands through registers, but this would make GNU
-     CC do extra work, and it would prevent the register allocator
-     from doing the best possible job.
-
-     For an operand that must be a constant, either PRED should be
-     `"immediate_operand"', or the instruction pattern's extra
-     condition should check for constants, or both.  You cannot
-     expect the constraints to do this work!  If the constraints
-     allow only constants, but the predicate allows something else,
-     the compiler will crash when that case arises.
-
-`(match_dup N)'
-     This expression is also a placeholder for operand number N.  It
-     is used when the operand needs to appear more than once in the
-     insn.
-
-     In construction, `match_dup' behaves exactly like
-     `match_operand': the operand is substituted into the insn being
-     constructed.  But in matching, `match_dup' behaves differently. 
-     It assumes that operand number N has already been determined by
-     a `match_operand' appearing earlier in the recognition template,
-     and it matches only an identical-looking expression.
-
-`(match_operator:M N "PREDICATE" [OPERANDS...])'
-     This pattern is a kind of placeholder for a variable RTL
-     expression code.
-
-     When constructing an insn, it stands for an RTL expression whose
-     expression code is taken from that of operand N, and whose
-     operands are constructed from the patterns OPERANDS.
-
-     When matching an expression, it matches an expression if the
-     function PREDICATE returns nonzero on that expression *and* the
-     patterns OPERANDS match the operands of the expression.
-
-     Suppose that the function `commutative_operator' is defined as
-     follows, to match any expression whose operator is one of the
-     six commutative arithmetic operators of RTL and whose mode is
-     MODE:
-
-          int
-          commutative_operator (x, mode)
-               rtx x;
-               enum machine_mode mode;
-          {
-            enum rtx_code code = GET_CODE (x);
-            if (GET_MODE (x) != mode)
-              return 0;
-            return (code == PLUS || code == MULT || code == UMULT
-                    || code == AND || code == IOR || code == XOR);
-          }
-
-     Then the following pattern will match any RTL expression
-     consisting of a commutative operator applied to two general
-     operands:
-
-          (match_operator:SI 2 "commutative_operator"
-            [(match_operand:SI 3 "general_operand" "g")
-             (match_operand:SI 4 "general_operand" "g")])
-
-     Here the vector `[OPERANDS...]' contains two patterns because
-     the expressions to be matched all contain two operands.
-
-     When this pattern does match, the two operands of the
-     commutative operator are recorded as operands 3 and 4 of the
-     insn.  (This is done by the two instances of `match_operand'.) 
-     Operand 2 of the insn will be the entire commutative expression:
-     use `GET_CODE (operands[2])' to see which commutative operator
-     was used.
-
-     The machine mode M of `match_operator' works like that of
-     `match_operand': it is passed as the second argument to the
-     predicate function, and that function is solely responsible for
-     deciding whether the expression to be matched "has" that mode.
-
-     When constructing an insn, argument 2 of the gen-function will
-     specify the operation (i.e. the expression code) for the
-     expression to be made.  It should be an RTL expression, whose
-     expression code is copied into a new expression whose operands
-     are arguments 3 and 4 of the gen-function.  The subexpressions
-     of argument 2 are not used; only its expression code matters.
-
-     There is no way to specify constraints in `match_operator'.  The
-     operand of the insn which corresponds to the `match_operator'
-     never has any constraints because it is never reloaded as a whole.
-     However, if parts of its OPERANDS are matched by `match_operand'
-     patterns, those parts may have constraints of their own.
-
-`(address (match_operand:M N "address_operand" ""))'
-     This complex of expressions is a placeholder for an operand
-     number N in a "load address" instruction: an operand which
-     specifies a memory location in the usual way, but for which the
-     actual operand value used is the address of the location, not
-     the contents of the location.
-
-     `address' expressions never appear in RTL code, only in machine
-     descriptions.  And they are used only in machine descriptions
-     that do not use the operand constraint feature.  When operand
-     constraints are in use, the letter `p' in the constraint serves
-     this purpose.
-
-     M is the machine mode of the *memory location being addressed*,
-     not the machine mode of the address itself.  That mode is always
-     the same on a given target machine (it is `Pmode', which
-     normally is `SImode'), so there is no point in mentioning it;
-     thus, no machine mode is written in the `address' expression. 
-     If some day support is added for machines in which addresses of
-     different kinds of objects appear differently or are used
-     differently (such as the PDP-10), different formats would
-     perhaps need different machine modes and these modes might be
-     written in the `address' expression.
 
 

@@ -2698,9 +2698,11 @@ find_reloads_address_1 (x, context, loc, operand)
   else if (code == POST_INC || code == POST_DEC
 	   || code == PRE_INC || code == PRE_DEC)
     {
-      if (GET_CODE (XEXP (x, 0)) == REG)
+      rtx incremented = XEXP (x, 0);
+
+      if (GET_CODE (incremented) == REG)
 	{
-	  register int regno = REGNO (XEXP (x, 0));
+	  register int regno = REGNO (incremented);
 	  int value = 0;
 
 	  /* A register that is incremented cannot be constant!  */
@@ -2712,7 +2714,7 @@ find_reloads_address_1 (x, context, loc, operand)
 	     which cannot be addressed directly.  */
 	  if (reg_equiv_address[regno] != 0)
 	    {
-	      rtx tem = make_memloc (XEXP (x, 0), regno);
+	      rtx tem = make_memloc (incremented, regno);
 	      /* First reload the memory location's address.  */
 	      push_reload (XEXP (tem, 0), 0, &XEXP (tem, 0), 0,
 			   BASE_REG_CLASS,
@@ -2747,7 +2749,7 @@ find_reloads_address_1 (x, context, loc, operand)
 			       context ? INDEX_REG_CLASS : BASE_REG_CLASS,
 			       GET_MODE (x), GET_MODE (x), VOIDmode, 0, operand);
 	      reload_inc[reloadnum]
-		= find_inc_amount (PATTERN (this_insn), XEXP (x, 0));
+		= find_inc_amount (PATTERN (this_insn), incremented);
 
 	      value = 1;
 
@@ -2756,7 +2758,7 @@ find_reloads_address_1 (x, context, loc, operand)
 	      for (link = REG_NOTES (this_insn);
 		   link; link = XEXP (link, 1))
 		if (REG_NOTE_KIND (link) == REG_INC
-		    && REGNO (XEXP (link, 0)) == REGNO (XEXP (x, 0)))
+		    && REGNO (XEXP (link, 0)) == REGNO (incremented))
 		  push_replacement (&XEXP (link, 0), reloadnum, VOIDmode);
 	    }
 	  return value;

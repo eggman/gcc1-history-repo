@@ -114,6 +114,17 @@ fp_call_internal (op, rev, n, operands, insn)
   else
     output_asm_insn (op, operands + n);
 
+  if (FP_REG_P (operands[0]))
+    {
+      /* It turns out not to work to use top_dead_p because
+	 the death notes are not accurate enough.
+	 But this ought to work, because the only thing that can
+	 live across basic blocks is reg 8, and these insns
+	 never involve reg 8 directly.  */
+      if (fp_top_dead_p1 (insn))
+	POP_ONE_FP;
+    }
+
   RET;
 }
 
@@ -800,12 +811,21 @@ function_epilogue (file, size)
   register int regno;
   register int nregs, limit;
   int assure_sp_pos;
+  int return_struct_adjust;
   extern int frame_pointer_needed;
   extern int current_function_pops_args;
   extern int current_function_args_size;
+  extern int flag_pcc_struct_return;
+
   limit = (frame_pointer_needed ? FRAME_POINTER_REGNUM : STACK_POINTER_REGNUM);
   nregs = 0;
 
+  return_struct_adjust =
+    (current_function_returns_struct
+#ifdef STRUCT_RETURN_CALLER_POP
+     && !flag_pcc_struct_return
+#endif
+     ? 4 : 0);
 
   for (regno = (limit -1); regno >= 0; regno--)
     if (regs_ever_live[regno] && ! call_used_regs[regno])
@@ -835,10 +855,9 @@ function_epilogue (file, size)
     fprintf (file, "\tleave\n");
   if (current_function_pops_args && current_function_args_size)
     fprintf (file, "\tret %s%d\n", IP,
-	     (current_function_args_size
-	      + (current_function_returns_struct ? 4 : 0)));
-  else if (current_function_returns_struct)
-    fprintf (file, "\tret %s4\n", IP);
+	     (current_function_args_size + return_struct_adjust));
+  else if (return_struct_adjust)
+    fprintf (file, "\tret %s%d\n", IP, return_struct_adjust);
   else
     fprintf (file, "\tret\n");
 }
@@ -1295,15 +1314,34 @@ static int
 fp_top_dead_p1 (insn)
      rtx insn;
 {
+  extern int optimize;
+
+  int past_label = 0;
+
   for (insn = NEXT_INSN (insn); insn; insn = NEXT_INSN (insn))
     {
       switch (GET_CODE (insn))
 	{
 	case CALL_INSN:
 	  /* Function calls clobber this value, so it's dead.  */
-	case JUMP_INSN:
-	case CODE_LABEL:
 	  return 1;
+
+	case JUMP_INSN:
+	  if (! optimize)
+	    /* Can't use JUMP_LABEL, but there's no cross-jumping either.  */
+	    return 1;
+	  if (JUMP_LABEL (insn) == 0)
+	    return 1;
+	  insn = JUMP_LABEL (insn);
+	case CODE_LABEL:
+	  /* Go past one label or follow one jump in case of cross-jumping,
+	     which could insert such a label or jump into one basic block.  */
+	  if (! optimize)
+	    return 1;
+	  if (past_label)
+	    return 1;
+	  past_label = 1;
+	  break;
 
 	case INSN:
 	  if (GET_CODE (PATTERN (insn)) == SET)

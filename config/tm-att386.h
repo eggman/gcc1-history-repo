@@ -178,8 +178,10 @@ bss_section ()							\
 /* This says how to output an assembler line
    to define a local common symbol.  */
 
+/* Note that using bss_section here caused errors
+   in building shared libraries on system V.3.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
-  (bss_section (),					\
+  (data_section (),					\
    ASM_OUTPUT_LABEL ((FILE), (NAME)),			\
    fprintf ((FILE), "\t.set .,.+%u\n", (ROUNDED)))
 

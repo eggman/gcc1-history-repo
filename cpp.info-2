@@ -66,10 +66,10 @@ after
 
 But suppose `y' is used elsewhere, not from the definition of `x'. 
 Then the use of `x' in the expansion of `y' is not a self-reference
-because `x' is not ``in progress''.  So it does expand.  However, the
+because `x' is not "in progress".  So it does expand.  However, the
 expansion of `x' contains a reference to `y', and that is an indirect
-self-reference now because `y' is ``in progress''.  The result is
-that `y' expands to `(2 * (4 + y))'.
+self-reference now because `y' is "in progress".  The result is that
+`y' expands to `(2 * (4 + y))'.
 
 It is not clear that this behavior would ever be useful, but it is
 specified by the ANSI C standard, so you need to understand it.
@@ -129,10 +129,9 @@ stringification or concatenation.
 
 expands to `"foo" lose(4)'.
 
-You might now ask, ``Why mention the prescan, if it makes no
-difference?  And why not skip it and make the preprocessor faster?'' 
-The answer is that the prescan does make a difference in three
-special cases:
+You might now ask, "Why mention the prescan, if it makes no difference?
+And why not skip it and make the preprocessor faster?"  The answer is
+that the prescan does make a difference in three special cases:
 
    * Nested calls to a macro.
 
@@ -422,8 +421,8 @@ as follows:
      ...
      #endif /* X != 2 and X != 1*/
 
-`#elif' stands for ``else if''.  Like `#else', it goes in the middle
-of a `#if'-`#endif' pair and subdivides it; it does not require a
+`#elif' stands for "else if".  Like `#else', it goes in the middle of
+a `#if'-`#endif' pair and subdivides it; it does not require a
 matching `#endif' of its own.  Like `#if', the `#elif' command
 includes an expression to be tested.
 
@@ -879,46 +878,4 @@ Index of Commands, Macros and Options
 * vax: Nonstandard Predefined.
 
 
- 
-Tag Table:
-Node: Top750
-Node: Global Actions3306
-Node: Commands5811
-Node: Header Files7416
-Node: Header Uses7992
-Node: Include Syntax9379
-Node: Include Operation12392
-Node: Once-Only14058
-Node: Macros15869
-Node: Simple Macros16781
-Node: Argument Macros19828
-Node: Predefined24918
-Node: Standard Predefined25346
-Node: Nonstandard Predefined29551
-Node: Stringification32833
-Node: Concatenation35672
-Node: Undefining38930
-Node: Redefining39952
-Node: Macro Pitfalls41238
-Node: Misnesting42281
-Node: Macro Parentheses43289
-Node: Swallow Semicolon45144
-Node: Side Effects47032
-Node: Self-Reference48718
-Node: Argument Prescan50967
-Node: Cascaded Macros55931
-Node: Conditionals56952
-Node: Conditional Uses58240
-Node: Conditional Syntax59627
-Node: #if Command60196
-Node: #else Command62447
-Node: #elif Command63094
-Node: Deleted Code64437
-Node: Conditionals-Macros64968
-Node: #error Command68190
-Node: Combining Sources69234
-Node: Other Commands71848
-Node: Output73081
-Node: Invocation74012
-Node: Concept Index79436
-Node: Index80238
+ 

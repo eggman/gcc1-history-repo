@@ -135,8 +135,8 @@ But there are a few exceptions to all three transformations.
      anyway.)
 
    * Backslash-Newline may not safely be used within an ANSI
-     ``trigraph''.  Trigraphs are converted before Backslash-Newline
-     is deleted.  If you write what looks like a trigraph with a
+     "trigraph".  Trigraphs are converted before Backslash-Newline is
+     deleted.  If you write what looks like a trigraph with a
      Backslash-Newline inside, the Backslash-Newline is deleted as
      usual, but it is then too late to recognize the trigraph.
 
@@ -526,7 +526,7 @@ values, as it is defined in many C programs:
 
      #define min(X, Y)  ((X) < (Y) ? (X) : (Y))
 
-(This is not the best way to define a ``minimum'' macro in GNU C. 
+(This is not the best way to define a "minimum" macro in GNU C. 
 *Note Side Effects::, for more information.)
 
 To use a macro that expects arguments, you write the name of the
@@ -657,7 +657,7 @@ rest are GNU C extensions.
 `__LINE__'
      This macro expands to the current input line number, in the form
      of a decimal integer constant.  While we call it a predefined
-     macro, it's a pretty strange macro, since its ``definition''
+     macro, it's a pretty strange macro, since its "definition"
      changes with each new line of source code.
 
      This and `__FILE__' are useful in generating an error message to
@@ -953,7 +953,7 @@ special results.
 Keep in mind that the C preprocessor converts comments to whitespace
 before macros are even considered.  Therefore, you cannot create a
 comment by concatenating `/' and `*': the `/*' sequence that starts a
-comment is not a lexical unit, but rather the beginning of a ``long''
+comment is not a lexical unit, but rather the beginning of a "long"
 space character.  Also, you can freely use comments next to a `##' in
 a macro definition, or in actual arguments that will be concatenated,
 because the comments will be converted to spaces at first sight, and
@@ -1206,7 +1206,7 @@ File: cpp.info,  Node: Side Effects,  Next: Self-Reference,  Prev: Swallow Semic
 Duplication of Side Effects
 ...........................
 
- Many C programs define a macro `min', for ``minimum'', like this:
+ Many C programs define a macro `min', for "minimum", like this:
 
      #define min(X, Y)  ((X) < (Y) ? (X) : (Y))
 

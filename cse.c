@@ -3510,9 +3510,14 @@ cse_insn (insn)
 	  && SET_DEST (PATTERN (prev)) == SET_SRC (sets[0].rtl))
 	{
 	  rtx dest = SET_DEST (sets[0].rtl);
+	  rtx note = find_reg_note (prev, REG_EQUIV, 0);
+
 	  SET_DEST (PATTERN (prev)) = dest;
 	  SET_DEST (sets[0].rtl) = SET_SRC (sets[0].rtl);
 	  SET_SRC (sets[0].rtl) = dest;
+	  /* If REG1 was equivalent to a constant, REG0 is not.  */
+	  if (note)
+	    PUT_MODE (note, REG_EQUAL);
 	}
     }
 

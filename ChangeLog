@@ -1,3 +1,143 @@
+Wed Jan 16 15:34:38 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* Version 1.39 released.
+
+	* config.gcc (i386-esix): New alternative.
+	* tm-i386esix.h: New file.
+
+	* expr.c (expand_call): Don't put libcall notes on const function call
+	unless there is a suitable value-copying insn at the end.
+
+	* config.gcc (delta68k): New alternative.
+	* tm-delta68k.h, xm-delta68k.h: New files.
+
+Tue Jan 15 01:37:21 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* loop.c (scan_loop): Condition for movability was wrong.
+	A reg that isn't necessarily set may be unsafe
+	even if used only inside the loop.
+	However, a reg used only in the same basic block after the set is safe.
+	So is a reg that isn't a user-level variable.
+
+	* combine.c (try_distrib): Don't push + thru negative-count shift.
+	* tm-vax.h (NEGATIVE_SHIFT_COUNT): Define to enable that change.
+
+Mon Jan 14 18:17:58 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* stmt.c (assign_parms) [FIRST_PARM_CALLER_OFFSET]:
+	If that's negative, adjust first_parm_offset rather than
+	stack_args_size for size of structure value address.
+	(Kludge to make sparc work.)
+
+	* fixincludes-V4: Handle #lint.
+
+	* tm-i386sco.h (CPP_PREDEFINES): Get rid of the %-spec.
+	(CPP_SPEC): Override this; handle -scointl here.
+
+Sun Jan 13 23:06:25 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* fixincludes (sys/file.h): Fix incorrect conditional in Ultrix.
+
+Sat Jan 12 14:25:02 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* i386.md (movsf, movdf): Change constraints to ensure opt reload.
+
+Fri Jan 11 13:22:22 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* tm-tower-as.h (ASM_OUTPUT_COMMON, ASM_OUTPUT_LOCAL, ASM_OUTPUT_SKIP):
+	Use %u.
+	(PUT_SDB_START_DIM): New macro.
+	(PUT_SDB_DIM): Deleted.
+
+	* tm-next.h (LIB_SPEC, STARTFILE_SPEC): Don't support -p.
+
+Thu Jan 10 13:05:46 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* tm-sun2.h (CC1_SPEC): Define to ignore -sun2 and -target.
+	(WORD_SWITCH_TAKES_ARG): Define to recognize -target.
+	(LIB_SPEC): Define; handle -a.
+	* tm-sun3os4.h: New file.
+
+	* tm-mips-news.h (CPP_SPEC): Update include directory version.
+	(MACHINE_TYPE): Change this string.
+
+	* tm-next.h (LIB_SPEC): Use -lsys_s, not -lc.
+
+	* Makefile (gnulib): Depend on config.status.
+
+Mon Jan  7 15:03:53 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* c-typeck.c (process_init_constructor): Error if values
+	provided for an array of empty elements.
+	Rename variable `error' to `error_flag'.
+
+	* out-i386.c (function_epilogue) [STRUCT_RETURN_CALLER_POP]:
+	Don't pop struct value arg if -fpcc-struct-return.
+	* expr.c (expand_call) [STRUCT_RETURN_CALLER_POP]:
+	Change handling of structure_value_addr.
+
+	* cse.c (cse_insn): In special case for (set REG0 REG1),
+	change any REG_EQUIV notes to REG_EQUAL.
+
+Sun Jan  6 13:51:59 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* tm-sun386i.h (PCC_BITFIELD_TYPE_MATTERS): Define it.
+
+	* out-i386.c (fp_top_dead_p1): Follow jump only if optimizing.
+
+Fri Jan  4 23:17:41 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* tm-att386.h (ASM_OUTPUT_LOCAL): Change back to data section.
+
+Thu Jan  3 13:31:41 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* loop.c (move_movables): Do reg substitutions on REG_EQUAL, REG_EQUIV.
+
+	* out-i386.c (fp_top_dead_p1): Follow one jump or label.
+
+	* rtl.c (read_rtx): Cast type of NULL vector.
+
+Wed Jan  2 18:59:34 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* out-i386.c (fp_call_internal): Use fp_top_dead_p1, not top_dead_p.
+	* reload1.c (emit_reload_insns): Undo previous change.
+
+Tue Jan  1 12:01:43 1991  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* integrate.c (expand_inline_function):
+	Handle parms passed in reg but stored in memory.
+
+	* ecoff-cmp: Specify `c' in option to tail.
+
+	* reload1.c (emit_reload_insns) [PRESERVE_DEATH_INFO_REGNO_P]:
+	Move notes to output reload even if dest is reg.
+	Check for notes matching by hard reg, even if different origin.
+	Really scan all the output reload insns.
+
+Mon Dec 31 16:04:11 1990  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* stupid.c (stupid_find_reg): Don't use reg if OVERLAPPING_REGNO_P.
+
+	* i386.md (push for SFmode): Operand of fst was missing.
+	* out-i386.c (fp_call_internal): Discard result if unused.
+
+Sat Dec 29 16:37:10 1990  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* Makefile (install): Use basename on eachfile; BSD make adds dirs. 
+
+	* cccp.c (macroexpand): Test traditional when computing expansion size.
+
+Thu Dec 27 23:42:42 1990  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* reload.c (find_reloads_address_1): For auto-increment, save the reg
+	before replacing it with something being reloaded.
+
+Fri Dec 21 18:31:38 1990  Richard Stallman  (rms at mole.ai.mit.edu)
+
+	* Version 1.38.
+
+	* tm-i386vgas.h (STARTFILE_SPEC, LIB_SPEC): Deleted.
+
 Sun Dec 16 18:10:20 1990  Richard Stallman  (rms at mole.ai.mit.edu)
 
 	* tm-i386vgas.h (ASM_OUTPUT_LABELREF): Do prepend `_' again.

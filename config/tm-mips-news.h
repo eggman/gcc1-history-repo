@@ -5,10 +5,10 @@
 
 #undef CPP_SPEC
 				/* default RISC NEWS environment */
-#define CPP_SPEC "-Dr3000 -DLANGUAGE_C -DMIPSEB -DSYSTYPE_BSD -Dsony_news -Dunix -I/usr/include2.0"
+#define CPP_SPEC "-Dr3000 -DLANGUAGE_C -DMIPSEB -DSYSTYPE_BSD -Dsony_news -Dunix -I/usr/include2.11"
 
 #undef MACHINE_TYPE
-#define MACHINE_TYPE "RISC NEWS-OS"
+#define MACHINE_TYPE "Sony NEWS (RISC NEWS)"
 
 /* Define this if most significant byte of a word is the lowest numbered.
 */

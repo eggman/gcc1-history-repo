@@ -1,4 +1,4 @@
-/* Definitions of target machine for GNU compiler.  Sun 68000/68020 version.
+/* Definitions of target machine for GNU compiler.  Sun 68010 version.
    Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
@@ -39,6 +39,19 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* Names to predefine in the preprocessor for this target machine.  */
 
 #define CPP_PREDEFINES "-Dmc68000 -Dsun -Dunix"
+
+/* Prevent error on `-sun2' and `-target sun2' options.  */
+
+#define CC1_SPEC "%{sun2:} %{target:}"
+
+/* These compiler options take an argument.  We ignore -target for now.  */
+
+#define WORD_SWITCH_TAKES_ARG(STR)	(!strcmp (STR, "target"))
+
+/* Specify what to link with.  */
+
+#define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
+%{a:/usr/lib/bb_link.o -lc} "
 
 /* Alignment of field after `int : 0' in a structure.  */
 

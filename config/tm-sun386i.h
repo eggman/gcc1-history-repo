@@ -70,6 +70,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define TARGET_MEM_FUNCTIONS
 
+/* Force structure alignment to the type used for a bitfield.  */
+
+#define PCC_BITFIELD_TYPE_MATTERS
 
 /* Define how to find the value returned by a function.
    VALTYPE is the data type of the value (as a tree).

@@ -1,5 +1,6 @@
-/* Definitions for Intel 386 running SCO Unix System V.  */
-
+/* Definitions for Intel 386 running ESIX Unix System V.  */
+/* Just like SCO support except don't use their special library and
+   predefined symbol.  */
 
 /* Mostly it's like AT&T Unix System V. */
 
@@ -12,11 +13,11 @@
 
 #define ENDFILE_SPEC "crtn.o%s"
 
-/* Library spec, including SCO international language support. */
+/* Library spec.  */
 
 #undef LIB_SPEC
 #define LIB_SPEC \
- "%{p:-L/usr/lib/libp}%{pg:-L/usr/lib/libp} libintl.a%s -lc"
+ "%{p:-L/usr/lib/libp}%{pg:-L/usr/lib/libp} -lc"
 
 /* Specify predefined symbols in preprocessor.  */
 
@@ -25,7 +26,7 @@
 "-Dunix -Di386 -DM_UNIX -DM_I386 -DM_COFF -DM_WORDSWAP"
 
 #undef CPP_SPEC
-#define CPP_SPEC "%{posix:-D_POSIX_SOURCE} -DM_INTERNAT"
+#define CPP_SPEC "%{posix:-D_POSIX_SOURCE}"
 
 /* SCO's assember doesn't grok '$' in labels (for g++) */
 

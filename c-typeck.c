@@ -3515,7 +3515,7 @@ process_init_constructor (type, init, elts)
   tree result;
   int allconstant = 1;
   int allsimple = 1;
-  int error = 0;
+  int error_flag = 0;
 
   /* Make TAIL be the list of elements to use for the initialization,
      no matter how the data was given to us.  */
@@ -3553,6 +3553,12 @@ process_init_constructor (type, init, elts)
 				   TREE_VALUE (tail), &tail1);
 	      if (tail1 != 0 && TREE_CODE (tail1) != TREE_LIST)
 		abort ();
+	      if (tail == tail1 && len < 0)
+		{
+		  error ("non-empty initializer for array of empty elements");
+		  /* Just ignore what we were supposed to use.  */
+		  tail1 = 0;
+		}
 	      tail = tail1;
 	    }
 	  else
@@ -3562,7 +3568,7 @@ process_init_constructor (type, init, elts)
 	    }
 
 	  if (next1 == error_mark_node)
-	    error = 1;
+	    error_flag = 1;
 	  else if (!TREE_LITERAL (next1))
 	    allconstant = 0;
 	  else if (! initializer_constant_valid_p (next1))
@@ -3601,7 +3607,7 @@ process_init_constructor (type, init, elts)
 	    }
 
 	  if (next1 == error_mark_node)
-	    error = 1;
+	    error_flag = 1;
 	  else if (!TREE_LITERAL (next1))
 	    allconstant = 0;
 	  else if (! initializer_constant_valid_p (next1))
@@ -3633,7 +3639,7 @@ process_init_constructor (type, init, elts)
 	}
 
       if (next1 == error_mark_node)
-	error = 1;
+	error_flag = 1;
       else if (!TREE_LITERAL (next1))
 	allconstant = 0;
       else if (! initializer_constant_valid_p (next1))
@@ -3649,7 +3655,7 @@ process_init_constructor (type, init, elts)
   else if (tail)
     warning ("excess elements in aggregate initializer");
 
-  if (error)
+  if (error_flag)
     return error_mark_node;
 
   result = build (CONSTRUCTOR, type, NULL_TREE, nreverse (members));

@@ -26,6 +26,174 @@ Free Software Foundation instead of in the original English.
 
 
 
+File: gcc.info,  Node: RTL Template,  Next: Output Template,  Prev: Example,  Up: Machine Desc
+
+RTL Template for Generating and Recognizing Insns
+=================================================
+
+The RTL template is used to define which insns match the particular
+pattern and how to find their operands.  For named patterns, the RTL
+template also says how to construct an insn from specified operands.
+
+Construction involves substituting specified operands into a copy of
+the template.  Matching involves determining the values that serve as
+the operands in the insn being matched.  Both of these activities are
+controlled by special expression types that direct matching and
+substitution of the operands.
+
+`(match_operand:M N PRED CONSTRAINT)'
+     This expression is a placeholder for operand number N of the
+     insn.  When constructing an insn, operand number N will be
+     substituted at this point.  When matching an insn, whatever
+     appears at this position in the insn will be taken as operand
+     number N; but it must satisfy PRED or this instruction pattern
+     will not match at all.
+
+     Operand numbers must be chosen consecutively counting from zero
+     in each instruction pattern.  There may be only one
+     `match_operand' expression in the pattern for each operand
+     number.  Usually operands are numbered in the order of
+     appearance in `match_operand' expressions.
+
+     PRED is a string that is the name of a C function that accepts
+     two arguments, an expression and a machine mode.  During
+     matching, the function will be called with the putative operand
+     as the expression and M as the mode argument.  If it returns
+     zero, this instruction pattern fails to match.  PRED may be an
+     empty string; then it means no test is to be done on the
+     operand, so anything which occurs in this position is valid.
+
+     CONSTRAINT controls reloading and the choice of the best
+     register class to use for a value, as explained later (*note
+     Constraints::.).
+
+     People are often unclear on the difference between the
+     constraint and the predicate.  The predicate helps decide
+     whether a given insn matches the pattern.  The constraint plays
+     no role in this decision; instead, it controls various decisions
+     in the case of an insn which does match.
+
+     Most often, PRED is `"general_operand"'.  This function checks
+     that the putative operand is either a constant, a register or a
+     memory reference, and that it is valid for mode M.
+
+     For an operand that must be a register, PRED should be
+     `"register_operand"'.  It would be valid to use
+     `"general_operand"', since the reload pass would copy any
+     non-register operands through registers, but this would make GNU
+     CC do extra work, and it would prevent the register allocator
+     from doing the best possible job.
+
+     For an operand that must be a constant, either PRED should be
+     `"immediate_operand"', or the instruction pattern's extra
+     condition should check for constants, or both.  You cannot
+     expect the constraints to do this work!  If the constraints
+     allow only constants, but the predicate allows something else,
+     the compiler will crash when that case arises.
+
+`(match_dup N)'
+     This expression is also a placeholder for operand number N.  It
+     is used when the operand needs to appear more than once in the
+     insn.
+
+     In construction, `match_dup' behaves exactly like
+     `match_operand': the operand is substituted into the insn being
+     constructed.  But in matching, `match_dup' behaves differently. 
+     It assumes that operand number N has already been determined by
+     a `match_operand' appearing earlier in the recognition template,
+     and it matches only an identical-looking expression.
+
+`(match_operator:M N "PREDICATE" [OPERANDS...])'
+     This pattern is a kind of placeholder for a variable RTL
+     expression code.
+
+     When constructing an insn, it stands for an RTL expression whose
+     expression code is taken from that of operand N, and whose
+     operands are constructed from the patterns OPERANDS.
+
+     When matching an expression, it matches an expression if the
+     function PREDICATE returns nonzero on that expression *and* the
+     patterns OPERANDS match the operands of the expression.
+
+     Suppose that the function `commutative_operator' is defined as
+     follows, to match any expression whose operator is one of the
+     six commutative arithmetic operators of RTL and whose mode is
+     MODE:
+
+          int
+          commutative_operator (x, mode)
+               rtx x;
+               enum machine_mode mode;
+          {
+            enum rtx_code code = GET_CODE (x);
+            if (GET_MODE (x) != mode)
+              return 0;
+            return (code == PLUS || code == MULT || code == UMULT
+                    || code == AND || code == IOR || code == XOR);
+          }
+
+     Then the following pattern will match any RTL expression
+     consisting of a commutative operator applied to two general
+     operands:
+
+          (match_operator:SI 2 "commutative_operator"
+            [(match_operand:SI 3 "general_operand" "g")
+             (match_operand:SI 4 "general_operand" "g")])
+
+     Here the vector `[OPERANDS...]' contains two patterns because
+     the expressions to be matched all contain two operands.
+
+     When this pattern does match, the two operands of the
+     commutative operator are recorded as operands 3 and 4 of the
+     insn.  (This is done by the two instances of `match_operand'.) 
+     Operand 2 of the insn will be the entire commutative expression:
+     use `GET_CODE (operands[2])' to see which commutative operator
+     was used.
+
+     The machine mode M of `match_operator' works like that of
+     `match_operand': it is passed as the second argument to the
+     predicate function, and that function is solely responsible for
+     deciding whether the expression to be matched "has" that mode.
+
+     When constructing an insn, argument 2 of the gen-function will
+     specify the operation (i.e. the expression code) for the
+     expression to be made.  It should be an RTL expression, whose
+     expression code is copied into a new expression whose operands
+     are arguments 3 and 4 of the gen-function.  The subexpressions
+     of argument 2 are not used; only its expression code matters.
+
+     There is no way to specify constraints in `match_operator'.  The
+     operand of the insn which corresponds to the `match_operator'
+     never has any constraints because it is never reloaded as a whole.
+     However, if parts of its OPERANDS are matched by `match_operand'
+     patterns, those parts may have constraints of their own.
+
+`(address (match_operand:M N "address_operand" ""))'
+     This complex of expressions is a placeholder for an operand
+     number N in a "load address" instruction: an operand which
+     specifies a memory location in the usual way, but for which the
+     actual operand value used is the address of the location, not
+     the contents of the location.
+
+     `address' expressions never appear in RTL code, only in machine
+     descriptions.  And they are used only in machine descriptions
+     that do not use the operand constraint feature.  When operand
+     constraints are in use, the letter `p' in the constraint serves
+     this purpose.
+
+     M is the machine mode of the *memory location being addressed*,
+     not the machine mode of the address itself.  That mode is always
+     the same on a given target machine (it is `Pmode', which
+     normally is `SImode'), so there is no point in mentioning it;
+     thus, no machine mode is written in the `address' expression. 
+     If some day support is added for machines in which addresses of
+     different kinds of objects appear differently or are used
+     differently (such as the PDP-10), different formats would
+     perhaps need different machine modes and these modes might be
+     written in the `address' expression.
+
+
+
 File: gcc.info,  Node: Output Template,  Next: Output Statement,  Prev: RTL Template,  Up: Machine Desc
 
 Output Templates and Operand Substitution
@@ -976,178 +1144,5 @@ generated as a single-byte immediate quantity, which would not work.)
 Instead of using this pattern ordering it would be possible to make
 the pattern for convert-a-byte smart enough to deal properly with any
 constant value.
-
-
-
-File: gcc.info,  Node: Dependent Patterns,  Next: Jump Patterns,  Prev: Pattern Ordering,  Up: Machine Desc
-
-Interdependence of Patterns
-===========================
-
-Every machine description must have a named pattern for each of the
-conditional branch names `bCOND'.  The recognition template must
-always have the form
-
-     (set (pc)
-          (if_then_else (COND (cc0) (const_int 0))
-                        (label_ref (match_operand 0 "" ""))
-                        (pc)))
-
-In addition, every machine description must have an anonymous pattern
-for each of the possible reverse-conditional branches.  These
-patterns look like
-
-     (set (pc)
-          (if_then_else (COND (cc0) (const_int 0))
-                        (pc)
-                        (label_ref (match_operand 0 "" ""))))
-
-They are necessary because jump optimization can turn
-direct-conditional branches into reverse-conditional branches.
-
-The compiler does more with RTL than just create it from patterns and
-recognize the patterns: it can perform arithmetic expression codes
-when constant values for their operands can be determined.  As a
-result, sometimes having one pattern can require other patterns.  For
-example, the Vax has no `and' instruction, but it has `and not'
-instructions.  Here is the definition of one of them:
-
-     (define_insn "andcbsi2"
-       [(set (match_operand:SI 0 "general_operand" "")
-             (and:SI (match_dup 0)
-                     (not:SI (match_operand:SI
-                               1 "general_operand" ""))))]
-       ""
-       "bicl2 %1,%0")
-
-If operand 1 is an explicit integer constant, an instruction
-constructed using that pattern can be simplified into an `and' like
-this:
-
-     (set (reg:SI 41)
-          (and:SI (reg:SI 41)
-                  (const_int 0xffff7fff)))
-
-(where the integer constant is the one's complement of what appeared
-in the original instruction).
-
-To avoid a fatal error, the compiler must have a pattern that
-recognizes such an instruction.  Here is what is used:
-
-     (define_insn ""
-       [(set (match_operand:SI 0 "general_operand" "")
-             (and:SI (match_dup 0)
-                     (match_operand:SI 1 "general_operand" "")))]
-       "GET_CODE (operands[1]) == CONST_INT"
-       "*
-     { operands[1]
-         = gen_rtx (CONST_INT, VOIDmode, ~INTVAL (operands[1]));
-       return \"bicl2 %1,%0\";
-     }")
-
-Whereas a pattern to match a general `and' instruction is impossible
-to support on the Vax, this pattern is possible because it matches
-only a constant second argument: a special case that can be output as
-an `and not' instruction.
-
-A "compare" instruction whose RTL looks like this:
-
-     (set (cc0) (compare OPERAND (const_int 0)))
-
-may be simplified by optimization into a "test" like this:
-
-     (set (cc0) OPERAND)
-
-So in the machine description, each "compare" pattern for an integer
-mode must have a corresponding "test" pattern that will match the
-result of such simplification.
-
-In some cases machines support instructions identical except for the
-machine mode of one or more operands.  For example, there may be
-"sign-extend halfword" and "sign-extend byte" instructions whose
-patterns are
-
-     (set (match_operand:SI 0 ...)
-          (extend:SI (match_operand:HI 1 ...)))
-     
-     (set (match_operand:SI 0 ...)
-          (extend:SI (match_operand:QI 1 ...)))
-
-Constant integers do not specify a machine mode, so an instruction to
-extend a constant value could match either pattern.  The pattern it
-actually will match is the one that appears first in the file.  For
-correct results, this must be the one for the widest possible mode
-(`HImode', here).  If the pattern matches the `QImode' instruction,
-the results will be incorrect if the constant value does not actually
-fit that mode.
-
-Such instructions to extend constants are rarely generated because
-they are optimized away, but they do occasionally happen in
-nonoptimized compilations.
-
-When an instruction has the constraint letter `o', the reload pass
-may generate instructions which copy a nonoffsettable address into an
-index register.  The idea is that the register can be used as a
-replacement offsettable address.  In order for these generated
-instructions to work, there must be patterns to copy any kind of
-valid address into a register.
-
-Most older machine designs have "load address" instructions which do
-just what is needed here.  Some RISC machines do not advertise such
-instructions, but the possible addresses on these machines are very
-limited, so it is easy to fake them.
-
-Auto-increment and auto-decrement addresses are an exception; there
-need not be an instruction that can copy such an address into a
-register, because reload handles these cases in a different manner.
-
-
-
-File: gcc.info,  Node: Jump Patterns,  Next: Peephole Definitions,  Prev: Dependent Patterns,  Up: Machine Desc
-
-Defining Jump Instruction Patterns
-==================================
-
-GNU CC assumes that the machine has a condition code.  A comparison
-insn sets the condition code, recording the results of both signed
-and unsigned comparison of the given operands.  A separate branch
-insn tests the condition code and branches or not according its
-value.  The branch insns come in distinct signed and unsigned
-flavors.  Many common machines, such as the Vax, the 68000 and the
-32000, work this way.
-
-Some machines have distinct signed and unsigned compare instructions,
-and only one set of conditional branch instructions.  The easiest way
-to handle these machines is to treat them just like the others until
-the final stage where assembly code is written.  At this time, when
-outputting code for the compare instruction, peek ahead at the
-following branch using `NEXT_INSN (insn)'.  (The variable `insn'
-refers to the insn being output, in the output-writing code in an
-instruction pattern.)  If the RTL says that is an unsigned branch,
-output an unsigned compare; otherwise output a signed compare.  When
-the branch itself is output, you can treat signed and unsigned
-branches identically.
-
-The reason you can do this is that GNU CC always generates a pair of
-consecutive RTL insns, one to set the condition code and one to test
-it, and keeps the pair inviolate until the end.
-
-To go with this technique, you must define the machine-description
-macro `NOTICE_UPDATE_CC' to do `CC_STATUS_INIT'; in other words, no
-compare instruction is superfluous.
-
-Some machines have compare-and-branch instructions and no condition
-code.  A similar technique works for them.  When it is time to
-"output" a compare instruction, record its operands in two static
-variables.  When outputting the branch-on-condition-code instruction
-that follows, actually output a compare-and-branch instruction that
-uses the remembered operands.
-
-It also works to define patterns for compare-and-branch instructions.
-In optimizing compilation, the pair of compare and branch
-instructions will be combined according to these patterns.  But this
-does not happen if optimization is not requested.  So you must use
-one of the solutions above in addition to any special patterns you
-define.
 
 

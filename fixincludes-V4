@@ -87,7 +87,7 @@ while [ $# != 0 ]; do
   files=`find . -name '*.h' -type f -print`
   echo 'Checking header files:'
   for file in $files; do
-    if egrep '[ 	]_IO[A-Z]*\(|#define._IO|CTRL' $file > /dev/null; then
+    if egrep '[ 	]_IO[A-Z]*\(|#define._IO|CTRL|#machine|#lint' $file > /dev/null; then
       echo Fixing $file
       if [ -r $file ]; then
 	cp $file $2/$file >/dev/null 2>&1	\
@@ -102,6 +102,10 @@ while [ $# != 0 ]; do
 	  /[^A-Z]CTRL[ 	]*(/	s/\([^'\'']\))/'\''\1'\'')/
 	  /#define.CTRL/		s/'\''c'\''/c/g
 	  /#define._CTRL/		s/'\''c'\''/c/g
+	  /^[ 	]*#[ 	]*if/	s/#machine/defined/g
+	  /^[ 	]*#[ 	]*elif/	s/#machine/defined/g
+	  /^[ 	]*#[ 	]*if/	s/#lint *(on)/defined(lint)/g
+	  /^[ 	]*#[ 	]*elif/	s/#lint *(on)/defined(lint)/g
 	' $2/$file > $2/$file.sed
 	mv $2/$file.sed $2/$file
 	if cmp $file $2/$file >/dev/null 2>&1; then
@@ -155,34 +159,9 @@ if [ -r ${LIB}/$file ]; then
   g/boottime$/s//&;/
   wq
 EOF
-  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
-    echo Deleting ${LIB}/$file\; no fixes were needed.
-    rm ${LIB}/$file
-  fi
-fi
-
-# Check for bad #ifdef line (in Ultrix 4.1)
-
-file=sys/file.h
-if [ -r $file ]; then
-  if [ ! -r ${LIB}/$file ]; then
-    mkdir ${LIB}/rpcsvc 2>&-
-    cp $file ${LIB}/$file >/dev/null 2>&1	\
-    || echo "Can't copy $file"
-    chmod +w ${LIB}/$file
-  fi
-fi
-
-if [ -r ${LIB}/$file ]; then
-  echo Fixing $file, bad #ifdef line
-  ex ${LIB}/$file <<EOF
-  g/^#ifdef KERNEL && !defined/
-  s/#ifdef KERNEL && !defined/#if defined(KERNEL) \&\& !defined/
-  wq
-EOF
-  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
-    echo Deleting ${LIB}/$file\; no fixes were needed.
-    rm ${LIB}/$file
+  if cmp $file $2/$file >/dev/null 2>&1; then
+    echo Deleting $2/$file\; no fixes were needed.
+    rm $2/$file
   fi
 fi
 

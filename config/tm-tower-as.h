@@ -298,7 +298,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", ((SIZE) == 0) ? (ROUNDED) : (SIZE)))
+  fprintf ((FILE), ",%u\n", ((SIZE) == 0) ? (ROUNDED) : (SIZE)))
 
 /* This says how to output an assembler line to define a local common symbol.
    We use SIZE rather than ROUNDED, as this is what the native cc does.  */
@@ -307,7 +307,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tlcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", ((SIZE) == 0) ? (ROUNDED) : (SIZE)))
+  fprintf ((FILE), ",%u\n", ((SIZE) == 0) ? (ROUNDED) : (SIZE)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -400,7 +400,7 @@ do { union { float f; long l;} tem;			\
 
 #undef ASM_OUTPUT_SKIP
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\tspace %d\n", (SIZE))
+  fprintf (FILE, "\tspace %u\n", (SIZE))
 
 #undef PRINT_OPERAND
 #define PRINT_OPERAND(FILE, X, CODE)  \
@@ -580,7 +580,7 @@ do { fprintf (asm_out_file, "\tdef\t");	\
 #define PUT_SDB_ENDEF fputs("\tendef\n", asm_out_file)
 #define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\ttype\t0%o;", a)
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\tsize\t%d;", a)
-#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\tdim\t%d;", a)
+#define PUT_SDB_START_DIM fprintf(asm_out_file, "\tdim\t")
 
 #define PUT_SDB_TAG(a)				\
 do { fprintf (asm_out_file, "\ttag\t");	\

@@ -3904,6 +3904,9 @@ expand_call (exp, target, ignore)
   /* Nonzero if called function returns an aggregate in memory PCC style,
      by returning the address of where to find it.  */
   int pcc_struct_value = 0;
+  /* Insn that was used to copy the result to the specified target,
+     or 0 if no such insn.  */
+  rtx result_copy_insn = 0;
 
   /* Number of actual parameters in this call, including struct value addr.  */
   int num_actuals;
@@ -4115,9 +4118,17 @@ expand_call (exp, target, ignore)
     abort ();
   funtype = TREE_TYPE (funtype);
 
-  /* If struct_value_rtx is 0, it means pass the address
-     as if it were an extra parameter.  */
-  if (structure_value_addr && struct_value_rtx == 0)
+  /* If structure_value_addr is set, it means pass the address
+     as if it were an extra parameter.  We typically avoid doing
+     so here, which would imply that the caller has to pop it off
+     the stack; but some compilers do expect caller pop. */
+  if (structure_value_addr
+#ifdef STRUCT_RETURN_CALLER_POP
+      && flag_pcc_struct_return
+#else
+      && struct_value_rtx == 0
+#endif
+      )
     {
       rtx tem;
 
@@ -4134,6 +4145,14 @@ expand_call (exp, target, ignore)
 				actparms);
 	  structure_value_addr_parm = 1;
 	}
+#ifdef STRUCT_RETURN_CALLER_POP
+      /* Moved in 1.39 from before the preceding open-brace.
+	 Should be safe without the conditional because,
+	 if STRUCT_RETURN_CALLER_POP is not defined,
+	 this can still happen only if struct_value_rtx is 0,
+	 and in that case, we would crash anyway if this weren't done.  */
+      structure_value_addr_parm = 1;
+#endif
     }
 
   /* Count the arguments and set NUM_ACTUALS.  */
@@ -4590,7 +4609,10 @@ expand_call (exp, target, ignore)
 #endif
 #endif
 
-  /* Pass the function the address in which to return a structure value.  */
+  /* If the function will be returning a structure, and if the address in
+     which to return the value isn't being passed as a parameter, pass it
+     now.  This may result in a register move or in a push; if it's a push,
+     we count on the called routine to pop it.  */
   if (structure_value_addr && ! structure_value_addr_parm)
     emit_move_insn (struct_value_rtx,
 		    force_reg (Pmode, force_operand (structure_value_addr, 0)));
@@ -4692,6 +4714,8 @@ expand_call (exp, target, ignore)
       && REGNO (target) < FIRST_PSEUDO_REGISTER)
     target = 0;
 
+  result_copy_insn = 0;
+
   if (TYPE_MODE (TREE_TYPE (exp)) == VOIDmode
       || ignore)
     {
@@ -4711,8 +4735,9 @@ expand_call (exp, target, ignore)
 	target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
 			  copy_to_reg (valreg));
       else if (TYPE_MODE (TREE_TYPE (exp)) != BLKmode)
-	emit_move_insn (target, gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
-					 copy_to_reg (valreg)));
+	result_copy_insn
+	  = emit_move_insn (target, gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
+					     copy_to_reg (valreg)));
       else
 	emit_block_move (target, gen_rtx (MEM, BLKmode, copy_to_reg (valreg)),
 			 expr_size (exp),
@@ -4721,13 +4746,16 @@ expand_call (exp, target, ignore)
   else if (target && GET_MODE (target) == TYPE_MODE (TREE_TYPE (exp)))
     {
       if (!rtx_equal_p (target, valreg))
-	emit_move_insn (target, valreg);
+	result_copy_insn = emit_move_insn (target, valreg);
       else
 	/* This tells expand_inline_function to copy valreg to its target.  */
 	emit_insn (gen_rtx (USE, VOIDmode, valreg));
     }
   else
-    target = copy_to_reg (valreg);
+    {
+      target = copy_to_reg (valreg);
+      result_copy_insn = get_last_insn ();
+    }
 
   /* Perform all cleanups needed for the arguments of this call
      (i.e. destructors in C++).  */
@@ -4763,7 +4791,8 @@ expand_call (exp, target, ignore)
 	   || GET_CODE (insn_first) == JUMP_INSN)
 	  && (GET_CODE (insn_last) == INSN
 	      || GET_CODE (insn_last) == CALL_INSN
-	      || GET_CODE (insn_last) == JUMP_INSN))
+	      || GET_CODE (insn_last) == JUMP_INSN)
+	  && insn_last == result_copy_insn)
 	{
 	  /* Construct an "equal form" for the value
 	     which mentions all the arguments in order

@@ -528,9 +528,9 @@ build_indirect_ref 815,23267
 build_modify_expr 2934,87746
 build_unary_op 2085,63514
 c_alignof 615,17266
-c_expand_asm_operands 3668,109437
-c_expand_return 3723,111325
-c_expand_start_case 3760,112495
+c_expand_asm_operands 3674,109640
+c_expand_return 3729,111528
+c_expand_start_case 3766,112698
 c_sizeof 573,16279
 c_sizeof_nowarn 597,16828
 commontype 177,4958
@@ -582,18 +582,18 @@ cccp.c,2123
 #define SKIP_ALL_WHITE_SPACE(476,14936
 #define SKIP_WHITE_SPACE(475,14861
 #define S_ISREG(89,2390
-bcmp 5448,141737
-bcopy 5426,141353
-bzero 5405,140973
+bcmp 5449,141753
+bcopy 5427,141369
+bzero 5406,140989
 #define check_expand(255,6769
 DEFINITION *collect_expansion 494,15480
 collect_expansion 3058,82098
 comp_def_part 3009,80364
 compare_defs 2967,78987
 conditional_skip 3665,97812
-delete_macro 5062,133192
-deps_output 5374,140287
-discard_comments 4701,124799
+delete_macro 5063,133208
+deps_output 5375,140303
+discard_comments 4702,124815
 do_define 2822,75095
 do_elif 3562,95052
 do_else 3855,102391
@@ -608,45 +608,45 @@ do_pragma 3508,93539
 do_sccs 3526,94065
 do_undef 3425,91535
 do_xifdef 3627,96750
-dump_all_macros 5112,134159
-dump_arg_n 5199,136099
-dump_defn_1 5175,135506
-error 4800,126878
-error_from_errno 4822,127290
-error_with_line 4873,128267
+dump_all_macros 5113,134175
+dump_arg_n 5200,136115
+dump_defn_1 5176,135522
+error 4801,126894
+error_from_errno 4823,127306
+error_with_line 4874,128283
 eval_if_expression 3603,96159
 expand_to_temp_buffer 2005,55123
-fancy_abort 5484,142538
-fatal 5471,142234
-file_size_and_mode 5590,144411
+fancy_abort 5485,142554
+fatal 5472,142250
+file_size_and_mode 5591,144427
 finclude 2703,72155
-grow_outbuf 4928,129617
-hack_vms_include_specification 5609,144895
+grow_outbuf 4929,129633
+hack_vms_include_specification 5610,144911
 handle_directive 2083,56953
-hashf 5096,133887
-initialize_builtins 5257,137348
-initialize_char_syntax 5217,136424
-install 4969,130910
-line_for_error 4902,129079
-lookup 5023,132141
-macarg 4466,118524
-macarg1 4604,122802
+hashf 5097,133903
+initialize_builtins 5258,137364
+initialize_char_syntax 5218,136440
+install 4970,130926
+line_for_error 4903,129095
+lookup 5024,132157
+macarg 4467,118540
+macarg1 4605,122818
 macroexpand 4190,111050
 main 536,16505
-make_definition 5279,138179
-make_undef 5346,139650
+make_definition 5280,138195
+make_undef 5347,139666
 #define max(86,2332
-memory_full 5518,143060
+memory_full 5519,143076
 name_newline_fix 1193,32772
 newline_fix 1158,31938
 output_line_command 4115,108899
-perror_with_name 5490,142596
-pfatal_with_name 5505,142909
+perror_with_name 5491,142612
+pfatal_with_name 5506,142925
 pipe_closed 530,16440
 #define read(75,2063
-read 5691,147387
+read 5692,147403
 rescan 1261,35329
-savestring 5577,144138
+savestring 5578,144154
 skip_if_group 3695,98465
 skip_quoted_string 4042,107089
 skip_to_end_of_comment 3962,105179
@@ -654,12 +654,12 @@ special_symbol 2356,63554
 struct 332,9780
 trigraph_pcp 1089,30370
 validate_else 3918,104060
-warning 4850,127841
+warning 4851,127857
 #define write(76,2115
-write 5718,147901
-xcalloc 5548,143490
-xmalloc 5525,143119
-xrealloc 5536,143290
+write 5719,147917
+xcalloc 5549,143506
+xmalloc 5526,143135
+xrealloc 5537,143306
 
 combine.c,682
 #define INSN_CUID(116,4586
@@ -669,8 +669,8 @@ adjacent_insns_p 2217,73715
 check_asm_operands 2233,74104
 combine_instructions 208,6948
 copy_substitutions 804,27353
-dump_combine_stats 2760,88033
-dump_combine_total_stats 2775,88488
+dump_combine_stats 2769,88296
+dump_combine_total_stats 2784,88751
 gen_lowpart_for_combine 1910,65642
 #define max(73,3194
 #define min(74,3235
@@ -696,10 +696,10 @@ cse.c,1103
 #define INSN_CUID(289,11628
 canon_hash 1303,40033
 canon_reg 1695,49232
-cse_basic_block 3829,111382
-cse_end_of_basic_block 3671,106792
+cse_basic_block 3834,111540
+cse_end_of_basic_block 3676,106950
 cse_insn 2813,78469
-cse_main 3731,108677
+cse_main 3736,108835
 cse_rtx_addr_varies_p 1680,48888
 equiv_constant 2490,69214
 exp_equiv_p 1465,44066
@@ -712,7 +712,7 @@ get_related_value 1199,37159
 insert 928,29464
 insert_regs 672,22396
 invalidate 1060,33657
-invalidate_from_clobbers 3629,105678
+invalidate_from_clobbers 3634,105836
 invalidate_memory 1153,36055
 lookup 827,26451
 lookup_as_function 876,27630
@@ -721,7 +721,7 @@ make_new_qty 519,18473
 make_regs_eqv 533,18711
 mention_regs 628,21248
 new_basic_block 477,17571
-note_mem_written 3586,104195
+note_mem_written 3591,104353
 predecide_loop_entry 2669,73909
 refers_to_mem_p 1608,47219
 refers_to_p 1546,45839
@@ -871,15 +871,15 @@ expr.c,1384
 #define DEFTREECODE(120,3972
 clear_pending_stack_adjust 3815,118410
 clear_storage 1027,27920
-compare 5316,165961
-compare1 5370,167646
-compare_constants 5247,164468
+compare 5345,167049
+compare1 5399,168734
+compare_constants 5276,165556
 convert_move 288,8704
 convert_to_mode 632,17485
-do_jump 5060,159328
+do_jump 5089,160416
 do_pending_stack_adjust 3828,118720
-do_store_flag 5413,168791
-do_tablejump 5547,172758
+do_store_flag 5442,169879
+do_tablejump 5576,173846
 emit_block_move 883,24406
 emit_call_1 3754,116710
 emit_library_call 1532,42870
@@ -899,8 +899,8 @@ init_expr 143,4461
 init_pending_stack_adjust 3806,118226
 init_queue 276,8395
 integer_mode_p 650,17916
-jumpif 5044,158908
-jumpifnot 5034,158736
+jumpif 5073,159996
+jumpifnot 5063,159824
 move_block_from_reg 991,27099
 move_block_to_reg 962,26306
 move_by_pieces 681,18599
@@ -915,8 +915,8 @@ save_noncopied_parts 2171,62736
 store_constructor 1922,54452
 store_expr 1834,51540
 store_field 2038,58231
-store_one_arg 4835,152208
-target_for_arg 4800,150995
+store_one_arg 4864,153296
+target_for_arg 4829,152083
 use_regs 1014,27633
 validate_subtarget 2198,63548
 
@@ -1274,18 +1274,18 @@ xmalloc(338,12336
 integrate.c,415
 #define INTEGRATE_THRESHOLD(50,1493
 #define MIN(42,1262
-access_parm_map 1559,50307
-copy_address 1651,53039
-copy_decl_tree 1144,37336
+access_parm_map 1577,51073
+copy_address 1669,53805
+copy_decl_tree 1162,38102
 copy_for_inline 433,14624
-copy_parm_decls 1120,36667
-copy_rtx_and_substitute 1195,38921
+copy_parm_decls 1138,37433
+copy_rtx_and_substitute 1213,39687
 expand_inline_function 596,19189
-fold_out_const_cc0 1831,57564
+fold_out_const_cc0 1849,58330
 function_cannot_inline_p 125,4488
-output_inline_function 1971,61481
+output_inline_function 1989,62247
 save_for_inline 237,8700
-try_fold_cc0 1754,55332
+try_fold_cc0 1772,56098
 
 jump.c,691
 condjump_p 910,27287
@@ -1334,51 +1334,52 @@ reg_meets_class_p 875,29579
 update_qty_class 929,30883
 wipe_dead_reg 1031,34110
 
-loop.c,1290
+loop.c,1323
 #define INSN_LUID(58,2095
-addr_overlap_p 1969,59861
-all_sets_invariant_p 2066,62220
-basic_induction_var 3583,110021
-can_eliminate_biv_p 4867,146468
-can_jump_into_range_p 1737,53957
-check_dbra_loop 4496,134310
-check_eliminate_biv 4785,144184
-combine_movables 821,28027
-consec_sets_giv 4289,128591
-consec_sets_invariant_p 2000,60655
-constant_high_bytes 1589,49871
-count_loop_regs_set 2103,63269
-count_nonfixed_reads 1537,48794
-delete_insn_forces 3526,108552
-eliminate_biv 5006,150292
-emit_iv_inc 4421,132127
-emit_iv_init_code 4392,131336
-final_biv_value 5273,158051
-find_mem_givs 3241,100570
-force_movables 784,26911
-gen_iv_mult 4360,130499
-general_induction_var 3675,112640
-ignore_some_movables 755,26019
-invariant_p 1852,56757
-labels_in_range_p 1775,54741
-last_use_this_basic_block 5285,158302
-loop_find_reg_equal 741,25648
-loop_optimize 244,8462
-loop_reg_used_before_p 2225,67600
-loop_skip_over 1355,44071
-move_movables 1050,34475
-note_addr_stored 1792,55022
-other_reg_use_p 3186,99396
-product_cheap_p 4434,132626
-record_giv 3324,102801
-regs_match_p 927,31440
-replace_call_address 1478,47576
-replace_regs 1428,46499
-rtx_equal_for_loop_p 953,31999
-scan_loop 336,11170
-skip_consec_insns 708,24825
-strength_reduce 2395,75317
-verify_loop 1630,50995
+addr_overlap_p 2024,61092
+all_sets_invariant_p 2121,63451
+basic_induction_var 3638,111252
+can_eliminate_biv_p 4922,147699
+can_jump_into_range_p 1792,55188
+check_dbra_loop 4551,135541
+check_eliminate_biv 4840,145415
+combine_movables 867,28977
+consec_sets_giv 4344,129822
+consec_sets_invariant_p 2055,61886
+constant_high_bytes 1644,51102
+count_loop_regs_set 2158,64500
+count_nonfixed_reads 1592,50025
+delete_insn_forces 3581,109783
+eliminate_biv 5061,151523
+emit_iv_inc 4476,133358
+emit_iv_init_code 4447,132567
+final_biv_value 5328,159282
+find_mem_givs 3296,101801
+force_movables 830,27861
+gen_iv_mult 4415,131730
+general_induction_var 3730,113871
+ignore_some_movables 801,26969
+invariant_p 1907,57988
+labels_in_range_p 1830,55972
+last_use_this_basic_block 5340,159533
+loop_find_reg_equal 787,26598
+loop_optimize 245,8498
+loop_reg_used_before_p 2280,68831
+loop_skip_over 1410,45302
+move_movables 1096,35425
+note_addr_stored 1847,56253
+other_reg_use_p 3241,100627
+product_cheap_p 4489,133857
+record_giv 3379,104032
+reg_in_basic_block_p 709,24805
+regs_match_p 973,32390
+replace_call_address 1533,48807
+replace_regs 1483,47730
+rtx_equal_for_loop_p 999,32949
+scan_loop 337,11206
+skip_consec_insns 754,25775
+strength_reduce 2450,76548
+verify_loop 1685,52226
 
 masm386.c,195
 add_to_implicit_list 28,935
@@ -1499,13 +1500,13 @@ alternative_allows_memconst 2196,71369
 combine_reloads 540,19742
 decompose 911,30503
 find_dummy_reload 613,22066
-find_equiv_reg 2937,92951
-find_inc_amount 3249,102414
+find_equiv_reg 2939,92989
+find_inc_amount 3251,102452
 find_reloads 1089,35175
 find_reloads_address 2339,75674
 find_reloads_address_1 2631,83800
 find_reloads_toplev 2223,72225
-forget_volatility 2867,91132
+forget_volatility 2869,91170
 hard_reg_set_here_p 711,25353
 immune_p 1031,33358
 make_memloc 2313,74855
@@ -1517,7 +1518,7 @@ push_replacement 517,19107
 strict_memory_address_p 744,26144
 subst_indexed_address 2555,81364
 subst_reg_equivs 2502,80186
-subst_reloads 2829,89992
+subst_reloads 2831,90030
 
 reload1.c,837
 alter_frame_pointer_addresses 1247,42777
@@ -1559,7 +1560,7 @@ rtl.c,440
 copy_rtx 205,5677
 debug_rtx 413,10097
 dump_and_abort 463,11017
-init_rtl 783,18378
+init_rtl 783,18399
 print_rtl 428,10407
 print_rtx 276,7241
 read_name 527,12409
@@ -1668,8 +1669,8 @@ expand_exit_loop_if_false 1375,43539
 expand_exit_something 1403,44266
 expand_expr_stmt 1003,32876
 expand_fixup 566,18699
-expand_function_end 4903,153984
-expand_function_start 4775,149643
+expand_function_end 4912,154234
+expand_function_start 4784,149893
 expand_goto 490,16359
 expand_goto_internal 502,16694
 expand_label 468,15802
@@ -1695,9 +1696,9 @@ fixup_var_refs_1 3430,106854
 fixup_var_refs_insns 3393,105753
 get_first_nonparm_insn 3975,123777
 get_frame_size 3259,102125
-get_structure_value_addr 4544,142751
+get_structure_value_addr 4553,143001
 group_case_nodes 2839,88896
-init_function_start 4653,146000
+init_function_start 4662,146250
 inside_loop 1388,43777
 label_rtx 384,13000
 max_parm_reg_num 3967,123650
@@ -1707,15 +1708,15 @@ node_has_low_bound 2961,92176
 node_is_bounded 3026,94151
 optimize_bit_field 3828,119126
 parm_stack_loc 3987,124122
-pop_structure_value 4584,143748
-push_structure_value 4573,143533
+pop_structure_value 4593,143998
+push_structure_value 4582,143783
 pushcase 2328,72883
 pushcase_range 2408,75369
 put_var_into_stack 3317,103609
-setjmp_protect 4633,145391
+setjmp_protect 4642,145641
 tail_recursion_args 1642,51519
 this_contour_has_cleanups_p 2232,69876
-uninitialized_vars_warning 4599,144135
+uninitialized_vars_warning 4608,144385
 use_variable 1747,54753
 use_variable_after 1765,55289
 validize_mem 4017,124819
@@ -1749,7 +1750,7 @@ stupid.c,176
 #define MARK_LIVE_AFTER(104,3665
 stupid_find_reg 336,10565
 stupid_life_analysis 120,4312
-stupid_mark_refs 403,12416
+stupid_mark_refs 412,12697
 stupid_reg_compare 303,9471
 
 symout.c,678
