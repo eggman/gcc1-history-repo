@@ -31,8 +31,8 @@
 ;; This controls RTL generation and register allocation.
 (define_insn "cmpsi"
   [(set (cc0)
-	(minus (match_operand:SI 0 "arith_operand" "rK")
-	       (match_operand:SI 1 "arith_operand" "rK")))]
+	(minus (match_operand:SI 0 "arith_operand" "rI")
+	       (match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "*
 {
@@ -117,14 +117,14 @@
 (define_insn ""
   [(set (cc0)
 	(plus:SI (match_operand:SI 0 "register_operand" "r%")
-		 (match_operand:SI 1 "arith_operand" "rK")))]
+		 (match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "addcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(plus:SI (match_operand:SI 0 "register_operand" "r%")
-		 (match_operand:SI 1 "arith_operand" "rK")))
+		 (match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(plus:SI (match_dup 0) (match_dup 1)))]
   ""
@@ -133,7 +133,7 @@
 (define_insn ""
   [(set (cc0)
 	(minus:SI (match_operand:SI 0 "register_operand" "r")
-		  (match_operand:SI 1 "arith_operand" "rK")))
+		  (match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(minus:SI (match_dup 0) (match_dup 1)))]
   ""
@@ -142,14 +142,14 @@
 (define_insn ""
   [(set (cc0)
 	(and:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))]
+		(match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "andcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(and:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))
+		(match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(and:SI (match_dup 0) (match_dup 1)))]
   ""
@@ -158,14 +158,14 @@
 (define_insn ""
   [(set (cc0)
 	(and:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))]
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "andncc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(and:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(and:SI (match_dup 0) (not:SI (match_dup 1))))]
   ""
@@ -174,14 +174,14 @@
 (define_insn ""
   [(set (cc0)
 	(ior:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))]
+		(match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "orcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(ior:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))
+		(match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(ior:SI (match_dup 0) (match_dup 1)))]
   ""
@@ -190,14 +190,14 @@
 (define_insn ""
   [(set (cc0)
 	(ior:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))]
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "orncc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(ior:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(ior:SI (match_dup 0) (not:SI (match_dup 1))))]
   ""
@@ -206,14 +206,14 @@
 (define_insn ""
   [(set (cc0)
 	(xor:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))]
+		(match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "xorcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(xor:SI (match_operand:SI 0 "register_operand" "r%")
-		(match_operand:SI 1 "arith_operand" "rK")))
+		(match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(xor:SI (match_dup 0) (match_dup 1)))]
   ""
@@ -222,14 +222,14 @@
 (define_insn ""
   [(set (cc0)
 	(xor:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))]
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "xnorcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
 	(xor:SI (match_operand:SI 0 "register_operand" "r%")
-		(not:SI (match_operand:SI 1 "arith_operand" "rK"))))
+		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(xor:SI (match_dup 0) (not:SI (match_dup 1))))]
   ""
@@ -638,7 +638,7 @@
 
 (define_insn "movsi"
   [(set (match_operand:SI 0 "general_operand" "=r,m")
-	(match_operand:SI 1 "general_operand" "rmi,rJ"))]
+	(match_operand:SI 1 "general_operand" "rmif,rJ"))]
   ""
   "*
 {
@@ -646,12 +646,32 @@
     return \"st %r1,%0\";
   if (GET_CODE (operands[1]) == MEM)
     return \"ld %1,%0\";
+  if (FP_REG_P (operands[1]))
+    return \"st %1,[%%fp-4]\;ld [%%fp-4],%0\";
   if (REG_P (operands[1])
       || (GET_CODE (operands[1]) == CONST_INT
 	  && SMALL_INT (operands[1])))
     return \"mov %1,%0\";
   return \"set %1,%0\";
 }")
+
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(mem:SI (match_operand:SI 1 "" "i")))]
+  "GET_CODE (operands[1]) == SYMBOL_REF"
+  "*
+{
+  output_asm_insn (\"sethi %%hi(%1),%%g1\", operands);
+  if (GET_CODE (operands[0]) == REG)
+    return \"ld [%%g1+%%lo(%1)],%0\";
+  return \"ld [%%g1+%%lo(%1)],%%g1\;st %%g1,%0\";
+}")
+
+(define_insn ""
+  [(set (mem:SI (match_operand:SI 0 "" "i"))
+	(match_operand:SI 1 "register_operand" "r"))]
+  "GET_CODE (operands[0]) == SYMBOL_REF"
+  "sethi %%hi(%0),%%g1\;st %1,[%%g1+%%lo(%0)]")
 
 (define_insn "movhi"
   [(set (match_operand:HI 0 "general_operand" "=r,m")
@@ -670,6 +690,18 @@
   return \"set %1,%0\";
 }")
 
+(define_insn ""
+  [(set (match_operand:HI 0 "memory_operand" "=m")
+	(mem:HI (match_operand:SI 1 "" "i")))]
+  "GET_CODE (operands[1]) == SYMBOL_REF"
+  "sethi %%hi(%1),%%g1\;ldsh [%%g1+%%lo(%1)],%%g1\;sth %%g1,%0")
+
+(define_insn ""
+  [(set (mem:HI (match_operand:SI 0 "" "i"))
+	(match_operand:HI 1 "register_operand" "r"))]
+  "GET_CODE (operands[0]) == SYMBOL_REF"
+  "sethi %%hi(%0),%%g1\;sth %1,[%%g1+%%lo(%0)]")
+
 (define_insn "movqi"
   [(set (match_operand:QI 0 "general_operand" "=r,m")
 	(match_operand:QI 1 "general_operand" "rmi,rJ"))]
@@ -682,6 +714,18 @@
     return \"ldsb %1,%0\";
   return \"mov %1,%0\";
 }")
+
+(define_insn ""
+  [(set (match_operand:QI 0 "memory_operand" "=m")
+	(mem:QI (match_operand:SI 1 "" "i")))]
+ "GET_CODE (operands[1]) == SYMBOL_REF"
+  "sethi %%hi(%1),%%g1\;ldsb [%%g1+%%lo(%1)],%%g1\;stb %%g1,%0")
+
+(define_insn ""
+  [(set (mem:QI (match_operand:SI 0 "" "i"))
+	(match_operand:QI 1 "register_operand" "r"))]
+  "GET_CODE (operands[0]) == SYMBOL_REF"
+  "sethi %%hi(%0),%%g1\;stb %1,[%%g1+%%lo(%0)]")
 
 ;; The definition of this insn does not really explain what it does,
 ;; but it should suffice
@@ -706,8 +750,8 @@
   "*
 {
   if (FP_REG_P (operands[0]))
-    return \"set %1,%%g1\;ldd [%%g1],%0\";
-  output_asm_insn (\"set %1,%%g1\;ldd [%%g1],%%f0\", operands);
+    return \"sethi %%hi(%1),%%g1\;ldd [%%g1+%%lo(%1)],%0\";
+  output_asm_insn (\"sethi %%hi(%1),%%g1\;ldd [%%g1+%%lo(%1)],%%f0\", operands);
   operands[1] = gen_rtx (REG, DFmode, 32);
   return output_fp_move_double (operands);
 }")
@@ -719,8 +763,8 @@
   "*
 {
   if (FP_REG_P (operands[0]))
-    return \"set %1,%%g1\;ld [%%g1],%0\";
-  return \"set %1,%%g1\;ld [%%g1],%%f0\;st %%f0,%0\";
+    return \"sethi %%hi(%1),%%g1\;ld [%%g1+%%lo(%1)],%0\";
+  return \"sethi %%hi(%1),%%g1\;ld [%%g1+%%lo(%1)],%%f0\;st %%f0,%0\";
 }")
 
 ;; This pattern forces (set (reg:DF ...) (const_double ...))
@@ -1330,7 +1374,7 @@
 ;; does not know how to make it work for constants.
 (define_insn "negsi2"
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(neg:SI (match_operand:SI 1 "arith_operand" "rK")))]
+	(neg:SI (match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "sub %%g0,%1,%0")
 
@@ -1338,7 +1382,7 @@
 ;; does not know how to make it work for constants.
 (define_insn "one_cmplsi2"
   [(set (match_operand:SI 0 "general_operand" "=r")
-	(not:SI (match_operand:SI 1 "arith_operand" "rK")))]
+	(not:SI (match_operand:SI 1 "arith_operand" "rI")))]
   ""
   "xnor %1,%%g0,%0")
 
@@ -1594,6 +1638,8 @@
 {
   /* strip the MEM.  */
   operands[0] = XEXP (operands[0], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[0]) == REG)
+    return \"jmpl %a0,%%o7\;nop\";
   return \"call %a0,%1\;nop\";
 }")
 
@@ -1609,6 +1655,8 @@
 {
   /* strip the MEM.  */
   operands[2] = XEXP (operands[2], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[2]) == REG)
+    return output_delay_insn (\"jmpl %a2,%%o7\", operands, insn);
   return output_delay_insn (\"call %a2,%3\", operands, insn);
 }")
 
@@ -1624,11 +1672,13 @@
 {
   /* strip the MEM.  */
   operands[2] = XEXP (operands[2], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[2]) == REG)
+    return output_delay_insn (\"jmpl %a2,%%o7\", operands, insn);
   return output_delay_insn (\"call %a2,%3\", operands, insn);
 }")
 
 (define_expand "call_value"
-  [(set (match_operand 0 "" "rf")
+  [(set (match_operand 0 "register_operand" "rf")
 	(call (match_operand:SI 1 "memory_operand" "m")
 	      (match_operand 2 "" "i")))]
   ;; operand 3 is next_arg_register
@@ -1670,12 +1720,14 @@
 	(call (match_operand:SI 1 "memory_operand" "m")
 	      (match_operand 2 "" "i")))
    (use (reg:SI 31))]
-  ;;- Don't use operand 1 for most machines.
+  ;;- Don't use operand 4 for most machines.
   ""
   "*
 {
   /* strip the MEM.  */
   operands[1] = XEXP (operands[1], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[1]) == REG)
+    return \"jmpl %a1,%%o7\;nop\";
   return \"call %a1,%2\;nop\";
 }")
 
@@ -1686,12 +1738,14 @@
 		   (call (match_operand:SI 3 "memory_operand" "m")
 			 (match_operand 4 "" "i")))
 	      (use (reg:SI 31))])]
-  ;;- Don't use operand 1 for most machines.
+  ;;- Don't use operand 4 for most machines.
   "! reg_mentioned_p (operands[0], operands[3])"
   "*
 {
   /* strip the MEM.  */
   operands[3] = XEXP (operands[3], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[3]) == REG)
+    return output_delay_insn (\"jmpl %a3,%%o7\", operands, insn);
   return output_delay_insn (\"call %a3,%4\", operands, insn);
 }")
 
@@ -1708,6 +1762,8 @@
 {
   /* strip the MEM.  */
   operands[3] = XEXP (operands[3], 0);
+  if (TARGET_SUN_ASM && GET_CODE (operands[3]) == REG)
+    return output_delay_insn (\"jmpl %a3,%%o7\", operands, insn);
   return output_delay_insn (\"call %a3,%4\", operands, insn);
 }")
 
@@ -1740,7 +1796,7 @@
   "* return output_delay_insn (\"call %2,%3\", operands, insn);")
 
 (define_insn ""
-  [(set (match_operand 0 "" "rf")
+  [(set (match_operand 0 "register_operand" "rf")
 	(call (mem:SI (match_operand:SI 1 "" "i"))
 	      (match_operand 2 "" "i")))
    (use (reg:SI 31))]

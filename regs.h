@@ -101,12 +101,17 @@ extern char regs_ever_live[FIRST_PSEUDO_REGISTER];
 extern char *reg_names[FIRST_PSEUDO_REGISTER];
 
 /* Vector indexed by regno; gives uid of first insn using that reg.
-   This is computed by reg_scan and not adjusted for subsequent changes. */
+   This is computed by reg_scan for use by cse and loop.
+   It is sometimes adjusted for subsequent changes during loop,
+   but not adjusted by cse even if cse invalidates it.  */
 
 extern short *regno_first_uid;
 
 /* Vector indexed by regno; gives uid of last insn using that reg.
-   This is computed by reg_scan and not adjusted for subsequent changes. */
+   This is computed by reg_scan for use by cse and loop.
+   It is sometimes adjusted for subsequent changes during loop,
+   but not adjusted by cse even if cse invalidates it.
+   This is harmless since cse won't scan through a loop end.  */
 
 extern short *regno_last_uid;
 

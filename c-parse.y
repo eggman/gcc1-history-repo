@@ -870,7 +870,7 @@ compstmt: '{' '}'
 
 simple_if:
 	  IF '(' expr ')'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_start_cond (truthvalue_conversion ($3), 0); }
 	  stmt
 	;
@@ -878,7 +878,7 @@ simple_if:
 stmt:
 	  compstmt
 	| expr ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_expr_stmt ($1);
 		  clear_momentary (); }
 	| simple_if ELSE
@@ -888,30 +888,30 @@ stmt:
 	| simple_if
 		{ expand_end_cond (); }
 	| WHILE
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_start_loop (1); }
 	  '(' expr ')'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_exit_loop_if_false (truthvalue_conversion ($4)); }
 	  stmt
 		{ expand_end_loop (); }
 	| DO
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_start_loop_continue_elsewhere (1); }
 	  stmt WHILE
 		{ expand_loop_continue_here (); }
 	  '(' expr ')' ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  expand_exit_loop_if_false (truthvalue_conversion ($7));
 		  expand_end_loop ();
 		  clear_momentary (); }
 	| FOR 
 	  '(' xexpr ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  if ($3) expand_expr_stmt ($3);
 		  expand_start_loop_continue_elsewhere (1); }
 	  xexpr ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  if ($6)
 		    expand_exit_loop_if_false (truthvalue_conversion ($6)); }
 	  xexpr ')'
@@ -920,14 +920,14 @@ stmt:
 		{ push_momentary ();
 		  $<itype>10 = lineno; }
 	  stmt
-		{ emit_note (input_filename, $<itype>10);
+		{ emit_line_note (input_filename, $<itype>10);
 		  expand_loop_continue_here ();
 		  if ($9)
 		    expand_expr_stmt ($9);
 		  pop_momentary ();
 		  expand_end_loop (); }
 	| SWITCH '(' expr ')'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  c_expand_start_case ($3);
 		  /* Don't let the tree nodes for $3 be discarded by
 		     clear_momentary during the parsing of the next stmt.  */
@@ -973,49 +973,41 @@ stmt:
 		}
 	  stmt
 	| BREAK ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  if ( ! expand_exit_something ())
 		    error ("break statement not within loop or switch"); }
 	| CONTINUE ';'	
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  if (! expand_continue_loop ())
 		    error ("continue statement not within a loop"); }
 	| RETURN ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  c_expand_return (NULL_TREE); }
 	| RETURN expr ';'
-		{ emit_note (input_filename, lineno);
+		{ emit_line_note (input_filename, lineno);
 		  c_expand_return ($2); }
 	| ASM maybe_type_qual '(' string ')' ';'
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  expand_asm ($4); }
 	/* This is the case with just output operands.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, NULL_TREE, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	/* This is the case with input operands as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, $8, NULL_TREE,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	/* This is the case with clobbered registers as well.  */
 	| ASM maybe_type_qual '(' string ':' asm_operands ':'
   	  asm_operands ':' asm_clobbers ')' ';'
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
+		{ if (TREE_CHAIN ($4)) $4 = combine_strings ($4);
 		  c_expand_asm_operands ($4, $6, $8, $10,
 					 $2 == ridpointers[(int)RID_VOLATILE]); }
 	| GOTO identifier ';'
 		{ tree decl;
-		  emit_note (input_filename, lineno);
+		  emit_line_note (input_filename, lineno);
 		  decl = lookup_label ($2);
 		  expand_goto (decl); }
 	| identifier ':'
@@ -1026,11 +1018,20 @@ stmt:
 	| ';'
 	;
 
+/* Either a type-qualifier or nothing.  First thing in an `asm' statement.  */
+
 maybe_type_qual:
 	/* empty */
-		{ emit_note (input_filename, lineno); }
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  /* We use emit_note rather than emit_line_note
+		     so that this note is emitted even if line #s
+		     are not generally wanted.  */
+		  emit_note (input_filename, lineno); }
 	| TYPE_QUAL
-		{ emit_note (input_filename, lineno); }
+		{ if (pedantic)
+		    warning ("ANSI C forbids use of `asm' keyword");
+		  emit_note (input_filename, lineno); }
 	;
 
 xexpr:
@@ -1435,6 +1436,9 @@ skip_white_space (c)
     {
       switch (c)
 	{
+	  /* Don't recognize comments in cc1: all comments are removed by cpp,
+	     and cpp output can include / and * consecutively as operators.  */
+#if 0
 	case '/':
 	  c = getc (finput);
 	  if (c != '*')
@@ -1474,6 +1478,7 @@ skip_white_space (c)
 	    }
 
 	  break;
+#endif
 
 	case '\n':
 	  c = check_newline ();

@@ -1,7 +1,59 @@
 #include "tm-encore.h"
 
+/* The following defines override ones in tm-ns32k.h and prevent any attempts
+   to explicitly or implicitly make references to the SB register in the GCC
+   generated code.  It is necessary to avoid such references under Genix V.3.1
+   because this OS doesn't even save/restore the SB on context switches!  */
+
+#define IS_OK_REG_FOR_BASE_P(X)						\
+  ( (GET_CODE (X) == REG) && REG_OK_FOR_BASE_P (X) )
+
+#undef INDIRECTABLE_1_ADDRESS_P
+#define INDIRECTABLE_1_ADDRESS_P(X)					\
+  (CONSTANT_ADDRESS_NO_LABEL_P (X)					\
+   || IS_OK_REG_FOR_BASE_P (X)						\
+   || (GET_CODE (X) == PLUS						\
+       && IS_OK_REG_FOR_BASE_P (XEXP (X, 0))				\
+       && CONSTANT_ADDRESS_P (XEXP (X, 1))  )  )
+
+/* Note that for double indirects, only FP, SP, and SB are allowed
+   as the inner-most base register.  But we are avoiding use of SB.  */
+
+#undef MEM_REG
+#define MEM_REG(X)							\
+  ( (GET_CODE (X) == REG)						\
+  && ( (REGNO (X) == FRAME_POINTER_REGNUM)				\
+    || (REGNO (X) == STACK_POINTER_REGNUM) ) )
+
+#undef INDIRECTABLE_2_ADDRESS_P
+#define INDIRECTABLE_2_ADDRESS_P(X)					\
+  (GET_CODE (X) == MEM							\
+   && (((xfoo0 = XEXP (X, 0), MEM_REG (xfoo0))				\
+       || (GET_CODE (xfoo0) == PLUS					\
+	   && MEM_REG (XEXP (xfoo0, 0))					\
+	   && CONSTANT_ADDRESS_NO_LABEL_P (XEXP (xfoo0, 1))))		\
+       || CONSTANT_ADDRESS_NO_LABEL_P (xfoo0)))
+
+/* Go to ADDR if X is a valid address not using indexing.
+   (This much is the easy part.)  */
+#undef GO_IF_NONINDEXED_ADDRESS
+#define GO_IF_NONINDEXED_ADDRESS(X, ADDR)				\
+{ register rtx xfoob = (X);						\
+  if (GET_CODE (xfoob) == REG) goto ADDR;				\
+  if (INDIRECTABLE_1_ADDRESS_P(X)) goto ADDR;				\
+  if (CONSTANT_P(X)) goto ADDR;						\
+  if (INDIRECTABLE_2_ADDRESS_P (X)) goto ADDR;				\
+  if (GET_CODE (X) == PLUS)						\
+    if (CONSTANT_ADDRESS_NO_LABEL_P (XEXP (X, 1)))			\
+      if (INDIRECTABLE_2_ADDRESS_P (XEXP (X, 0)))			\
+	goto ADDR;							\
+}
+
+/* The following define is made moot by the preceeding ones.  */
+#if 0
 /* Mention `(sb)' explicitly in indirect addresses.  */
 #define SEQUENT_BASE_REGS
+#endif
 
 /*  A bug in the GNX 3.0 linker prevents symbol-table entries with a storage-
     class field of C_EFCN (-1) from being accepted. */

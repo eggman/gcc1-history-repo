@@ -96,7 +96,7 @@ and this notice must be preserved on all copies.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)		\
 ( fputs ("\t.bss ", (FILE)),					\
   assemble_name ((FILE), (NAME)),				\
-  fprintf ((FILE), ",%d,4\n", (ROUNDED)))
+  fprintf ((FILE), ",%d,%d\n", (SIZE), (ROUNDED)))
 
  /*
   *  Encore assembler can't handle huge string constants like the one in

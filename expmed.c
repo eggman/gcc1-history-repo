@@ -581,8 +581,8 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 		  /* If memory isn't acceptable for this operand,
 		     copy it to a register.  */
 		  unit = BITS_PER_WORD;
-		  xoffset = (bitnum + xoffset * BITS_PER_UNIT) / unit;
-		  xbitpos = (bitnum + xoffset * BITS_PER_UNIT) % unit;
+		  xoffset = bitnum / unit;
+		  xbitpos = bitnum % unit;
 		  xop0 = change_address (xop0, SImode,
 					 plus_constant (XEXP (xop0, 0),
 							xoffset * UNITS_PER_WORD));
@@ -598,7 +598,7 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	    }
 
 	  /* If op0 is a register, we need it in SImode
-	     to make it acceptable to the format of extv.  */
+	     to make it acceptable to the format of extzv.  */
 	  if (GET_CODE (xop0) == SUBREG && GET_MODE (xop0) != SImode)
 	    abort ();
 	  if (GET_CODE (xop0) == REG && GET_MODE (xop0) != SImode)
@@ -666,14 +666,14 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	  /* Get ref to first byte containing part of the field.  */
 	  if (GET_CODE (xop0) == MEM)
 	    {
-	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extzv][1])
+	      if (! ((*insn_operand_predicate[(int) CODE_FOR_extv][1])
 		     (xop0, GET_MODE (xop0))))
 		{
 		  /* If memory isn't acceptable for this operand,
 		     copy it to a register.  */
 		  unit = BITS_PER_WORD;
-		  xoffset = (bitnum + xoffset * BITS_PER_UNIT) / unit;
-		  xbitpos = (bitnum + xoffset * BITS_PER_UNIT) % unit;
+		  xoffset = bitnum / unit;
+		  xbitpos = bitnum % unit;
 		  xop0 = change_address (xop0, SImode,
 					 plus_constant (XEXP (xop0, 0),
 							xoffset * UNITS_PER_WORD));
@@ -707,9 +707,9 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 		xtarget = gen_reg_rtx (SImode);
 	    }
 
-	  /* If this machine's extzv insists on a register target,
+	  /* If this machine's extv insists on a register target,
 	     make sure we have one.  */
-	  if (! (*insn_operand_predicate[(int) CODE_FOR_extzv][0]) (xtarget, SImode))
+	  if (! (*insn_operand_predicate[(int) CODE_FOR_extv][0]) (xtarget, SImode))
 	    xtarget = gen_reg_rtx (SImode);
 
 	  /* On big-endian machines, we count bits from the most significant.
@@ -721,8 +721,8 @@ extract_bit_field (str_rtx, bitsize, bitnum, unsignedp, target, mode, tmode)
 	  bitsize_rtx = gen_rtx (CONST_INT, VOIDmode, bitsize);
 	  bitpos_rtx = gen_rtx (CONST_INT, VOIDmode, xbitpos);
 
-	  pat = gen_extzv (protect_from_queue (xtarget, 1),
-			   xop0, bitsize_rtx, bitpos_rtx);
+	  pat = gen_extv (protect_from_queue (xtarget, 1),
+			  xop0, bitsize_rtx, bitpos_rtx);
 	  if (pat)
 	    {
 	      emit_insn (pat);

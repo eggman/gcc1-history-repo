@@ -52,6 +52,8 @@ extern int yydebug;
 
 extern FILE *finput;
 
+extern int reload_completed;
+
 extern void init_lex ();
 extern void init_decl_processing ();
 extern void init_tree ();
@@ -469,11 +471,32 @@ error_with_decl (decl, s)
   fprintf (stderr, "\n");
 }
 
+/* Report an error at the line number of the insn INSN.
+   S and V are a string and an arg for `printf'.
+   This is used only when INSN is an `asm' with operands,
+   and we make sure there is always a line-NOTE for that kind of statement.  */
+
+void
+error_for_asm (insn, s, v, v2)
+     rtx insn;
+     char *s;
+     int v;			/* @@also used as pointer */
+     int v2;			/* @@also used as pointer */
+{
+  rtx temp = insn;
+  while (GET_CODE (temp) != NOTE || NOTE_LINE_NUMBER (temp) <= 0)
+    temp = PREV_INSN (temp);
+    
+  error_with_file_and_line (NOTE_SOURCE_FILE (temp), NOTE_LINE_NUMBER (temp),
+			    s, v, v2);
+}
+
 /* Report a warning at line LINE.
    S and V are a string and an arg for `printf'.  */
 
 void
-warning_with_line (line, s, v, v2)
+warning_with_file_and_line (file, line, s, v, v2)
+     char *file;
      int line;
      char *s;
      int v;
@@ -482,10 +505,10 @@ warning_with_line (line, s, v, v2)
   if (count_error (1) == 0)
     return;
 
-  report_error_function (input_filename);
+  report_error_function (file);
 
-  if (input_filename)
-    fprintf (stderr, "%s:%d: ", input_filename, line);
+  if (file)
+    fprintf (stderr, "%s:%d: ", file, line);
   else
     fprintf (stderr, "cc1: ");
 
@@ -503,7 +526,7 @@ warning (s, v, v2)
      int v;			/* @@also used as pointer */
      int v2;
 {
-  warning_with_line (lineno, s, v, v2);
+  warning_with_file_and_line (input_filename, lineno, s, v, v2);
 }
 
 /* Report a warning at the declaration DECL.
@@ -1323,6 +1346,8 @@ rest_of_compilation (decl)
 	       fflush (global_reg_dump_file);
 	     });
 
+  reload_completed = 1;
+
   /* One more attempt to remove jumps to .+1
      left by dead-store-elimination.
      Also do cross-jumping this time
@@ -1384,6 +1409,8 @@ rest_of_compilation (decl)
 #endif
 
  exit_rest_of_compilation:
+
+  reload_completed = 0;
 
   /* Clear out the real_constant_chain before some of the rtx's
      it runs through become garbage.  */

@@ -40,6 +40,7 @@ and this notice must be preserved on all copies.  */
 
 #include "config.h"
 #include "rtl.h"
+#include "expr.h"
 #include "insn-config.h"
 #include "regs.h"
 #include "recog.h"
@@ -99,15 +100,19 @@ static int fixed_aggregate_altered;
 static int loop_has_call;
 
 /* Indexed by register number, contains the number of times the reg
-   is set during the loop being scanned, or -1 if the insns that set it
-   have all been scanned as candidates for being moved out of the loop.
-   0 indicates an invariant register; -1 a conditionally invariant one.  */
+   is set during the loop being scanned.
+   During code motion, -1 indicates a reg that has been made a candidate.
+   After code motion, regs moved have 0 (which is accurate now)
+   while the failed candidates have the original number of times set.
+
+   Therefore, at all times, 0 indicates an invariant register;
+   -1 a conditionally invariant one.  */
 
 static short *n_times_set;
 
-/* Indexed by register number, contains the number of times the reg
-   was used during the loop being scanned, not counting changes due
-   to moving these insns out of the loop.  */
+/* Original value of n_times_set; same except that this value
+   is not set to -1 for a reg whose sets have been made candidates
+   and not set to 0 for a reg that is moved.  */
 
 static short *n_times_used;
 
@@ -150,9 +155,9 @@ struct movable
   short lifetime;		/* lifetime of that register;
 				   may be adjusted when matching movables
 				   that load the same value are found.  */
-  short times_used;		/* Number of times the register is used,
-				   plus uses of related insns that could
-				   be moved if this one is.  */
+  short savings;		/* Number of insns we can move for this reg,
+				   including other movables that force this
+				   or match this one.  */
   unsigned int cond : 1;	/* 1 if only conditionally movable */
   unsigned int force : 1;	/* 1 means MUST move this insn */
   unsigned int global : 1;	/* 1 means reg is live outside this loop */
@@ -212,7 +217,7 @@ loop_optimize (f, dumpfile)
 
   init_recog ();
 
-  old_max_reg = max_reg_num();
+  old_max_reg = max_reg_num ();
 
   /* First find the last real insn, and count the number of insns,
      and assign insns their suids.  */
@@ -316,7 +321,7 @@ scan_loop (loop_start, end, nregs)
      for saving an instruction.  More if loop doesn't call subroutines
      since in that case saving an insn makes more difference
      and more registers are available.  */
-  int threshold = loop_has_call ? 17 : 34;
+  int threshold = loop_has_call ? 15 : 30;
   /* Nonzero if the insn that jumps into the real loop
      is not the very first thing after the loop-beginning note.  */
   int something_before_entry_jump = 0;
@@ -507,7 +512,7 @@ scan_loop (loop_start, end, nregs)
 	      m->match = 0;
 	      m->lifetime = (uid_luid[regno_last_uid[regno]]
 			     - uid_luid[regno_first_uid[regno]]);
-	      m->times_used = n_times_used[regno];
+	      m->savings = n_times_used[regno];
 	      n_times_set[regno] = -1;
 	      /* Add M to the end of the chain MOVABLES.  */
 	      if (movables == 0)
@@ -564,7 +569,7 @@ scan_loop (loop_start, end, nregs)
 		  m->match = 0;
 		  m->lifetime = (uid_luid[regno_last_uid[regno]]
 				 - uid_luid[regno_first_uid[regno]]);
-		  m->times_used = n_times_used[regno];
+		  m->savings = 1;
 		  n_times_set[regno] = -1;
 		  /* Add M to the end of the chain MOVABLES.  */
 		  if (movables == 0)
@@ -583,7 +588,7 @@ scan_loop (loop_start, end, nregs)
 			  p = XEXP (temp, 0);
 			  /* Count the libcall as ten insns in terms of
 			     importance of moving it.  */
-			  m->consec += 10;
+			  m->savings += 10;
 			}
 		      
 		      do p = NEXT_INSN (p);
@@ -613,23 +618,31 @@ scan_loop (loop_start, end, nregs)
   {
     register struct movable *m, *m1;
     for (m1 = movables; m1; m1 = m1->next)
-      {
-	int regno = m1->regno;
-	for (m = m1->next; m; m = m->next)
-	  if (INSN_UID (m->insn) == regno_last_uid[regno])
-	    break;
-	if (m != 0 && m->set_src == SET_DEST (PATTERN (m1->insn)))
-	  m = 0;
+      /* Omit this if moving just the (SET (REG) 0) of a zero-extend.  */
+      if (!m1->partial)
+	{
+	  int regno = m1->regno;
+	  for (m = m1->next; m; m = m->next)
+	    /* ??? Could this be a bug?  What if CSE caused the
+	       register of M1 to be used after this insn?
+	       Since CSE does not update regno_last_uid,
+	       this insn M->insn might not be where it dies.
+	       But very likely this doesn't matter; what matters is
+	       that M's reg is computed from M1's reg.  */
+	    if (INSN_UID (m->insn) == regno_last_uid[regno])
+	      break;
+	  if (m != 0 && m->set_src == SET_DEST (PATTERN (m1->insn)))
+	    m = 0;
 
-	/* Increase the priority of the moving the first insn
-	   since it permits the second to be moved as well.  */
-	if (m != 0)
-	  {
-	    m->forces = m1;
-	    m1->lifetime += m->lifetime;
-	    m1->times_used += m1->times_used;
-	  }
-      }
+	  /* Increase the priority of the moving the first insn
+	     since it permits the second to be moved as well.  */
+	  if (m != 0)
+	    {
+	      m->forces = m1;
+	      m1->lifetime += m->lifetime;
+	      m1->savings += m1->savings;
+	    }
+	}
   }
 
   /* See if there are multiple movable insns that load the same value.
@@ -641,7 +654,7 @@ scan_loop (loop_start, end, nregs)
     register struct movable *m;
     char *matched_regs = (char *) alloca (nregs);
 
-    /* Regs that are used more than once are not allowed to match
+    /* Regs that are set more than once are not allowed to match
        or be matched.  I'm no longer sure why not.  */
     /* Perhaps testing m->consec_sets would be more appropriate here?  */
 
@@ -676,17 +689,24 @@ scan_loop (loop_start, end, nregs)
 					     XEXP (REG_NOTES (m1->insn), 0)))))))
 	      {
 		m->lifetime += m1->lifetime;
-		m->times_used += m1->times_used;
+		m->savings += m1->savings;
 		m1->match = m;
 		matched_regs[m1->regno] = 1;
 	      }
 	}
   }
 	
-  /* Now consider each movable insn to decide whether it is worth moving.  */
+  /* Now consider each movable insn to decide whether it is worth moving.
+     Store 0 in n_times_set for each reg that is moved.  */
 
   move_movables (movables, threshold,
 		 insn_count, loop_start, end, nregs);
+
+  /* Now candidates that still have -1 are those not moved.
+     Change n_times_set to indicate that those are not actually invariant.  */
+  for (i = 0; i < nregs; i++)
+    if (n_times_set[i] < 0)
+      n_times_set[i] = n_times_used[i];
 
   if (flag_strength_reduce)
     strength_reduce (scan_start, end, loop_top,
@@ -763,7 +783,7 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 	{
 	  register int regno;
 	  register rtx p;
-	  int times_used = m->times_used + m->consec;
+	  int savings = m->savings;
 
 	  /* We have an insn that is safe to move.
 	     Compute its desirability.  */
@@ -772,7 +792,7 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 	  regno = m->regno;
 
 	  if (loop_dump_stream)
-	    fprintf (loop_dump_stream, "reg uses %d ", times_used);
+	    fprintf (loop_dump_stream, "savings %d ", savings);
 
 	  /* An insn MUST be moved if we already moved something else
 	     which is safe only if this one is moved too: that is,
@@ -788,7 +808,7 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 	     extra cost because something else was already moved.  */
 
 	  if (already_moved[regno]
-	      || (threshold * times_used * m->lifetime) >= insn_count
+	      || (threshold * savings * m->lifetime) >= insn_count
 	      || (m->forces && m->forces->done
 		  && n_times_used[m->forces->regno] == 1))
 	    {
@@ -842,14 +862,20 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 			  if (GET_CODE (temp) == CALL_INSN
 			      && fn_address != 0)
 			    replace_call_address (body, fn_reg, fn_address);
-			  i1 = emit_insn_before (body, loop_start);
+			  if (GET_CODE (temp) == CALL_INSN)
+			    i1 = emit_call_insn_before (body, loop_start);
+			  else
+			    i1 = emit_insn_before (body, loop_start);
 			  if (first == 0)
 			    first = i1;
 			  REG_NOTES (i1) = REG_NOTES (temp);
 			  delete_insn (temp);
 			}
 		    }
-		  i1 = emit_insn_before (PATTERN (p), loop_start);
+		  if (GET_CODE (PATTERN (p)) == CALL_INSN)
+		    i1 = emit_call_insn_before (PATTERN (p), loop_start);
+		  else
+		    i1 = emit_insn_before (PATTERN (p), loop_start);
 
 		  if (new_start == 0)
 		    new_start = i1;
@@ -882,10 +908,10 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 		  delete_insn (p);
 		  do p = NEXT_INSN (p);
 		  while (GET_CODE (p) == NOTE);
-
-		  /* The more insns we move, the less we like moving them.  */
-		  threshold -= 2;
 		}
+
+	      /* The more regs we move, the less we like moving them.  */
+	      threshold -= 3;
 
 	      /* Any other movable that loads the same register
 		 MUST be moved.  */
@@ -896,6 +922,18 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 		n_times_set[regno] = 0;
 
 	      m->done = 1;
+
+	      /* Change the length-of-life info for the register
+		 to say it lives at least the full length of this loop.
+		 This will help guide optimizations in outer loops.  */
+
+	      if (uid_luid[regno_first_uid[regno]] > INSN_LUID (loop_start))
+		/* This is the old insn before all the moved insns.
+		   We can't use the moved insn because it is out of range
+		   in uid_luid.  Only the old insns have luids.  */
+		regno_first_uid[regno] = INSN_UID (loop_start);
+	      if (uid_luid[regno_last_uid[regno]] < INSN_LUID (end))
+		regno_last_uid[regno] = INSN_UID (end);
 
 	      /* Combine with this moved insn any other matching movables.  */
 
@@ -2288,12 +2326,15 @@ strength_reduce (scan_start, end, loop_top, insn_count,
       rtx final_value = 0;
 
       /* Test whether it will be possible to eliminate this biv
-	 provided all givs are reduced.
+	 provided all givs are reduced.  This is possible if either
+	 the reg is not used outside the loop, or we can compute
+	 what its final value will be.
 
 	 Don't try if we put a REG_NONNEG note on the endtest for this biv.
 	 ??? That should be only on machines that have dbra insns.  */
 
       if ((uid_luid[regno_last_uid[bl->regno]] < INSN_LUID (loop_end)
+	   && uid_luid[regno_first_uid[bl->regno]] > INSN_LUID (loop_start)
 	   && bl->init_val_set && ! bl->nonneg)
 	  || (final_value = final_biv_value (bl, loop_end)))
 	{
@@ -2804,10 +2845,10 @@ record_giv (v, insn, src_regno, dest_regno, mult_val, add_val, benefit,
  	 - the insn that sets the giv is always executed,
  	 - the giv is not used before the insn that sets it,
  	    i.e. no definition outside loop reaches into loop
-	 ???  the test used below will fail if the insn has been moved
 	 - no assignments to the biv occur during the giv's lifetime.  */
 
       if (!maybe_never
+	  /* This always fails if INSN was moved by loop opt.  */
 	  && (regno_first_uid[dest_regno] == INSN_UID (insn)))
  	{
 	  v->replaceable = 1;
@@ -3663,7 +3704,8 @@ consec_sets_giv (first_benefit, p, src_regno, dest_regno,
 
 /* Generate a SEQUENCE to multiply OP0 and OP1 with result in TARGET.
    Use expand_mult to "optimally" do the multiply.
-   This also works for machines that do not have multiply insns.  */
+   This also works for machines that do not have multiply insns.
+   If one of the operands is a constant, it must be the second.  */
 
 static rtx
 gen_iv_mult (mode, op0, op1, target)
@@ -3672,12 +3714,19 @@ gen_iv_mult (mode, op0, op1, target)
 {
   extern rtx gen_sequence ();
   extern rtx start_sequence ();
-  rtx saved, result;
+  rtx saved, result, temp;
 
   saved = start_sequence ();
 
+  /* ??? It is very unmodular to use expand_mult here!
+     This should be redesigned.  */
+
   /* UNSIGNEDP arg can be zero since operands/target always same width.  */
-  expand_mult (mode, op0, op1, target, 0);
+  temp = expand_mult (mode, op0, op1, target, 0);
+
+  /* Move to target register, if expand_mult did not put it there.  */
+  if (target != 0 && temp != target)
+    emit_move_insn (target, temp);
 
   result = gen_sequence ();
   end_sequence (saved);
@@ -4475,7 +4524,7 @@ eliminate_biv (insn, bl, loop_start)
 		  XEXP (src, 1-arg_operand) = v->new_reg;
 
 		  /* Calculate the appropriate constant to compare against.  */
-		  emit_insn_before (gen_iv_mult (mode, v->mult_val, arg,
+		  emit_insn_before (gen_iv_mult (mode, arg, v->mult_val,
 						 compare_value),
 				    loop_start);
 		  emit_insn_before (gen_rtx (SET, VOIDmode, compare_value,
@@ -4527,6 +4576,16 @@ eliminate_biv (insn, bl, loop_start)
 /* Try to calculate the final value of the biv,
    the value it will have at the end of the loop.
    If we can do it, return that value.  */
+
+/* ??? One case that should be simple to handle
+   is when the biv is incremented by an invariant
+   exactly once each time around the loop,
+   and when the number of iterations can be determined
+   (as the value of some invariant).
+   Then the final value would be BIV + (INCREMENT * NUM_ITERATIONS).
+
+   Once that case is handled, it would become desirable to detect empty
+   loops and delete them, since this optimization could make empty loops.  */
 
 static rtx
 final_biv_value (bl, loop_end)

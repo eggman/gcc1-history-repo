@@ -12,7 +12,7 @@ mkdir $LIB > /dev/null 2>&1
 
 echo 'Finding header files:'
 cd /usr/include
-files=`find . -print`
+files=`find . -type f -print`
 echo 'Checking header files:'
 for file in $files; do
   if egrep -s '[ 	]_IO[A-Z]*\(|#define._IO|CTRL' $file; then

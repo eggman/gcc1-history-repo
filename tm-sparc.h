@@ -778,19 +778,35 @@ extern union tree_node *current_function_decl;
    function's constant-pool, because such addresses can actually
    be output as REG+SMALLINT.  */
 
-#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)  \
-{ if (GET_CODE (X) == REG			\
-      && REG_OK_FOR_BASE_P (X))			\
-    goto ADDR;					\
-  if (GET_CODE (X) == PLUS			\
-      && GET_CODE (XEXP (X, 0)) == REG		\
-      && REG_OK_FOR_BASE_P (XEXP (X, 0)))	\
-    {						\
-      if (GET_CODE (XEXP (X, 1)) == CONST_INT	\
-	  && INTVAL (XEXP (X, 1)) >= -0x1000	\
-	  && INTVAL (XEXP (X, 1)) < 0x1000)	\
-	goto ADDR;				\
-    }						\
+#define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)		\
+{ if (GET_CODE (X) == REG				\
+      && REG_OK_FOR_BASE_P (X))				\
+    goto ADDR;						\
+  if (GET_CODE (X) == SYMBOL_REF && CONSTANT_POOL_ADDRESS_P(X))	\
+    goto ADDR;						\
+  if (GET_CODE (X) == PLUS)				\
+    if (GET_CODE (XEXP (X, 0)) == REG			\
+	&& REG_OK_FOR_BASE_P (XEXP (X, 0)))		\
+      {							\
+	if (GET_CODE (XEXP (X, 1)) == REG		\
+	    && REG_OK_FOR_INDEX_P (XEXP (X, 1)))	\
+	  goto ADDR;					\
+	if (GET_CODE (XEXP (X, 1)) == CONST_INT		\
+	    && INTVAL (XEXP (X, 1)) >= -0x1000		\
+	    && INTVAL (XEXP (X, 1)) < 0x1000)		\
+	  goto ADDR;					\
+      }							\
+    else if (GET_CODE (XEXP (X, 1)) == REG		\
+	&& REG_OK_FOR_BASE_P (XEXP (X, 1)))		\
+      {							\
+	if (GET_CODE (XEXP (X, 0)) == REG		\
+	    && REG_OK_FOR_INDEX_P (XEXP (X, 0)))	\
+	  goto ADDR;					\
+	if (GET_CODE (XEXP (X, 0)) == CONST_INT		\
+	    && INTVAL (XEXP (X, 0)) >= -0x1000		\
+	    && INTVAL (XEXP (X, 0)) < 0x1000)		\
+	  goto ADDR;					\
+      }							\
 }
 
 /* Try machine-dependent ways of modifying an illegitimate address

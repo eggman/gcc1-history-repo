@@ -897,9 +897,10 @@ sets_cc0_p (x)
       int other_things = 0;
       for (i = XVECLEN (x, 0) - 1; i >= 0; i--)
 	{
-	  if (GET_CODE (x) == SET && SET_DEST (x) == cc0_rtx)
+	  if (GET_CODE (XVECEXP (x, 0, i)) == SET
+	      && SET_DEST (XVECEXP (x, 0, i)) == cc0_rtx)
 	    sets_cc0 = 1;
-	  else if (GET_CODE (x) == SET)
+	  else if (GET_CODE (XVECEXP (x, 0, i)) == SET)
 	    other_things = 1;
 	}
       return ! sets_cc0 ? 0 : other_things ? -1 : 1;

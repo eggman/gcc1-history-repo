@@ -30,8 +30,8 @@ single-letter options may
 be grouped: `\fB\-dr\fR'
 is very different from `\fB\-d\ \-r\fR'.
 When you invoke
-.I GNU\ CC
-\, it normally does preprocessing, compilation,
+.I GNU\ CC,
+it normally does preprocessing, compilation,
 assembly and linking. File names which end in `\fB.c\fR'
 are taken as C
 source to be preprocessed and compiled; compiler output files plus any
@@ -126,8 +126,8 @@ Any directories specified with `\fB\-I\fR' options before the `\fB\-I\-\fR'
 option are searched only for the case of `\fB#include "\fIfile\fB"\fR';
 they are not searched for `\fB#include <\fIfile\fB>\fR'.
 If additional directories are specified with `\fB\-I\fR' options after
-the `\fB\-I\-\fR', these directories are searched for all '\fB#include\fR'
-directives. (Ordinally \fIall\fR '\fB\-I\fR' directories are used this
+the `\fB\-I\-\fR', these directories are searched for all `\fB#include\fR'
+directives. (Ordinally \fIall\fR `\fB\-I\fR' directories are used this
 way.)
 In addition, the `\fB\-I\-\fR' option inhibits the use of the current
 directory as the first search directory for `\fB#include "\fIfile\fB"\fR'.
@@ -141,7 +141,7 @@ searched after.
 Do not search the standard system directories for header files.
 Only the directories you have specified with `\fB\-I\fR' options
 (and the current directory, if appropriate) are searched.
-Between `\fB\-nostdinc\fR' and `\fB\-I-\fR', you can eliminate all
+Between `\fB\-nostdinc\fR' and `\fB\-I\-\fR', you can eliminate all
 directories from the search path except those you specify.
 .TP
 .B \-M
@@ -262,7 +262,7 @@ This makes it reasonable to use the optimizer for programs that might
 have bugs.
 .TP
 .B \-gg
-Produce debugging information in GDB(GNU Debugger)'s own format.
+Produce debugging information in GDB's (the GNU Debugger's) own format.
 This requires the GNU assembler and linker
 in order to work.
 .TP
@@ -381,15 +381,15 @@ Consider type \fBint\fR to be 16 bits wide, like \fBshort int\fR.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mnobitfield
 Do not use the bit-field instructions. 
-.B '\-m68000'
+.B `\-m68000'
 implies
-.B '\-mnobitfield'.
+.B `\-mnobitfield'.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mbitfield
 Do use the bit-field instructions. 
-.B '\-m68020'
+.B `\-m68020'
 implies
-.B '\-mbitfield'.
+.B `\-mbitfield'.
 This is the default if you use the unmodified sources.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mrtd
@@ -414,9 +414,8 @@ processors, but not by the 68000.
 These are the `\fB\-m\fR' options defined in the VAX machine description:
 .TP 10
 .B \ \ \ \ \ \ \ \ \-munix
-Do not output certain jump instructions (
-.B aobleq
-and so on) that the Unix assembler
+Do not output certain jump instructions (\fBaobleq\fP and so on)
+that the Unix assembler
 for the VAX cannot handle across long ranges. 
 .TP 10
 .B \ \ \ \ \ \ \ \ \-mgnu
@@ -433,8 +432,7 @@ where the floating registers (of the 68881) keep more precision
 than a \fBdouble\fR is supposed to have.
 For most programs, the excess precision does only good, but a few
 programs rely on the precise definition of IEEE floating point.
-Use `
-.B \-ffloat-store'
+Use `\fB\-ffloat-store\fP'
 for such programs.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fno-asm
@@ -454,8 +452,8 @@ elimination of iteration variables.
 .B \ \ \ \ \ \ \ \ \-fcombine-regs
 Allow the combine pass to combine an instruction that copies one
 register into another.
-This might or might not produce better code when used in addition to `
-.B \-O'.
+This might or might not produce better code when used in addition to
+`\fB\-O\fP'.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fforce-mem
 Force memory operands to be copied into registers before doing
@@ -468,9 +466,7 @@ instruction combination should eliminate the separate register-load.
 .B \ \ \ \ \ \ \ \ \-fforce-addr
 Force memory address constants to be copied into registers before
 doing arithmetic on them.
-This may produce better code just as `
-.B \-fforce-mem'
-may.
+This may produce better code just as `\fB\-fforce-mem\fP' may.
 .TP 10
 .B \ \ \ \ \ \ \ \ \-fomit-frame-pointer
 Don't keep the frame pointer in a register for functions that don't
@@ -622,7 +618,7 @@ adb(1), ld(1), dbx(1), as(1)
 .SH BUGS
 Bugs should be reported to bug-gcc@prep.ai.mit.edu. Bugs tend actually to be
 fixed if they can be isolated, so it is in your interest to report them
-in such a way that they can be easily reproduced according to get newer version.
+in such a way that they can be easily reproduced.
 .SH COPYING
 Copyright (C) 1988 Richard M. Stallman.
 .br
@@ -631,15 +627,12 @@ this manual provided the copyright notice and this permission notice
 are preserved on all copies.
 .br
 Permission is granted to copy and distribute modified versions of this
-manual under the conditions for verbatim copying, provided also that the
-section entitled "GNU CC General Public License" is included exactly as
-in the original, and provided that the entire resulting derived work is
-distributed under the terms of a permission notice identical to this one.
+manual under the conditions for verbatim copying, provided that the
+entire resulting derived work is distributed under the terms of a
+permission notice identical to this one.
 .br
 Permission is granted to copy and distribute translations of this manual
-into another language, under the above conditions for modified versions,
-except that the section entitled "GNU CC General Public License" may be
-included in a translation approved by the author instead of in the original
-English.
+into another language, under the above conditions for modified versions.
 .SH AUTHORS
-Richard M. Stallman
+See the GNU CC Manual for the contributors to GNU CC.
+

@@ -320,3 +320,17 @@ _extendsfdf2 (a)
   return a.f;
 }
 #endif
+
+#ifdef L_varargs
+#ifdef sparc
+	asm (".global ___builtin_saveregs");
+	asm ("___builtin_saveregs:");
+	asm ("st %i0,[%fp+68]");
+	asm ("st %i1,[%fp+72]");
+	asm ("st %i2,[%fp+76]");
+	asm ("st %i3,[%fp+80]");
+	asm ("st %i4,[%fp+84]");
+	asm ("retl");
+	asm ("st %i5,[%fp+88]");
+#endif
+#endif

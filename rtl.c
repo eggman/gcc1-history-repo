@@ -497,7 +497,7 @@ rtx_equal_p (x, y)
      rtx x, y;
 {
   register int i;
-  register int hash = 0;
+  register int j;
   register RTX_CODE code = GET_CODE (x);
   register char *fmt;
 
@@ -538,6 +538,12 @@ rtx_equal_p (x, y)
 	case 'i':
 	  if (XINT (x, i) != XINT (y, i))
 	    return 0;
+	  break;
+
+	case 'E':
+	  for (j = 0; j < XVECLEN (x, i); j++)
+	    if (rtx_equal_p (XVECEXP (x, i, j), XVECEXP (y, i, j)) == 0)
+	      return 0;
 	  break;
 
 	case 'e':

@@ -33,12 +33,12 @@
 progname=$0
 
 remove=rm
-link=ln
+hard_link=ln
 symbolic_link='ln -s'
 
 #for Test
 #remove="echo rm"
-#link="echo ln"
+#hard_link="echo ln"
 #symbolic_link="echo ln -s"
 
 case $# in
@@ -59,62 +59,67 @@ case $# in
 		;;
 	vms)					# for vaxen running VMS
 		cpu_type=vax
-		configuration_file=config-${machine}.h
+		configuration_file=xm-${machine}.h
 		target_machine=tm-${machine}.h
 		;;
 	vax-sysv | vaxv)			# for vaxen running system V
 		cpu_type=vax
-		configuration_file=config-vaxv.h
+		configuration_file=xm-vaxv.h
 		target_machine=tm-vaxv.h
 		;;
 	sequent-i386)			# for Intel 80386's on Sequent Symmetry
 		cpu_type=i386
-		configuration_file=config-i386.h
+		configuration_file=xm-i386.h
 		target_machine=tm-seq386.h
 		;;
 	i386-sysv | i386v)		# for Intel 80386's running system V
 		machine=i386v
 		cpu_type=i386
-		configuration_file=config-${machine}.h
+		configuration_file=xm-${machine}.h
 		target_machine=tm-${machine}.h
 		;;
 	sun4 | sun-4)
 		cpu_type=sparc
-		configuration_file=config-sparc.h
-		target_machine=tm-${cpu_type}.h
+		configuration_file=xm-sparc.h
+		target_machine=tm-sun4os3.h
 		;;
 	sun3 | sun-3)
 		cpu_type=m68k
-		configuration_file=config-m68k.h
+		configuration_file=xm-m68k.h
 		target_machine=tm-sun3.h
 		;;
 	sun2 | sun-2)
 		cpu_type=m68k
-		configuration_file=config-m68k.h
+		configuration_file=xm-m68k.h
 		target_machine=tm-sun2.h
+		;;
+	sun386 | sun386i | roadrunner)
+		cpu_type=i386
+		configuration_file=xm-sun386i.h
+		target_machine=tm-sun386i.h
 		;;
 	sun4-os4 | sun-4-os4)
 		cpu_type=sparc
-		configuration_file=config-sun4.h
+		configuration_file=xm-sunos4.h
 		target_machine=tm-${cpu_type}.h
 		;;
 	sun3-os4 | sun-3-os4)
 		cpu_type=m68k
-		configuration_file=config-sun4.h
+		configuration_file=xm-sunos4.h
 		target_machine=tm-sun3.h
 		;;
 	sun2-os4 |sun-2-os4)
 		cpu_type=m68k
-		configuration_file=config-sun4.h
+		configuration_file=xm-sunos4.h
 		target_machine=tm-sun2.h
 		;;
 	hp9k320)			# HP 9000 series 300 with gcc alone
 		cpu_type=m68k
-		configuration_file=config-hp9k3.h
+		configuration_file=xm-hp9k320.h
 		;;
 	hp9k320g)			#    with gnu as, ld and gdb
 		cpu_type=m68k
-		configuration_file=config-hp9k3.h
+		configuration_file=xm-hp9k320.h
 		;;
 	isi68)
 		cpu_type=m68k
@@ -124,6 +129,7 @@ case $# in
 		;;
 	3b1)
 		cpu_type=m68k
+		configuration_file=xm-${machine}.h
 		;;
 	sequent-ns32k | sequent)
 		cpu_type=ns32k
@@ -136,7 +142,7 @@ case $# in
 	genix)
 		machine=ns32k
 		cpu_type=ns32k
-		configuration_file=config-gnx.h
+		configuration_file=xm-gnx.h
 		;;
 	88000)
 		cpu_type=m88k
@@ -150,7 +156,7 @@ case $# in
 		# if cput_type is not set, define cpu_type to machine.
 		#
 	cpu_type=${cpu_type=$machine}
-	configuration_file=${configuration_file=config-$cpu_type.h}
+	configuration_file=${configuration_file=xm-$cpu_type.h}
 	target_machine=${target_machine=tm-$machine.h}
 	machine_description=${cpu_type}.md
 	aux_output=${aux_output=output-$cpu_type.c}
@@ -182,7 +188,7 @@ case $# in
 		$remove -f $link
 		rm -f config.status
 		# Make a symlink if possible, otherwise try a hard link
-		$symbolic_link $file $link 2>/dev/null || $link $file $link
+		$symbolic_link $file $link 2>/dev/null || $hard_link $file $link
 
 		if [ ! -r $link ]
 		then

@@ -704,6 +704,7 @@ duplicate_decls (new, old)
       bcopy ((char *) new + sizeof (struct tree_common),
 	     (char *) old + sizeof (struct tree_common),
 	     sizeof (struct tree_decl) - sizeof (struct tree_common));
+
       return 1;
     }
 
@@ -730,6 +731,9 @@ pushdecl (x)
 
   if (name)
     {
+      char *file;
+      int line;
+
       t = lookup_name_current_level (name);
       if (t != 0 && t == error_mark_node)
 	/* error_mark_node is 0 for a while during initialization!  */
@@ -738,7 +742,13 @@ pushdecl (x)
 	  error_with_decl (x, "`%s' used prior to declaration");
 	}
 
-      if (t && duplicate_decls (x, t))
+      if (t != 0)
+	{
+	  file = DECL_SOURCE_FILE (t);
+	  line = DECL_SOURCE_LINE (t);
+	}
+
+      if (t != 0 && duplicate_decls (x, t))
 	{
 	  /* If this decl is `static' and an `extern' was seen previously,
 	     that is erroneous.  */
@@ -751,7 +761,9 @@ pushdecl (x)
 	      else
 		warning ("`%s' was declared `extern' and later `static'",
 			 IDENTIFIER_POINTER (name));
-	      warning_with_decl (t, "previous declaration of `%s'");
+	      warning_with_file_and_line (file, line,
+					  "previous declaration of `%s'",
+					  IDENTIFIER_POINTER (name));
 	    }
 	  return t;
 	}

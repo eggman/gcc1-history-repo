@@ -43,6 +43,12 @@ rtx recog_addr_dummy;
 
 int which_alternative;
 
+/* Nonzero after end of reload pass.
+   Set to 1 or 0 by toplev.c.
+   Controls the significance of (SUBREG (MEM)).  */
+
+int reload_completed;
+
 /* Initialize data used by the function `recog'.
    This must be called once in the compilation of a function
    before any insn recognition may be done in the function.  */
@@ -259,16 +265,20 @@ register_operand (op, mode)
   if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
-  /* We can allow (SUBREG (MEM...)) as a register operand
-     because it is guaranteed to be reloaded into one.
-     Just make sure the MEM is valid in itself.
-     (At rtl generation time, (SUBREG (MEM...)) is forbidden to exist.)  */
   if (GET_CODE (op) == SUBREG)
-    return general_operand (op, mode);
-#if 0
+    {
+      /* Before reload, we can allow (SUBREG (MEM...)) as a register operand
+	 because it is guaranteed to be reloaded into one.
+	 Just make sure the MEM is valid in itself.
+	 (Ideally, (SUBREG (MEM)...) should not exist after reload,
+	 but currently it does result from (SUBREG (REG)...) where the
+	 reg went on the stack.)  */
+      if (! reload_completed)
+	return general_operand (op, mode);
+    }
+
   while (GET_CODE (op) == SUBREG)
     op = SUBREG_REG (op);
-#endif
 
   return GET_CODE (op) == REG;
 }
@@ -315,16 +325,20 @@ nonmemory_operand (op, mode)
   if (GET_MODE (op) != mode && mode != VOIDmode)
     return 0;
 
-  /* We can allow (SUBREG (MEM...)) as a nonmemory operand
-     because it is guaranteed to be reloaded into one.
-     Just make sure the MEM is valid in itself.
-     (At rtl generation time, (SUBREG (MEM...)) is forbidden to exist.)  */
   if (GET_CODE (op) == SUBREG)
-    return general_operand (op, mode);
-#if 0
+    {
+      /* Before reload, we can allow (SUBREG (MEM...)) as a register operand
+	 because it is guaranteed to be reloaded into one.
+	 Just make sure the MEM is valid in itself.
+	 (Ideally, (SUBREG (MEM)...) should not exist after reload,
+	 but currently it does result from (SUBREG (REG)...) where the
+	 reg went on the stack.)  */
+      if (! reload_completed)
+	return general_operand (op, mode);
+    }
+
   while (GET_CODE (op) == SUBREG)
     op = SUBREG_REG (op);
-#endif
 
   return GET_CODE (op) == REG;
 }
@@ -383,24 +397,16 @@ memory_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  /* Note that no SUBREG is a memory operand
-     because (SUBREG (MEM...)) forces reloading into a register.  */
-  return GET_CODE (op) == MEM && general_operand (op, mode);
-}
+  int mode_altering_drug = 0;
 
-#if 0
-int
-memory_operand (op, mode)
-     register rtx op;
-     enum machine_mode mode;
-{
-  if (code == SUBREG)
-    return 0;
+  if (! reload_completed)
+    /* Note that no SUBREG is a memory operand before end of reload pass,
+       because (SUBREG (MEM...)) forces reloading into a register.  */
+    return GET_CODE (op) == MEM && general_operand (op, mode);
 
-  while (code == SUBREG)
+  while (GET_CODE (op) == SUBREG)
     {
       op = SUBREG_REG (op);
-      code = GET_CODE (op);
       mode_altering_drug = 1;
     }
 
@@ -408,7 +414,6 @@ memory_operand (op, mode)
 	  && ! (mode_altering_drug
 		&& mode_dependent_address_p (XEXP (op, 0))));
 }
-#endif
 
 /* Return 1 if OP is a valid indirect memory reference with mode MODE;
    that is, a memory reference whose address is a general_operand.  */
@@ -418,7 +423,7 @@ indirect_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  return (GET_CODE (op) == MEM && GET_MODE (op) == mode
+  return (GET_MODE (op) == mode && memory_operand (op, mode)
 	  && general_operand (XEXP (op, 0), Pmode));
 }
 
@@ -440,15 +445,25 @@ asm_noperands (body)
 	   && GET_CODE (XVECEXP (body, 0, 0)) == SET
 	   && GET_CODE (SET_SRC (XVECEXP (body, 0, 0))) == ASM_OPERANDS)
     {
-      /* Multiple output operands:
+      /* Multiple output operands, or 1 output plus some clobbers:
 	 body is [(set OUTPUT (asm_operands ...))... (clobber (reg ...))...].
 	 Count backwards through CLOBBERs to determine number of SETs.  */
       int i;
-      for (i = XVECLEN (body, 0) - 1; i >= 0; i--)
-	if (GET_CODE (XVECEXP (body, 0, i)) == SET)
+
+      for (i = XVECLEN (body, 0) - 1; i > 0; i--)
+	if (GET_CODE (XVECEXP (body, 0, i - 1)) == SET)
 	  break;
-      
-      return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + i + 1;
+
+      /* I is now number of output operands.  */
+
+      return XVECLEN (SET_SRC (XVECEXP (body, 0, 0)), 3) + i;
+    }
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == ASM_OPERANDS)
+    {
+      /* 0 outputs, but some clobbers:
+	 body is [(asm_operands ...) (clobber (reg ...))...].  */
+      return XVECLEN (XVECEXP (body, 0, 0), 3);
     }
   else
     return 0;
@@ -474,7 +489,7 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
 {
   register int i;
   int noperands;
-  char *template;
+  char *template = 0;
 
   if (GET_CODE (body) == SET && GET_CODE (SET_SRC (body)) == ASM_OPERANDS)
     {
@@ -531,12 +546,15 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
 	}
       template = XSTR (asmop, 0);
     }
-  else
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == SET)
     {
       rtx asmop = SET_SRC (XVECEXP (body, 0, 0));
       int nparallel = XVECLEN (body, 0); /* Includes CLOBBERs.  */
       int nin = XVECLEN (asmop, 3);
       int nout = 0;		/* Does not include CLOBBERs.  */
+
+      /* At least one output, plus some CLOBBERs.  */
 
       /* The outputs are in the SETs.
 	 Their constraints are in the ASM_OPERANDS itself.  */
@@ -568,6 +586,31 @@ decode_asm_operands (body, operands, operand_locs, constraints, modes)
 	    constraints[i + nout] = XSTR (XVECEXP (asmop, 4, i), 0);
 	  if (modes)
 	    modes[i + nout] = GET_MODE (XVECEXP (asmop, 4, i));
+	}
+
+      template = XSTR (asmop, 0);
+    }
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == ASM_OPERANDS)
+    {
+      /* No outputs, but some CLOBBERs.  */
+
+      rtx asmop = XVECEXP (body, 0, 0);
+      int nparallel = XVECLEN (body, 0); /* Includes CLOBBERs.  */
+      int nin = XVECLEN (asmop, 3);
+
+      /* The input operands are found in the 1st element vector.  */
+      /* Constraints for inputs are in the 2nd element vector.  */
+      for (i = 0; i < nin; i++)
+	{
+	  if (operand_locs)
+	    operand_locs[i] = &XVECEXP (asmop, 3, i);
+	  if (operands)
+	    operands[i] = XVECEXP (asmop, 3, i);
+	  if (constraints)
+	    constraints[i] = XSTR (XVECEXP (asmop, 4, i), 0);
+	  if (modes)
+	    modes[i] = GET_MODE (XVECEXP (asmop, 4, i));
 	}
 
       template = XSTR (asmop, 0);

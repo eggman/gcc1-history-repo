@@ -237,8 +237,8 @@ DEF_RTL_EXPR(ASM_INPUT, "asm_input", "s")
    3rd operand is the number of the output this expression refers to.
      When an insn stores more than one value, a separate ASM_OPERANDS
      is made for each output; this integer distinguishes them.
-   5th is a vector of values of input operands.
-   4th is a vector of modes and constraints for the input operands.
+   4th is a vector of values of input operands.
+   5th is a vector of modes and constraints for the input operands.
      Each element is an ASM_INPUT containing a constraint string
      and whose mode indicates the mode of the input operand.  */
 DEF_RTL_EXPR(ASM_OPERANDS, "asm_operands", "ssiEE")

@@ -43,11 +43,11 @@ extern FILE *asm_out_file;
 extern tree current_function_decl;
 
 void sdbout_init ();
-void sdbout_syms ();
 void sdbout_symbol ();
 void sdbout_tags();
 void sdbout_types();
 
+static void sdbout_syms ();
 static void sdbout_one_type ();
 static int plain_type_1 ();
 
@@ -880,7 +880,7 @@ void
 sdbout_end_function (line)
      int line;
 {
-  PUT_SDB_FUNCTION_END (line);
+  PUT_SDB_FUNCTION_END (line - sdb_begin_function_line);
 
   /* Indicate we are between functions, for line-number output.  */
   sdb_begin_function_line = 0;

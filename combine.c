@@ -1870,6 +1870,12 @@ use_crosses_set_p (x, from_cuid)
   if (code == REG)
     {
       register int regno = REGNO (x);
+#ifdef PUSH_ROUNDING
+      /* Don't allow uses of the stack pointer to be moved,
+	 because we don't know whether the move crosses a push insn.  */
+      if (regno == STACK_POINTER_REGNUM)
+	return 1;
+#endif
       return (reg_last_set[regno]
 	      && INSN_CUID (reg_last_set[regno]) > from_cuid);
     }

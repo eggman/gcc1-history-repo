@@ -140,6 +140,16 @@ static short potential_reload_regs[FIRST_PSEUDO_REGISTER];
    used by insns, structure value pointer registers).  */
 static char regs_explicitly_used[FIRST_PSEUDO_REGISTER];
 
+/* For each register, 1 if it was counted against the need for
+   groups.  0 means it can count against max_nongroup instead.  */
+static char counted_for_groups[FIRST_PSEUDO_REGISTER];
+
+/* For each register, 1 if it was counted against the need for
+   non-groups.  0 means it can become part of a new group.
+   During choose_reload_targets, 1 here means don't use this reg
+   as part of a group, even if it seems to be otherwise ok.  */
+static char counted_for_nongroups[FIRST_PSEUDO_REGISTER];
+
 /* Nonzero if spilling (REG n) does not require reloading it into
    a register in order to do (MEM (REG n)).  */
 
@@ -172,7 +182,7 @@ static void forget_old_reloads ();
 static void order_regs_for_reload ();
 static void eliminate_frame_pointer ();
 static void inc_for_reload ();
-static int constraint_all_regs_p ();
+static int constraint_accepts_reg_p ();
 
 extern void remove_death ();
 extern rtx adj_offsetable_operand ();
@@ -209,6 +219,16 @@ reload (first, global, dumpfile)
 
   /* The basic block number currently being processed for INSN.  */
   int this_block;
+
+  /* Often (MEM (REG n)) is still valid even if (REG n) is put on the stack.
+     Set spill_indirect_ok if so.  */
+  register rtx tem
+    = gen_rtx (MEM, SImode,
+	       gen_rtx (PLUS, Pmode,
+			gen_rtx (REG, Pmode, FRAME_POINTER_REGNUM),
+			gen_rtx (CONST_INT, VOIDmode, 4)));
+
+  spill_indirect_ok = memory_address_p (QImode, tem);
 
   /* Enable find_equiv_reg to distinguish insns made by reload.  */
   reload_first_uid = get_max_uid ();
@@ -369,12 +389,6 @@ reload (first, global, dumpfile)
 	 they must be the same size and equally restrictive for that class,
 	 otherwise we can't handle the complexity.  */
       enum machine_mode group_mode[N_REG_CLASSES];
-      /* For each register, 1 if it was counted against the need for
-	 groups.  0 means it can count against max_nongroup instead.  */
-      char counted_for_groups[FIRST_PSEUDO_REGISTER];
-      /* For each register, 1 if it was counted against the need for
-	 non-groups.  0 means it can become part of a new group.  */
-      char counted_for_nongroups[FIRST_PSEUDO_REGISTER];
 
       something_changed = 0;
       bzero (max_needs, sizeof max_needs);
@@ -543,7 +557,7 @@ reload (first, global, dumpfile)
 	    /* Make a mask of all the regs that are spill regs in class I.  */
 	    for (j = 0; j < n_spills; j++)
 	      if (TEST_HARD_REG_BIT (reg_class_contents[i], spill_regs[j])
-		  && !counted_for_groups[spill_regs[i]])
+		  && !counted_for_groups[spill_regs[j]])
 		regmask[spill_regs[j]] = 1;
 	    /* Find each consecutive group of them.  */
 	    for (j = 0; j < FIRST_PSEUDO_REGISTER && max_groups[i] > 0; j++)
@@ -688,9 +702,10 @@ reload (first, global, dumpfile)
 		  /* I should be the index in potential_reload_regs
 		     of the new reload reg we have found.  */
 
+		  counted_for_groups[potential_reload_regs[i]] = 1;
 		  something_changed
 		    |= new_spill_reg (i, class, max_needs, 0,
-				      0, global, dumpfile);
+				      global, dumpfile);
 		}
 	      else
 		{
@@ -716,12 +731,13 @@ reload (first, global, dumpfile)
 			      for (k = 0; k < group_size[class]; k++)
 				{
 				  int idx;
+				  counted_for_groups[j + k] = 1;
 				  for (idx = 0; idx < FIRST_PSEUDO_REGISTER; idx++)
-				    if (potential_reload_regs[idx] == k)
+				    if (potential_reload_regs[idx] == j + k)
 				      break;
 				  something_changed
 				    |= new_spill_reg (idx, class, max_needs, 0,
-						      0, global, dumpfile);
+						      global, dumpfile);
 				}
 
 			      /* We have found one that will complete a group,
@@ -757,7 +773,7 @@ reload (first, global, dumpfile)
 
 	      something_changed
 		|= new_spill_reg (i, class, max_needs, max_nongroups,
-				  counted_for_nongroups, global, dumpfile);
+				  global, dumpfile);
 	    }
 	}
     }
@@ -843,18 +859,14 @@ modes_equiv_for_class_p (mode0, mode1, class)
    MAX_NEEDS and MAX_NONGROUPS are the vectors of needs,
     so that this register can count off against them.
     MAX_NONGROUPS is 0 if this register is part of a group.
-   COUNTED_FOR_NONGROUPS is passed in so that we can indicate
-    whether this reg was used to count against MAX_NONGROUPS.
    GLOBAL and DUMPFILE are the same as the args that `reload' got.  */
 
 static int
-new_spill_reg (i, class, max_needs, max_nongroups,
-	       counted_for_nongroups, global, dumpfile)
+new_spill_reg (i, class, max_needs, max_nongroups, global, dumpfile)
      int i;
      int class;
      int *max_needs;
      int *max_nongroups;
-     char *counted_for_nongroups;
      int global;
      FILE *dumpfile;
 {
@@ -1028,9 +1040,11 @@ alter_frame_pointer_addresses (x, depth)
       {
 	rtx addr = XEXP (x, 0);
 	FIX_FRAME_POINTER_ADDRESS (addr, depth);
-	XEXP (x, 0) = addr;
+	/* These MEMs are normally shared.  Make a changed copy;
+	   don't alter the shared MEM, since it needs to be altered
+	   differently each time it occurs (since DEPTH varies).  */
+	return gen_rtx (MEM, GET_MODE (x), addr);
       }
-      break;
 
     case PLUS:
       /* Handle addresses being loaded or pushed, etc.,
@@ -1319,16 +1333,6 @@ reload_as_needed (first, live_known)
   register rtx insn;
   register int i;
   int this_block = 0;
-
-  /* Often (MEM (REG n)) is still valid even if (REG n) is put on the stack.
-     Set spill_indirect_ok if so.  */
-  register rtx tem
-    = gen_rtx (MEM, SImode,
-	       gen_rtx (PLUS, Pmode,
-			gen_rtx (REG, Pmode, FRAME_POINTER_REGNUM),
-			gen_rtx (CONST_INT, VOIDmode, 4)));
-
-  spill_indirect_ok = memory_address_p (QImode, tem);
 
   bzero (spill_reg_rtx, sizeof spill_reg_rtx);
   reg_last_reload_reg = (rtx *) alloca (max_regno * sizeof (rtx));
@@ -1641,9 +1645,12 @@ choose_reload_targets (insn)
 	      || GET_CODE (reload_in[r]) == MEM)
 	  && ! have_groups)
 	{
+	  /* We don't allow any spill regs to be found by this call,
+	     since they might be needed for reloads yet to be processed,
+	     even if not now in reload_reg_rtx.  */
 	  register rtx equiv
 	    = find_equiv_reg (reload_in[r], insn, reload_reg_class[r],
-			      -1, (short *)1, 0, reload_mode);
+			      -1, spill_reg_order, 0, reload_mode);
 
 	  /* We found a register that contains the value we need.
 	     If this register is the same as an `earlyclobber' operand
@@ -1791,14 +1798,19 @@ choose_reload_targets (insn)
 		      break;
 		    }
 		  /* Otherwise check that as many consecutive regs as we need
-		     are available here.  */
-		  if (HARD_REGNO_MODE_OK (spill_regs[i], reload_mode))
+		     are available here.
+		     Also, don't use for a group registers that are
+		     needed for nongroups.  */
+		  if (HARD_REGNO_MODE_OK (spill_regs[i], reload_mode)
+		      && ! counted_for_nongroups[spill_regs[i]])
 		    while (nr > 1)
 		      {
+			int regno = spill_regs[i] + nr - 1;
 			if (!(TEST_HARD_REG_BIT (reg_class_contents[class],
-						 spill_regs[i] + nr - 1)
-			      && spill_reg_order[spill_regs[i] + nr - 1] >= 0
-			      && reload_reg_in_use[spill_regs[i] + nr - 1] == 0))
+						 regno)
+			      && spill_reg_order[regno] >= 0
+			      && reload_reg_in_use[regno] == 0
+			      && ! counted_for_nongroups[regno]))
 			  break;
 			nr--;
 		      }
@@ -1837,8 +1849,9 @@ choose_reload_targets (insn)
 	    /* It's the compiler's fault.  */
 	    abort ();
 	  /* It's the user's fault; the operand's mode and constraint
-	     don't match.  Disable this reload so we don't crash in final.
-	     Maybe we should print an error message too??  */
+	     don't match.  Disable this reload so we don't crash in final.  */
+	  error_for_asm (insn,
+			 "`asm' operand constraint incompatible with operand size");
 	  reload_in[r] = 0;
 	  reload_out[r] = 0;
 	  reload_reg_rtx[r] = 0;
@@ -2010,8 +2023,9 @@ choose_reload_targets (insn)
 		  && GET_CODE (temp) == INSN
 		  && GET_CODE (PATTERN (temp)) == SET
 		  && SET_DEST (PATTERN (temp)) == old
-		  /* This is unsafe if prev insn rejects some registers.  */
-		  && constraint_all_regs_p (insn_operand_constraint[recog_memoized (insn)][0])
+		  /* This is unsafe if prev insn rejects our reload reg.  */
+		  && constraint_accepts_reg_p (insn_operand_constraint[recog_memoized (insn)][0],
+					       reloadreg)
 		  /* Don't risk splitting a matching pair of operands.  */
 		  && ! reg_mentioned_p (old, SET_SRC (PATTERN (temp))))
 		{
@@ -2198,9 +2212,14 @@ choose_reload_targets (insn)
 	     then load RELOADREG from OLD.  */
 	  if (GET_MODE (reloadreg) != mode)
 	    reloadreg = gen_rtx (SUBREG, mode, reloadreg, 0);
+	  /* If OLD is a subreg, then strip it, since the subreg will
+	     be altered by this very reload (if it's a strict_low_part).  */
+	  while (GET_CODE (old) == SUBREG && GET_MODE (old) != mode)
+	    old = SUBREG_REG (old);
 	  if (GET_MODE (old) != VOIDmode
 	      && mode != GET_MODE (old))
 	    old = gen_rtx (SUBREG, mode, old, 0);
+	  /* Output the reload insn.  */
 	  store_insn = emit_insn_after (gen_move_insn (old, reloadreg), insn);
 	  /* If final will look at death notes for this reg,
 	     put one on each output-reload insn.  */
@@ -2310,27 +2329,40 @@ inc_for_reload (reloadreg, value, inc_amount, insn)
 
 }
 
-/* Return 1 if we are certain that the constraint-string STRING
-   allows all the machine's hard registers.  Return 0 if we can't be
-   sure of this.  */
+/* Return 1 if we are certain that the constraint-string STRING allows
+   the hard register REG.  Return 0 if we can't be sure of this.  */
 
 static int
-constraint_all_regs_p (string)
+constraint_accepts_reg_p (string, reg)
      char *string;
+     rtx reg;
 {
   int value = 0;
+  int regno = REGNO (reg);
 
-  /* We detect only the case where there is just one alternative, and it
-     uses the letter `g' or `r', and that letter permits all registers.  */
+  /* We win if this register is a general register
+     and each alternative accepts all general registers.  */
+  if (! TEST_HARD_REG_BIT (reg_class_contents[(int) GENERAL_REGS], regno))
+    return 0;
+
+  /* Initialize for first alternative.  */
+  value = 0;
+  /* Check that each alternative contains `g' or `r'.  */
   while (1)
     switch (*string++)
       {
       case 0:
+	/* If an alternative lacks `g' or `r', we lose.  */
 	return value;
       case ',':
-	return 0;
+	/* If an alternative lacks `g' or `r', we lose.  */
+	if (value == 0)
+	  return 0;
+	/* Initialize for next alternative.  */
+	value = 0;
+	break;
       case 'g':
       case 'r':
-	value = ((int) ALL_REGS == (int) GENERAL_REGS);
+	value = 1;
       }
 }

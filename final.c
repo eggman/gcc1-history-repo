@@ -72,7 +72,7 @@ and this notice must be preserved on all copies.  */
 #define min(A,B) ((A) < (B) ? (A) : (B))
 
 void output_asm_insn ();
-static rtx alter_subreg ();
+rtx alter_subreg ();
 static int alter_cond ();
 void output_asm_label ();
 static void output_operand ();
@@ -89,8 +89,9 @@ extern int sdb_begin_function_line;
 static int last_linenum;
 
 /* Nonzero while outputting an `asm' with operands.
-   This means that inconsistencies are the user's fault, so don't abort.  */
-static int this_is_asm_operands;
+   This means that inconsistencies are the user's fault, so don't abort.
+   The precise value is the insn being output, to pass to error_for_asm.  */
+static rtx this_is_asm_operands;
 
 /* Number of operands of this insn, for an `asm' with operands.  */
 static int insn_noperands;
@@ -567,7 +568,7 @@ final (first, file, write_symbols, optimize, prescan)
 		string = decode_asm_operands (body, ops, 0, 0, 0);
 		/* Inhibit aborts on what would otherwise be compiler bugs.  */
 		insn_noperands = noperands;
-		this_is_asm_operands = 1;
+		this_is_asm_operands = insn;
 		/* Output the insn using them.  */
 		output_asm_insn (string, ops);
 		this_is_asm_operands = 0;
@@ -839,7 +840,9 @@ output_source_line (file, insn, write_symbols)
 #ifdef SDB_DEBUGGING_INFO
       if (write_symbols == SDB_DEBUG
 	  /* COFF can't handle multiple source files--lose, lose.  */
-	  && !strcmp (filename, main_input_filename))
+	  && !strcmp (filename, main_input_filename)
+	  /* COFF can't handle line #s before start-line of this function.  */
+	  && last_linenum >= sdb_begin_function_line)
 	{
 #ifdef ASM_OUTPUT_SOURCE_LINE
 	  ASM_OUTPUT_SOURCE_LINE (file, last_linenum);
@@ -881,7 +884,7 @@ output_source_line (file, insn, write_symbols)
 /* If X is a SUBREG, replace it with a REG or a MEM,
    based on the thing it is a subreg of.  */
 
-static rtx
+rtx
 alter_subreg (x)
      register rtx x;
 {
@@ -1093,7 +1096,7 @@ output_operand_lossage (str)
 {
   if (this_is_asm_operands)
     {
-      error ("invalid `asm' above: %s", str);
+      error_for_asm (this_is_asm_operands, "invalid `asm' above: %s", str);
       fprintf (asm_out_file, "!!error here!!");
     }
   else

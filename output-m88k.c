@@ -207,7 +207,7 @@ output_move_double (operands)
   else if (offsetable_memref_p (operands[1]))
     optype1 = OFFSOP;
   else if (GET_CODE (operands[1]) == MEM)
-    optype0 = MEMOP;
+    optype1 = MEMOP;
   else
     optype1 = RNDOP;
 

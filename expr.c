@@ -1698,7 +1698,8 @@ store_expr (exp, target, suggest_reg)
 	dont_return_target = 1;
     }
 
-  /* If value was not generated in the target, store it there.  */
+  /* If value was not generated in the target, store it there.
+     Convert the value to TARGET's type first if nec.  */
 
   if (temp != target && TREE_CODE (exp) != ERROR_MARK)
     {
@@ -1708,7 +1709,13 @@ store_expr (exp, target, suggest_reg)
 	{
 	  int unsignedp = TREE_UNSIGNED (TREE_TYPE (exp));
 	  if (dont_return_target)
-	    temp = convert_to_mode (GET_MODE (target), temp, unsignedp);
+	    {
+	      /* In this case, we will return TEMP,
+		 so make sure it has the proper mode.
+		 But don't forget to store the value into TARGET.  */
+	      temp = convert_to_mode (GET_MODE (target), temp, unsignedp);
+	      emit_move_insn (target, temp);
+	    }
 	  else
 	    convert_move (target, temp, unsignedp);
 	}
@@ -3050,7 +3057,7 @@ expand_builtin (exp, target, subtarget, mode)
 	{
 	  op0 = force_reg (GET_MODE (op0), op0);
 	  if (GET_MODE (op0) != Pmode)
-	    op0 = convert_to_mode (Pmode, op0);
+	    op0 = convert_to_mode (Pmode, op0, 1);
 	}
       /* Push that much space (rounding it up).  */
       do_pending_stack_adjust ();
@@ -4242,6 +4249,11 @@ store_one_arg (arg, argblock, may_be_alloca)
     }
   else if (arg->stack != 0)
     {
+      /* ARG->stack probably refers to the stack-pointer.  If so,
+	 stabilize it, in case stack-pointer changes during evaluation.  */
+      if (reg_mentioned_p (stack_pointer_rtx, arg->stack))
+	arg->stack = change_address (arg->stack, VOIDmode,
+				     copy_to_reg (XEXP (arg->stack, 0)));
       /* BLKmode argument that should go in a prespecified stack location.  */
       if (arg->value == 0)
 	/* Not yet computed => compute it there.  */

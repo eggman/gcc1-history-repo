@@ -240,10 +240,11 @@ extern int target_flags;
    if 68881 use is disabled.  However, the Sun FPA register can
    (apparently) hold whatever you feel like putting in them.  */
 #define HARD_REGNO_MODE_OK(REGNO, MODE) \
-  ((REGNO) < 16								\
-   || ((REGNO) < 24							\
-       ? TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)		\
-       : ((REGNO) < 56							\
+  (((REGNO) < 16 &&						\
+    (!TARGET_FPA || (MODE) != DFmode || (REGNO) != 7))		\
+   || ((REGNO) < 24						\
+       ? TARGET_68881 && ((MODE) == SFmode || (MODE) == DFmode)	\
+       : ((REGNO) < 56						\
 	  ? TARGET_FPA : 0)))
 
 /* Value is 1 if it is a good idea to tie two pseudo registers
@@ -318,9 +319,9 @@ extern int target_flags;
  *   4) Defined ALL_REGS as FPA_OR_FP_OR_GENERAL_REGS.
  *   4) Left in everything else.
  */
-enum reg_class { NO_REGS, LO_FPA_REGS, FPA_REGS, FP_REGS, 
-  FP_OR_FPA_REGS, DATA_REGS, DATA_OR_FPA_REGS, DATA_OR_FP_REGS, 
-  DATA_OR_FP_OR_FPA_REGS, ADDR_REGS, GENERAL_REGS, 
+enum reg_class { NO_REGS, LO_FPA_REGS, FPA_REGS, FP_REGS,
+  FP_OR_FPA_REGS, DATA_REGS, DATA_OR_FPA_REGS, DATA_OR_FP_REGS,
+  DATA_OR_FP_OR_FPA_REGS, ADDR_REGS, GENERAL_REGS,
   GENERAL_OR_FPA_REGS, GENERAL_OR_FP_REGS, ALL_REGS,
   LIM_REG_CLASSES };
 
@@ -368,7 +369,7 @@ extern enum reg_class regno_reg_class[];
 
 #define INDEX_REG_CLASS GENERAL_REGS
 #define BASE_REG_CLASS ADDR_REGS
-  
+
 /* Get reg_class from a letter such as appears in the machine description.
    We do a trick here to modify the effective constraints on the
    machine description; we zorch the constraint letters that aren't

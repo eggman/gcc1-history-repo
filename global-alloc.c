@@ -934,16 +934,24 @@ set_preference (dest, src)
       && reg_allocno[src_regno] >= 0)
     {
       dest_regno -= offset;
-      SET_REGBIT (hard_reg_preferences, reg_allocno[src_regno], dest_regno);
-      SET_HARD_REG_BIT (regs_someone_prefers, dest_regno);
+      if (dest_regno >= 0 && dest_regno < FIRST_PSEUDO_REGISTER)
+	{
+	  SET_REGBIT (hard_reg_preferences,
+		      reg_allocno[src_regno], dest_regno);
+	  SET_HARD_REG_BIT (regs_someone_prefers, dest_regno);
+	}
     }
 
   if (src_regno < FIRST_PSEUDO_REGISTER && dest_regno >= FIRST_PSEUDO_REGISTER
       && reg_allocno[dest_regno] >= 0)
     {
       src_regno += offset;
-      SET_REGBIT (hard_reg_preferences, reg_allocno[dest_regno], src_regno);
-      SET_HARD_REG_BIT (regs_someone_prefers, src_regno);
+      if (src_regno >= 0 && src_regno < FIRST_PSEUDO_REGISTER)
+	{
+	  SET_REGBIT (hard_reg_preferences,
+		      reg_allocno[dest_regno], src_regno);
+	  SET_HARD_REG_BIT (regs_someone_prefers, src_regno);
+	}
     }
 }
 

@@ -347,7 +347,7 @@ fp_push_df (x)
     output_asm_insn ("fld%Q %0", &x);
 }
 
-char *output_move_const_single ();
+static char *output_move_const_single ();
 
 static char *
 singlemove_string (operands)

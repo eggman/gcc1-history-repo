@@ -62,6 +62,9 @@ and this notice must be preserved on all copies.  */
    it is the stack offset; for one in a register, the register number.
    For a typedef symbol, it is zero.
 
+   If DEBUG_SYMS_TEXT is defined, all debugging symbols must be
+   output while in the text section.
+
    For more on data type definitions, see `dbxout_type'.  */
 
 #include "config.h"
@@ -74,6 +77,12 @@ and this notice must be preserved on all copies.  */
    no use for DBX-format debugging info.  */
 
 #ifdef DBX_DEBUGGING_INFO
+
+#ifdef DEBUG_SYMS_TEXT
+#define FORCE_TEXT text_section ();
+#else
+#define FORCE_TEXT
+#endif
 
 #include <stab.h>
 
@@ -585,6 +594,7 @@ dbxout_symbol (decl, local)
       if (GET_CODE (DECL_RTL (decl)) != MEM
 	  || GET_CODE (XEXP (DECL_RTL (decl), 0)) != SYMBOL_REF)
 	break;
+      FORCE_TEXT;
       fprintf (asmfile, ".stabs \"%s:%c",
 	       IDENTIFIER_POINTER (DECL_NAME (decl)),
 	       TREE_PUBLIC (decl) ? 'F' : 'f');
@@ -617,6 +627,7 @@ dbxout_symbol (decl, local)
 	return;
 
       /* Output typedef name.  */
+      FORCE_TEXT;
       fprintf (asmfile, ".stabs \"%s:t",
 	       IDENTIFIER_POINTER (DECL_NAME (decl)));
 
@@ -690,7 +701,6 @@ dbxout_symbol (decl, local)
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl)));
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
-	       && TREE_CODE (decl) == PARM_DECL
 	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
 		   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
 		       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
@@ -740,6 +750,7 @@ dbxout_symbol (decl, local)
 	break;
 
       /* Ok, start a symtab entry and output the variable name.  */
+      FORCE_TEXT;
       fprintf (asmfile, ".stabs \"%s:",
 	       IDENTIFIER_POINTER (DECL_NAME (decl)));
       if (letter) putc (letter, asmfile);
@@ -798,6 +809,7 @@ dbxout_parms (parms)
 	  current_sym_addr = 0;
 	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
 
+	  FORCE_TEXT;
 	  fprintf (asmfile, ".stabs \"%s:p",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 
@@ -844,6 +856,7 @@ dbxout_parms (parms)
 	  current_sym_addr = 0;
 	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
 
+	  FORCE_TEXT;
 	  fprintf (asmfile, ".stabs \"%s:P",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 
@@ -860,6 +873,7 @@ dbxout_parms (parms)
 	  current_sym_addr = 0;
 	  current_sym_nchars = 2 + strlen (IDENTIFIER_POINTER (DECL_NAME (parms)));
 
+	  FORCE_TEXT;
 	  fprintf (asmfile, ".stabs \"%s:p",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 
@@ -901,6 +915,7 @@ dbxout_reg_parms (parms)
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (parms)));
 	  current_sym_addr = 0;
 	  current_sym_nchars = 2 + IDENTIFIER_LENGTH (DECL_NAME (parms));
+	  FORCE_TEXT;
 	  fprintf (asmfile, ".stabs \"%s:r",
 		   IDENTIFIER_POINTER (DECL_NAME (parms)));
 	  dbxout_type (TREE_TYPE (parms), 0);
@@ -926,6 +941,7 @@ dbxout_reg_parms (parms)
 	      current_sym_value = INTVAL (XEXP (XEXP (DECL_RTL (parms), 0), 1));
 	      current_sym_addr = 0;
 	      current_sym_nchars = 2 + IDENTIFIER_LENGTH (DECL_NAME (parms));
+	      FORCE_TEXT;
 	      fprintf (asmfile, ".stabs \"%s:",
 		       IDENTIFIER_POINTER (DECL_NAME (parms)));
 	      dbxout_type (TREE_TYPE (parms), 0);
@@ -993,6 +1009,7 @@ dbxout_tags (tags)
 	  current_sym_addr = 0;
 	  current_sym_nchars = 2 + IDENTIFIER_LENGTH (TREE_PURPOSE (link));
 
+	  FORCE_TEXT;
 	  fprintf (asmfile, ".stabs \"%s:T",
 		   IDENTIFIER_POINTER (TREE_PURPOSE (link)));
 	  dbxout_type (type, 1);

@@ -99,7 +99,7 @@ static short *qty_n_refs;
 static enum reg_class *qty_min_class;
 
 /* Insn number (counting from head of basic block)
-   where quantity Q was born.  */
+   where quantity Q was born.  -1 if birth has not been recorded.  */
 
 static int *qty_birth;
 
@@ -107,7 +107,7 @@ static int *qty_birth;
    where quantity Q died.  Due to the way tying is done,
    and the fact that we consider in this pass only regs that die but once,
    a quantity can die only once.  Each quantity's life span
-   is a set of consecutive insns.  */
+   is a set of consecutive insns.  -1 if death has not been recorded.  */
 
 static int *qty_death;
 
@@ -259,6 +259,8 @@ local_alloc ()
       for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
 	{
 	  qty_phys_sugg[i] = -1;
+	  qty_birth[i] = -1;
+	  qty_death[i] = -1;
 	  /* Set reg_qty to -2 for pseudos in this block, -1 for others.  */
 	  if (reg_basic_block[i] == b && reg_n_deaths[i] == 1)
 	    reg_qty[i] = -2;
@@ -276,8 +278,6 @@ local_alloc ()
 	{
 	  for (i = FIRST_PSEUDO_REGISTER; i < next_qty; i++)
 	    {
-	      qty_birth[i] = 0;
-	      qty_death[i] = 0;
 	      qty_size[i] = 0;
 	      qty_mode[i] = VOIDmode;
 	      qty_min_class[i] = NO_REGS;
@@ -294,8 +294,6 @@ local_alloc ()
    bzero ((vector) + FIRST_PSEUDO_REGISTER,    \
 	  (sizeof (*(vector))) * clear_length)
 
-	  CLEAR (qty_birth);
-	  CLEAR (qty_death);
 	  CLEAR (qty_size);
 	  CLEAR (qty_mode);
 	  CLEAR (qty_min_class);
@@ -536,9 +534,9 @@ block_alloc (b)
 
   for (i = FIRST_PSEUDO_REGISTER; i < next_qty; i++)
     {
-      if (qty_birth[i] == 0)
+      if (qty_birth[i] == -1)
 	abort ();
-      if (qty_death[i] == 0)
+      if (qty_death[i] == -1)
 	qty_death[i] = qty_birth[i] + 1;
     }
 

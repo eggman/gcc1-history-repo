@@ -2013,7 +2013,9 @@ fold_rtx (x, copyflag)
 	    case MULT:
 	    case UMULT:
 	      if (const_arg1 && GET_CODE (const_arg1) == CONST_INT
-		  && INTVAL (const_arg1) == -1)
+		  && INTVAL (const_arg1) == -1
+		  /* Don't do this in the case of widening multiplication.  */
+		  && GET_MODE (XEXP (x, 0)) == GET_MODE (x))
 		return gen_rtx (NEG, GET_MODE (x), XEXP (x, 0));
 	      if (const_arg1 == const0_rtx)
 		new = const0_rtx;

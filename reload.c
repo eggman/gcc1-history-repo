@@ -178,7 +178,6 @@ static rtx find_reloads_toplev ();
 static void find_reloads_address ();
 static void find_reloads_address_1 ();
 static int hard_reg_set_here_p ();
-static int refers_to_regno_p ();
 static rtx forget_volatility ();
 static rtx subst_reg_equivs ();
 static rtx subst_indexed_address ();
@@ -221,19 +220,15 @@ push_reload (in, out, inloc, outloc, class,
 
   /* If IN is a pseudo register everywhere-equivalent to a constant, and 
      it is not in a hard register, reload straight from the constant,
-     since we want to get rid of such pseudo registers.  */
+     since we want to get rid of such pseudo registers.
+     Often this is done earlier, but not always in find_reloads_address.  */
   if (in != 0 && GET_CODE (in) == REG)
     {
       register int regno = REGNO (in);
 
       if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] < 0
 	  && reg_equiv_constant[regno] != 0)
-#if 0
-	/* Hasn't this been done already? */
 	in = reg_equiv_constant[regno];
-#else
-	abort ();
-#endif
     }
 
   /* Likewise for OUT.  Of course, OUT will never be equivalent to
@@ -245,12 +240,7 @@ push_reload (in, out, inloc, outloc, class,
 
       if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] < 0
 	  && reg_equiv_constant[regno] != 0)
-#if 0
-	/* Hasn't this been done already? */
 	out = reg_equiv_constant[regno];
-#else
-	abort ();
-#endif
     }
 
   /* If we have a read-write operand with an address side-effect,
@@ -1480,7 +1470,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       /* No alternative works with reloads??  */
       if (insn_code_number >= 0)
 	abort ();
-      error ("inconsistent operand constraints in an `asm' in this function");
+      error_for_asm (insn, "inconsistent operand constraints in an `asm'");
       n_reloads = 0;
       return;
     }
@@ -1529,7 +1519,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       operand_reloadnum[i] = -1;
     }
 
-  /* Any floating constants that aren't allowed and can't be reloaded
+  /* Any constants that aren't allowed and can't be reloaded
      into memory locations are here changed into memory references.  */
   for (i = 0; i < noperands; i++)
     if (! goal_alternative_win[i]

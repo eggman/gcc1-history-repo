@@ -39,16 +39,16 @@ and this notice must be preserved on all copies.  */
 
 #define	TARGET_DEFAULT 7
 
-/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+/* Define __HAVE_68881__ in preprocessor, unless -msoft-float is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
 #ifdef HPUX_ASM
 /* __HPUX_ASM__ is needed because some programs, particularly GDB, need to
    know which assembler is being used so that the correct `asm'
    instructions can be used. */
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__} -D__HPUX_ASM__"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__} -D__HPUX_ASM__"
 #else
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__}"
 #endif
 
 /* Names to predefine in the preprocessor for this target machine

@@ -28,6 +28,17 @@ extern int frame_pointer_needed;
 
 static rtx find_addr_reg ();
 
+/* Return non-zero only if OP is a hard register of mode MODE.  */
+
+static int
+hardreg (op, mode)
+     rtx op;
+     enum machine_mode mode;
+{
+  return (REG_P (op) && GET_MODE (op) == mode
+	  && REGNO (op) < FIRST_PSEUDO_REGISTER);
+}
+
 /* Return non-zero if this pattern, as a source to a "SET",
    is known to yield an instruction of unit size.  */
 int
@@ -43,7 +54,11 @@ single_insn_src_p (op, mode)
       return 0;
 
     case REG:
+      return 1;
+
     case MEM:
+      if (GET_CODE (XEXP (op, 0)) == SYMBOL_REF)
+	return 0;
       return 1;
 
       /* We never need to negate or complement constants.  */
@@ -168,7 +183,7 @@ output_move_double (operands)
   else if (offsetable_memref_p (operands[1]))
     optype1 = OFFSOP;
   else if (GET_CODE (operands[1]) == MEM)
-    optype0 = MEMOP;
+    optype1 = MEMOP;
   else
     optype1 = RNDOP;
 
@@ -586,7 +601,10 @@ output_size_for_block_move (size, reg)
   (reg_conflicts[REG].ops[0] == operands[OP]	\
    && (op_conflicts[OP].n_regs == 0		\
        || (op_conflicts[OP].n_regs == 1		\
-	   && op_conflicts[OP].regs[0] == REG)))
+	   && op_conflicts[OP].regs[0] == REG)	\
+       || (op_conflicts[OP].n_regs == 2		\
+	   && (op_conflicts[OP].regs[0] == REG	\
+	       || op_conflicts[OP].regs[1] == REG))))
 
 char *
 output_block_move (operands)

@@ -262,9 +262,9 @@
       && (unsigned) INTVAL (operands[1]) >= 64)
     {
       int i = INTVAL (operands[1]);
-      if ((unsigned)(~i & 0xff) < 64)
+      if ((unsigned)((~i) & 0xff) < 64)
 	{
-	  operands[1] = gen_rtx (CONST_INT, VOIDmode, ~i);
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode, (~i) & 0xff);
 	  return \"mcomb %1,%0\";
 	}
 #if 0

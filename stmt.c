@@ -701,7 +701,10 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
     }
   else
     {
-      body = gen_rtx (PARALLEL, VOIDmode, rtvec_alloc (noutputs + nclobbers));
+      rtx obody = body;
+      int num = noutputs;
+      if (num == 0) num = 1;
+      body = gen_rtx (PARALLEL, VOIDmode, rtvec_alloc (num + nclobbers));
 
       /* For each output operand, store a SET.  */
 
@@ -718,6 +721,12 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
 				i, argvec, constraints));
 	  MEM_VOLATILE_P (SET_SRC (XVECEXP (body, 0, i))) = vol;
 	}
+
+      /* If there are no outputs (but there are some clobbers)
+	 store the bare ASM_OPERANDS into the PARALLEL.  */
+
+      if (i == 0)
+	XVECEXP (body, 0, i++) = obody;
 
       /* Store (clobber REG) for each clobbered register specified.  */
 
@@ -737,8 +746,9 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
 	      return;
 	    }
 
+	  /* Use QImode since that's guaranteed to clobber just one reg.  */
 	  XVECEXP (body, 0, i)
-	    = gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, VOIDmode, j));
+	    = gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, QImode, j));
 	}
 
       emit_insn (body);
@@ -1620,7 +1630,7 @@ expand_decl (decl, cleanup)
     }
   else if (DECL_INITIAL (decl) && TREE_CODE (DECL_INITIAL (decl)) != TREE_LIST)
     {
-      emit_note (DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
+      emit_line_note (DECL_SOURCE_FILE (decl), DECL_SOURCE_LINE (decl));
       expand_assignment (decl, DECL_INITIAL (decl), 0, 0);
       emit_queue ();
     }
@@ -2471,10 +2481,14 @@ fixup_var_refs_1 (var, x, insn)
 	    rtx temp;
 	    rtx fixeddest;
 	    tem = SET_DEST (x);
+	    /* STRICT_LOW_PART can be discarded, around a MEM.  */
 	    if (GET_CODE (tem) == STRICT_LOW_PART)
 	      tem = XEXP (tem, 0);
+	    /* Convert (SUBREG (MEM)) to a MEM in a changed mode.  */
+	    if (GET_CODE (tem) == SUBREG)
+	      tem = fixup_memory_subreg (tem);
+	    fixeddest = fixup_stack_1 (tem, insn);
 	    temp = gen_reg_rtx (GET_MODE (tem));
-	    fixeddest = fixup_stack_1 (SET_DEST (x), insn);
 	    emit_insn_after (gen_move_insn (fixeddest, temp), insn);
 	    SET_DEST (x) = temp;
 	  }
@@ -3323,7 +3337,7 @@ expand_function_start (subr)
 
   /* Prevent ever trying to delete the first instruction of a function.
      Also tell final how to output a linenum before the function prologue.  */
-  emit_note (DECL_SOURCE_FILE (subr), DECL_SOURCE_LINE (subr));
+  emit_line_note (DECL_SOURCE_FILE (subr), DECL_SOURCE_LINE (subr));
   /* Make sure first insn is a note even if we don't want linenums.
      This makes sure the first insn will never be deleted.
      Also, final expects a note to appear there.  */
@@ -3424,7 +3438,7 @@ expand_function_end (filename, line)
 
   /* Output a linenumber for the end of the function.
      SDB depends on this.  */
-  emit_note_force (input_filename, line);
+  emit_line_note_force (input_filename, line);
 
   /* If we require a true epilogue,
      put here the label that return statements jump to.

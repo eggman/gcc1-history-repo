@@ -67,11 +67,11 @@ and this notice must be preserved on all copies.  */
 #undef ASM_FILE_START
 #define ASM_FILE_START(FILE) sdbout_filename ((FILE), main_input_filename)
 
-/* Define __HAVE_FPU__ in preprocessor if -m68881 is specified.
+/* Define __HAVE_68881__ in preprocessor if -m68881 is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
 #undef CPP_SPEC
-#define CPP_SPEC "%{m68881:-D__HAVE_FPU__}"
+#define CPP_SPEC "%{m68881:-D__HAVE_68881__}"
 
 /* Names to predefine in the preprocessor for this target machine.  */
 /* ihnp4!lmayk!lgm@eddie.mit.edu says mc68000 and m68k should not be here.  */

@@ -1061,7 +1061,7 @@ main (argc, argv)
   register int i;
   int value;
   int nolink = 0;
-  int error = 0;
+  int error_count = 0;
 
   programname = argv[0];
 
@@ -1103,8 +1103,6 @@ main (argc, argv)
 
   for (i = 0; i < n_infiles; i++)
     {
-      /* First figure out which compiler from the file's suffix.  */
-      
       register struct compiler *cp;
 
       /* Tell do_spec what to substitute for %i.  */
@@ -1116,6 +1114,8 @@ main (argc, argv)
       /* Use the same thing in %o, unless cp->spec says otherwise.  */
 
       outfiles[i] = input_filename;
+
+      /* Figure out which compiler from the file's suffix.  */
 
       for (cp = compilers; cp->spec; cp++)
 	{
@@ -1136,7 +1136,7 @@ main (argc, argv)
 				 - (input_basename - input_filename));
 	      value = do_spec (cp->spec);
 	      if (value < 0)
-		error = 1;
+		error_count = 1;
 	      break;
 	    }
 	}
@@ -1144,22 +1144,30 @@ main (argc, argv)
       /* If this file's name does not contain a recognized suffix,
 	 don't do anything to it, but do feed it to the link spec
 	 since its name is in outfiles.  */
+
+      if (! cp->spec && nolink)
+	{
+	  /* But if this happens, and we aren't going to run the linker,
+	     warn the user.  */
+	  error ("%s: linker input file unused since linking not done",
+		 input_filename);
+	}
     }
 
   /* Run ld to link all the compiler output files.  */
 
-  if (! nolink && error == 0)
+  if (! nolink && error_count == 0)
     {
       value = do_spec (link_spec);
       if (value < 0)
-	error = 1;
+	error_count = 1;
     }
 
   /* Delete some or all of the temporary files we made.  */
 
-  delete_temp_files (error == 0);
+  delete_temp_files (error_count == 0);
 
-  exit (error);
+  exit (error_count);
 }
 
 xmalloc (size)

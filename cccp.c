@@ -967,7 +967,7 @@ main (argc, argv)
 
   /* Now that we know the input file is valid, open the output.  */
 
-  if (out_fname && !strcmp (out_fname, ""))
+  if (!out_fname || !strcmp (out_fname, ""))
     out_fname = "stdout";
   else if (! freopen (out_fname, "w", stdout))
     pfatal_with_name (out_fname);

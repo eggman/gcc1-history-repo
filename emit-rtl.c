@@ -621,15 +621,19 @@ copy_rtx_if_shared (orig)
       if (CONSTANT_ADDRESS_P (XEXP (x, 0)))
 	return x;
       if (GET_CODE (XEXP (x, 0)) == PLUS
-	  && GET_CODE (XEXP (XEXP (x, 0), 0)) == REG
-	  && (REGNO (XEXP (XEXP (x, 0), 0)) == FRAME_POINTER_REGNUM
-	      || REGNO (XEXP (XEXP (x, 0), 0)) == ARG_POINTER_REGNUM)
+	  && (XEXP (XEXP (x, 0), 0) == frame_pointer_rtx
+	      || XEXP (XEXP (x, 0), 0) == arg_pointer_rtx)
 	  && CONSTANT_ADDRESS_P (XEXP (XEXP (x, 0), 1)))
-	return x;
-      if (GET_CODE (XEXP (x, 0)) == REG
-	  && (REGNO (XEXP (x, 0)) == FRAME_POINTER_REGNUM
-	      || REGNO (XEXP (x, 0)) == ARG_POINTER_REGNUM)
-	  && CONSTANT_ADDRESS_P (XEXP (x, 1)))
+	{
+	  /* This MEM can appear in more than one place,
+	     but its address better not be shared with anything else.  */
+	  if (! x->used)
+	    XEXP (x, 0) = copy_rtx_if_shared (XEXP (x, 0));
+	  x->used = 1;
+	  return x;
+	}
+      if (XEXP (x, 0) == frame_pointer_rtx
+	  || XEXP (x, 0) == arg_pointer_rtx)
 	return x;
     }
 
@@ -925,6 +929,18 @@ emit_jump_insn_before (pattern, before)
 
   return insn;
 }
+
+/* Make an instruction with body PATTERN and code CALL_INSN
+   and output it before the instruction BEFORE.  */
+
+rtx
+emit_call_insn_before (pattern, before)
+     register rtx pattern, before;
+{
+  rtx insn = emit_insn_before (pattern, before);
+  PUT_CODE (insn, CALL_INSN);
+  return insn;
+}
 
 /* Make an insn of code INSN with body PATTERN
    and output it after the insn AFTER.  */
@@ -1120,7 +1136,24 @@ emit_barrier ()
 
 /* Make an insn of code NOTE
    with data-fields specified by FILE and LINE
-   and add it to the end of the doubly-linked list.  */
+   and add it to the end of the doubly-linked list,
+   but only if line-numbers are desired for debugging info.  */
+
+rtx
+emit_line_note (file, line)
+     char *file;
+     int line;
+{
+  if (no_line_numbers)
+    return 0;
+
+  return emit_note (file, line);
+}
+
+/* Make an insn of code NOTE
+   with data-fields specified by FILE and LINE
+   and add it to the end of the doubly-linked list.
+   If it is a line-number NOTE, omit it if it matches the previous one.  */
 
 rtx
 emit_note (file, line)
@@ -1149,15 +1182,15 @@ emit_note (file, line)
   return note;
 }
 
-/* Emit a NOTE, and don't omit it even if LINE matches the previous note.  */
+/* Emit a NOTE, and don't omit it even if LINE it the previous note.  */
 
 rtx
-emit_note_force (file, line)
+emit_line_note_force (file, line)
      char *file;
      int line;
 {
   last_linenum = -1;
-  return emit_note (file, line);
+  return emit_line_note (file, line);
 }
 
 /* Return an indication of which type of insn should have X as a body.

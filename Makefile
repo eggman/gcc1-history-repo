@@ -93,7 +93,7 @@ LIBFUNCS = _eprintf \
    _divdf3 _muldf3 _negdf2 _adddf3 _subdf3 _cmpdf2 \
    _fixunsdfsi _fixunsdfdi _fixdfsi _fixdfdi \
    _floatsidf _floatdidf _truncdfsf2 _extendsfdf2 \
-   _addsf3 _negsf2 _subsf3 _cmpsf2 _mulsf3 _divsf3
+   _addsf3 _negsf2 _subsf3 _cmpsf2 _mulsf3 _divsf3 _varargs
 
 # Header files that are made available to programs compiled with gcc.
 USER_H = stddef.h stdarg.h assert.h varargs.h va-*.h limits.h
@@ -131,7 +131,7 @@ gnulib: gnulib.c
 	do \
 	  echo $${name}; \
 	  rm -f $${name}.c; \
-	  ln ../gnulib.c $${name}.c; \
+	  cp ../gnulib.c $${name}.c; \
 	  $(OLDCC) $(CCLIBFLAGS) -O -I.. -c -DL$${name} $${name}.c; \
 	  $(AR) qc gnulib $${name}.o; \
 	done
@@ -188,7 +188,7 @@ jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
 cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h
-loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h flags.h
+loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h flags.h expr.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
    insn-config.h regs.h basic-block.h recog.h
@@ -360,14 +360,15 @@ maketest:
 	ln -s $(DIR)/*.[chy] .
 	ln -s $(DIR)/*.def .
 	ln -s $(DIR)/*.md .
+	-rm -f =*
 	ln -s $(DIR)/.gdbinit .
 	-ln -s $(DIR)/bison.simple .
-	ln -s $(DIR)/gcc .
+	ln -s $(DIR)/config.gcc .
 	ln -s $(DIR)/move-if-change .
-	ln -s $(DIR)/Makefile test-Makefile
-	-rm tm.h aux-output.c
-	make -f test-Makefile clean
-# You must create the necessary links tm.h, md and aux-output.c
+	if [ -f Makefile ] ; then false; else ln -s $(DIR)/Makefile . ; fi
+	-rm tm.h aux-output.c config.h md
+	make clean
+# You must then run config.gcc to set up for compilation.
 
 bootstrap: all force
 	$(MAKE) stage1

@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 13 October 1988
+@center last updated 18 November 1988
 @sp 1
-@center for version 1.30
+@center for version 1.31
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -1031,21 +1031,24 @@ config file for the machine you are using (@pxref{Config}).  This
 file is responsible for defining information about the host
 machine.  It includes @file{tm.h}.
 
-The file's name should be @file{config-@var{machine}.h}, with these
+The file's name should be @file{xm-@var{machine}.h}, with these
 exceptions:
 
 @table @file
-@item config-vms.h
+@item xm-vms.h
 for vaxen running VMS.
-@item config-vaxv.h
+@item xm-vaxv.h
 for vaxen running system V.
-@item config-i386v.h
+@item xm-i386v.h
 for Intel 80386's running system V.
-@item config-sun4.h
+@item xm-sunos4.h
 for Suns (model 2, 3 or 4) running @emph{operating system} version 4.
-@item config-hp9k3.h
+(Use @file{xm-m68k.h} or @file{xm-sparc.h} for version 3.)
+@item xm-sun386i.h
+for Sun roadrunner running any version of the operating system.
+@item xm-hp9k320.h
 for the HP 9000 series 300.
-@item config-gnx.h
+@item xm-gnx.h
 for the ns32000 running Genix
 @end table
 
@@ -1066,10 +1069,17 @@ directly.  Instead, use one of these files:
 for Sun 3 machines.
 @item tm-sun2.h
 for Sun 2 machines.
+@item tm-sun4os3.h
+for Sun 4 machines using operating system version 3.
+@item tm-sparc.h
+for Sun 4 machines using operating system version 4.
+@item tm-sun386i.h
+for Sun 386 machines.
 @item tm-3b1.h
 for AT&T 3b1 (aka 7300 Unix PC).
 @item tm-isi68.h
-for Integrated Solutions systems.
+for Integrated Solutions systems.  This file assumes you
+use the GNU assembler.
 @item tm-news800.h
 for SONY News systems.
 @item tm-hp9k320.h
@@ -1085,10 +1095,6 @@ instructions will appear here in the future.@refill
 For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
 system V, or @file{tm-vms.h} on VMS.@refill
 
-For the SPARC (Sun 4), use @file{tm-sparc.h}.  Note that SPARC support
-currenty @strong{does not work}.  It will probably be fixed for
-version 1.31.
-
 For the Motorola 88000, use @file{tm-m88k.h}.  The support for the
 88000 has a few unfinished spots because there was no way to run the
 output.  Bugs are suspected in handling of branch-tables and in the
@@ -1097,7 +1103,7 @@ function prologue and epilogue.
 For the 80386, don't use @file{tm-i386.h} directly.  Use
 @file{tm-i386v.h} if the target machine is running system V,
 @file{tm-seq386.h} for a Sequent 386 system, or @file{tm-compaq.h} for
-a Compaq.
+a Compaq, or @file{tm-sun386i.h} for a Sun 386 system.
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
 machine, or @file{tm-encore.h} for an Encore machine, or
@@ -1265,7 +1271,7 @@ recompile, here is how:
 
 @enumerate
 @item
-Copy the file @file{tm-vms.h} to @file{tm.h}, @file{config-vms.h} to
+Copy the file @file{tm-vms.h} to @file{tm.h}, @file{xm-vms.h} to
 @file{config.h}, @file{vax.md} to @file{md.} and @file{output-vax.c}
 to @file{aux-output.c}.@refill
 
@@ -7972,10 +7978,10 @@ definitions are correct for most assemblers:
 @node Config,, Machine Macros, Top
 @chapter The Configuration File
 
-The configuration file @file{config-@var{machine}.h} contains macro
-definitions that describe the machine and system on which the compiler is
-running.  Most of the values in it are actually the same on all machines
-that GNU CC runs on, so most all configuration files are identical.  But
+The configuration file @file{xm-@var{machine}.h} contains macro definitions
+that describe the machine and system on which the compiler is running.
+Most of the values in it are actually the same on all machines that GNU CC
+runs on, so large parts of all configuration files are identical.  But
 there are some macros that vary:
 
 @table @code
@@ -7987,6 +7993,11 @@ exits after serious errors.
 A C expression for the status code to be returned when the compiler
 exits without serious errors.
 @end table
+
+In addition, configuration files for system V define @code{bcopy},
+@code{bzero} and @code{bcmp} as aliases.  Some files define @code{alloca}
+as a macro when compiled with GNU CC, in order to take advantage of the
+benefit of GNU CC's built-in @code{alloca}.
 
 @contents
 @bye

@@ -1,4 +1,226 @@
+Sat Nov 19 02:18:02 1988  Richard Stallman  (rms at apple-gunkies.ai.mit.edu)
+
+	* Version 1.31 released.
+
+	* sparc.md: Change `K' to `I' in all constraints.
+
+	* loop.c (gen_iv_mult): Handle TARGET==0.
+
+	* c-decl.c (duplicate_decls): Undo last change.
+
+	* c-decl.c (pushdecl): Instead of that change,
+	save old-decl's file/line before calling duplicate_decls,
+	and pass them later to warning_with_file_and_line.
+	* toplev.c (warning_with_file_and_line): New fn.
+
+Fri Nov 18 13:07:06 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (fixup_var_refs_1): (SUBREG (MEM)) was slipping through
+	in case where a SET was writing in the variable being fixed.
+
+	* recog.c (register_operand, nonmemory_operand, memory_operand):
+	Changes to handle new var reload_completed: 1 means that
+	(SUBREG (MEM)) now counts as a mem-ref, since alter_subreg
+	will make it one.
+	* toplev.c (rest_of_compilation): Set and clear reload_completed.
+
+	* sparc.md (call patterns): If TARGET_SUN_ASM, and address in reg,
+	output a jmpl rather than a call.
+	* tm-sun4os3.h: Like tm-sparc.h but turn on TARGET_SUN_ASM.
+
+	* reload.c (push_reloads): Reinstate handling of reg_equiv_constant.
+
+Thu Nov 17 09:48:14 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (constraint_accepts_reg_p): Name changed from
+	constraint_all_regs_p; new arg is reg we are concerned with,
+	and condition tested takes some advantage of that reg.
+
+	* gcc.c (main): Rename var `error' to `error_count' for name conflict.
+
+	* emit-rtl.c (emit_note): Output line #s even if no debug info wanted.
+	(emit_line_note): New fn, does what emit_note did.
+	(emit_line_note_force): New name for emit_note_force.
+	* stmt.c, c-parse.y: Call emit_line_note instead of emit_note.
+
+	* c-parse.y (maybe_type_qual): Call emit_note instead of emit_line_note
+	Now we can find the line # of every `asm' from the RTL.
+	* toplev.c (error_for_asm): New fn, gets line # by searching for NOTE.
+	* reload.c (find_reloads): Use error_for_asm.
+	* reload1.c (choose_reload_targets): Likewise.
+	* final.c (output_operand_lossage): Likewise.
+	Variable this_is_asm_operands is now current insn if it's nonzero.
+
+	* loop.c (move_movables): When a reg is moved, update regno_first_uid
+	and regno_last_uid; say life span includes entire loop.
+	* Decrement THRESHOLD per reg moved, not per insn moved.
+
+Wed Nov 16 08:41:32 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* gnulib.c (___builtin_saveregs): New fn, for sparc.
+
+	* tm-sparc.h (GO_IF_LEGITIMATE_ADDRESS): Don't recognize
+	SYMBOL_REFs, except for the constants pool.
+	But do recognize REG+REG and SMALLINT+REG.
+	* sparc.md: New patterns for fetching and storing memory
+	whose address is symbolic and not "legitimate".
+
+	* sparc.md (movsi): Add `f' to op1 constraint.
+	New output clause for result in fp reg.
+	(Floating point fetch patterns): Output sethi insns.
+	(call_value, related patterns): value-register has `register_operand'.
+
+	* output-sparc.c (hardreg): New function.
+	(COMPATIBLE): Clause added for n_regs == 2.
+	(single_insn_src_p): Return 0 for MEM whose address is absolute.
+
+	* tm-genix.h (GO_IF_LEGITIMATE_ADDRESS subroutines):
+	Redefine, to exclude any possibility of SB-referencing addresses.
+
+	* loop.c (strength_reduce): Can't eliminate a biv if used before
+	start of the loop.  Used before is same as used after, if contained
+	in another loop.
+
+	* recog.c (asm_noperands, decode_asm_operands):
+	Handle case of no outputs, but some clobbers.
+	* stmt.c (expand_asm_operands): Generate right stuff for that case.
+
+	* tm-sun3.h (CPP_SPEC): Don't define __HAVE_68881__ if using fpa.
+
+Tue Nov 15 00:10:26 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* loop.c (gen_iv_mult): Arg OP0 may not be a constant.
+	Pay attention to return value of expand_mult.
+	(eliminate_biv): Call changed.
+
+	* output-m88k.c, output-sparc.c (output_move_double):
+	Fix typo `optype0' for `optype1'.
+
+	* c-decl.c (duplicate_decls): Don't alter file, line of old decl.
+
+	* c-parse.y (skip_white_space): Don't recognize comments; rely on cpp.
+
+	* rtl.c (rtx_equal_p): Handle vectors.
+
+	* loop.c (scan_loop): Change elts of n_times_set back to positive
+	for candidates that weren't moved, before doing strength reduction.
+
+	* ns32k.md (movdi, movdf): Use `&' constraint for first operand.
+
+	* reload1.c (reload): Initialize spill_indirect_ok here.
+
+	* config-sun4.h: Recognize `-static' switch.
+
+	* global-alloc.c (set_preference): Avoid using nonsense hard reg #s
+	that result from adding OFFSET.
+
+	* sdbout.c (sdbout_end_function): Line # in .ef should be relative.
+
+	* final.c (output_source_line): For SDB, don't output negative #s.
+
+	* tm-encore.h (ASM_OUTPUT_LOCAL): Don't ignore SIZE arg.
+
+Mon Nov 14 11:03:16 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload.c: Don't declare refers_to_regno_p.
+
+	* gcc.c (main): Warn if any input files are for the linker
+	but the linker is not being run.
+
+	* jump.c (sets_cc0_p): Dumb bug fetching elts of a PARALLEL.
+
+	* local-alloc.c: qty_birth, qty_death elements are now -1, not 0,
+	when the value is not known.
+
+	* expmed.c (extract_bit_field): Bug computing xbitpos, xoffset
+	when changing units from bytes to words.
+
+	* loop.c: Rename `times_used' field in `struct movable' to `savings'.
+	(scan_loop): When scanning the consecutive sets, for each libcall,
+	increment `savings'--leave `consec'.
+	When making movable for (SET (REG) 0) which is part of zero-extension,
+	set `savings' to 1 initially, since only 1 insn will be moved.
+	And don't let any other reg force that insn.
+	Reduce initial THRESHOLDs.
+	(move_movables): Don't add `consec' into `savings'
+	since the initial `savings' was proportional to `consec'.
+	Decrement THRESHOLD by 3 (not 2) for each move done.
+
+	* reload1.c (choose_reload_targets): Strip subregs from OLD
+	before writing the output-reload move-insn.
+
+	* reload1.c (reload): counted_for_groups and counted_for_nongroups
+	are now file-scope.  Update them both when spilling.
+	(new_spill_reg): No need for counted_for_nongroups as arg.
+	(choose_reload_targets): Don't use for a group
+	any spill regs for which counted_for_nongroups is set.
+
+	* dbxout.c (dbxout_symbol): Indirect-symbol case checked erroneously
+	for PARM_DECL.
+
+Sun Nov 13 08:13:49 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (fold_rtx): Don't alter MULT by -1 if arg mode != result mode.
+
+	* loop.c (move_movables): If moving a CALL_INSN, make a new CALL_INSN.
+	* emit-rtl.c (emit_call_insn_before): New fn.
+	
+	* config-sun4.h (LINK_SPEC): Avoid shared libraries if -g.
+
+	* expr.c (store_one_arg): Stabilize ARG->stack so it doesn't use SP
+	before computing the arg value.
+
+	* combine.c (use_crosses_set_p): Moving a ref to stack ptr
+	is always forbidden if machine has push insns, since might cross one.
+
+	* vax.md (movqi): Avoid out-of-range immed ops in mcomb.
+
+	* expmed.c (extract_bit_field): Don't say `extzv' in the
+	clause for `extv'.
+
+	* emit-rtl.c (copy_rtx_if_shared): Even if a MEM can be shared,
+	unshare its address from everything outside that MEM.
+
+	* expr.c (expand_builtin): Fix omitted arg to `convert_to_mode'.
+
+	* expr.c (store_expr): In case where will not return TARGET
+	and must do type conversion, don't fail to store into TARGET.
+
+	* dbxout.c (FORCE_TEXT): New macro used before output `.stabs'
+	to go to the text section on targets that require it.
+	(DEBUG_SYMS_TEXT): Target macro which turns on that feature.
+
+	* reload1.c (reload): Index in spill_regs was wrong
+	when checking counted_for_groups.
+	(choose_reload_targets): When calling find_equiv_reg looking for
+	a reload reg, reject all spill regs, even those not in use now.
+
+	* tm-sun386.h, tm-sun386i.h, config-sun386i.h: New files.
+
+	* cccp.c (main): Don't die if no output file arg given.
+
+	* fixincludes: Tell `find' to find only ordinary files.
+
+Sat Nov 12 20:43:20 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Makefile (gnulib): Use cp to make the temporary .c files;
+	less likely to fail than ln.
+
+Sat Nov  5 12:46:39 1988  Randall Smith  (randy at sugar-bombs.ai.mit.edu)
+
+	* tm-m68k.h (HARD_REGNO_MODE_OK): Disallowed d7:a0 as an allowable
+	pair of registers to hold a double value.  This is correct for the
+	fpa but incorrect for the 68881.  It was, however, simpler than
+	defining a new regclass.
+
+Tue Oct 25 12:03:49 1988  Randall Smith  (randy at gluteus.ai.mit.edu)
+
+	* m68k.md: Added some thoughts (comments) on best method to allow
+	68881 code with fpa code.
+
 Thu Oct 13 14:19:17 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.30 released.
 
 	* stupid.c (stupid_life_analysis): Init last_call_suid with
 	largest possible value, not 0.
