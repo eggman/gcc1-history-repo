@@ -18,12 +18,19 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
+/* Name of the input .c file being compiled.  */
+extern char *main_input_filename;
+
 /* 1 => write gdb debugging output (using symout.c).
    2 => write dbx debugging output (using dbxout.c).
    3 => write sdb debugging output (using sdbout.c).  */
-enum debugger { NO_DEBUG = 0, GDB_DEBUG = 1, DBX_DEBUG = 2, SDB_DEBUG = 3};
+enum debugger { NO_DEBUG = 0, GDB_DEBUG = 1, DBX_DEBUG = 2, SDB_DEBUG = 3,
+		EXTENDED_DBX_DEBUG = 4 };
 
 extern enum debugger write_symbols;
+
+/* Nonzero means use GDB-only extensions of DBX format.  */
+extern int use_gdb_dbx_extensions;
 
 /* Nonzero means do optimizations.  -opt.  */
 

@@ -802,18 +802,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FLOAT_REGS, GEN_AND_FLOAT_REGS,
       else if (GET_CODE (XEXP (xfooy, 0)) == CONST_INT			\
 	  && GET_CODE (XEXP (xfooy, 1)) == PLUS)			\
 	xfooy = XEXP (xfooy, 1);					\
-	xfooz = XEXP (xfooy, 1);					\
-        if (INDEX_TERM_P (xfooz, MODE))					\
-	  { rtx t = XEXP (xfooy, 0); GO_IF_NONINDEXED_ADDRESS (t, ADDR); } \
-        xfooz = XEXP (xfooy, 0);					\
-	if (INDEX_TERM_P (xfooz, MODE))					\
-	  { rtx t = XEXP (xfooy, 1); GO_IF_NONINDEXED_ADDRESS (t, ADDR); } \
+      xfooz = XEXP (xfooy, 1);						\
+      if (INDEX_TERM_P (xfooz, MODE))					\
+	{ rtx t = XEXP (xfooy, 0); GO_IF_NONINDEXED_ADDRESS (t, ADDR); }\
+      xfooz = XEXP (xfooy, 0);						\
+      if (INDEX_TERM_P (xfooz, MODE))					\
+	{ rtx t = XEXP (xfooy, 1); GO_IF_NONINDEXED_ADDRESS (t, ADDR); }\
     }									\
   else if (INDEX_TERM_P (xfooy, MODE))					\
     goto ADDR;								\
   else if (GET_CODE (xfooy) == PRE_DEC)					\
     if (REGNO (XEXP (xfooy, 0)) == STACK_POINTER_REGNUM) goto ADDR;	\
-    else abort ();							\
+  else abort ();							\
 }
 
 /* Try machine-dependent ways of modifying an illegitimate address

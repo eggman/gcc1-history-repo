@@ -1,5 +1,5 @@
 /* Compute register class preferences for pseudo-registers.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -76,6 +76,10 @@ int reg_alloc_order[FIRST_PSEUDO_REGISTER] = REG_ALLOC_ORDER;
 
 HARD_REG_SET reg_class_contents[] = REG_CLASS_CONTENTS;
 
+/* For each reg class, number of regs it contains.  */
+
+int reg_class_size[N_REG_CLASSES];
+
 /* For each reg class, table listing all the containing classes.  */
 
 enum reg_class reg_class_superclasses[N_REG_CLASSES][N_REG_CLASSES];
@@ -100,6 +104,14 @@ init_reg_sets ()
 
   bcopy (initial_fixed_regs, fixed_regs, sizeof fixed_regs);
   bcopy (initial_call_used_regs, call_used_regs, sizeof call_used_regs);
+
+  /* Compute number of hard regs in each class.  */
+
+  bzero (reg_class_size, sizeof reg_class_size);
+  for (i = 0; i < N_REG_CLASSES; i++)
+    for (j = 0; j < FIRST_PSEUDO_REGISTER; j++)
+      if (TEST_HARD_REG_BIT (reg_class_contents[i], j))
+	reg_class_size[i]++;
 
   /* Initialize the table of subunions.
      reg_class_subunion[I][J] gets the largest-numbered reg-class
@@ -238,6 +250,7 @@ struct savings
 {
   short savings[N_REG_CLASSES];
   short memcost;
+  short nrefs;
 };
 
 static struct savings *savings;
@@ -324,6 +337,8 @@ regclass (f, nregs)
 	if (GET_CODE (insn) == INSN && asm_noperands (PATTERN (insn)) > 0)
 	  {
 	    int noperands = asm_noperands (PATTERN (insn));
+	    /* We don't use alloca because alloca would not free
+	       any of the space until this function returns.  */
 	    rtx *operands = (rtx *) oballoc (noperands * sizeof (rtx));
 	    char **constraints
 	      = (char **) oballoc (noperands * sizeof (char *));
@@ -331,8 +346,7 @@ regclass (f, nregs)
 	    decode_asm_operands (PATTERN (insn), operands, 0, constraints, 0);
 
 	    for (i = noperands - 1; i >= 0; i--)
-	      reg_class_record (operands[i],
-				&constraints[i]);
+	      reg_class_record (operands[i], i, constraints);
 
 	    obfree (operands);
 	  }
@@ -343,8 +357,8 @@ regclass (f, nregs)
 	    insn_extract (insn);
 
 	    for (i = insn_n_operands[insn_code_number] - 1; i >= 0; i--)
-	      reg_class_record (recog_operand[i],
-				&insn_operand_constraint[insn_code_number][i]);
+	      reg_class_record (recog_operand[i], i,
+				insn_operand_constraint[insn_code_number]);
 
 	    /* Improve handling of two-address insns such as
 	       (set X (ashift CONST Y)) where CONST must be made to match X.
@@ -425,44 +439,47 @@ regclass (f, nregs)
       /* Note that best_savings is twice number of places something
 	 is saved.  */
       if ((best_savings - p->savings[(int) GENERAL_REGS]) * 5 < reg_n_refs[i])
-	prefclass[i] = (char) GENERAL_REGS;
+	prefclass[i] = (int) GENERAL_REGS;
       else
-	prefclass[i] = (char) best;
+	prefclass[i] = (int) best;
 #else
-      prefclass[i] = (char) best;
+      /* We cast to (int) because (char) hits bugs in some compilers.  */
+      prefclass[i] = (int) best;
 #endif
 
       /* reg_n_refs + p->memcost measures the cost of putting in memory.
-	 If a GENERAL_REG is no better, don't even try for one.  */
+	 If a GENERAL_REG is no better, don't even try for one.
+	 Since savings and memcost are 2 * number of refs,
+	 this effectively counts each memory operand not needing reloading
+	 as costing 1/2 of a reload insn.  */
       if (reg_n_refs != 0)
 	preferred_or_nothing[i]
-	  = ((best_savings - p->savings[(int) GENERAL_REGS]) / 2 
-	     >= reg_n_refs[i] + p->memcost);
+	  = ((best_savings - p->savings[(int) GENERAL_REGS])
+	     >= p->nrefs + p->memcost);
     }
 #endif /* REGISTER_CONSTRAINTS */
 }
 
 #ifdef REGISTER_CONSTRAINTS
 
-/* Scan an operand OP to which the constraint *CONSTRAINT_LOC should apply
-   and record the preferred register classes from the constraint for OP
-   if OP is a register.  If OP is a memory reference, record suitable
-   preferences for registers used in the address.
+/* Scan an operand OP for register class preferences.
+   OPNO is the operand number, and CONSTRAINTS is the constraint
+   vector for the insn.
 
-   We can deduce both the insn code number and which operand in the insn
-   this is supposed to be from the position of CONSTRAINT_LOC
-   in the table of constraints.  */
+   Record the preferred register classes from the constraint for OP
+   if OP is a register.  If OP is a memory reference, record suitable
+   preferences for registers used in the address.  */
 
 void
-reg_class_record (op, constraint_loc)
+reg_class_record (op, opno, constraints)
      rtx op;
-     char **constraint_loc;
+     int opno;
+     char **constraints;
 {
-  char *constraint = *constraint_loc;
+  char *constraint = constraints[opno];
   register char *p;
   register enum reg_class class = NO_REGS;
   char *next = 0;
-  int insn_code = (constraint_loc - insn_operand_constraint[0]) / MAX_RECOG_OPERANDS;
   int memok = 0;
   int double_cost = 0;
 
@@ -544,7 +561,7 @@ reg_class_record (op, constraint_loc)
 	case '4':
 	  /* If constraint says "match another operand",
 	     use that operand's constraint to choose preferences.  */
-	  next = insn_operand_constraint[insn_code][*p - '0'];
+	  next = constraints[*p - '0'];
 	  break;
 
 	default:
@@ -577,6 +594,7 @@ reg_class_record (op, constraint_loc)
 
     if (! memok)
       pp->memcost += 1 + 2 * double_cost;
+    pp->nrefs++;
   }
 }
 
@@ -677,6 +695,7 @@ record_address_regs (x, bcost, icost)
 	register struct savings *pp;
 	register enum reg_class class, class1;
 	pp = &savings[REGNO (x)];
+	pp->nrefs++;
 
 	/* We have an address (or part of one) that is just one register.  */
 

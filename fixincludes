@@ -5,16 +5,19 @@
 # This works properly on a Sun in system version 3.4;
 # for other versions, you had better check.
 
-mkdir /usr/local/lib/gcc-include
+# Directory in which to store the results.
+LIB=/usr/local/lib/gcc-include
+
+mkdir ${LIB}
 for dir in sys sun sundev sunwindow; do
   if [ -d /usr/include/$dir ]; then
-    mkdir /usr/local/lib/gcc-include/$dir
+    mkdir ${LIB}/$dir
   fi
 done
 
-cp /usr/include/sys/ioctl.h /usr/local/lib/gcc-include/sys/ioctl.h
-chmod +w /usr/local/lib/gcc-include/sys/ioctl.h
-ex /usr/local/lib/gcc-include/sys/ioctl.h <<EOF
+cp /usr/include/sys/ioctl.h ${LIB}/sys/ioctl.h
+chmod +w ${LIB}/sys/ioctl.h
+ex ${LIB}/sys/ioctl.h <<EOF
 g/_IO/s/(\(.\),/('\1',/
 g/#define._IO/s/'x'/x/g
 wq
@@ -26,18 +29,18 @@ for file in sys/mtio.h sys/vcmd.h sys/des.h  \
             sundev/kbio.h sundev/msio.h sundev/fpareg.h sundev/mcpcmd.h  \
 	    sundev/msreg.h sundev/vuid_event.h sunwindow/win_ioctl.h; do
   if [ -r /usr/include/$file ]; then
-    cp /usr/include/$file /usr/local/lib/gcc-include/$file
-    chmod +w /usr/local/lib/gcc-include/$file
-    ex /usr/local/lib/gcc-include/$file <<EOF
+    cp /usr/include/$file ${LIB}/$file
+    chmod +w ${LIB}/$file
+    ex ${LIB}/$file <<EOF
     g/_IO/s/(\(.\),/('\1',/
     wq
 EOF
   fi
 done
 
-cp /usr/include/sys/ttychars.h /usr/local/lib/gcc-include/sys/ttychars.h
-chmod +w /usr/local/lib/gcc-include/sys/ttychars.h
-ex /usr/local/lib/gcc-include/sys/ttychars.h << EOF
+cp /usr/include/sys/ttychars.h ${LIB}/sys/ttychars.h
+chmod +w ${LIB}/sys/ttychars.h
+ex ${LIB}/sys/ttychars.h << EOF
 g/CTRL/s/(\(.\))/('\1')/
 g/#define.CTRL/s/'c'/c/g
 wq

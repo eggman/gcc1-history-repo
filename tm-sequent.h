@@ -19,7 +19,9 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
+/* Two flags to control how addresses are printed in assembler insns.  */
 #define SEQUENT_ADDRESS_BUG 1
+#define SEQUENT_BASE_REGS
 
 #include "tm-ns32k.h"
 

@@ -25,6 +25,8 @@ and this notice must be preserved on all copies.  */
 #include "rtl.h"
 #include "gdbfiles.h"
 #include <stdio.h>
+#undef NULL
+#include "stddef.h"
 
 /* Get N_SO from stab.h if we can expect the file to exist.  */
 #ifdef DBX_DEBUGGING_INFO
@@ -72,6 +74,12 @@ static struct typevec_elt *typevec;
 /* Number of types recorded so far in the chain.  */
 
 static int total_types;
+
+/* Lists of types to which forward references have been made.
+   Separate lists for temporary and permanent types.  */
+
+static tree temporary_fwd_refs;
+static tree permanent_fwd_refs;
 
 /* `blockvec' is a chain recording all the symbol-blocks that have been output,
    giving the address-in-the-symseg of each one.  */
@@ -136,6 +144,9 @@ symout_init (filename, asm_file, sourcename)
   blockvec = 0;
   total_types = 0;
   total_blocks = 0;
+
+  permanent_fwd_refs = 0;
+  temporary_fwd_refs = 0;
 
   bzero (&buffer, sizeof buffer);
   fwrite (&buffer, sizeof buffer, 1, symfile);
@@ -247,12 +258,18 @@ symout_types (types)
   register struct typerec *records;
   register tree next;
   struct type buffer;
+  int this_run_address = next_address;
+
+  /* Count the number of types to be handled here.  */
 
   for (next = types, n_types = 0;
        next;
        next = TREE_CHAIN (next), n_types++);
 
   records = (struct typerec *) alloca (n_types * sizeof (struct typerec));
+
+  /* Compute the amount of space each type needs, updating next_address
+     and storing the address of the data for each type.  */
 
   for (next = types, i = 0;
        next;
@@ -303,6 +320,24 @@ symout_types (types)
 	  records[i].name_prefix = 0;
 	}
 
+      /* If this type was forward-referenced from a previous call
+	 to symout_types, store this type's address into the reference.  */
+      if (TYPE_POINTER_TO (next) != 0
+	  && TYPE_SYMTAB_ADDRESS (TYPE_POINTER_TO (next)) != 0
+	  && TYPE_SYMTAB_ADDRESS (TYPE_POINTER_TO (next)) < this_run_address)
+	{
+	  int pos = ftell (symfile);
+	  int myaddr = next_address;
+	  fflush (symfile);
+	  fseek (symfile,
+		 (TYPE_SYMTAB_ADDRESS (TYPE_POINTER_TO (next))
+		  + offsetof (struct type, target_type)),
+		 0);
+	  fwrite (&myaddr, sizeof (int), 1, symfile);
+	  fflush (symfile);
+	  fseek (symfile, pos, 0);
+	}
+
       records[i].address = next_address;
       TYPE_SYMTAB_ADDRESS (next) = next_address;
       velt->address = next_address;
@@ -333,6 +368,9 @@ symout_types (types)
       next_address += records[i].nfields * sizeof (struct field);
     }
 
+  /* Now write the data whose space we have assigned.
+     First fill the data into BUFFER, then write BUFFER.  */
+
   for (next = types, i = 0;
        next;
        next = TREE_CHAIN (next), i++)
@@ -341,12 +379,25 @@ symout_types (types)
 	symout_strings_print (records[i].name_prefix, 0,
 			      records[i].name, 0);
 
+      if (TREE_TYPE (next) != 0 && TYPE_OUTPUT_ADDRESS (TREE_TYPE (next)) == 0)
+	{
+	  /* We are making a forward-reference to our target type.
+	     Make a list of all of these.  */
+	  if (TREE_PERMANENT (next))
+	    permanent_fwd_refs
+	      = tree_cons (TREE_TYPE (next), 0, permanent_fwd_refs);
+	  else
+	    temporary_fwd_refs
+	      = tree_cons (TREE_TYPE (next), 0, temporary_fwd_refs);
+	}
+
       if (TYPE_SIZE (next) == 0)
 	buffer.length = 0;
       else
 	buffer.length
 	  = (TREE_INT_CST_LOW (TYPE_SIZE (next))
 	     * TYPE_SIZE_UNIT (next) / BITS_PER_UNIT);
+
       buffer.name = (char *) records[i].name_address;
       buffer.target_type = (struct type *) (TREE_TYPE (next) ? TYPE_OUTPUT_ADDRESS (TREE_TYPE (next)) : 0);
 
@@ -408,6 +459,10 @@ symout_types (types)
 
       fwrite (&buffer, sizeof buffer, 1, symfile);
 
+      /* Now write the `struct field's that certain kinds of type have.
+	 This allocates space for the names of those fields,
+	 incrementing next_address for the names.  */
+
       switch (TREE_CODE (next))
 	{
 	case ARRAY_TYPE:
@@ -430,6 +485,9 @@ symout_types (types)
 	}
     }
 
+  /* Now output the strings referred to by the fields of certain types.
+     (next_address was already updated for these strings.)  */
+
   for (next = types, i = 0;
        next;
        next = TREE_CHAIN (next), i++)
@@ -446,6 +504,26 @@ symout_types (types)
 	  break;
 	}
     }
+}
+
+/* Given a list of types TYPES, return a chain of just those
+   that haven't been written in the symbol table.  */
+
+static tree
+filter_undefined_types (types)
+     tree types;
+{
+  tree new = 0;
+  tree next;
+
+  for (next = types; next; next = TREE_CHAIN (next))
+    if (TYPE_SYMTAB_ADDRESS (TREE_PURPOSE (next)) == 0)
+      {
+	TREE_CHAIN (TREE_PURPOSE (next)) = new;
+	new = TREE_PURPOSE (next);
+      }
+
+  return new;
 }
 
 /* Return nonzero if TYPE's range of possible values
@@ -871,6 +949,13 @@ symout_function (stmt, args, superblock_address)
     }
   return address;
 }
+
+symout_function_end ()
+{
+  /* Output dummy entries for any undefined structure references.  */
+  symout_types (filter_undefined_types (temporary_fwd_refs));
+  temporary_fwd_refs = 0;
+}
 
 /* Output all the data structure for a top two blocks in a compilation.
    The top block is for public (global) symbols;
@@ -1048,6 +1133,9 @@ symout_finish (filename, filetime)
   register int i;
   struct symbol_root buffer;
   char dir[MAXNAMLEN];
+
+  /* Output dummy entries for any undefined structure references.  */
+  symout_types (filter_undefined_types (permanent_fwd_refs));
 
   buffer.language = language_c;
   buffer.blockvector = (struct blockvector *) next_address;

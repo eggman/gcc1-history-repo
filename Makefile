@@ -99,7 +99,7 @@ doc: cpp.info internals
 compilations: ${OBJS}
 
 gcc: gcc.o version.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o gccnew gcc.o version.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o gccnew gcc.o version.o $(LIBS)
 # Go via `gccnew' to avoid `file busy' if $(CC) is `gcc'.
 	mv gccnew gcc
 
@@ -107,7 +107,7 @@ gcc.o: gcc.c $(CONFIG_H)
 	$(CC) $(CFLAGS) -c -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc-\" gcc.c
 
 cc1: $(OBJS) $(OBSTACK1)
-	$(CC) $(CFLAGS) -o cc1 $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o cc1 $(OBJS) $(LIBS)
 
 #Library of arithmetic subroutines
 # Don't compile this with gcc!
@@ -147,14 +147,14 @@ parse.tab.c : parse.y
 
 rtl.o : rtl.c $(CONFIG_H) $(RTL_H)
 
-varasm.o : varasm.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h expr.h
+varasm.o : varasm.c $(CONFIG_H) $(TREE_H) $(RTL_H) flags.h expr.h insn-codes.h
 stmt.o : stmt.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
-   insn-flags.h expr.h insn-config.h regs.h 
+   insn-flags.h expr.h insn-config.h regs.h insn-codes.h
 expr.o : expr.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 expmed.o : expmed.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
-explow.o : explow.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h
+explow.o : explow.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h insn-codes.h
 optabs.o : optabs.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h  \
    insn-flags.h insn-codes.h expr.h insn-config.h recog.h
 symout.o : symout.c $(CONFIG_H) $(TREE_H) $(RTL_H) symseg.h gdbfiles.h
@@ -163,7 +163,8 @@ sdbout.o : sdbout.c $(CONFIG_H) $(TREE_H) $(RTL_H) c-tree.h
 
 emit-rtl.o : emit-rtl.c $(CONFIG_H) $(RTL_H) regs.h insn-config.h
 
-integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h insn-flags.h
+integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h \
+   insn-flags.h insn-codes.h
 
 jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
@@ -184,7 +185,8 @@ reload.o : reload.c $(CONFIG_H) $(RTL_H)  \
    reload.h recog.h hard-reg-set.h insn-config.h regs.h
 reload1.o : reload1.c $(CONFIG_H) $(RTL_H) flags.h  \
    reload.h regs.h hard-reg-set.h insn-config.h basic-block.h
-final.o : final.c $(CONFIG_H) $(RTL_H) regs.h recog.h conditions.h gdbfiles.h
+final.o : final.c $(CONFIG_H) $(RTL_H) regs.h recog.h conditions.h gdbfiles.h \
+   insn-config.h
 recog.o : recog.c $(CONFIG_H) $(RTL_H)  \
    regs.h recog.h hard-reg-set.h insn-config.h
 
@@ -243,49 +245,49 @@ insn-output.c : md genoutput
 # Now the programs that generate those files.
 
 genconfig : genconfig.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genconfig genconfig.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genconfig genconfig.o rtl.o $(LIBS)
 
 genconfig.o : genconfig.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genconfig.c
 
 genflags : genflags.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genflags genflags.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genflags genflags.o rtl.o $(LIBS)
 
 genflags.o : genflags.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genflags.c
 
 gencodes : gencodes.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o gencodes gencodes.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o gencodes gencodes.o rtl.o $(LIBS)
 
 gencodes.o : gencodes.c $(RTL_H)
 	$(CC) $(CFLAGS) -c gencodes.c
 
 genemit : genemit.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genemit genemit.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genemit genemit.o rtl.o $(LIBS)
 
 genemit.o : genemit.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genemit.c
 
 genrecog : genrecog.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genrecog genrecog.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genrecog genrecog.o rtl.o $(LIBS)
 
 genrecog.o : genrecog.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genrecog.c
 
 genextract : genextract.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genextract genextract.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genextract genextract.o rtl.o $(LIBS)
 
 genextract.o : genextract.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genextract.c
 
 genpeep : genpeep.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genpeep genpeep.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genpeep genpeep.o rtl.o $(LIBS)
 
 genpeep.o : genpeep.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genpeep.c
 
 genoutput : genoutput.o rtl.o $(OBSTACK1)
-	$(CC) $(CFLAGS) -o genoutput genoutput.o rtl.o $(LIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o genoutput genoutput.o rtl.o $(LIBS)
 
 genoutput.o : genoutput.c $(RTL_H)
 	$(CC) $(CFLAGS) -c genoutput.c
@@ -295,7 +297,7 @@ cpp: cccp
 	-rm -f cpp
 	ln cccp cpp
 cccp: cccp.o cexp.o version.o
-	$(CC) $(CFLAGS) -o cccp cccp.o cexp.o version.o $(CLIB)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o cccp cccp.o cexp.o version.o $(CLIB)
 cexp.o: cexp.c
 cexp.c: cexp.y
 	$(BISON) cexp.y
@@ -324,6 +326,8 @@ install: all
 	if [ -f /usr/bin/ranlib ] ; then  ranlib $(libdir)/gcc-gnulib ;fi
 	install cpp $(libdir)/gcc-cpp
 	install gcc $(bindir)
+	-mkdir $(libdir)/gcc-include
+	cp stddef.h stdarg.h assert.h varargs.h limits.h $(libdir)/gcc-include
 
 # do make -f ../gcc/Makefile maketest DIR=../gcc
 # in the intended test directory to make it a suitable test directory.

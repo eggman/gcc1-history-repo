@@ -55,7 +55,9 @@ State 411 contains 2 shift/reduce conflicts.  (like 166 for parm_declarator)?
 #include <stdio.h>
 #include <errno.h>
 
+#ifndef errno
 extern int errno;
+#endif
 
 /* Cause the `yydebug' variable to be defined.  */
 #define YYDEBUG
@@ -1472,12 +1474,58 @@ check_newline ()
 		  && ((c = getc (finput)) == ' ' || c == '\t'))
 		goto linenum;
 	    }
+#ifdef IDENT_DIRECTIVE
+	  else if (c == 'i')
+	    {
+	      if (getc (finput) == 'd'
+		  && getc (finput) == 'e'
+		  && getc (finput) == 'n'
+		  && getc (finput) == 't'
+		  && ((c = getc (finput)) == ' ' || c == '\t'))
+		{
+		  extern FILE *asm_out_file;
+
+		  if (pedantic)
+		    error ("ANSI C does not allow #ident");
+
+		  /* Here we have just seen `#ident '.
+		     A string constant should follow.  */
+
+		  while (c == ' ' || c == '\t')
+		    c = getc (finput);
+
+		  /* If no argument, ignore the line.  */
+		  if (c == '\n')
+		    continue;
+
+		  ungetc (c, finput);
+		  token = yylex ();
+		  if (token != STRING
+		      || TREE_CODE (yylval.ttype) != STRING_CST)
+		    {
+		      error ("invalid #ident");
+		      return getc (finput);
+		    }
+
+		  fprintf (asm_out_file, "\t.ident \"%s\"\n",
+			   TREE_STRING_POINTER (yylval.ttype));
+
+		  /* Skip the rest of this line.  */
+		  while ((c = getc (finput)) && c != '\n');
+		  if (c == 0)
+		    return 0;
+		  continue;
+		}
+	    }
+#endif
 
 	  error ("undefined or invalid # directive");
 	noerror:
 
 	  while ((c = getc (finput)) && c != '\n');
 
+	  if (c == 0)
+	    return 0;
 	  continue;
 	}
 
@@ -1539,7 +1587,9 @@ check_newline ()
 	error ("invalid #line");
 
       /* skip the rest of this line.  */
-      while ((c = getc (finput)) != '\n');
+      while ((c = getc (finput)) && c != '\n');
+      if (c == 0)
+	return 0;
     }
 }
 
@@ -2171,7 +2221,7 @@ yylex ()
 	       to an int, making a vector of ints.  */
 	    int *widebuf = (int *) alloca (p - token_buffer);
 	    char *p1 = token_buffer + 1;
-	    for (; p1 == p; p1++)
+	    for (; p1 != p; p1++)
 	      widebuf[p1 - token_buffer - 1] = *p1;
 	    yylval.ttype = build_string ((p - token_buffer) * sizeof (int),
 					 widebuf);

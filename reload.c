@@ -252,13 +252,13 @@ push_reload (in, out, inloc, outloc, class,
   if (in != 0 && out != 0 && reg_mentioned_p (in, out))
     dont_share = 1;
 
-  if (class == NO_REGS)
-    abort ();
-
   /* Narrow down the class of register wanted if that is
      desirable on this machine for efficiency.  */
   if (in != 0)
-    class = PREFERRED_RELOAD_CLASS(in, class);
+    class = PREFERRED_RELOAD_CLASS (in, class);
+
+  if (class == NO_REGS)
+    abort ();
 
   /* We can use an existing reload if the class is right
      and at least one of IN and OUT is a match
@@ -1089,7 +1089,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  int earlyclobber = 0;
 
 	  /* If the operand is a SUBREG, extract
-	     the REG or MEM within.  */
+	     the REG or MEM (or maybe CONST_DOUBLE) within.  */
 
 	  while (GET_CODE (operand) == SUBREG)
 	    {
@@ -1344,6 +1344,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	    && this_alternative_win[i])
 	  {
 	    int j;
+
 	    for (j = 0; j < noperands; j++)
 	      /* Is this an input operand or a memory ref?  */
 	      if ((GET_CODE (recog_operand[j]) == MEM
@@ -1351,7 +1352,18 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		  /* Does it refer to the earlyclobber operand?  */
 		  && refers_to_regno_p (REGNO (recog_operand[i]),
 					recog_operand[j], 0))
-		break;
+		{
+		  /* If the output is in a single-reg class,
+		     it's costly to reload it, so reload the input instead.  */
+		  if (reg_class_size[this_alternative[i]] == 1
+		      && GET_CODE (recog_operand[j]) == REG)
+		    {
+		      losers++;
+		      this_alternative_win[j] = 0;
+		    }
+		  else
+		    break;
+		}
 	    /* If an earlyclobber operand conflicts with something,
 	       it must be reloaded, so request this and count the cost.  */
 	    if (j != noperands)
@@ -1492,6 +1504,22 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
       operand_reloadnum[i] = -1;
     }
 
+  /* Any floating constants that aren't allowed and can't be reloaded
+     into memory locations are here changed into memory references.  */
+  for (i = 0; i < noperands; i++)
+    if (! goal_alternative_win[i]
+	&& GET_CODE (recog_operand[i]) == CONST_DOUBLE
+	&& (PREFERRED_RELOAD_CLASS (recog_operand[i],
+				    (enum reg_class) goal_alternative[i])
+	    == NO_REGS))
+      {
+	*recog_operand_loc[i] = recog_operand[i]
+	  = force_const_double_mem (recog_operand[i]);
+	find_reloads_toplev (recog_operand[i]);
+	if (alternative_allows_memconst (constraints1[i], goal_alternative_number))
+	  goal_alternative_win[i] = 1;
+      }
+
   /* Now record reloads for all the operands that need them.  */
   for (i = 0; i < noperands; i++)
     if (! goal_alternative_win[i])
@@ -1499,19 +1527,6 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	/* Operands that match previous ones have already been handled.  */
 	if (goal_alternative_matches[i] >= 0)
 	  ;
-	/* This clause forces a double constant into memory
-	   if necessary.  But right now it appears never necessary.
-	   Perhaps there should be a heuristic here to detect cases
-	   when it is desirable, even though not necessary, to move
-	   the constant to memory.  I can't decide when it is desirable.  */
-	else if (GET_CODE (recog_operand[i]) == CONST_DOUBLE
-		 && alternative_allows_memconst (constraints1[i], goal_alternative_number)
-		 && goal_alternative[i] == (int) NO_REGS)
-	  {
-	    *recog_operand_loc[i] = recog_operand[i]
-	      = force_const_double_mem (recog_operand[i]);
-	    find_reloads_toplev (recog_operand[i]);
-	  }
 	/* Handle an operand with a nonoffsetable address
 	   appearing where an offsetable address will do
 	   by reloading the address into a base register.  */
@@ -2012,20 +2027,21 @@ subst_indexed_address (addr)
       else if (CONSTANT_P (XEXP (addr, 1)))
 	const_part = XEXP (addr, 1),
 	var_part = XEXP (addr, 0);
+      else
+	var_part = addr;
 
-      if (const_part == 0)
-	return addr;
-
-      if (GET_CODE (const_part) == CONST)
+      if (const_part && GET_CODE (const_part) == CONST)
 	const_part = XEXP (const_part, 0);
 
       if (GET_CODE (var_part) == REG
 	  && (regno = REGNO (var_part)) >= FIRST_PSEUDO_REGISTER
 	  && reg_renumber[regno] < 0
 	  && reg_equiv_constant[regno] != 0)
-	return gen_rtx (CONST, VOIDmode,
-			gen_rtx (PLUS, Pmode, const_part,
-				 reg_equiv_constant[regno]));
+	return (const_part
+	        ? gen_rtx (CONST, VOIDmode,
+			   gen_rtx (PLUS, Pmode, const_part,
+				    reg_equiv_constant[regno]))
+		: reg_equiv_constant[regno]);
 
       if (GET_CODE (var_part) != PLUS)
 	return addr;
@@ -2035,18 +2051,22 @@ subst_indexed_address (addr)
 	  && reg_renumber[regno] < 0
 	  && reg_equiv_constant[regno] != 0)
 	return gen_rtx (PLUS, Pmode, XEXP (var_part, 1),
-			gen_rtx (CONST, VOIDmode,
-				 gen_rtx (PLUS, Pmode, const_part,
-					  reg_equiv_constant[regno])));
+			(const_part
+			 ? gen_rtx (CONST, VOIDmode,
+				    gen_rtx (PLUS, Pmode, const_part,
+					     reg_equiv_constant[regno]))
+			 : reg_equiv_constant[regno]));
 
       if (GET_CODE (XEXP (var_part, 1)) == REG
 	  && (regno = REGNO (XEXP (var_part, 1))) >= FIRST_PSEUDO_REGISTER
 	  && reg_renumber[regno] < 0
 	  && reg_equiv_constant[regno] != 0)
 	return gen_rtx (PLUS, Pmode, XEXP (var_part, 0),
-			gen_rtx (CONST, VOIDmode,
-				 gen_rtx (PLUS, Pmode, const_part,
-					  reg_equiv_constant[regno])));
+			(const_part
+			 ? gen_rtx (CONST, VOIDmode,
+				    gen_rtx (PLUS, Pmode, const_part,
+					     reg_equiv_constant[regno]))
+			 : reg_equiv_constant[regno]));
     }
   return addr;
 }

@@ -67,6 +67,32 @@ void output_addressed_constants ();
 void output_constant ();
 void output_constructor ();
 
+static enum in_section {no_section, in_text, in_data} in_section = no_section;
+
+/* Tell assembler to switch to text section.  */
+
+void
+text_section ()
+{
+  if (in_section != in_text)
+    {
+      fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
+      in_section = in_text;
+    }
+}
+
+/* Tell assembler to switch to data section.  */
+
+void
+data_section ()
+{
+  if (in_section != in_data)
+    {
+      fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+      in_section = in_data;
+    }
+}
+
 /* Output a string of literal assembler code
    for an `asm' keyword used between functions.  */
 
@@ -104,9 +130,7 @@ assemble_function (decl)
 
   app_disable ();
 
-  /* Tell assembler to switch to text segment.  */
-
-  fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
+  text_section ();
 
 #ifdef SDB_DEBUGGING_INFO
   /* Make sure types are defined for debugger before fcn name is defined.  */
@@ -284,10 +308,10 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
     dbxout_symbol (decl, 0);
 #endif
 #ifdef SDB_DEBUGGING_INFO
-  if (write_symbols == SDB_DEBUG)
+  if (write_symbols == SDB_DEBUG && top_level)
     sdbout_symbol (decl, 0);
 #endif
-  else if (write_symbols == GDB_DEBUG)
+  if (write_symbols == GDB_DEBUG)
     /* Make sure the file is known to GDB even if it has no functions.  */
     set_current_gdbfile (DECL_SOURCE_FILE (decl));
 
@@ -326,9 +350,9 @@ assemble_variable (decl, asmspec, top_level, write_symbols, at_end)
   output_addressed_constants (DECL_INITIAL (decl));
 
   if (TREE_READONLY (decl) && ! TREE_VOLATILE (decl))
-    fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
+    text_section ();
   else
-    fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+    data_section ();
 
   for (i = 0; DECL_ALIGN (decl) >= BITS_PER_UNIT << (i + 1); i++);
 
@@ -723,7 +747,7 @@ record_constant_1 (exp)
   register int len;
   register enum tree_code code = TREE_CODE (exp);
 
-  obstack_1grow (&permanent_obstack, (unsigned char) code);
+  obstack_1grow (&permanent_obstack, (unsigned int) code);
 
   if (code == INTEGER_CST)
     {
@@ -770,14 +794,14 @@ record_constant_1 (exp)
     }
   else if (code == PLUS_EXPR || code == MINUS_EXPR)
     {
-      obstack_1grow (&permanent_obstack, (char) code);
+      obstack_1grow (&permanent_obstack, (int) code);
       record_constant_1 (TREE_OPERAND (exp, 0));
       record_constant_1 (TREE_OPERAND (exp, 1));
       return;
     }
   else if (code == NOP_EXPR || code == CONVERT_EXPR)
     {
-      obstack_1grow (&permanent_obstack, (char) code);
+      obstack_1grow (&permanent_obstack, (int) code);
       record_constant_1 (TREE_OPERAND (exp, 0));
       return;
     }
@@ -826,11 +850,11 @@ get_or_assign_label (exp)
   /* Now output assembler code to define that label
      and follow it with the data of EXP.  */
 
-  /* First switch to text segment, except for writable strings.  */
+  /* First switch to text section, except for writable strings.  */
   if ((TREE_CODE (exp) == STRING_CST) && flag_writable_strings)
-    fprintf (asm_out_file, "%s\n", DATA_SECTION_ASM_OP);
+    data_section ();
   else
-    fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
+    text_section ();
 
   /* Align the location counter as required by EXP's data type.  */
   for (i = 0; TYPE_ALIGN (TREE_TYPE (exp)) >= BITS_PER_UNIT << (i + 1); i++);
@@ -1085,8 +1109,8 @@ force_const_mem (mode, x)
       /* Now output assembler code to define that label
 	 and follow it with the data of EXP.  */
 
-      /* First switch to text segment.  */
-      fprintf (asm_out_file, "%s\n", TEXT_SECTION_ASM_OP);
+      /* First switch to text section.  */
+      text_section ();
 
       /* Align the location counter as required by EXP's data type.  */
       align = (mode == VOIDmode) ? UNITS_PER_WORD : GET_MODE_SIZE (mode);

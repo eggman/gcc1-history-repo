@@ -88,6 +88,10 @@ static short *qty_phys_reg;
 
 static short *qty_phys_sugg;
 
+/* Element Q is the number of refs to quantity Q.  */
+
+static short *qty_n_refs;
+
 /* Element Q is a reg class contained in (smaller than) the
    preferred classes of all the pseudo regs that are tied in quantity Q.
    This is the preferred class for allocating that quantity.  */
@@ -208,6 +212,7 @@ alloc_qty (regno, mode, size, insn_number)
   qty_crosses_call[qty] = reg_crosses_call[regno];
   qty_min_class[qty] = reg_preferred_class (regno);
   qty_preferred_or_nothing[qty] = reg_preferred_or_nothing (regno);
+  qty_n_refs[qty] = reg_n_refs[regno];
 }
 
 /* Main entry point of this file.  */
@@ -230,6 +235,7 @@ local_alloc ()
   qty_crosses_call = (char *) alloca (max_regno);
   qty_min_class = (enum reg_class *) alloca (max_regno * sizeof (enum reg_class));
   qty_preferred_or_nothing = (char *) alloca (max_regno);
+  qty_n_refs = (short *) alloca (max_regno * sizeof (short));
 
   reg_qty = (int *) alloca (max_regno * sizeof (int));
   reg_offset = (int *) alloca (max_regno * sizeof (int));
@@ -277,6 +283,7 @@ local_alloc ()
 	      qty_min_class[i] = NO_REGS;
 	      qty_preferred_or_nothing[i] = 0;
 	      qty_crosses_call[i] = 0;
+	      qty_n_refs[i] = 0;
 	    }
 	}
       else
@@ -294,6 +301,7 @@ local_alloc ()
 	  CLEAR (qty_min_class);
 	  CLEAR (qty_preferred_or_nothing);
 	  CLEAR (qty_crosses_call);
+	  CLEAR (qty_n_refs);
 	}
 
       next_qty = FIRST_PSEUDO_REGISTER;
@@ -603,7 +611,8 @@ block_alloc (b)
    We give longer-lived quantities higher priority
    so that the shorter-lived ones will tend to be in the same places
    which gives in general the maximum room for the regs to
-   be allocated by global-alloc.  */
+   be allocated by global-alloc.
+   Regs with more references are also preferred.  */
 
 static int
 qty_compare (q1, q2)
@@ -611,8 +620,8 @@ qty_compare (q1, q2)
 {
   register int tem = (qty_phys_sugg[q2] >= 0) - (qty_phys_sugg[q1] >= 0);
   if (tem != 0) return tem;
-  return -((qty_death[q1] - qty_birth[q1]) * qty_size[q2]
-	   - (qty_death[q2] - qty_birth[q2]) * qty_size[q1]);
+  return -((qty_n_refs[q1] + qty_death[q1] - qty_birth[q1]) * qty_size[q2]
+	   - (qty_n_refs[q2] + qty_death[q2] - qty_birth[q2]) * qty_size[q1]);
 }
 
 static int
@@ -621,8 +630,8 @@ qty_compare_1 (q1, q2)
 {
   register int tem = (qty_phys_sugg[*q2] >= 0) - (qty_phys_sugg[*q1] >= 0);
   if (tem != 0) return tem;
-  return -((qty_death[*q1] - qty_birth[*q1]) * qty_size[*q2]
-	   - (qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
+  return -((qty_n_refs[*q1] + qty_death[*q1] - qty_birth[*q1]) * qty_size[*q2]
+	   - (qty_n_refs[*q1] + qty_death[*q2] - qty_birth[*q2]) * qty_size[*q1]);
 }
 
 /* Attempt to combine the two registers (rtx's) USEDREG and SETREG.
@@ -714,10 +723,12 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
 	return 0;
     }
 
-  /* Tying something to itself is ok iff no offset involved.  */
+  /* Don't tie something to itself.  In most cases it would make no
+     difference, but it would screw up if the reg being tied to itself
+     also dies in this insn.  */
 
   if (ureg == sreg)
-    return offset == 0;
+    return 0; 
 
   /* Don't try to connect two different hardware registers.  */
 
@@ -800,7 +811,9 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
       if (sqty >= 0)
 	{
 	  qty_crosses_call[sqty] |= reg_crosses_call[sreg];
-	  qty_preferred_or_nothing[sqty] = 0;
+	  qty_n_refs[sqty] += reg_n_refs[sreg];
+	  if (! reg_preferred_or_nothing (sreg))
+	    qty_preferred_or_nothing[sqty] = 0;
 	  if (usize < ssize)
 	    {
 	      register int i;
@@ -914,7 +927,7 @@ reg_is_set (reg, clobber_flag)
 	  post_mark_life (reg_qty[regno], GET_MODE (reg), 1,
 			  this_insn_number, this_insn_number+1);
 	  /* But dead later.  */
-	  mark_life (reg_qty[regno], GET_MODE (reg), 0);
+	  mark_life (regno, GET_MODE (reg), 0);
 	  qty_death[reg_qty[regno]]++;
 	}
     }

@@ -107,9 +107,15 @@ int global_reg_dump = 0;
 int jump2_opt_dump = 0;
 
 /* 1 => write gdb debugging output (using symout.c).  -g
-   2 => write dbx debugging output (using dbxout.c).  -G  */
+   2 => write dbx debugging output (using dbxout.c).  -G
+   3 => write sdb debugging output (using sdbout.c).  -g.  */
 
 enum debugger write_symbols = NO_DEBUG;
+
+/* Nonzero means can use our own extensions to DBX format.
+   Relevant only with write_symbols == DBX_DEBUG.  */
+
+int use_gdb_dbx_extensions;
 
 /* Nonzero means do optimizations.  -opt.  */
 
@@ -1286,6 +1292,7 @@ rest_of_compilation (decl)
 		 DECL_BLOCK_SYMTAB_ADDRESS (decl)
 		   = symout_function (DECL_INITIAL (decl),
 				      DECL_ARGUMENTS (decl), 0);
+		 symout_function_end ();
 	       });
     }
   else

@@ -171,8 +171,9 @@ dbxout_init (asm_file, input_file_name)
   typevec = (enum typestatus *) xmalloc (typevec_len * sizeof typevec[0]);
   bzero (typevec, typevec_len * sizeof typevec[0]);
   
+  /* Used to put `Ltext:' before the reference, but that loses on sun 4.  */
   fprintf (asmfile,
-	   "Ltext:\t.stabs \"%s\",%d,0,0,Ltext\n",
+	   "\t.stabs \"%s\",%d,0,0,Ltext\nLtext:\n",
 	   input_file_name, N_SO);
 
   next_type_number = 1;
@@ -586,14 +587,16 @@ dbxout_symbol (decl, local)
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl)));
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
+	       && TREE_CODE (decl) == PARM_DECL
 	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
 		   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
 		       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
-	/* If the value is indirect by memory or by a register
-	   that isn't the frame pointer
+	/* If the value is indirect by memory or by a reg not the frame ptr,
 	   then it means the object is variable-sized and address through
 	   that register or stack slot.  DBX has no way to represent this
-	   so all we can do is output the variable as a pointer.  */
+	   so all we can do is output the variable as a pointer.
+	   If it's not a parameter, ignore it.
+	   (VAR_DECLs like this can be made by integrate.c.)  */
 	{
 	  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
 	    {

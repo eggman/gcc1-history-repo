@@ -1168,7 +1168,7 @@ fold (expr)
 		  /* EXPR is (CON-VAR) +- ARG1.  */
 		  /* If it is + and VAR==ARG1, return just CONST.  */
 		  if (code == PLUS_EXPR && operand_equal_p (var, arg1))
-		    return con;
+		    return convert (TREE_TYPE (t), con);
 		    
 		  /* Otherwise return (CON +- ARG1) - VAR.  */
 		  TREE_SET_CODE (t, MINUS_EXPR);
@@ -1181,7 +1181,7 @@ fold (expr)
 		  /* EXPR is (VAR+CON) +- ARG1.  */
 		  /* If it is - and VAR==ARG1, return just CONST.  */
 		  if (code == MINUS_EXPR && operand_equal_p (var, arg1))
-		    return con;
+		    return convert (TREE_TYPE (t), con);
 		    
 		  /* Otherwise return VAR +- (ARG1 +- CON).  */
 		  TREE_OPERAND (t, 1) = tem
@@ -1214,13 +1214,13 @@ fold (expr)
 		TREE_SET_CODE (t,
 			       (code == PLUS_EXPR ? MINUS_EXPR : PLUS_EXPR));
 	      if (TREE_CODE (t) == MINUS_EXPR && operand_equal_p (var, arg0))
-		return con;
+		return convert (TREE_TYPE (t), con);
 	      TREE_OPERAND (t, 0)
 		= fold (build (code, TREE_TYPE (t), arg0, con));
 	      TREE_OPERAND (t, 1) = var;
 	      if (integer_zerop (TREE_OPERAND (t, 0))
 		  && TREE_CODE (t) == PLUS_EXPR)
-		return var;
+		return convert (TREE_TYPE (t), var);
 	      return t;
 	    }
 	}
@@ -1514,7 +1514,8 @@ fold (expr)
 	  arg1 = temp;
 	}
 
-      /* Compute a result for LT or EQ if args permit.  */
+      /* Compute a result for LT or EQ if args permit;
+	 otherwise return T.  */
       if (TREE_CODE (arg0) == INTEGER_CST
 	  && TREE_CODE (arg1) == INTEGER_CST)
 	{
@@ -1529,6 +1530,13 @@ fold (expr)
 			      : INT_CST_LT (arg0, arg1)),
 			     0);
 	}
+      else if (TREE_CODE (arg1) == INTEGER_CST
+	       && TREE_LITERAL (arg0)
+	       && TREE_CODE (arg0) == ADDR_EXPR
+	       && (code == EQ_EXPR || code == NE_EXPR))
+	{
+	  t = build_int_2 (0, 0);
+	}
       else if (TREE_CODE (arg0) == REAL_CST
 	       && TREE_CODE (arg1) == REAL_CST)
 	{
@@ -1540,7 +1548,7 @@ fold (expr)
       else
 	return t;
 
-      /* If we wanted ...-or-equal, invert the result.  */
+      /* If what we want is other than LT or EQ, invert the result.  */
       if (code == GE_EXPR || code == LE_EXPR || code == NE_EXPR)
 	TREE_INT_CST_LOW (t) ^= 1;
       TREE_TYPE (t) = TREE_TYPE (expr);

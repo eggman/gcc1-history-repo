@@ -54,7 +54,7 @@ extern int cse_not_expected;
 /* List (chain of EXPR_LISTs) of pseudo-regs of SAVE_EXPRs.
    So we can mark them all live at the end of the function, if stupid.  */
 extern rtx save_expr_regs;
-
+
 #ifdef TREE_CODE /* Don't lose if tree.h not included.  */
 /* Structure to record the size of a sequence of arguments
    as the sum of a tree-expression and a constant.  */
@@ -77,11 +77,38 @@ struct args_size
   else						\
     (TO).var = genop (PLUS_EXPR, (TO).var, inc); }
 
+#define SUB_PARM_SIZE(TO, DEC)	\
+{ tree dec = (DEC);				\
+  if (TREE_CODE (dec) == INTEGER_CST)		\
+    (TO).constant -= TREE_INT_CST_LOW (dec);	\
+  else if ((TO).var == 0)			\
+    (TO).var = genop (MINUS_EXPR, integer_zero_node, dec); \
+  else						\
+    (TO).var = genop (MINUS_EXPR, (TO).var, dec); }
+
 /* Convert the implicit sum in a `struct args_size' into an rtx.  */
 #define ARGS_SIZE_RTX(SIZE)						\
 ((SIZE).var == 0 ? gen_rtx (CONST_INT, VOIDmode, (SIZE).constant)	\
  : plus_constant (expand_expr ((SIZE).var, 0, VOIDmode, 0),		\
 		  (SIZE).constant))
+
+/* Supply a default definition for FUNCTION_ARG_PADDING:
+   usually pad upward, but pad short args downward on big-endian machines.  */
+
+enum direction {none, upward, downward};  /* Value has this type.  */
+
+#ifndef FUNCTION_ARG_PADDING
+#ifdef BYTES_BIG_ENDIAN
+#define FUNCTION_ARG_PADDING(mode, size)				\
+  (((mode) == BLKmode							\
+    ? (GET_CODE (size) == CONST_INT					\
+       && INTVAL (size) < PARM_BOUNDARY / BITS_PER_UNIT)		\
+    : GET_MODE_BITSIZE (mode) < PARM_BOUNDARY)				\
+   ? downward : upward)
+#else
+#define FUNCTION_ARG_PADDING(mode, size) upward
+#endif
+#endif
 
 /* Optabs are tables saying how to generate insn bodies
    for various machine modes and numbers of operands.
@@ -179,12 +206,6 @@ rtx expand_unop ();
    floating values.  */
 void init_fixtab ();
 void init_floattab ();
-
-/* Say whether a certain floating machine mode can be converted to a certain
-   fixed machine mode.  */
-rtxfun can_fix_p ();
-/* Similar for converting a fixed machine mode to a floating one.  */
-rtxfun can_float_p ();
 
 /* Generate code for a FIX_EXPR.  */
 void expand_fix ();

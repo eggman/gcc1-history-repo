@@ -380,7 +380,10 @@ try_combine (i3, i2, i1)
       && (GET_CODE (i2dest) != REG
 	  || (GET_CODE (i2src) == REG
 	      && (!flag_combine_regs
-		  || FUNCTION_VALUE_REGNO_P (REGNO (i2src))))
+		  /* Don't substitute a function value reg for any other.  */
+		  || FUNCTION_VALUE_REGNO_P (REGNO (i2src))
+		  /* Don't substitute a different reg into an increment.  */
+		  || find_reg_note (i3, REG_INC, i2dest)))
 	  || GET_CODE (i2src) == CALL
 	  || use_crosses_set_p (i2src, INSN_CUID (i2))))
     return 0;
@@ -402,7 +405,9 @@ try_combine (i3, i2, i1)
 	  && (GET_CODE (i1dest) != REG
 	      || (GET_CODE (i1src) == REG
 		  && (!flag_combine_regs
-		      || FUNCTION_VALUE_REGNO_P (REGNO (i1src))))
+		      || FUNCTION_VALUE_REGNO_P (REGNO (i1src))
+		      || find_reg_note (i3, REG_INC, i1dest)
+		      || find_reg_note (i2, REG_INC, i1dest)))
 	      || GET_CODE (i1src) == CALL
 	      || use_crosses_set_p (i1src, INSN_CUID (i1))))
 	return 0;
@@ -412,17 +417,20 @@ try_combine (i3, i2, i1)
      make sure that register is not used between there and I3.
      Also insist that I3 not be a jump; if it were one
      and the incremented register were spilled, we would lose.  */
-  if ((link = find_reg_note (i2, REG_INC, 0)) != 0
-      && (GET_CODE (i3) == JUMP_INSN
-	  || reg_used_between_p (XEXP (link, 0), i2, i3)
-	  || reg_mentioned_p (XEXP (link, 0), i3)))
-    return 0;
+  for (link = REG_NOTES (i2); link; link = XEXP (link, 1))
+    if (REG_NOTE_KIND (link) == REG_INC
+	&& (GET_CODE (i3) == JUMP_INSN
+	    || reg_used_between_p (XEXP (link, 0), i2, i3)
+	    || reg_mentioned_p (XEXP (link, 0), i3)))
+      return 0;
 
-  if (i1 && (link = find_reg_note (i1, REG_INC, 0)) != 0
-      && (GET_CODE (i3) == JUMP_INSN
-	  || reg_used_between_p (XEXP (link, 0), i1, i3)
-	  || reg_mentioned_p (XEXP (link, 0), i3)))
-    return 0;
+  if (i1)
+    for (link = REG_NOTES (i1); link; link = XEXP (link, 1))
+      if (REG_NOTE_KIND (link) == REG_INC
+	  && (GET_CODE (i3) == JUMP_INSN
+	      || reg_used_between_p (XEXP (link, 0), i1, i3)
+	      || reg_mentioned_p (XEXP (link, 0), i3)))
+	return 0;
 
   /* See if the SETs in i1 or i2 need to be kept around in the merged
      instruction: whenever the value set there is still needed past i3.  */
@@ -1084,7 +1092,7 @@ subst (x, from, to)
 	  SUBST (SUBREG_REG (XEXP (x, 1)), XEXP (SUBREG_REG (XEXP (x, 1)), 0));
 	} 
       /* (set (zero_extract ...) (and/or/xor (zero_extract ...) const)),
-	 if both zero_extracts have the byte size and position,
+	 if both zero_extracts have the same location, size and position,
 	 can be changed to avoid the byte extracts.  */
       if ((GET_CODE (XEXP (x, 0)) == ZERO_EXTRACT
 	   || GET_CODE (XEXP (x, 0)) == SIGN_EXTRACT)
@@ -1092,12 +1100,7 @@ subst (x, from, to)
 	  && (GET_CODE (XEXP (x, 1)) == AND
 	      || GET_CODE (XEXP (x, 1)) == IOR
 	      || GET_CODE (XEXP (x, 1)) == XOR)
-	  && (GET_CODE (XEXP (XEXP (x, 1), 0)) == ZERO_EXTRACT
-	      || GET_CODE (XEXP (XEXP (x, 1), 0)) == SIGN_EXTRACT)
-	  && rtx_equal_p (XEXP (XEXP (XEXP (x, 1), 0), 1),
-			  XEXP (XEXP (x, 0), 1))
-	  && rtx_equal_p (XEXP (XEXP (XEXP (x, 1), 0), 2),
-			  XEXP (XEXP (x, 0), 2))
+	  && rtx_equal_p (XEXP (x, 0), XEXP (XEXP (x, 1), 0))
 	  && GET_CODE (XEXP (XEXP (x, 1), 0)) == GET_CODE (XEXP (x, 0))
 	  && GET_CODE (XEXP (XEXP (x, 1), 1)) == CONST_INT)
 	{

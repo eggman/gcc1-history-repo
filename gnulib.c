@@ -267,7 +267,7 @@ _subsf3 (a, b)
 #endif
 
 #ifdef L_cmpsf2
-SFVALUE
+int
 _cmpsf2 (a, b)
      union flt_or_int a, b;
 {

@@ -1,5 +1,5 @@
 /* Expand the basic unary and binary arithmetic operations, for GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1987, 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -827,33 +827,36 @@ init_extends ()
 
 /* can_fix_p and can_float_p say whether the target machine
    can directly convert a given fixed point type to
-   a given floating point type, or vice versa.  */
+   a given floating point type, or vice versa.
+   The returned value is the CODE_FOR_... value to use,
+   or CODE_FOR_nothing if these modes cannot be directly converted.  */
 
-static rtxfun fixtab[2][2][2];
-static rtxfun fixtrunctab[2][2][2];
-static rtxfun floattab[2][2];
+static enum insn_code fixtab[2][2][2];
+static enum insn_code fixtrunctab[2][2][2];
+static enum insn_code floattab[2][2];
 
 /* *TRUNCP_PTR is set to 1 if it is necessary to output
    an explicit FTRUNC insn before the fix insn; otherwise 0.  */
 
-rtxfun
+static enum insn_code
 can_fix_p (fixmode, fltmode, unsignedp, truncp_ptr)
      enum machine_mode fltmode, fixmode;
      int unsignedp;
      int *truncp_ptr;
 {
   *truncp_ptr = 0;
-  if (fixtrunctab[fltmode != SFmode][fixmode == DImode][unsignedp])
+  if (fixtrunctab[fltmode != SFmode][fixmode == DImode][unsignedp]
+      != CODE_FOR_nothing)
     return fixtrunctab[fltmode != SFmode][fixmode == DImode][unsignedp];
   if (ftrunc_optab->handlers[(int) fltmode].insn_code != CODE_FOR_nothing)
     {
       *truncp_ptr = 1;
       return fixtab[fltmode != SFmode][fixmode == DImode][unsignedp];
     }
-  return 0;
+  return CODE_FOR_nothing;
 }
 
-rtxfun
+static enum insn_code
 can_float_p (fltmode, fixmode)
      enum machine_mode fixmode, fltmode;
 {
@@ -863,72 +866,82 @@ can_float_p (fltmode, fixmode)
 void
 init_fixtab ()
 {
+  enum insn_code *p;
+  for (p = fixtab[0][0];
+       p < fixtab[0][0] + sizeof fixtab / sizeof (fixtab[0][0][0]); 
+       p++)
+    *p = CODE_FOR_nothing;
+  for (p = fixtrunctab[0][0];
+       p < fixtrunctab[0][0] + sizeof fixtrunctab / sizeof (fixtrunctab[0][0][0]); 
+       p++)
+    *p = CODE_FOR_nothing;
+
 #ifdef HAVE_fixsfsi2
   if (HAVE_fixsfsi2)
-    fixtab[0][0][0] = gen_fixsfsi2;
+    fixtab[0][0][0] = CODE_FOR_fixsfsi2;
 #endif
 #ifdef HAVE_fixsfdi2
   if (HAVE_fixsfdi2)
-    fixtab[0][1][0] = gen_fixsfdi2;
+    fixtab[0][1][0] = CODE_FOR_fixsfdi2;
 #endif
 #ifdef HAVE_fixdfsi2
   if (HAVE_fixdfsi2)
-    fixtab[1][0][0] = gen_fixdfsi2;
+    fixtab[1][0][0] = CODE_FOR_fixdfsi2;
 #endif
 #ifdef HAVE_fixdfdi2
   if (HAVE_fixdfdi2)
-    fixtab[1][1][0] = gen_fixdfdi2;
+    fixtab[1][1][0] = CODE_FOR_fixdfdi2;
 #endif
 
 #ifdef HAVE_fixunssfsi2
   if (HAVE_fixunssfsi2)
-    fixtab[0][0][1] = gen_fixunssfsi2;
+    fixtab[0][0][1] = CODE_FOR_fixunssfsi2;
 #endif
 #ifdef HAVE_fixunssfdi2
   if (HAVE_fixunssfdi2)
-    fixtab[0][1][1] = gen_fixunssfdi2;
+    fixtab[0][1][1] = CODE_FOR_fixunssfdi2;
 #endif
 #ifdef HAVE_fixunsdfsi2
   if (HAVE_fixunsdfsi2)
-    fixtab[1][0][1] = gen_fixunsdfsi2;
+    fixtab[1][0][1] = CODE_FOR_fixunsdfsi2;
 #endif
 #ifdef HAVE_fixunsdfdi2
   if (HAVE_fixunsdfdi2)
-    fixtab[1][1][1] = gen_fixunsdfdi2;
+    fixtab[1][1][1] = CODE_FOR_fixunsdfdi2;
 #endif
 
 #ifdef HAVE_fix_truncsfsi2
   if (HAVE_fix_truncsfsi2)
-    fixtrunctab[0][0][0] = gen_fix_truncsfsi2;
+    fixtrunctab[0][0][0] = CODE_FOR_fix_truncsfsi2;
 #endif
 #ifdef HAVE_fix_truncsfdi2
   if (HAVE_fix_truncsfdi2)
-    fixtrunctab[0][1][0] = gen_fix_truncsfdi2;
+    fixtrunctab[0][1][0] = CODE_FOR_fix_truncsfdi2;
 #endif
 #ifdef HAVE_fix_truncdfsi2
   if (HAVE_fix_truncdfsi2)
-    fixtrunctab[1][0][0] = gen_fix_truncdfsi2;
+    fixtrunctab[1][0][0] = CODE_FOR_fix_truncdfsi2;
 #endif
 #ifdef HAVE_fix_truncdfdi2
   if (HAVE_fix_truncdfdi2)
-    fixtrunctab[1][1][0] = gen_fix_truncdfdi2;
+    fixtrunctab[1][1][0] = CODE_FOR_fix_truncdfdi2;
 #endif
 
 #ifdef HAVE_fixuns_truncsfsi2
   if (HAVE_fixuns_truncsfsi2)
-    fixtrunctab[0][0][1] = gen_fixuns_truncsfsi2;
+    fixtrunctab[0][0][1] = CODE_FOR_fixuns_truncsfsi2;
 #endif
 #ifdef HAVE_fixuns_truncsfdi2
   if (HAVE_fixuns_truncsfdi2)
-    fixtrunctab[0][1][1] = gen_fixuns_truncsfdi2;
+    fixtrunctab[0][1][1] = CODE_FOR_fixuns_truncsfdi2;
 #endif
 #ifdef HAVE_fixuns_truncdfsi2
   if (HAVE_fixuns_truncdfsi2)
-    fixtrunctab[1][0][1] = gen_fixuns_truncdfsi2;
+    fixtrunctab[1][0][1] = CODE_FOR_fixuns_truncdfsi2;
 #endif
 #ifdef HAVE_fixuns_truncdfdi2
   if (HAVE_fixuns_truncdfdi2)
-    fixtrunctab[1][1][1] = gen_fixuns_truncdfdi2;
+    fixtrunctab[1][1][1] = CODE_FOR_fixuns_truncdfdi2;
 #endif
 
 #ifdef FIXUNS_TRUNC_LIKE_FIX_TRUNC
@@ -947,21 +960,27 @@ init_fixtab ()
 void
 init_floattab ()
 {
+  enum insn_code *p;
+  for (p = floattab[0];
+       p < floattab[0] + sizeof floattab / sizeof (floattab[0][0]); 
+       p++)
+    *p = CODE_FOR_nothing;
+
 #ifdef HAVE_floatsisf2
   if (HAVE_floatsisf2)
-    floattab[0][0] = gen_floatsisf2;
+    floattab[0][0] = CODE_FOR_floatsisf2;
 #endif
 #ifdef HAVE_floatdisf2
   if (HAVE_floatdisf2)
-    floattab[0][1] = gen_floatdisf2;
+    floattab[0][1] = CODE_FOR_floatdisf2;
 #endif
 #ifdef HAVE_floatsidf2
   if (HAVE_floatsidf2)
-    floattab[1][0] = gen_floatsidf2;
+    floattab[1][0] = CODE_FOR_floatsidf2;
 #endif
 #ifdef HAVE_floatdidf2
   if (HAVE_floatdidf2)
-    floattab[1][1] = gen_floatdidf2;
+    floattab[1][1] = CODE_FOR_floatdidf2;
 #endif
 }
 
@@ -976,7 +995,7 @@ expand_float (real_to, from, unsignedp)
      rtx real_to, from;
      int unsignedp;
 {
-  register rtxfun fun;
+  enum insn_code icode;
   register rtx intermediate = 0, to;
 
   to = real_to = protect_from_queue (real_to, 1);
@@ -997,21 +1016,23 @@ expand_float (real_to, from, unsignedp)
      otherwise convert either input, output or both with wider mode;
      otherwise use a library call.  */
 
-  if (fun = can_float_p (GET_MODE (to), GET_MODE (from)))
+  if ((icode = can_float_p (GET_MODE (to), GET_MODE (from)))
+      != CODE_FOR_nothing)
     {
-      emit_insn ((*fun) (to, from));
+      emit_unop_insn (icode, to, from, FLOAT);
     }
   else if (GET_MODE (to) == SFmode
-	   && (fun = can_float_p (GET_MODE (from), DFmode)))
+	   && ((icode = can_float_p (GET_MODE (from), DFmode))
+	       != CODE_FOR_nothing))
     {
       to = gen_reg_rtx (DFmode);
-      emit_insn ((*fun) (to, from));
+      emit_unop_insn (icode, to, from, FLOAT);
     }
   /* If we can't float a SI, maybe we can float a DI.
      If so, convert to DI and then float.  */
   else if (GET_MODE (from) != DImode
-	   && (can_float_p (GET_MODE (to), DImode)
-	       || can_float_p (DFmode, DImode)))
+	   && (can_float_p (GET_MODE (to), DImode) != CODE_FOR_nothing
+	       || can_float_p (DFmode, DImode) != CODE_FOR_nothing))
     {
       register rtx tem = gen_reg_rtx (DImode);
       convert_move (tem, from, unsignedp);
@@ -1020,14 +1041,16 @@ expand_float (real_to, from, unsignedp)
 	 the final value for unsignedness.  */
       unsignedp = 0;
 
-      if (fun = can_float_p (GET_MODE (to), GET_MODE (from)))
+      if ((icode = can_float_p (GET_MODE (to), GET_MODE (from)))
+	  != CODE_FOR_nothing)
 	{
-	  emit_insn ((*fun) (to, from));
+	  emit_unop_insn (icode, to, from, FLOAT);
 	}
-      else if (fun = can_float_p (DFmode, DImode))
+      else if ((icode = can_float_p (DFmode, DImode))
+	        != CODE_FOR_nothing)
 	{
 	  to = gen_reg_rtx (DFmode);
-	  emit_insn ((*fun) (to, from));
+	  emit_unop_insn (icode, to, from, FLOAT);
 	}
     }
   /* No hardware instruction available; call a library
@@ -1099,60 +1122,52 @@ expand_fix (to, from, unsignedp)
      register rtx to, from;
      int unsignedp;
 {
-  register rtxfun fun;
+  enum insn_code icode;
   register rtx target;
   int must_trunc = 0;
+
+  while (1)
+    {
+      icode = can_fix_p (GET_MODE (to), GET_MODE (from), unsignedp, &must_trunc);
+      if (icode != CODE_FOR_nothing)
+	{
+	  if (must_trunc)
+	    from = ftruncify (from);
+
+	  emit_unop_insn (icode, to, from, FIX);
+	  return;
+	}
+
+      icode = can_fix_p (DImode, GET_MODE (from), unsignedp, &must_trunc);
+
+      if (GET_MODE (to) != DImode && icode != CODE_FOR_nothing)
+	{
+	  register rtx temp = gen_reg_rtx (DImode);
+
+	  if (must_trunc)
+	    from = ftruncify (from);
+	  emit_unop_insn (icode, to, from, FIX);
+	  convert_move (to, temp, unsignedp);
+	  return;
+	}
+
+      /* If FROM is not DFmode, convert to DFmode and try again from there.  */
+      if (GET_MODE (from) == DFmode)
+	break;
+
+      from = convert_to_mode (DFmode, from, 0);
+    }
+
+  /* We can't do it with an insn, so use a library call.
+     The mode of FROM is known to be DFmode.  */
 
   to = protect_from_queue (to, 1);
   from = protect_from_queue (from, 0);
 
   if (flag_force_mem)
-    {
-      from = force_not_mem (from);
-    }
+    from = force_not_mem (from);
 
-  if (fun = can_fix_p (GET_MODE (to), GET_MODE (from), unsignedp, &must_trunc))
-    {
-      if (must_trunc)
-	from = ftruncify (from);
-      emit_insn ((*fun) (to, from));
-      return;
-    }
-
-  if (GET_MODE (to) != DImode
-      && (fun = can_fix_p (DImode, GET_MODE (from), unsignedp, &must_trunc)))
-    {
-      register rtx temp = gen_reg_rtx (DImode);
-      if (must_trunc)
-	from = ftruncify (from);
-      emit_insn ((*fun) (temp, from));
-      convert_move (to, temp, unsignedp);
-      return;
-    }
-
-  if (GET_MODE (from) != DFmode)
-    {
-      register rtx tem = gen_reg_rtx (DFmode);
-      convert_move (tem, from, 0);
-      from = tem;
-    }
-
-  if (fun = can_fix_p (GET_MODE (to), GET_MODE (from), unsignedp, &must_trunc))
-    {
-      if (must_trunc)
-	from = ftruncify (from);
-      emit_insn ((*fun) (to, from));
-      return;
-    }
-
-  if (fun = can_fix_p (DImode, DFmode, unsignedp, &must_trunc))
-    {
-      if (must_trunc)
-	from = ftruncify (from);
-      target = gen_reg_rtx (DImode);
-      emit_insn ((*fun) (target, from));
-    }
-  else if (GET_MODE (to) != DImode)
+  if (GET_MODE (to) != DImode)
     {
       emit_library_call (gen_rtx (SYMBOL_REF, Pmode,
 				  unsignedp ? "_fixunsdfsi"
@@ -1169,7 +1184,7 @@ expand_fix (to, from, unsignedp)
       target = hard_libcall_value (DImode);
     }
 
-  if (GET_MODE (to) == DImode)
+  if (GET_MODE (to) == GET_MODE (target))
     emit_move_insn (to, target);
   else
     convert_move (to, target, 0);

@@ -853,7 +853,7 @@
 ;	xoperands[2] = operands[1];
 ;	/* deal with loading a zero in.  */
 ;	abort ();
-;	return \"ld %2,%0\;fmovs %%f0,%1\;fitod %0,%0\";
+;	return \"ld %2,%0\;fitod %0,%0\";
 ;      }
 ;  else if (FP_REG_P (operands[1]))
 ;    if (FP_REG_P (operands[0]))
@@ -872,7 +872,7 @@
 ;      output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
 ;      xoperands[1] = operands[0];
 ;      xoperands[2] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-;      output_asm_insn (\"ld [%%fp+%0],%1\;fmovs %%f0,%2\;fitod %1,%1\", xoperands);
+;      output_asm_insn (\"ld [%%fp+%0],%1\;fitod %1,%1\", xoperands);
 ;      return \"\";
 ;    }
 ;}")
@@ -898,7 +898,7 @@
       output_asm_insn (\"st %1,[%%fp+%0]\", xoperands);
       xoperands[1] = operands[0];
       xoperands[2] = gen_rtx (REG, VOIDmode, REGNO (operands[0]) + 1);
-      output_asm_insn (\"ld [%%fp+%0],%1\;fmovs %%f0,%2\;fitod %1,%1\", xoperands);
+      output_asm_insn (\"ld [%%fp+%0],%1\;fitod %1,%1\", xoperands);
       return \"\";
     }
 }")
@@ -923,7 +923,7 @@
     {
       int offset = - get_frame_size () - 4;
       operands[1] = gen_rtx (CONST_INT, VOIDmode, offset);
-      return \"st %%f2,[%%fp+%1]\;ld [%%fp+%1],%0\";
+      return \"st %%f0,[%%fp+%1]\;ld [%%fp+%1],%0\";
     }
 }")
 

@@ -110,6 +110,9 @@ extern int target_flags;
 /* Every structure's size must be a multiple of this.  */
 #define STRUCTURE_SIZE_BOUNDARY 8
 
+/* A bitfield declared as `int' forces `int' alignment for the struct.  */
+#define PCC_BITFIELD_TYPE_MATTERS
+
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT (TARGET_VAXC_ALIGNMENT ? 8 : 32)
 
@@ -920,6 +923,9 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 #define ASM_OUTPUT_ALIGN(FILE,LOG)  \
   fprintf (FILE, "\t.align %d\n", (LOG))
+
+/* This is how to output an assembler line
+   that says to advance the location counter by SIZE bytes.  */
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
   fprintf (FILE, "\t.space %d\n", (SIZE))

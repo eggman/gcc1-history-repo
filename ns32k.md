@@ -259,7 +259,7 @@
 
 (define_insn "movdi"
   [(set (match_operand:DI 0 "general_operand" "=g<")
-	(match_operand:DI 1 "general_operand" "g"))]
+	(match_operand:DI 1 "general_operand" "gF"))]
   ""
   "* return output_move_double (operands); ")
 
@@ -524,11 +524,13 @@
   "TARGET_32081"
   "movbf %1,%0")
 
-(define_insn "floatqidf2"
-  [(set (match_operand:DF 0 "general_operand" "=fm<")
-	(float:DF (match_operand:QI 1 "general_operand" "rm")))]
-  "TARGET_32081"
-  "movbl %1,%0")
+; Some assemblers warn that this insn doesn't work.
+; Maybe they know something we don't.
+;(define_insn "floatqidf2"
+;  [(set (match_operand:DF 0 "general_operand" "=fm<")
+;	(float:DF (match_operand:QI 1 "general_operand" "rm")))]
+;  "TARGET_32081"
+;  "movbl %1,%0")
 
 ;; Float-to-fix conversion insns.
 ;; The sequent compiler always generates "trunc" insns.

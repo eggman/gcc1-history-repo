@@ -139,7 +139,7 @@ and this notice must be preserved on all copies.  */
   else if (mask) fprintf (FILE, "\tmovm.l &0x%x,-(%%sp)\n", mask); }
 
 #define FUNCTION_PROFILER(FILE, LABEL_NO) \
-   fprintf (FILE, "\tmov.l &LP%d,%%d0\n\tjsr mcount\n", (LABEL_NO));
+   fprintf (FILE, "\tmov.l &LP%d,%%a0\n\tjsr mcount\n", (LABEL_NO));
 
 #define FUNCTION_EPILOGUE(FILE, SIZE) \
 { register int regno;						\
@@ -206,9 +206,9 @@ and this notice must be preserved on all copies.  */
 
 #define ASM_APP_OFF ""
 
-#define TEXT_SECTION_ASM_OP "\ttext"
+#define TEXT_SECTION_ASM_OP "text"
 
-#define DATA_SECTION_ASM_OP "\tdata"
+#define DATA_SECTION_ASM_OP "data"
 
 #define	ASCII_DATA_ASM_OP "\tbyte"
 
@@ -248,22 +248,6 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
   else							\
     fprintf (FILE, "%s%d:\n", PREFIX, NUM);		\
 } while(0)
-
-#if 0
-/* Are these definitions necessary? */
-
-#define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-do { union { double d; long l[2]; } tem;		\
-     tem.d = (VALUE);					\
-     fprintf(FILE, "\tlong 0x%x,0x%x\n", tem.l[0], tem.l[1]); \
-   } while (0)
-
-#define ASM_OUTPUT_FLOAT(FILE,VALUE)  \
-do { union { float f; long l;} tem;			\
-     tem.f = (VALUE);					\
-     fprintf (FILE, "\tlong 0x%x\n", tem.l);	\
-   } while (0)
-#endif
 
 #define ASM_OUTPUT_DOUBLE(FILE, VALUE)					\
   fprintf (FILE, "\tdouble 0f%.20g\n", (VALUE))

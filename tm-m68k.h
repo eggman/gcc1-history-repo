@@ -244,7 +244,7 @@ extern int target_flags;
 
    For any two classes, it is very desirable that there be another
    class that represents their union.  */
-   
+
 /* The 68000 has three kinds of registers, so eight classes would be
    a complete set.  One of them is not needed.  */
 
@@ -376,7 +376,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
    If the precise function being called is known, FUNC is its FUNCTION_DECL;
    otherwise, FUNC is 0.  */
 
-/* On the 68000 the return value is in D0 regardless.  */   
+/* On the 68000 the return value is in D0 regardless.  */
 
 #define FUNCTION_VALUE(VALTYPE, FUNC)  \
   gen_rtx (REG, TYPE_MODE (VALTYPE), 0)
@@ -384,7 +384,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 /* Define how to find the value returned by a library function
    assuming the value has mode MODE.  */
 
-/* On the 68000 the return value is in D0 regardless.  */   
+/* On the 68000 the return value is in D0 regardless.  */
 
 #define LIBCALL_VALUE(MODE)  gen_rtx (REG, MODE, 0)
 
@@ -585,11 +585,34 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 
 #define FIX_FRAME_POINTER_ADDRESS(ADDR,DEPTH)  \
 { int offset = -1;							\
+  rtx regs = stack_pointer_rtx;						\
   if (ADDR == frame_pointer_rtx)					\
     offset = 0;								\
   else if (GET_CODE (ADDR) == PLUS && XEXP (ADDR, 0) == frame_pointer_rtx \
 	   && GET_CODE (XEXP (ADDR, 1)) == CONST_INT)			\
     offset = INTVAL (XEXP (ADDR, 1));					\
+  else if (GET_CODE (ADDR) == PLUS && XEXP (ADDR, 0) == frame_pointer_rtx) \
+    { rtx other_reg = XEXP (ADDR, 1);					\
+      offset = 0;							\
+      regs = gen_rtx (PLUS, Pmode, stack_pointer_rtx, other_reg); }	\
+  else if (GET_CODE (ADDR) == PLUS && XEXP (ADDR, 1) == frame_pointer_rtx) \
+    { rtx other_reg = XEXP (ADDR, 0);					\
+      offset = 0;							\
+      regs = gen_rtx (PLUS, Pmode, stack_pointer_rtx, other_reg); }	\
+  else if (GET_CODE (ADDR) == PLUS					\
+	   && GET_CODE (XEXP (ADDR, 0)) == PLUS				\
+	   && XEXP (XEXP (ADDR, 0), 0) == frame_pointer_rtx		\
+	   && GET_CODE (XEXP (ADDR, 1)) == CONST_INT)			\
+    { rtx other_reg = XEXP (XEXP (ADDR, 0), 1);				\
+      offset = INTVAL (XEXP (ADDR, 1));					\
+      regs = gen_rtx (PLUS, Pmode, stack_pointer_rtx, other_reg); }	\
+  else if (GET_CODE (ADDR) == PLUS					\
+	   && GET_CODE (XEXP (ADDR, 0)) == PLUS				\
+	   && XEXP (XEXP (ADDR, 0), 1) == frame_pointer_rtx		\
+	   && GET_CODE (XEXP (ADDR, 1)) == CONST_INT)			\
+    { rtx other_reg = XEXP (XEXP (ADDR, 0), 0);				\
+      offset = INTVAL (XEXP (ADDR, 1));					\
+      regs = gen_rtx (PLUS, Pmode, stack_pointer_rtx, other_reg); }	\
   if (offset >= 0)							\
     { int regno;							\
       extern char call_used_regs[];					\
@@ -600,7 +623,7 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
 	if (regs_ever_live[regno] && ! call_used_regs[regno])		\
 	  offset += 4;							\
       offset -= 4;							\
-      ADDR = plus_constant (stack_pointer_rtx, offset + (DEPTH)); } }
+      ADDR = plus_constant (regs, offset + (DEPTH)); } }		\
 
 /* Addressing modes, and classification of registers for them.  */
 
@@ -857,6 +880,9 @@ enum reg_class { NO_REGS, DATA_REGS, ADDR_REGS, GENERAL_REGS, FP_REGS, FP_OR_DAT
    and some other value for true.  This is the value stored for true.  */
 
 #define STORE_FLAG_VALUE -1
+
+/* When a prototype says `char' or `short', really pass an `int'.  */
+#define PROMOTE_PROTOTYPES
 
 /* Specify the machine mode that pointers have.
    After generation of rtl, the compiler makes no further distinction

@@ -944,15 +944,22 @@ actualparameterlist (typelist, values, name)
       val = require_complete_type (val);
 
       if (type != 0)
-	/* Formal parm type is specified by a function prototype.  */
-	parm = build_tree_list (0, convert_for_assignment (type, val,
-							   "argument passing"));
+	{
+	  /* Formal parm type is specified by a function prototype.  */
+	  tree parmval
+	    = convert_for_assignment (type, val, "argument passing");
+#ifdef PROMOTE_PROTOTYPES
+	  if (TREE_CODE (type) == INTEGER_TYPE
+	      && (TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)))
+	    parmval = default_conversion (parmval);
+#endif
+	  parm = build_tree_list (0, parmval);
+	}
       else if (TREE_CODE (TREE_TYPE (val)) == REAL_TYPE
                && (TYPE_PRECISION (TREE_TYPE (val))
 	           < TYPE_PRECISION (double_type_node)))
 	/* Convert `float' to `double'.  */
-	parm = build_tree_list (NULL_TREE,
-				convert (double_type_node, val));
+	parm = build_tree_list (NULL_TREE, convert (double_type_node, val));
       else
 	/* Convert `short' and `char' to full-size `int'.  */
 	parm = build_tree_list (NULL_TREE, default_conversion (val));
@@ -2311,8 +2318,7 @@ truthvalue_conversion (expr)
   register enum tree_code form = TREE_CODE (expr);
 
   if (form == EQ_EXPR && integer_zerop (TREE_OPERAND (expr, 1)))
-    return build_unary_op (TRUTH_NOT_EXPR,
-			   truthvalue_conversion (TREE_OPERAND (expr, 0)), 0);
+    return build_unary_op (TRUTH_NOT_EXPR, TREE_OPERAND (expr, 0), 0);
 
   /* A one-bit unsigned bit-field is already acceptable.  */
   if (form == COMPONENT_REF
@@ -2417,7 +2423,9 @@ build_conditional_expr (ifexp, op1, op2)
       && TREE_CODE (TREE_TYPE (op1)) != ENUMERAL_TYPE
       && TREE_CODE (TREE_TYPE (op1)) != FUNCTION_TYPE)
     {
-      if (TREE_LITERAL (ifexp))
+      if (TREE_LITERAL (ifexp)
+	  && (TREE_CODE (ifexp) == INTEGER_CST
+	      || TREE_CODE (ifexp) == ADDR_EXPR))
 	return (integer_zerop (ifexp) ? op2 : op1);
 
       return build (COND_EXPR, TREE_TYPE (op1), ifexp, op1, op2);

@@ -614,10 +614,17 @@ pushdecl (x)
 {
   register tree t;
   register tree name = DECL_NAME (x);
+  register struct binding_level *b = current_binding_level;
 
   if (name)
     {
       t = lookup_name_current_level (name);
+      if (t != 0 && t == error_mark_node)
+	{
+	  t = 0;
+	  error_with_decl (x, "`%s' used prior to declaration");
+	}
+
       if (t && duplicate_decls (x, t))
 	return t;
 
@@ -627,13 +634,15 @@ pushdecl (x)
 	if (TYPE_NAME (TREE_TYPE (x)) == 0)
 	  TYPE_NAME (TREE_TYPE (x)) = x;
 
+      /* In PCC-compatibility mode, extern decls of vars with no current decl
+	 take effect at top level no matter where they are.  */
+      if (flag_traditional && TREE_EXTERNAL (x)
+	  && lookup_name (name) == 0)
+	b = global_binding_level;
+
       /* This name is new in its binding level.
 	 Install the new declaration and return it.  */
-      if (current_binding_level == global_binding_level
-	  /* In PCC-compatibility mode, extern decls
-	     take effect at top level no matter where they are.  */
-	  || (flag_traditional && TREE_EXTERNAL (x)
-	      && lookup_name (name) == 0))
+      if (b == global_binding_level)
 	{
 	  /* Install a global value.  */
 	  
@@ -650,8 +659,14 @@ pushdecl (x)
 	     that is erroneous.  */
 	  if (TREE_PUBLIC (name)
 	      && ! TREE_PUBLIC (x) && ! TREE_EXTERNAL (x))
-	    warning ("`%s' was declared `extern' and later `static'",
-		     IDENTIFIER_POINTER (name));
+	    {
+	      if (IDENTIFIER_IMPLICIT_DECL (name))
+		warning ("`%s' was declared implicitly `extern' and later `static'",
+			 IDENTIFIER_POINTER (name));
+	      else
+		warning ("`%s' was declared `extern' and later `static'",
+			 IDENTIFIER_POINTER (name));
+	    }
 	}
       else
 	{
@@ -693,20 +708,20 @@ pushdecl (x)
 	  /* If storing a local value, there may already be one (inherited).
 	     If so, record it for restoration when this binding level ends.  */
 	  if (oldlocal != 0)
-	    current_binding_level->shadowed
+	    b->shadowed
 	      = tree_cons (name, oldlocal,
-			   current_binding_level->shadowed);
+			   b->shadowed);
 	}
 
       /* Keep count of variables in this level with incomplete type.  */
       if (TYPE_SIZE (TREE_TYPE (x)) == 0)
-	++current_binding_level->n_incomplete;
+	++b->n_incomplete;
     }
 
   /* Put decls on list in reverse order.
      We will reverse them later if necessary.  */
-  TREE_CHAIN (x) = current_binding_level->names;
-  current_binding_level->names = x;
+  TREE_CHAIN (x) = b->names;
+  b->names = x;
 
   return x;
 }
@@ -721,11 +736,15 @@ implicitly_declare (functionid)
   register tree decl;
 
   /* Save the decl permanently so we can warn if definition follows.  */
-  end_temporary_allocation ();
+  if (flag_traditional)
+    end_temporary_allocation ();
 
-  if (IDENTIFIER_IMPLICIT_DECL (functionid) != 0)
+  /* We used to reuse an old implicit decl here,
+     but this loses with inline functions because it can clobber
+     the saved decl chains.  */
+/*  if (IDENTIFIER_IMPLICIT_DECL (functionid) != 0)
     decl = IDENTIFIER_IMPLICIT_DECL (functionid);
-  else
+  else  */
     decl = build_decl (FUNCTION_DECL, functionid, default_function_type);
 
   TREE_EXTERNAL (decl) = 1;
@@ -745,7 +764,8 @@ implicitly_declare (functionid)
 
   IDENTIFIER_IMPLICIT_DECL (functionid) = decl;
 
-  resume_temporary_allocation ();
+  if (flag_traditional)
+    resume_temporary_allocation ();
 
   return decl;
 }
@@ -1296,9 +1316,9 @@ groktypename (typename)
    do go through here.  Structure field declarations are done by
    grokfield and not through here.  */
 
-/* Set this nonzero to debug not using the temporary obstack
+/* Set this to zero to debug not using the temporary obstack
    to parse initializers.  */
-int debug_no_temp_inits = 1;
+int debug_temp_inits = 1;
 
 tree
 start_decl (declarator, declspecs, initialized)
@@ -1376,8 +1396,7 @@ start_decl (declarator, declspecs, initialized)
     {
       /* When parsing and digesting the initializer,
 	 use temporary storage.  Do this even if we will ignore the value.  */
-      if (current_binding_level == global_binding_level
-	  && debug_no_temp_inits)
+      if (current_binding_level == global_binding_level && debug_temp_inits)
 	temporary_allocation ();
     }
 
@@ -1419,8 +1438,8 @@ finish_decl (decl, init, asmspec)
      must go in the permanent obstack; but don't discard the
      temporary data yet.  */
 
-  if (debug_no_temp_inits && init_written
-      && current_binding_level == global_binding_level)
+  if (current_binding_level == global_binding_level
+      && allocation_temporary_p ())
     end_temporary_allocation ();
 
   /* Deduce size of array from initialization, if not already known */
@@ -1508,7 +1527,7 @@ finish_decl (decl, init, asmspec)
 			      0);
 
   /* Resume permanent allocation, if not within a function.  */
-  if (debug_no_temp_inits && init_written
+  if (allocation_temporary_p ()
       && current_binding_level == global_binding_level)
     permanent_allocation ();
 }
@@ -2349,7 +2368,13 @@ get_parm_info (void_at_end)
     {
       /* Since there is a prototype,
 	 args are passed in their declared types.  */
-      DECL_ARG_TYPE (decl) = TREE_TYPE (decl);
+      tree type = TREE_TYPE (decl);
+      DECL_ARG_TYPE (decl) = type;
+#ifdef PROMOTE_PROTOTYPES
+      if (TREE_CODE (type) == INTEGER_TYPE
+	  && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node))
+	DECL_ARG_TYPE (decl) = integer_type_node;
+#endif
 
       types = tree_cons (NULL_TREE, TREE_TYPE (decl), types);
       if (TREE_VALUE (types) == void_type_node && ! erred)
@@ -2371,6 +2396,7 @@ get_parm_info (void_at_end)
 
 tree
 xref_tag (code, name)
+     enum tree_code code;
      tree name;
 {
   /* If a cross reference is requested, look up the type
@@ -2385,6 +2411,18 @@ xref_tag (code, name)
      the forward-reference will be altered into a real type.  */
 
   ref = make_node (code);
+  if (code == ENUMERAL_TYPE)
+    {
+      /* Give the type a default layout like unsigned int
+	 to avoid crashing if it does not get defined.  */
+      TYPE_MODE (ref) = SImode;
+      TYPE_ALIGN (ref) = TYPE_ALIGN (unsigned_type_node);
+      TREE_UNSIGNED (ref) = 1;
+      TYPE_PRECISION (ref) = TYPE_PRECISION (unsigned_type_node);
+      TYPE_MIN_VALUE (ref) = TYPE_MIN_VALUE (unsigned_type_node);
+      TYPE_MAX_VALUE (ref) = TYPE_MAX_VALUE (unsigned_type_node);
+    }
+
   pushtag (name, ref);
   return ref;
 }
@@ -2682,7 +2720,7 @@ start_enum (name)
   /* Initially, set up this enum as like `int'
      so that we can create the enumerators' declarations and values.
      Later on, the precision of the type may be changed and
-     it may be layed out again.  */
+     it may be laid out again.  */
 
   TYPE_PRECISION (enumtype) = TYPE_PRECISION (integer_type_node);
   TYPE_SIZE (enumtype) = 0;
@@ -3141,7 +3179,7 @@ finish_function ()
   DECL_CONTEXT (DECL_RESULT (fndecl)) = DECL_INITIAL (fndecl);
 
   /* Generate rtl for function exit.  */
-  expand_function_end ();
+  expand_function_end (input_filename, lineno);
 
   if (warn_return_type)
     /* So we can tell if jump_optimize sets it to 1.  */

@@ -154,7 +154,7 @@ char *find_file ();
 #define ASM_SPEC ""
 #endif
 
-/* config.h can define CPP_SPEC to provide extra args to the assembler
+/* config.h can define CPP_SPEC to provide extra args to the C preprocessor
    or extra switch-translations.  */
 #ifndef CPP_SPEC
 #define CPP_SPEC ""

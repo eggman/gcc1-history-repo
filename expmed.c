@@ -770,9 +770,9 @@ extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
 	     shift it so it does.  */
 	  tree amount = build_int_2 (bitpos, 0);
 	  /* Maybe propagate the target for the shift.  */
-	  /* Certainly do so if we will return the value of the shift.  */
+	  /* But not if we will return it--could confuse integrate.c.  */
 	  rtx subtarget = (target != 0 && GET_CODE (target) == REG
-			   && FUNCTION_VALUE_REGNO_P (REGNO (target))
+			   && !REG_FUNCTION_VALUE_P (target)
 			   ? target : 0);
 	  if (tmode != mode) subtarget = 0;
 	  op0 = expand_shift (RSHIFT_EXPR, mode, op0, amount, subtarget, 1);
@@ -816,9 +816,9 @@ extract_fixed_bit_field (tmode, op0, offset, bitsize, bitpos, target, unsignedp)
     {
       tree amount = build_int_2 (GET_MODE_BITSIZE (mode) - (bitsize + bitpos), 0);
       /* Maybe propagate the target for the shift.  */
-      /* Certainly do so if we will return the value of the shift.  */
+      /* But not if we will return the result--could confuse integrate.c.  */
       rtx subtarget = (target != 0 && GET_CODE (target) == REG
-		       && FUNCTION_VALUE_REGNO_P (REGNO (target))
+		       && ! REG_FUNCTION_VALUE_P (target)
 		       ? target : 0);
       op0 = expand_shift (LSHIFT_EXPR, mode, op0, amount, subtarget, 1);
     }
@@ -1153,7 +1153,7 @@ expand_mult (mode, op0, op1, target, unsignedp)
   /* Don't use the function value register as a target
      since we have to read it as well as write it,
      and function-inlining gets confused by this.  */
-  if (target && REG_P (target) && FUNCTION_VALUE_REGNO_P (REGNO (target)))
+  if (target && REG_P (target) && REG_FUNCTION_VALUE_P (target))
     target = 0;
 
   if (GET_CODE (op1) == CONST_INT)
@@ -1233,13 +1233,11 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
   /* Don't use the function value register as a target
      since we have to read it as well as write it,
      and function-inlining gets confused by this.  */
-  if (target && REG_P (target) && FUNCTION_VALUE_REGNO_P (REGNO (target)))
+  if (target && REG_P (target) && REG_FUNCTION_VALUE_P (target))
     target = 0;
 
   if (target == 0)
-    {
-      target = gen_reg_rtx (mode);
-    }
+    target = gen_reg_rtx (mode);
 
   /* Don't clobber an operand while doing a multi-step calculation.  */
   if ((rem_flag && rtx_equal_p (target, op0))

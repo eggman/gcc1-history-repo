@@ -1,5 +1,5 @@
 /* Output sdb-format symbol table information from GNU compiler.
-   Copyright (C) 1987 Free Software Foundation, Inc.
+   Copyright (C) 1988 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -49,34 +49,101 @@ void sdbout_tags();
 void sdbout_types();
 
 static void sdbout_one_type ();
+static int plain_type_1 ();
 
 /* Random macros describing parts of SDB data.  */
 
 /* Put something here if lines get too long */
 #define CONTIN
 
+#ifndef PUT_SDB_SCL
 #define PUT_SDB_SCL(a) fprintf(asm_out_file, "\t.scl\t%d;", (a))
+#endif
+
+#ifndef PUT_SDB_INT_VAL
 #define PUT_SDB_INT_VAL(a) fprintf (asm_out_file, "\t.val\t%d;", (a))
+#endif
+
+#ifndef PUT_SDB_VAL
 #define PUT_SDB_VAL(a)				\
-( fputs (".val\t", asm_out_file),		\
+( fputs ("\t.val\t", asm_out_file),		\
   output_addr_const (asm_out_file, (a)),	\
   fputc (';', asm_out_file))
+#endif
 
+#ifndef PUT_SDB_DEF
 #define PUT_SDB_DEF(a)				\
 do { fprintf (asm_out_file, "\t.def\t");	\
      ASM_OUTPUT_LABELREF (asm_out_file, a); 	\
      fprintf (asm_out_file, ";"); } while (0)
+#endif
 
-#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\t.def\t%s;",a)
+#ifndef PUT_SDB_PLAIN_DEF
+#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\t.def\t.%s;",a)
+#endif
+
+#ifndef PUT_SDB_ENDEF
 #define PUT_SDB_ENDEF fputs("\t.endef\n", asm_out_file)
-#define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\t.type\t0%o;", a)
-#define PUT_SDB_TAG(a) fprintf(asm_out_file, "\t.tag\t%s;", a)
-#define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\t.size\t%d;", a)
+#endif
 
+#ifndef PUT_SDB_TYPE
+#define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\t.type\t0%o;", a)
+#endif
+
+#ifndef PUT_SDB_SIZE
+#define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\t.size\t%d;", a)
+#endif
+
+#ifndef PUT_SDB_DIM
+#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\t.dim\t%d;", a)
+#endif
+
+#ifndef PUT_SDB_TAG
 #define PUT_SDB_TAG(a)				\
 do { fprintf (asm_out_file, "\t.tag\t");	\
      ASM_OUTPUT_LABELREF (asm_out_file, a);	\
      fprintf (asm_out_file, ";"); } while (0)
+#endif
+
+#ifndef PUT_SDB_BLOCK_START
+#define PUT_SDB_BLOCK_START(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\t.def\t.bb;\t.val\t.;\t.scl\t100;\t.line\t%d;\t.endef\n",	\
+	   (LINE))
+#endif
+
+#ifndef PUT_SDB_BLOCK_END
+#define PUT_SDB_BLOCK_END(LINE)			\
+  fprintf (asm_out_file,			\
+	   "\t.def\t.eb;.val\t.;\t.scl\t100;\t.line\t%d;\t.endef\n",	\
+	   (LINE))
+#endif
+
+#ifndef PUT_SDB_FUNCTION_START
+#define PUT_SDB_FUNCTION_START(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\t.def\t.bf;\t.val\t.;\t.scl\t101;\t.line\t%d;\t.endef\n",	\
+	   (LINE))
+#endif
+
+#ifndef PUT_SDB_FUNCTION_END
+#define PUT_SDB_FUNCTION_END(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\t.def\t.ef;\t.val\t.;\t.scl\t101;\t.line\t%d;\t.endef\n",	\
+	   (LINE))
+#endif
+
+#ifndef PUT_SDB_EPILOGUE_END
+#define PUT_SDB_EPILOGUE_END(NAME)		\
+  fprintf (asm_out_file,			\
+	   "\t.def\t%s;\t.val\t.;\t.scl\t-1;\t.endef\n",	\
+	   (NAME))
+#endif
+
+#ifndef SDB_GENERATE_FAKE
+#define SDB_GENERATE_FAKE(BUFFER, NUMBER) \
+  sprintf ((BUFFER), ".%dfake", (NUMBER));
+#endif
 
 /* Return the sdb tag identifier string for TYPE
    if TYPE has already been defined; otherwise return a null pointer.   */
@@ -92,15 +159,42 @@ do { fprintf (asm_out_file, "\t.tag\t");	\
    described by the TREE_LIST node LINK.  This is 0 for an anonymous one.  */
 
 #define TAG_NAME(link) \
-  (((link) && TREE_PURPOSE((link)) \
-    && IDENTIFIER_POINTER(TREE_PURPOSE((link)))) \
-   ? IDENTIFIER_POINTER(TREE_PURPOSE((link))) : (char *) 0)
+  (((link) && TREE_PURPOSE ((link)) \
+    && IDENTIFIER_POINTER (TREE_PURPOSE ((link)))) \
+   ? IDENTIFIER_POINTER (TREE_PURPOSE ((link))) : (char *) 0)
+
+/* Return the structure-tag name of a structure, etc.  */
+
+#define TYPE_TAG_NAME(type) \
+  ((TYPE_NAME (type) != 0 && TREE_CODE (TYPE_NAME (type)) == IDENTIFIER_NODE) \
+   ? IDENTIFIER_POINTER (TYPE_NAME (type)) : 0)
 
+/* Set up for SDB output at the start of compilation.
+   ASM_FILE is the assembler code output file,
+   INPUT_NAME is the name of the main input file.  */
+
 void
-sdbout_init (asm_file, input_file_name)
+sdbout_init (asm_file, input_name)
      FILE *asm_file;
-     char *input_file_name;
+     char *input_name;
 {
+  int len = strlen (input_name);
+  char *na = input_name + len;
+
+  /* NA gets INPUT_NAME sans directory names.  */
+  while (na > input_name)
+    {
+      if (na[-1] == '/')
+	break;
+      na--;
+    }
+
+#ifdef ASM_OUTPUT_SOURCE_FILENAME
+  ASM_OUTPUT_SOURCE_FILENAME (asm_file, na);
+#else
+  fprintf (asm_file, "\t.file\t\"%s\"\n", na);
+#endif
+
   /* Get all permanent types not yet gotten
      and output them.  */
 
@@ -136,7 +230,8 @@ gen_fake_label ()
 {
   char label[10];
   char *labelstr;
-  sprintf (label, ".%dfake", unnamed_struct_number++);
+  SDB_GENERATE_FAKE (label, unnamed_struct_number);
+  unnamed_struct_number++;
   labelstr = (char *) permalloc (strlen (label) + 1);
   strcpy (labelstr, label);
   return labelstr;
@@ -164,6 +259,31 @@ gen_fake_label ()
 
 static int
 plain_type (type)
+     tree type;
+{
+  int val = plain_type_1 (type);
+  if (TREE_CODE (type) == ARRAY_TYPE)
+    {
+      PUT_SDB_SIZE (int_size_in_bytes (type));
+    }
+  return val;
+}
+
+static void
+sdbout_record_type_name (type)
+     tree type;
+{
+  char *name;
+  if (KNOWN_TYPE_TAG (type))
+    return;
+  name = TYPE_TAG_NAME (type);
+  if (!name || !*name)
+    name = gen_fake_label ();
+  SET_KNOWN_TYPE_TAG (type, name);
+}
+
+static int
+plain_type_1 (type)
      tree type;
 {
   if (type == 0)  
@@ -197,6 +317,9 @@ plain_type (type)
     case ARRAY_TYPE:
       {
 	int m = plain_type (TREE_TYPE (type));
+	PUT_SDB_DIM (TYPE_DOMAIN (type)
+		     ? TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type))) + 1
+		     : 0);
 	return PUSH_DERIVED_LEVEL (DT_ARY, m);
       }
     case RECORD_TYPE:
@@ -204,8 +327,16 @@ plain_type (type)
     case ENUMERAL_TYPE:
       {
 	char *tag;
-	tag = KNOWN_TYPE_TAG (type);
-	if (tag) PUT_SDB_TAG (tag);
+	sdbout_record_type_name (type);
+	if (TREE_ASM_WRITTEN (type))
+	  {
+	    /* Output the referenced structure tag name
+	       only if the .def has already been output.
+	       At least on 386, the Unix assembler
+	       cannot handle forward references to tags.  */
+	    tag = KNOWN_TYPE_TAG (type);
+	    PUT_SDB_TAG (tag);
+	  }
 	PUT_SDB_SIZE (int_size_in_bytes (type));
 	return ((TREE_CODE (type) == RECORD_TYPE) ? T_STRUCT :
 		(TREE_CODE (type) == UNION_TYPE) ? T_UNION :
@@ -263,7 +394,7 @@ sdbout_block (stmt)
 	    }
 
 	  /* If we are past the specified block, stop the scan.  */
-	  if (next_block_number < do_block)
+	  if (next_block_number > do_block)
 	    return;
 
 	  next_block_number++;
@@ -432,7 +563,6 @@ sdbout_tags (tags)
       register tree type = TREE_VALUE (link);
 
       if (TREE_PURPOSE (link) != 0
-	  && ! KNOWN_TYPE_TAG (type)
 	  && TYPE_SIZE (type) != 0)
 	sdbout_one_type (type, TAG_NAME (link));
     }
@@ -473,14 +603,18 @@ sdbout_one_type (type, name)
      char *name;
      tree type;
 {
+  text_section ();
   switch (TREE_CODE (type))
     {
     case RECORD_TYPE:
     case UNION_TYPE:
     case ENUMERAL_TYPE:
       /* Don't output a type twice.  */
-      if (KNOWN_TYPE_TAG (type))
+      if (TREE_ASM_WRITTEN (type))
 	return;
+
+      TREE_ASM_WRITTEN (type) = 1;
+      sdbout_record_type_name (type);
 
       /* Output a structure type.  */
       {
@@ -488,10 +622,7 @@ sdbout_one_type (type, name)
 	int member_scl;
 	tree tem;
 
-	if (!name || !*name)
-	  name = gen_fake_label ();
-	SET_KNOWN_TYPE_TAG (type, name);
-	PUT_SDB_DEF (name);
+	PUT_SDB_DEF (KNOWN_TYPE_TAG (type));
 
 	switch (TREE_CODE (type))
 	  {
@@ -538,11 +669,13 @@ sdbout_one_type (type, name)
 	      {
 		CONTIN;
 		PUT_SDB_DEF (IDENTIFIER_POINTER (DECL_NAME (tem)));
-		if (tem->decl.mode == BImode)
+		if (TREE_PACKED (tem))
 		  {
 		    PUT_SDB_INT_VAL (DECL_OFFSET (tem));
 		    PUT_SDB_SCL (C_FIELD);
 		    sdbout_type (TREE_TYPE (tem));
+		    PUT_SDB_SIZE (TREE_INT_CST_LOW (DECL_SIZE (tem))
+				  * DECL_SIZE_UNIT (tem));
 		  }
 		else
 		  {
@@ -554,10 +687,10 @@ sdbout_one_type (type, name)
 	      }
 	/* output end of a structure,union, or enumeral definition */
    
-	PUT_SDB_PLAIN_DEF (".eos");
+	PUT_SDB_PLAIN_DEF ("eos");
 	PUT_SDB_INT_VAL (size);
 	PUT_SDB_SCL (C_EOS);
-	PUT_SDB_TAG (name);
+	PUT_SDB_TAG (KNOWN_TYPE_TAG (type));
 	PUT_SDB_SIZE (size);
 	PUT_SDB_ENDEF;
 	break;
@@ -682,9 +815,7 @@ sdbout_begin_block (file, line, n)
      int n;
 {
   tree decl = current_function_decl;
-  fprintf (file,
-	   "\t.def\t.bb;\t.val\t.;\t.scl\t100;\t.line\t%d;\t.endef\n",
-	   line - sdb_begin_function_line);
+  PUT_SDB_BLOCK_START (line - sdb_begin_function_line);
   if (n == 1)
     {
       /* Include the outermost LET_STMT's variables in block 1.  */
@@ -704,12 +835,19 @@ sdbout_end_block (file, line)
      FILE *file;
      int line;
 {
-  fprintf (file,
-	   "\t.def\t.eb;.val\t.;\t.scl\t100;\t.line\t%d;\t.endef\n" ,
-	   line - sdb_begin_function_line);
+  PUT_SDB_BLOCK_END (line - sdb_begin_function_line);
 }
 
-/* Called at beginning of function (after prologue).
+/* Output sdb info for the current function name.
+   Called from assemble_function.  */
+
+void
+sdbout_mark_begin_function ()
+{
+  sdbout_symbol (current_function_decl, 0);
+}
+
+/* Called at beginning of function body (after prologue).
    Record the function's starting line number, so we can output
    relative line numbers for the other lines.
    Describe beginning of outermost block.
@@ -720,9 +858,7 @@ sdbout_begin_function (line)
      int line;
 {
   sdb_begin_function_line = line - 1;
-  fprintf (asm_out_file,
-	   "\t.def\t.bf;\t.val\t.;\t.scl\t101;\t.line\t%d;\t.endef\n",
-	   line);
+  PUT_SDB_FUNCTION_START (line);
   sdbout_parms (DECL_ARGUMENTS (current_function_decl));
   sdbout_reg_parms (DECL_ARGUMENTS (current_function_decl));
 }
@@ -734,28 +870,20 @@ void
 sdbout_end_function (line)
      int line;
 {
-  fprintf (asm_out_file,
-	   "\t.def\t.ef;\t.val\t.;\t.scl\t101;\t.line\t%d;\t.endef\n",
-	   line - sdb_begin_function_line);
+  PUT_SDB_FUNCTION_END (line);
+
+  /* Indicate we are between functions, for line-number output.  */
+  sdb_begin_function_line = 0;
 }
 
-/* Output sdb info for the current function name.
-   Called from assemble_function.  */
-
-sdbout_mark_begin_function ()
-{
-  sdbout_symbol (current_function_decl, 0);
-}
-
-/* Output end-of-definition address for current function and linenumber.  */
+/* Output sdb info for the absolute end of a function.
+   Called after the epilogue is output.  */
 
 void
-sdbout_mark_end_function ()
+sdbout_end_epilogue ()
 {
-  PUT_SDB_DEF (IDENTIFIER_POINTER (DECL_NAME (current_function_decl)));
-  fputs ("\t.val\t.;", asm_out_file);
-  PUT_SDB_SCL (C_EFCN);
-  PUT_SDB_ENDEF;
+  char *name = IDENTIFIER_POINTER (DECL_NAME (current_function_decl));
+  PUT_SDB_EPILOGUE_END (name);
 }
 
-#endif
+#endif /* SDB_DEBUGGING_INFO */

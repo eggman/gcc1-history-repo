@@ -122,6 +122,8 @@ static rtx tail_recursion_reentry;
 static tree last_expr_type;
 static rtx last_expr_value;
 
+static void expand_goto_internal ();
+static int expand_fixup ();
 static void fixup_gotos ();
 static int tail_recursion_args ();
 void fixup_stack_slots ();
@@ -298,8 +300,11 @@ struct goto_fixup
   /* Points to the insn before the jump insn.
      If more code must be inserted, it goes after this insn.  */
   rtx before_jump;
-  /* The LABEL_DECL that this jump is jumping to.  */
+  /* The LABEL_DECL that this jump is jumping to, or 0
+     for break, continue or return.  */
   tree target;
+  /* The CODE_LABEL rtx that this is jumping to.  */
+  rtx target_rtl;
   /* The outermost stack level that should be restored for this jump.
      Each time a binding contour that resets the stack is exited,
      if the target label is *not* yet defined, this slot is updated.  */
@@ -355,9 +360,16 @@ void
 expand_goto (body)
      tree body;
 {
+  expand_goto_internal (body, label_rtx (body));
+}
+
+static void
+expand_goto_internal (body, label)
+     tree body;
+     rtx label;
+{
   struct nesting *block;
   rtx stack_level = 0;
-  rtx label = label_rtx (body);
 
   if (GET_CODE (label) != CODE_LABEL)
     abort ();
@@ -365,7 +377,7 @@ expand_goto (body)
   /* If label has already been defined, we can tell now
      whether and how we must alter the stack level.  */
 
-  if (DECL_SOURCE_LINE (body) != 0)
+  if (PREV_INSN (label) != 0)
     {
       /* Find the outermost pending block that contains the label.
 	 (Check containment by comparing insn-uids.)
@@ -381,42 +393,60 @@ expand_goto (body)
       if (stack_level)
 	emit_move_insn (stack_pointer_rtx, stack_level);
 
-      if (TREE_PACKED (body))
+      if (body != 0 && TREE_PACKED (body))
 	error ("goto \"%s\" invalidly jumps into binding contour",
 	       IDENTIFIER_POINTER (DECL_NAME (body)));
     }
   /* Label not yet defined: may need to put this goto
      on the fixup list.  */
-  else
-    {
-      /* Does any containing block have a stack level?
-	 If not, no fixup is needed, and that is the normal case
-	 (the only case, for standard C).  */
-      for (block = block_stack; block; block = block->next)
-	if (block->data.block.stack_level != 0)
-	  break;
-
-      if (block)
-	{
-	  /* Ok, a fixup is needed.  Add a fixup to the list of such.  */
-	  struct goto_fixup *fixup
-	    = (struct goto_fixup *) oballoc (sizeof (struct goto_fixup));
-	  /* In case an old stack level is restored, make sure that comes
-	     after any pending stack adjust.  */
-	  do_pending_stack_adjust ();
-	  fixup->before_jump = get_last_insn ();
-	  fixup->target = body;
-	  fixup->stack_level = 0;
-	  fixup->next = goto_fixup_chain;
-	  goto_fixup_chain = fixup;
-	}
-      else
-	/* No fixup needed.  Record that the label is the target
-	   of at least one goto that has no fixup.  */
-	TREE_ADDRESSABLE (body) = 1;
-    }
+  else if (! expand_fixup (body, label))
+    /* No fixup needed.  Record that the label is the target
+       of at least one goto that has no fixup.  */
+    if (body != 0)
+      TREE_ADDRESSABLE (body) = 1;
 
   emit_jump (label);
+}
+
+/* Generate if necessary a fixup for a goto
+   whose target label in tree structure (if any) is TREE_LABEL
+   and whose target in rtl is RTL_LABEL.
+
+   The fixup will be used later to insert insns at this point
+   to restore the stack level as appropriate for the target label.
+
+   Value is nonzero if a fixup is made.  */
+
+static int
+expand_fixup (tree_label, rtl_label)
+     tree tree_label;
+     rtx rtl_label;
+{
+  struct nesting *block;
+  /* Does any containing block have a stack level?
+     If not, no fixup is needed, and that is the normal case
+     (the only case, for standard C).  */
+  for (block = block_stack; block; block = block->next)
+    if (block->data.block.stack_level != 0)
+      break;
+
+  if (block)
+    {
+      /* Ok, a fixup is needed.  Add a fixup to the list of such.  */
+      struct goto_fixup *fixup
+	= (struct goto_fixup *) oballoc (sizeof (struct goto_fixup));
+      /* In case an old stack level is restored, make sure that comes
+	 after any pending stack adjust.  */
+      do_pending_stack_adjust ();
+      fixup->before_jump = get_last_insn ();
+      fixup->target = tree_label;
+      fixup->target_rtl = rtl_label;
+      fixup->stack_level = 0;
+      fixup->next = goto_fixup_chain;
+      goto_fixup_chain = fixup;
+    }
+
+  return block != 0;
 }
 
 /* When exiting a binding contour, process all pending gotos requiring fixups.
@@ -442,11 +472,12 @@ fixup_gotos (stack_level, first_insn)
 	;
       /* Has this fixup's target label been defined?
 	 If so, we can finalize it.  */
-      else if (DECL_SOURCE_LINE (f->target) != 0)
+      else if (PREV_INSN (f->target_rtl) != 0)
 	{
 	  /* If this fixup jumped into this contour from before the beginning
 	     of this contour, report an error.  */
-	  if (INSN_UID (first_insn) > INSN_UID (f->before_jump)
+	  if (f->target != 0
+	      && INSN_UID (first_insn) > INSN_UID (f->before_jump)
 	      && ! TREE_ADDRESSABLE (f->target))
 	    {
 	      error_with_file_and_line (DECL_SOURCE_FILE (f->target),
@@ -880,7 +911,7 @@ expand_continue_loop ()
   last_expr_type = 0;
   if (loop_stack == 0)
     return 0;
-  emit_jump (loop_stack->data.loop.continue_label);
+  expand_goto_internal (0, loop_stack->data.loop.continue_label);
   return 1;
 }
 
@@ -893,7 +924,7 @@ expand_exit_loop ()
   last_expr_type = 0;
   if (loop_stack == 0)
     return 0;
-  emit_jump (loop_stack->data.loop.end_label);
+  expand_goto_internal (0, loop_stack->data.loop.end_label);
   return 1;
 }
 
@@ -930,7 +961,7 @@ expand_exit_something ()
     {
       if (n->exit_label != 0)
 	{
-	  emit_jump (n->exit_label);
+	  expand_goto_internal (0, n->exit_label);
 	  return 1;
 	}
     }
@@ -945,7 +976,7 @@ expand_null_return ()
 {
   clear_pending_stack_adjust ();
 #ifdef FUNCTION_EPILOGUE
-  emit_jump (return_label);
+  expand_goto_internal (0, return_label);
 #else
   emit_jump_insn (gen_return ());
   emit_barrier ();
@@ -988,7 +1019,7 @@ expand_return (retval)
 	  emit_label_after (tail_recursion_label,
 			    tail_recursion_reentry);
 	}
-      emit_jump (tail_recursion_label);
+      expand_goto_internal (0, tail_recursion_label);
       emit_barrier ();
       return;
     }
@@ -1419,6 +1450,11 @@ expand_start_case (exit_flag, expr, type)
 
   do_pending_stack_adjust ();
 
+  /* Make sure case_stmt.start points to something that won't
+     need any transformation before expand_end_case.  */
+  if (GET_CODE (get_last_insn ()) != NOTE)
+    emit_note (0, NOTE_INSN_DELETED);
+
   thiscase->data.case_stmt.start = get_last_insn ();
 }
 
@@ -1537,8 +1573,8 @@ expand_end_case ()
 
   do_pending_stack_adjust ();
 
-  /* This happens for various reasons including invalid data type.  */
-  if (index_expr != error_mark_node)
+  /* An ERROR_MARK occurs for various reasons including invalid data type.  */
+  if (TREE_TYPE (index_expr) != error_mark_node)
     {
       /* If we don't have a default-label, create one here,
 	 after the body of the switch.  */
@@ -1625,7 +1661,7 @@ expand_end_case ()
 	    {
 	      elt = TREE_PURPOSE (c);
 	      if (elt && TREE_VALUE (c))
-		do_jump_if_equal (expand_expr (elt, 0, VOIDmode, 0), index,
+		do_jump_if_equal (index, expand_expr (elt, 0, VOIDmode, 0),
 				  label_rtx (TREE_VALUE (c)));
 	    }
 
@@ -2332,6 +2368,11 @@ assign_parms (fndecl)
   stack_args_size.constant = 0;
   stack_args_size.var = 0;
 
+  /* If struct value address comes on the stack, count it in size of args.  */
+  if (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode
+      && GET_CODE (struct_value_incoming_rtx) == MEM)
+    stack_args_size.constant += GET_MODE_SIZE (Pmode);
+
   parm_reg_stack_loc = (rtx *) oballoc (nparmregs * sizeof (rtx));
   bzero (parm_reg_stack_loc, nparmregs * sizeof (rtx));
 
@@ -2345,11 +2386,7 @@ assign_parms (fndecl)
 	   || TREE_CODE (TREE_TYPE (parm)) == UNION_TYPE);
       struct args_size stack_offset;
       rtx stack_offset_rtx;
-
-      /* Get this parm's offset as an rtx.  */
-      stack_offset = stack_args_size;
-      stack_offset.constant += FIRST_PARM_OFFSET;
-      stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
+      enum direction where_pad;
 
       DECL_OFFSET (parm) = -1;
 
@@ -2363,6 +2400,42 @@ assign_parms (fndecl)
 	 as it should be during execution of this function.  */
       passed_mode = TYPE_MODE (DECL_ARG_TYPE (parm));
       nominal_mode = TYPE_MODE (TREE_TYPE (parm));
+
+      /* Get this parm's offset as an rtx.  */
+      stack_offset = stack_args_size;
+      stack_offset.constant += FIRST_PARM_OFFSET;
+
+      /* Find out if the parm needs padding, and whether above or below.  */
+      where_pad
+	= FUNCTION_ARG_PADDING (passed_mode,
+				expand_expr (size_in_bytes (DECL_ARG_TYPE (parm)),
+					     0, VOIDmode, 0));
+
+      /* If it is padded below, adjust the stack address
+	 upward over the padding.  */
+      if (where_pad == downward)
+	{
+	  if (passed_mode != BLKmode)
+	    {
+	      if (GET_MODE_BITSIZE (passed_mode) % PARM_BOUNDARY)
+		stack_offset.constant
+		  += (((GET_MODE_BITSIZE (passed_mode) + PARM_BOUNDARY - 1)
+		       / PARM_BOUNDARY * PARM_BOUNDARY / BITS_PER_UNIT)
+		      - GET_MODE_SIZE (passed_mode));
+	    }
+	  else
+	    {
+	      tree sizetree = size_in_bytes (DECL_ARG_TYPE (parm));
+	      /* Round the size up to multiple of PARM_BOUNDARY bits.  */
+	      tree s1 = convert_units (sizetree, BITS_PER_UNIT, PARM_BOUNDARY);
+	      tree s2 = convert_units (s1, PARM_BOUNDARY, BITS_PER_UNIT);
+	      /* Add it in.  */
+	      ADD_PARM_SIZE (stack_offset, s2);
+	      SUB_PARM_SIZE (stack_offset, sizetree);
+	    }
+	}
+
+      stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
 
       /* Determine parm's home in the stack,
 	 in case it arrives in the stack or we should pretend it did.  */
@@ -2459,11 +2532,14 @@ assign_parms (fndecl)
 	  )
 	{
 	  tree sizetree = size_in_bytes (DECL_ARG_TYPE (parm));
-	  /* Round the size up to multiple of PARM_BOUNDARY bits.  */
-	  tree s1 = convert_units (sizetree, BITS_PER_UNIT, PARM_BOUNDARY);
-	  tree s2 = convert_units (s1, PARM_BOUNDARY, BITS_PER_UNIT);
+	  if (where_pad != none)
+	    {
+	      /* Round the size up to multiple of PARM_BOUNDARY bits.  */
+	      tree s1 = convert_units (sizetree, BITS_PER_UNIT, PARM_BOUNDARY);
+	      sizetree = convert_units (s1, PARM_BOUNDARY, BITS_PER_UNIT);
+	    }
 	  /* Add it in.  */
-	  ADD_PARM_SIZE (stack_args_size, s2);
+	  ADD_PARM_SIZE (stack_args_size, sizetree);
 	}
       else
 	/* No stack slot was pushed for this parm.  */
@@ -2479,10 +2555,13 @@ assign_parms (fndecl)
 	  && stack_parm != 0)
 	{
 #ifdef BYTES_BIG_ENDIAN
-	  stack_offset.constant
-	    += GET_MODE_SIZE (passed_mode)
-	      - GET_MODE_SIZE (nominal_mode);
-	  stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
+	  if (GET_MODE_SIZE (nominal_mode) < UNITS_PER_WORD)
+	    {
+	      stack_offset.constant
+		+= GET_MODE_SIZE (passed_mode)
+		  - GET_MODE_SIZE (nominal_mode);
+	      stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
+	    }
 #endif
 
 	  stack_parm
@@ -2812,22 +2891,25 @@ expand_function_start (subr)
     DECL_RTL (DECL_RESULT (subr))
       = FUNCTION_VALUE (TREE_TYPE (DECL_RESULT (subr)), subr);
 #endif
+
+  /* Mark this reg as the function's return value.  */
+  if (GET_CODE (DECL_RTL (DECL_RESULT (subr))) == REG)
+    REG_FUNCTION_VALUE_P (DECL_RTL (DECL_RESULT (subr))) = 1;
 }
 
-/* Generate RTL for the end of the current function.  */
+/* Generate RTL for the end of the current function.
+   LINE is the line number.  */
 
 void
-expand_function_end ()
+expand_function_end (filename, line)
+     char *filename;
+     int line;
 {
   register int i;
 
   /* Outside function body, can't compute type's actual size
      until next function's body starts.  */
   immediate_size_expand--;
-
-  /* Fix up any gotos that jumped out to the outermost
-     binding level of the function.  */
-  fixup_gotos (0, get_insns ());
 
   /* If doing stupid register allocation,
      mark register parms as dying here.  */
@@ -2858,6 +2940,10 @@ expand_function_end ()
      without returning a value.  */
   emit_note (0, NOTE_INSN_FUNCTION_END);
 
+  /* Output a linenumber for the end of the function.
+     SDB depends on this.  */
+  emit_note (input_filename, line);
+
   /* If we require a true epilogue,
      put here the label that return statements jump to.
      If there will be no epilogue, write a return instruction.  */
@@ -2866,4 +2952,11 @@ expand_function_end ()
 #else
   emit_jump_insn (gen_return ());
 #endif
+
+  /* Fix up any gotos that jumped out to the outermost
+     binding level of the function.
+     Must follow emitting RETURN_LABEL.  */
+  fixup_gotos (0, get_insns ());
 }
+
+

@@ -306,7 +306,8 @@ scan_loop (loop_start, end, nregs)
 	 If we see one, this must not be a real loop.  */
       if (GET_CODE (loop_top) != BARRIER)
 	return;
-      p = JUMP_LABEL (p);
+      /* Get the label at which the loop is entered.  */
+      p = XEXP (SET_SRC (PATTERN (p)), 0);
       /* Check to see whether the jump actually
 	 jumps out of the loop (meaning it's no loop).
 	 This case can happen for things like
@@ -1490,6 +1491,10 @@ may_trap_p (x)
     case REG:
       return 0;
 
+      /* Memory ref can trap unless it's a static var or a stack slot.  */
+    case MEM:
+      return rtx_varies_p (XEXP (x, 0));
+
       /* Division by a non-constant might trap.  */
     case DIV:
     case MOD:
@@ -1498,17 +1503,9 @@ may_trap_p (x)
       if (! CONSTANT_P (XEXP (x, 1))
 	  && GET_CODE (XEXP (x, 1)) != CONST_DOUBLE)
 	return 1;
-      break;
-
-      /* Memory ref can trap unless it's a static var or a stack slot.  */
-    case MEM:
-      return rtx_varies_p (XEXP (x, 0));
-
-    case SET:
+    default:
       /* Any floating arithmetic may trap.  */
-      if (GET_MODE_CLASS (GET_MODE (SET_DEST (x))) == MODE_FLOAT
-	  && GET_CODE (SET_SRC (x)) != REG
-	  && GET_CODE (SET_SRC (x)) != MEM)
+      if (GET_MODE_CLASS (GET_MODE (x)) == MODE_FLOAT)
 	return 1;
     }
 

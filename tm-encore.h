@@ -31,6 +31,7 @@ and this notice must be preserved on all copies.  */
 
 #define SDB_DEBUGGING_INFO
 
+#undef ASM_FILE_START
 #undef ASM_GENERATE_INTERNAL_LABEL
 #undef ASM_OUTPUT_ADDR_DIFF_ELT
 #undef ASM_OUTPUT_ALIGN
@@ -55,6 +56,8 @@ and this notice must be preserved on all copies.  */
 /* Ignore certain cpp directives used in header files on sysV.  */
 #define IDENT_DIRECTIVE
 #define SCCS_DIRECTIVE
+
+#define ASM_FILE_START(FILE)
 
 #define FUNCTION_BOUNDARY 128		/* speed optimization */
 

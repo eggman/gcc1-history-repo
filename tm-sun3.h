@@ -7,7 +7,7 @@
 /* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
-#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}"
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__} %{m68000:-Dmc68010} %{!m68000:-Dmc68020}"
 
 /* -m68000 requires special flags to the assembler.  */
 

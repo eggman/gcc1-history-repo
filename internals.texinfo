@@ -278,7 +278,7 @@ Charles LaBrec contributed the support for the Integrated Solutions
 Michael Tiemann of MCC wrote the description of the National
 Semiconductor 32000 series cpu, with some contributions from Jan Stein
 of the Chalmers Computer Club.  Tiemann also wrote the code for inline
-function integration and for the SPARC cpu.
+function integration and for the SPARC cpu and Motorola 88000 cpu.
 
 @item
 Robert Brown implemented the support for Encore 32000 systems.
@@ -292,6 +292,9 @@ Alex Crain provided changes for the 3b1.
 @item
 Greg Satz and Chris Hanson assisted in making GNU CC work on HP-UX for
 the 9000 series 300.
+
+@item
+William Schelter did most of the work on the Intel 80386 support.
 @end itemize
 
 @node Options, Installation, Contributors, Top
@@ -968,10 +971,11 @@ config file for the machine you are using (@pxref{Config}).  This
 file is responsible for defining information about the host
 machine.  It includes @file{tm.h}.
 
-The file's name should be @file{config-@var{machine}.h}.  On VMS,
-use @file{config-vms.h} rather than @file{config-vax.h}.  On the
-HP 9000 series 300, use @file{config-hp9k3.h} rather than
-@file{config-m68k.h}.
+The file's name should be @file{config-@var{machine}.h}.  On VMS, use
+@file{config-vms.h} rather than @file{config-vax.h}.  On the HP 9000
+series 300, use @file{config-hp9k3.h} rather than
+@file{config-m68k.h}.  On Suns (model 3 or 4) running system version
+4, use @file{config-sun4.h}.@refill
 
 If your system does not support symbolic links, you might want to
 set up @file{config.h} to contain a @samp{#include} command which
@@ -998,11 +1002,19 @@ with compilation.  Not all of the pieces of GNU software needed for
 this mode of operation are as yet in distribution; full instructions
 will appear here in the future.@refill
 
-For the vax, use @file{tm-vax.h} on Unix, or @file{tm-vms.h} on
-VMS.@refill
+For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
+system V, or @file{tm-vms.h} on VMS.@refill
 
-For the SPARC, use @file{tm-sparc.h}.  Note that the SPARC support
-@strong{has a fatal bug}; to use it, you will have to debug it.
+For the SPARC, use @file{tm-sparc.h}.
+
+For the Motorola 88000, use @file{tm-m88k.h}.  The support for the
+88000 has a few unfinished spots because there was no way to run the
+output.  Bugs are suspected in handling of branch-tables and in
+the function prologue and epilogue.
+
+For the 80386, don't use @file{tm-i386.h} directly.  Use @file{tm-i386v.h}
+if the target machine is running system V, or @file{tm-compaq.h} for a
+Compaq.
 
 For the 32000, use @file{tm-sequent.h} if you are using a Sequent
 machine, or @file{tm-encore.h} for an Encore machine; otherwise,
@@ -1083,7 +1095,7 @@ time, do this:
 
 @example
 make stage2
-make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
+Make CC=stage2/gcc CFLAGS="-g -O -Bstage2/"
 foreach file (*.o)
 cmp $file stage2/$file
 end
@@ -1094,6 +1106,9 @@ those of stage 2.  Any difference, no matter how innocuous, indicates
 that the stage 2 compiler has compiled GNU CC incorrectly, and is
 therefore a potentially serious bug which you should investigate and
 report (@pxref{Bugs}).
+
+Aside from the @samp{-B} option, the options should be the same as
+when you made stage 2.
 
 @item
 Install the compiler driver, the compiler's passes and run-time support.
@@ -1333,6 +1348,12 @@ In ANSI C, this is not allowed: @code{long} and other type modifiers
 require an explicit @code{int}.  Because this criterion is expressed
 by Bison grammar rules rather than C code, the @samp{-traditional}
 flag cannot alter it.
+
+@item
+When compiling functions that return @code{float}, PCC converts it to
+a double.  GNU CC actually returns a @code{float}.  If you are concerned
+with PCC compatibility, you should declare your functions to return
+@code{double}; you might as well say what you mean.
 
 @item
 When compiling functions that return structures or unions, GNU CC
@@ -1669,7 +1690,7 @@ struct line @{
 @{
   struct line *thisline 
     = (struct line *) malloc (sizeof (struct line) + this_length);
-  thisline->length = thislength;
+  thisline->length = this_length;
 @}
 @end example
 
@@ -2376,7 +2397,7 @@ and unions of other sizes are returned by storing them into an address
 passed by the caller in a register.  This method is faster than the one
 normally used by PCC and is also reentrant.  The register used for passing
 the address is specified by the machine-description macro
-@code{STRUCT_VALUE_REGNUM}.
+@code{STRUCT_VALUE}.
 
 GNU CC always passes arguments on the stack.  At some point it will be
 extended to pass arguments in registers, for machines which use that as
@@ -2910,6 +2931,16 @@ that the value of the expression never changes (at least within the
 current function).
 
 In an RTL dump, this flag is represented as @samp{/u}.
+
+@item integrated
+In some kinds of expressions, including insns, this flag means the
+rtl was produced by procedure integration.
+
+In a @samp{reg} expression, this flag indicates the register
+containing the value to be returned by the current function.  On
+machines that pass parameters in registers, the same register number
+may be used for parameters as well, but this flag is not set on such
+uses.
 @end table
 
 @node Machine Modes, Constants, Flags, RTL
@@ -5786,6 +5817,16 @@ Define this if instructions will fail to work if given data not
 on the nominal alignment.  If instructions will merely go slower
 in that case, do not define this macro.
 
+@item PCC_BITFIELD_TYPE_MATTERS
+Define this if you wish to imitate a certain bizarre behavior pattern
+of some instances of PCC: a bit field whose declared type is
+@code{int} has the same effect on the size and alignment of a
+structure as an actual @code{int} would have.
+
+Just what effect that is in GNU CC depends on other parameters, but on
+most machines it would force the structure's alignment and size to a
+multiple of 32 or @code{BIGGEST_ALIGNMENT} bits.
+
 @item CHECK_FLOAT_VALUE (@var{mode}, @var{value})
 A C statement to validate the value @var{value} (or type
 @code{double}) for mode @var{mode}.  This means that you check whether
@@ -6014,8 +6055,34 @@ The static chain register need not be a fixed register.
 When a function's value's mode is @code{BLKmode}, the value is not
 returned according to @code{FUNCTION_VALUE}.  Instead, the caller
 passes the address of a block of memory in which the value should be
-stored.  @code{STRUCT_VALUE_REGNUM} is the register in which this
-address is passed.
+stored.
+
+If this value is passed in a register, then @code{STRUCT_VALUE_REGNUM}
+should be the number of that register.
+
+@item STRUCT_VALUE
+If the structure value address is not passed in a register, define
+@code{STRUCT_VALUE} as an expression returning an RTX for the place
+where the address is passed.  If it returns a @samp{mem} RTX, the
+address is passed as an ``invisible'' first argument.
+
+@item STRUCT_VALUE_INCOMING_REGNUM
+On some architectures the place where the structure value address
+is found by the called function is not the same place that the
+caller put it.  This can be due to register windows, or it could
+be because the function prologue moves it to a different place.
+
+If the incoming location of the structure value address is in a
+register, define this macro as the register number.
+
+@item STRUCT_VALUE_INCOMING
+If the incoming location is not a register, define
+@code{STRUCT_VALUE_INCOMING} as an expression for an RTX for where the
+called function should find the value.  If it should find the value on
+the stack, define this to create a @samp{mem} which refers to the
+frame pointer.  If the value is a @samp{mem}, the compiler assumes it
+is for an invisible first argument, and leaves space for it when
+finding the first real argument.
 
 @item REG_ALLOC_ORDER
 If defined, an initializer for a vector of integers, containing the
@@ -6153,6 +6220,11 @@ integer constant that is in range for a @samp{moveq} instruction,
 the value of this macro is always @code{DATA_REGS} as long as
 @var{class} includes the data registers.  Requiring a data register
 guarantees that a @samp{moveq} will be used.
+
+If @var{x} is a @samp{const_double}, by returning @code{NO_REGS}
+you can force @var{x} into a memory constant.  This is useful on
+certain machines where immediate floating values cannot be loaded into
+certain kinds of registers.
 
 @item CLASS_MAX_NREGS (@var{class}, @var{mode})
 A C expression for the maximum number of consecutive registers
@@ -6310,7 +6382,7 @@ compiled.
 
 @item FUNCTION_VALUE_REGNO_P (@var{regno})
 A C expression that is nonzero if @var{regno} is the number of a hard
-register in which function values are sometimes returned.
+register in which the values of called function may come back.
 
 A register whose use for returning values is limited to serving as the
 second of a pair (for a value of type @code{double}, say) need not be
@@ -6320,6 +6392,10 @@ suffices:
 @example
 #define FUNCTION_VALUE_REGNO_P(N) ((N) == 0)
 @end example
+
+If the machine has register windows, so that the caller and the called
+function use different registers for the return value, this macro
+should recognize only the caller's register numbers.
 
 @item FUNCTION_ARG (@var{cum}, @var{mode}, @var{type}, @var{named})
 A C expression that controls whether a function argument is passed
@@ -6397,6 +6473,24 @@ register in which function arguments are sometimes passed.  This does
 the structure-value address.  On many machines, no registers can be
 used for this purpose since all function arguments are pushed on the
 stack.
+
+@item FUNCTION_ARG_PADDING (@var{mode}, @var{size})
+If defined, a C expression which determines whether, and in which direction,
+to pad out an argument with extra space.  The value should be of type
+@code{enum direction}: either @code{upward} to pad above the argument,
+@code{downward} to pad below, or @code{none} to inhibit padding.
+
+The argument @var{size} is an RTX which describes the size of the
+argument, in bytes.  It should be used only if @var{mode} is
+@code{BLKmode}.  Otherwise, @var{size} is 0.
+
+This macro does not control the @emph{amount} of padding; that is
+always just enough to reach the next multiple of @code{PARM_BOUNDARY}.
+
+This macro has a default definition which is right for most systems.
+For little-endian machines, the default is to pad upward.  For
+big-endian machines, the default is to pad downward for an argument of
+constant size shorter than an @code{int}, and upward otherwise.
 
 @item FUNCTION_PROLOGUE (@var{file}, @var{size})
 A C compound statement that outputs the assembler code for entry to a
@@ -6720,6 +6814,12 @@ On many machines, this expression can be 1.
 Define this macro if it is as good or better to call a constant
 function address than to call an address kept in a register.
 
+@item PROMOTE_PROTOTYPES
+Define this macro if an argument declared as @code{char} or
+@code{short} in a prototype should actually be passed as an
+@code{int}.  In addition to avoiding errors in certain cases of
+mismatch, it also makes for better code on certain machines.
+
 @item STORE_FLAG_VALUE
 A C expression for the value stored by a store-flag instruction
 (@code{s@var{cond}}) when the condition is true.  This is usually 1 or
@@ -6876,6 +6976,17 @@ in response to the @samp{-g} option.
 @item SDB_DEBUGGING_INFO
 Define this macro if GNU CC should produce debugging output for SDB
 in response to the @samp{-g} option.
+
+@item PUT_SDB_@var{op}
+Define these macros to override the assembler syntax for the special
+SDB assembler directives.  See @file{sdbout.c} for a list of these
+macros and their arguments.  If the standard syntax is used, you need
+not define them yourself.
+
+@item SDB_GENERATE_FAKE
+Define this macro to override the usual method of constructing a dummy
+name for anonymous structure and union types.  See @file{sdbout.c} for
+more infomation.
 
 @item DBX_NO_XREFS
 Define this macro if DBX on your system does not support the construct

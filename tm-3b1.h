@@ -54,17 +54,44 @@ and this notice must be preserved on all copies.  */
 #define IDENT_DIRECTIVE
 #define SCCS_DIRECTIVE
 
+/* Make output for SDB.  */
+
+#define SDB_DEBUGGING_INFO
+
+/* The .file command may be needed to use SDB output.  */
+
+#undef ASM_FILE_START
+#define ASM_FILE_START(FILE)
+
 /* Define __HAVE_FPU__ in preprocessor if -m68881 is specified.
    This will control the use of inline 68881 insns in certain macros.  */
 
+#undef CPP_SPEC
 #define CPP_SPEC "%{m68881:-D__HAVE_FPU__}"
 
 /* Names to predefine in the preprocessor for this target machine.  */
+/* ihnp4!lmayk!lgm@eddie.mit.edu says mc68000 and m68k should not be here.  */
 
 #undef CPP_PREDEFINES
-#define CPP_PREDEFINES "-Dmc68000 -Dmc68k -Dm68k -Dunix -Dunixpc"
+#define CPP_PREDEFINES "-Dmc68k -Dunix -Dunixpc"
 
-/* Override parts of tm-m68k.h to fit the HPUX assembler.  */
+/* Specify how to pad function arguments.
+   Value should be `upward', `downward' or `none'.
+   Same as the default, except no padding for large or variable-size args.  */
+
+#define FUNCTION_ARG_PADDING(mode, size)				\
+  (((mode) == BLKmode							\
+    ? (GET_CODE (size) == CONST_INT					\
+       && INTVAL (size) < PARM_BOUNDARY / BITS_PER_UNIT)		\
+    : GET_MODE_BITSIZE (mode) < PARM_BOUNDARY)				\
+   ? downward : none)
+
+/* Override part of the obstack macros.  */
+
+#define __PTR_TO_INT(P) ((int)(P))
+#define __INT_TO_PTR(P) ((char *)(P))
+
+/* Override parts of tm-m68k.h to fit the SGS-3b1 assembler.  */
 
 #undef TARGET_VERSION
 #undef ASM_OUTPUT_DOUBLE
@@ -73,6 +100,10 @@ and this notice must be preserved on all copies.  */
 #undef ASM_OUTPUT_SOURCE_FILENAME
 #undef ASM_OUTPUT_SOURCE_LINE
 #undef PRINT_OPERAND_ADDRESS
+#undef ASM_GENERATE_INTERNAL_LABEL
+#undef FUNCTION_PROFILER
+#undef ASM_OUTPUT_ADDR_VEC_ELT
+#undef ASM_OUTPUT_ADDR_DIFF_ELT
 #undef ASM_OUTPUT_INTERNAL_LABEL
 #undef ASM_OUTPUT_OPCODE
 #undef ASM_OUTPUT_LOCAL
@@ -104,10 +135,12 @@ do { union { float f; long l;} tem;			\
 /* The beginnings of sdb support... */
 
 #define ASM_OUTPUT_SOURCE_FILENAME(FILE, FILENAME) \
-  fprintf (FILE, "\tfile\t\"%s\"\n", FILENAME);
+  fprintf (FILE, "\tfile\t\"%s\"\n", FILENAME)
 
-#define ASM_OUTPUT_SOURCE_LINE(FILE, LINENO) \
-  fprintf (FILE, "\tln\t%d\n", LINENO);
+#define ASM_OUTPUT_SOURCE_LINE(FILE, LINENO)	\
+  fprintf (FILE, "\tln\t%d\n",			\
+	   (sdb_begin_function_line		\
+	    ? last_linenum - sdb_begin_function_line : 1))
 
 /* Yet another null terminated string format. */
 
@@ -226,11 +259,11 @@ do { union { float f; long l;} tem;			\
 	    { scale = INTVAL (XEXP (ireg, 1));				\
 	      ireg = XEXP (ireg, 0); }					\
 	  if (GET_CODE (ireg) == SIGN_EXTEND)				\
-	    fprintf (FILE, "LD%d(%%pc,%s.w",				\
+	    fprintf (FILE, "LD%%%d(%%pc,%s.w",				\
 		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
 		     reg_name[REGNO (XEXP (ireg, 0))]); 		\
 	  else								\
-	    fprintf (FILE, "LD%d(%%pc,%s.l",				\
+	    fprintf (FILE, "LD%%%d(%%pc,%s.l",				\
 		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
 		     reg_name[REGNO (ireg)]);				\
 	  if (scale != 1) fprintf (FILE, ":%d", scale);			\
@@ -257,7 +290,7 @@ do { union { float f; long l;} tem;			\
 	  break;							\
 	}								\
       else if (reg1 != 0 && GET_CODE (addr) == LABEL_REF)		\
-	{ fprintf (FILE, "LD%d(%%pc,%s.w)",				\
+	{ fprintf (FILE, "LD%%%d(%%pc,%s.w)",				\
 		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
 		   reg_name[REGNO (reg1)]);				\
 	  break; }							\
@@ -270,15 +303,31 @@ do { union { float f; long l;} tem;			\
         output_addr_const (FILE, addr);					\
     }}
 
-#define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)	\
-    fprintf (FILE, "%s%d:\n", PREFIX, NUM)
+#define ASM_GENERATE_INTERNAL_LABEL (LABEL, PREFIX, NUM)	\
+  sprintf ((LABEL), "%s%%%d", (PREFIX), (NUM))
 
-#define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)	\
-    fprintf (FILE, "\tswbeg &%d\n%s%d:\n\tshort 0\n",	\
-	     XVECLEN (PATTERN (TABLE), 1) + 1, PREFIX, NUM)
+#define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)	\
+    fprintf (FILE, "%s%%%d:\n", PREFIX, NUM)
+
+/* Must put address in  %a0 , not  %d0 . -- LGM, 7/15/88 */
+#define FUNCTION_PROFILER (FILE, LABEL_NO)	\
+    fprintf (FILE, "\tmov.l &LP%%%d,%%a0\n\tjsr mcount\n", (LABEL_NO))
+
+#define ASM_OUTPUT_ADDR_VEC_ELT (FILE, VALUE)	\
+    fprintf (FILE, "\tlong L%%%d\n", (VALUE))
+
+#define ASM_OUTPUT_ADDR_DIFF_ELT (FILE, VALUE, REL)	\
+    fprintf (FILE, "\tshort L%%%d-L%%%d\n", (VALUE), (REL))
+
+/* ihnp4!lmayk!lgm says that `short 0' triggers assembler bug;
+   `short L%nn-L%nn' supposedly works.  */
+#define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,TABLE)			\
+    fprintf (FILE, "\tswbeg &%d\n%s%%%d:\n\tshort %s%%%d-%s%%%d\n",	\
+	     XVECLEN (PATTERN (TABLE), 1) + 1, (PREFIX), (NUM),		\
+	     (PREFIX), (NUM), (PREFIX), (NUM))
 
 #define ASM_OUTPUT_CASE_END(FILE,NUM,TABLE)		\
-    fprintf (FILE, "\tset LD%d,L%d-LI%d\n", NUM, NUM, NUM);
+    fprintf (FILE, "\tset LD%%%d,L%%%d-LI%%%d\n", (NUM), (NUM), (NUM))
 
 #define ASM_OUTPUT_OPCODE(FILE, PTR)			\
 { if ((PTR)[0] == 'j' && (PTR)[1] == 'b')		\
@@ -320,3 +369,58 @@ do { union { float f; long l;} tem;			\
 
 #define ASM_OUTPUT_LABELREF(FILE,NAME)	\
   fprintf (FILE, "%s", NAME)
+
+/* Override usual definitions of SDB output macros.
+   These definitions differ only in the absence of the period
+   at the beginning of the name of the directive
+   and in the use of `~' as the symbol for the current location.  */
+
+#define PUT_SDB_SCL(a) fprintf(asm_out_file, "\tscl\t%d;", (a))
+#define PUT_SDB_INT_VAL(a) fprintf (asm_out_file, "\tval\t%d;", (a))
+#define PUT_SDB_VAL(a)				\
+( fputs ("\tval\t", asm_out_file),		\
+  output_addr_const (asm_out_file, (a)),	\
+  fputc (';', asm_out_file))
+
+#define PUT_SDB_DEF(a)				\
+do { fprintf (asm_out_file, "\tdef\t");	\
+     ASM_OUTPUT_LABELREF (asm_out_file, a); 	\
+     fprintf (asm_out_file, ";"); } while (0)
+
+#define PUT_SDB_PLAIN_DEF(a) fprintf(asm_out_file,"\tdef\t%s;",a)
+#define PUT_SDB_ENDEF fputs("\tendef\n", asm_out_file)
+#define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\ttype\t0%o;", a)
+#define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\tsize\t%d;", a)
+
+#define PUT_SDB_TAG(a)				\
+do { fprintf (asm_out_file, "\ttag\t");	\
+     ASM_OUTPUT_LABELREF (asm_out_file, a);	\
+     fprintf (asm_out_file, ";"); } while (0)
+
+#define PUT_SDB_BLOCK_START(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\tdef\t~bb;\tval\t~;\tscl\t100;\tline\t%d;\tendef\n",	\
+	   (LINE))
+
+#define PUT_SDB_BLOCK_END(LINE)			\
+  fprintf (asm_out_file,			\
+	   "\tdef\t~eb;val\t~;\tscl\t100;\tline\t%d;\tendef\n",		\
+	   (LINE))
+
+#define PUT_SDB_FUNCTION_START(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\tdef\t~bf;\tval\t~;\tscl\t101;\tline\t%d;\tendef\n",	\
+	   (LINE))
+
+#define PUT_SDB_FUNCTION_END(LINE)		\
+  fprintf (asm_out_file,			\
+	   "\tdef\t~ef;\tval\t~;\tscl\t101;\tline\t%d;\tendef\n",	\
+	   (LINE))
+
+#define PUT_SDB_EPILOGUE_END(NAME)		\
+  fprintf (asm_out_file,			\
+	   "\tdef\t%s;\tval\t~;\tscl\t-1;\tendef\n",	\
+	   (NAME))
+
+#define SDB_GENERATE_FAKE(BUFFER, NUMBER) \
+  sprintf ((BUFFER), "%dfake", (NUMBER));

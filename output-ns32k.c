@@ -418,8 +418,10 @@ print_operand_address (file, addr)
 	  putc ('(', file);
 	  paren_base_reg_printed = 0;
 	  output_address (addr);
+#ifdef SEQUENT_BASE_REGS
 	  if (!paren_base_reg_printed)
 	    fprintf (file, "(sb)");
+#endif
 	  putc (')', file);
 #else /* SEQUENT_ADDRESS_BUG */
 	  if ((GET_CODE (offset) == SYMBOL_REF
@@ -434,8 +436,10 @@ print_operand_address (file, addr)
 	      putc ('(', file);
 	      paren_base_reg_printed = 0;
 	      output_address (addr);
+#ifdef SEQUENT_BASE_REGS
 	      if (!paren_base_reg_printed)
 	        fprintf (file, "(sb)");
+#endif
 	      putc (')', file);
 	    }
 #endif /* SEQUENT_ADDRESS_BUG */

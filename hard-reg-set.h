@@ -192,6 +192,10 @@ extern int reg_alloc_order[FIRST_PSEUDO_REGISTER];
 
 extern HARD_REG_SET reg_class_contents[];
 
+/* For each reg class, number of regs it contains.  */
+
+extern int reg_class_size[N_REG_CLASSES];
+
 /* For each reg class, table listing all the containing classes.  */
 
 extern enum reg_class reg_class_superclasses[N_REG_CLASSES][N_REG_CLASSES];

@@ -332,14 +332,17 @@ jump_optimize (f, cross_jump, noop_moves)
 
       for (insn = f; insn; insn = next)
 	{
-	  next = NEXT_INSN (insn);
-
 	  /* On the first iteration, if this is the last jump pass
 	     (just before final), do the special peephole optimizations.  */
 
 	  if (noop_moves && first && !flag_no_peephole)
 	    if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN)
 	      peephole (insn);
+
+	  /* That could have deleted some insns after INSN, so check now
+	     what the following insn is.  */
+
+	  next = NEXT_INSN (insn);
 
 	  /* Tension the labels in dispatch tables.  */
 
@@ -354,6 +357,7 @@ jump_optimize (f, cross_jump, noop_moves)
 	  if (GET_CODE (insn) == JUMP_INSN && JUMP_LABEL (insn))
 	    {
 	      register rtx reallabelprev = prev_real_insn (JUMP_LABEL (insn));
+	      rtx temp;
 
 	      /* Delete insns that adjust stack pointer before a return,
 		 if this is the last jump-optimization before final
@@ -380,9 +384,19 @@ jump_optimize (f, cross_jump, noop_moves)
 	      /* Detect jump to following insn.  */
 	      if (reallabelprev == insn && condjump_p (insn))
 		{
-		  reallabelprev = PREV_INSN (insn);
 		  delete_jump (insn);
 		  changed = 1;
+		}
+	      /* Detect worthless conditional jump.  */
+	      else if ((temp = next_real_insn (insn))
+		       && GET_CODE (temp) == JUMP_INSN
+		       && condjump_p (insn)
+		       && simplejump_p (temp)
+		       && JUMP_LABEL (insn) == JUMP_LABEL (temp))
+		{
+		  delete_jump (insn);
+		  changed = 1;
+		  next = NEXT_INSN (insn);
 		}
 	      /* Detect jumping over an unconditional jump.  */
 	      else if (reallabelprev != 0

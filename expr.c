@@ -60,11 +60,16 @@ int do_preexpand_calls = 1;
 int pending_stack_adjust;
 
 /* Total size of arguments already pushed for function calls that
-   have not happened yet.  Also counts 1 for each level of conditional
-   expression that we are inside.  When this is nonzero,
+   have not happened yet.  When this is nonzero,
    args passed to function calls must be popped right away
-   to ensure contiguity of argument lists for future calls.  */
+   to ensure contiguity of argument lists for future calls.
+
+   This can also be temporarily incremented for various other reasons
+   to inhibit deferring of pops.  */
 static int current_args_size;
+
+#define NO_DEFER_POP current_args_size += 1
+#define OK_DEFER_POP current_args_size -= 1
 
 /* Nonzero means current function may call alloca.  */
 int may_call_alloca;
@@ -350,11 +355,13 @@ convert_move (to, from, unsignedp)
 	  emit_cmp_insn (gen_lowpart (SImode, to),
 			 gen_rtx (CONST_INT, VOIDmode, 0),
 			 0, 0);
+	  NO_DEFER_POP;
 	  emit_jump_insn (gen_bge (label));
 	  expand_unop (SImode, one_cmpl_optab,
 		       gen_highpart (SImode, to), gen_highpart (SImode, to),
 		       1);
 	  emit_label (label);
+	  OK_DEFER_POP;
 	}
       return;
     }
@@ -977,7 +984,7 @@ emit_move_insn (x, y)
   if (mode == BLKmode)
     abort ();
   if (mov_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
-    return 
+    return
       emit_insn (GEN_FCN (mov_optab->handlers[(int) mode].insn_code) (x, y));
 #if 0
   /* It turns out you get much better optimization (in cse and flow)
@@ -1035,7 +1042,7 @@ push_block (size)
     anti_adjust_stack (size);
   else
     anti_adjust_stack (copy_to_mode_reg (Pmode, size));
-	
+
 #ifdef STACK_GROWS_DOWNWARD
   temp = stack_pointer_rtx;
 #else
@@ -1095,6 +1102,17 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
      rtx args_so_far;
 {
   rtx xinner;
+  enum direction stack_direction
+#ifdef STACK_GROWS_DOWNWARD
+    = downward;
+#else
+    = upward;
+#endif
+
+  /* Decide where to pad the argument: `downward' for below,
+     `upward' for above, or `none' for don't pad it.
+     Default is below for small data on big-endian machines; else above.  */
+  enum direction where_pad = FUNCTION_ARG_PADDING (mode, size);
 
   xinner = x = protect_from_queue (x, 0);
 
@@ -1103,10 +1121,22 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
   if (partial > 0)
     move_block_to_reg (REGNO (reg), x, partial);
 
-#ifdef STACK_GROWS_DOWNWARD
-  if (extra && args_addr == 0)
-    anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
-#endif
+  if (extra)
+    {
+      if (args_addr == 0)
+	{
+	  /* Push padding now if padding above and stack grows down,
+	     or if padding below and stack grows up.  */
+	  if (where_pad != none && where_pad != stack_direction)
+	    anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
+	}
+      else
+	{
+	  /* If space already allocated, just adjust the address we use.  */
+	  if (where_pad == downward)
+	    args_so_far = plus_constant (args_so_far, extra);
+	}
+    }
 
   if (mode == BLKmode)
     {
@@ -1219,7 +1249,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 #ifdef STACK_GROWS_DOWNWARD
 	      temp = plus_constant (temp, xsize);
 #else
-	      temp = plus_constant (temp, xsize);
+	      temp = plus_constant (temp, -xsize);
 #endif
 	    }
 
@@ -1243,7 +1273,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
       int size = GET_MODE_SIZE (mode) / UNITS_PER_WORD;
       int i;
       int used = partial * UNITS_PER_WORD;
-      /* # words of start of argument 
+      /* # words of start of argument
 	 that we must make space for but need not store.  */
       int skip = partial % (PARM_BOUNDARY / BITS_PER_WORD);
       int args_offset = INTVAL (args_so_far);
@@ -1306,10 +1336,8 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
       emit_move_insn (gen_rtx (MEM, mode, addr), x);
     }
 
-#ifndef STACK_GROWS_DOWNWARD
-  if (extra && args_addr == 0)
+  if (extra && args_addr == 0 && where_pad == stack_direction)
     anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
-#endif
 }
 
 /* Output a library call to function FUN (a SYMBOL_REF rtx)
@@ -1930,7 +1958,7 @@ expand_expr (exp, target, tmode, modifier)
      And force_operand won't know whether to sign-extend or zero-extend.  */
 
   if (mode != Pmode && modifier == EXPAND_SUM)
-    modifier = (enum expand_modifier) 0;
+    modifier = EXPAND_NORMAL;
 
   switch (code)
     {
@@ -2311,7 +2339,7 @@ expand_expr (exp, target, tmode, modifier)
 	 indexed address, for machines that support that.  */
 
       if (modifier == EXPAND_SUM
-	  && TREE_CODE (TREE_OPERAND (exp, 1)) == INTEGER_CST) 
+	  && TREE_CODE (TREE_OPERAND (exp, 1)) == INTEGER_CST)
 	{
 	  op0 = expand_expr (TREE_OPERAND (exp, 0), subtarget, VOIDmode, EXPAND_SUM);
 
@@ -2331,7 +2359,7 @@ expand_expr (exp, target, tmode, modifier)
 	  if (GET_CODE (op0) != REG)
 	    op0 = copy_to_mode_reg (mode, op0);
 
-	  return gen_rtx (MULT, mode, op0, 
+	  return gen_rtx (MULT, mode, op0,
 			  gen_rtx (CONST_INT, VOIDmode,
 				   TREE_INT_CST_LOW (TREE_OPERAND (exp, 1))));
 	}
@@ -2448,8 +2476,8 @@ expand_expr (exp, target, tmode, modifier)
 	if (mode == HImode || mode == QImode)
 	  {
 	    register rtx temp = gen_reg_rtx (SImode);
-	    expand_fix (temp, op0, 1);
-	    convert_move (target, temp, 1);
+	    expand_fix (temp, op0, 0);
+	    convert_move (target, temp, 0);
 	  }
 	else
 	  expand_fix (target, op0, unsignedp);
@@ -2496,11 +2524,13 @@ expand_expr (exp, target, tmode, modifier)
 		     expand_expr (convert (TREE_TYPE (exp), integer_zero_node),
 				  0, VOIDmode, 0),
 		     0, 0);
+      NO_DEFER_POP;
       emit_jump_insn (gen_bge (temp));
       op0 = expand_unop (mode, neg_optab, target, target, 0);
       if (op0 != target)
 	emit_move_insn (target, op0);
       emit_label (temp);
+      OK_DEFER_POP;
       return target;
 
     case MAX_EXPR:
@@ -2681,7 +2711,7 @@ expand_expr (exp, target, tmode, modifier)
 	temp = gen_reg_rtx (mode);
 
       jumpifnot (TREE_OPERAND (exp, 0), op0);
-      current_args_size += 1;
+      NO_DEFER_POP;
       if (temp != 0)
 	store_expr (TREE_OPERAND (exp, 1), temp, 0);
       else
@@ -2698,7 +2728,7 @@ expand_expr (exp, target, tmode, modifier)
 		     VOIDmode, 0);
       emit_queue ();
       emit_label (op1);
-      current_args_size -= 1;
+      OK_DEFER_POP;
       return temp;
 
     case MODIFY_EXPR:
@@ -2827,6 +2857,7 @@ expand_expr (exp, target, tmode, modifier)
 	  if (target != temp)
 	    emit_move_insn (target, temp);
 
+	  do_pending_stack_adjust ();
 	  emit_label (op0);
 	  return target;
 	}
@@ -2893,8 +2924,20 @@ expand_builtin (exp, target, subtarget, mode)
 #ifdef STACK_POINTER_OFFSET
       /* If the contents of the stack pointer reg are offset from the
 	 actual top-of-stack address, add the offset here.  */
-      emit_insn (gen_add2_insn (target, gen_rtx (CONST_INT, VOIDmode,
-						 STACK_POINTER_OFFSET)));
+      if (GET_CODE (target) == REG)
+	emit_insn (gen_add2_insn (target, gen_rtx (CONST_INT, VOIDmode,
+						   STACK_POINTER_OFFSET)));
+      else
+	{
+	  rtx temp =
+	    expand_binop (GET_MODE (target), add_optab, target,
+			  gen_rtx (CONST_INT, VOIDmode, STACK_POINTER_OFFSET),
+			  target,
+			  1, OPTAB_DIRECT);
+	  if (temp == 0) abort ();
+	  if (temp != target)
+	    emit_move_insn (target, temp);
+	}
 #endif
 #ifndef STACK_GROWS_DOWNWARD
       anti_adjust_stack (round_push (op0));
@@ -3129,8 +3172,8 @@ prepare_call_address (funexp, context)
       else
 	{
 #ifndef NO_FUNCTION_CSE
-	  if (! flag_no_function_cse)
-	    funexp = copy_to_mode_reg (Pmode, funexp);
+	  if (optimize && ! flag_no_function_cse)
+	    funexp = force_reg (Pmode, funexp);
 #endif
 	}
 
@@ -3148,7 +3191,7 @@ prepare_call_address (funexp, context)
    the identifier for the name of the call.  This is given to the
    macro RETURN_POPS_ARGS to determine whether this function pops its own args.
 
-   STACK_SIZE is the number of bytes of arguments on the stack, 
+   STACK_SIZE is the number of bytes of arguments on the stack,
    rounded up to STACK_BOUNDARY; zero if the size is variable.
    This is both to put into the call insn and
    to generate explicit popping code if necessary.
@@ -3387,6 +3430,14 @@ expand_call (exp, target, ignore)
     abort ();
   funtype = TREE_TYPE (funtype);
 
+  /* Pass the function the address in which to return a structure value.  */
+  if (structure_value_addr && GET_CODE (struct_value_rtx) == MEM)
+    actparms = tree_cons (error_mark_node,
+			  build (SAVE_EXPR,
+				 type_for_size (BITS_PER_WORD, 0),
+				 0, structure_value_addr),
+			  actparms);
+
   /* Count the arguments and set NUM_ACTUALS.  */
   for (p = actparms, i = 0; p; p = TREE_CHAIN (p)) i++;
   num_actuals = i;
@@ -3404,12 +3455,12 @@ expand_call (exp, target, ignore)
      and a parallel vector of where we want to put them.
      regvec[I] is 0 to if should push argvec[I] or else a reg to put it in.
      valvec[i] is the arg value as an rtx.  */
-  argvec = (tree *) alloca (i * sizeof (tree));
-  regvec = (rtx *) alloca (i * sizeof (rtx));
-  valvec = (rtx *) alloca (i * sizeof (rtx));
-  partial = (int *) alloca (i * sizeof (int));
-  arg_size = (struct args_size *) alloca (i * sizeof (struct args_size));
-  arg_offset = (struct args_size *) alloca (i * sizeof (struct args_size));
+  argvec = (tree *) alloca (num_actuals * sizeof (tree));
+  regvec = (rtx *) alloca (num_actuals * sizeof (rtx));
+  valvec = (rtx *) alloca (num_actuals * sizeof (rtx));
+  partial = (int *) alloca (num_actuals * sizeof (int));
+  arg_size = (struct args_size *) alloca (num_actuals * sizeof (struct args_size));
+  arg_offset = (struct args_size *) alloca (num_actuals * sizeof (struct args_size));
 
   /* In this loop, we consider args in the order they are written.
      We fill up argvec from the front of from the back
@@ -3440,7 +3491,7 @@ expand_call (exp, target, ignore)
       /* ARG_OFFSET is used to index ARGS_ADDR, which is the stack ptr reg,
 	 so if there is a gap between that reg and the actual t.o.s. addr,
 	 we must include it in this offset.  */
-      arg_offset.constant += STACK_POINTER_OFFSET;
+      arg_offset[i].constant += STACK_POINTER_OFFSET;
 #endif
 
       if (type == error_mark_node)
@@ -3452,7 +3503,10 @@ expand_call (exp, target, ignore)
 	  and the exact value says how many words are passed in registers.  */
 
       if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
-	  || args_size.var != 0)
+	  && args_size.var == 0
+	  /* error_mark_node here is a flag for the fake argument
+	     for a structure value address.  */
+	  && TREE_PURPOSE (p) != error_mark_node)
 	{
 	  regvec[i] = FUNCTION_ARG (args_so_far, TYPE_MODE (type), type,
 				    i < n_named_args);
@@ -3506,11 +3560,14 @@ expand_call (exp, target, ignore)
 	  size = PUSH_ROUNDING (size);
 #endif
 	  /* Compute how much space the argument should get:
-	     round up to a multiple of the alignment for arguments.  */
-	  arg_size[i].constant
-	    = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
-		/ (PARM_BOUNDARY / BITS_PER_UNIT))
-	       * (PARM_BOUNDARY / BITS_PER_UNIT));
+	     maybe pad to a multiple of the alignment for arguments.  */
+	  if (none == FUNCTION_ARG_PADDING (TYPE_MODE (type), (rtx)0))
+	    arg_size[i].constant += size;
+	  else
+	    arg_size[i].constant
+	      = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
+		  / (PARM_BOUNDARY / BITS_PER_UNIT))
+		 * (PARM_BOUNDARY / BITS_PER_UNIT));
 	}
       else
 	{
@@ -3519,12 +3576,14 @@ expand_call (exp, target, ignore)
 	  /* A nonscalar.  Round its size up to a multiple
 	     of the allocation unit for arguments.  */
 
-	  /* Now round up to multiple of PARM_BOUNDARY bits,
-	     then express as number of bytes.  */
-	  ADD_PARM_SIZE (arg_size[i],
-			 convert_units (convert_units (size, BITS_PER_UNIT, PARM_BOUNDARY),
-					PARM_BOUNDARY, BITS_PER_UNIT));
-
+	  /* Now maybe round up to multiple of PARM_BOUNDARY bits.  */
+	  if (none
+	      != FUNCTION_ARG_PADDING (TYPE_MODE (type),
+				       expand_expr (size, 0, VOIDmode, 0)))
+	    size = convert_units (convert_units (size, BITS_PER_UNIT,
+						 PARM_BOUNDARY),
+				  PARM_BOUNDARY, BITS_PER_UNIT);
+	  ADD_PARM_SIZE (arg_size[i], size);
 	}
       /* If a part of the arg was put into registers,
 	 don't include that part in the amount pushed.  */
@@ -3645,9 +3704,10 @@ expand_call (exp, target, ignore)
 #endif
 	  /* Compute how much space the argument should get:
 	     round up to a multiple of the alignment for arguments.  */
-	  used = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
-		   / (PARM_BOUNDARY / BITS_PER_UNIT))
-		  * (PARM_BOUNDARY / BITS_PER_UNIT));
+	  if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), (rtx)0))
+	    used = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
+		     / (PARM_BOUNDARY / BITS_PER_UNIT))
+		    * (PARM_BOUNDARY / BITS_PER_UNIT));
 
 	  tem = valvec[i];
 	  if (tem == 0)
@@ -3713,7 +3773,7 @@ expand_call (exp, target, ignore)
   emit_queue ();
 
   /* Pass the function the address in which to return a structure value.  */
-  if (structure_value_addr)
+  if (structure_value_addr && GET_CODE (struct_value_rtx) != MEM)
     emit_move_insn (struct_value_rtx, structure_value_addr);
 
   /* All arguments and registers used for the call must be set up by now!  */
@@ -3860,7 +3920,7 @@ do_jump (exp, if_false_label, if_true_label)
       if (if_true_label)
 	emit_jump (if_true_label);
       break;
-      
+
     case NOP_EXPR:
       do_jump (TREE_OPERAND (exp, 0), if_false_label, if_true_label);
       break;

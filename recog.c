@@ -352,6 +352,18 @@ memory_operand (op, mode)
 	  && ! (mode_altering_drug
 		&& mode_dependent_address_p (XEXP (op, 0))));
 }
+
+/* Return 1 if OP is a valid indirect memory reference with mode MODE;
+   that is, a memory reference whose address is a general_operand.  */
+
+int
+indirect_operand (op, mode)
+     register rtx op;
+     enum machine_mode mode;
+{
+  return (GET_CODE (op) == MEM && GET_MODE (op) == mode
+	  && general_operand (XEXP (op, 0), Pmode));
+}
 
 /* If BODY is an insn body that uses ASM_OPERANDS,
    return the number of operands (both input and output) in the insn.

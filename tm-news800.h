@@ -42,7 +42,7 @@ and this notice must be preserved on all copies.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Dunix -Dmc68020 -Dnews800"
+#define CPP_PREDEFINES "-Dunix -Dmc68020 -Dnews800 -Dsony -Dsony_news"
 
 /* This is BSD, so it wants DBX format.  */
 
@@ -74,6 +74,9 @@ and this notice must be preserved on all copies.  */
 
 /* There is no point aligning anything to a rounder boundary than this.  */
 #define BIGGEST_ALIGNMENT 32
+
+/* A bitfield declared as `int' forces `int' alignment for the struct.  */
+#define PCC_BITFIELD_TYPE_MATTERS
   
 /* NEWS makes d2, d3, fp2 and fp3 unsaved registers, unlike the Sun system.  */
   

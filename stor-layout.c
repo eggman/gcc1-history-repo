@@ -331,7 +331,7 @@ layout_decl (decl, known_align)
      and occupying a complete byte or bytes on proper boundary.  */
   if ((DECL_MODE (decl) == BLKmode
        || DECL_MODE (decl) == BImode)
-      /* Don't do this is DECL's type requires it to be BLKmode.  */
+      /* Don't do this if DECL's type requires it to be BLKmode.  */
       && TYPE_MODE (type) != BLKmode
       && TYPE_SIZE (type) != 0
       && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST)
@@ -397,6 +397,11 @@ layout_record (rec)
 	 is meaningless.  */
 
       record_align = MAX (record_align, desired_align);
+#ifdef PCC_BITFIELD_TYPE_MATTERS
+      /* In PCC on Vax, Sony, etc., a bit field of declare type `int'
+	 forces the entire structure to have `int' alignment.  */
+      record_align = MAX (record_align, TYPE_ALIGN (TREE_TYPE (field)));
+#endif
 
       /* Does this field automatically have alignment it needs
 	 by virtue of the fields that precede it and the record's

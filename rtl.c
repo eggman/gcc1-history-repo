@@ -591,6 +591,86 @@ find_regno_note (insn, kind, regno)
   return 0;
 }
 
+/* Nonzero if FROM precedes TO with no intervening labels.  */
+
+int
+no_labels_between (from, to)
+     register rtx from, to;
+{
+  register rtx p = to;
+
+  while (1)
+    {
+      p = PREV_INSN (p);
+      if (p == 0)
+	return 0;
+      if (p == from)
+	return 1;
+      if (GET_CODE (p) == CODE_LABEL)
+	return 0;
+    }
+}
+
+/* Nonzero if X contains any volatile memory references
+   or volatile ASM_OPERANDS expressions.  */
+
+int
+volatile_refs_p (x)
+     rtx x;
+{
+  register RTX_CODE code;
+
+  code = GET_CODE (x);
+  switch (code)
+    {
+    case LABEL_REF:
+    case SYMBOL_REF:
+    case CONST_INT:
+    case CONST:
+    case CONST_DOUBLE:
+    case CC0:
+    case PC:
+    case REG:
+    case CLOBBER:
+    case ASM_INPUT:
+    case ADDR_VEC:
+    case ADDR_DIFF_VEC:
+      return 0;
+
+    case CALL:
+      return 1;
+
+    case MEM:
+    case ASM_OPERANDS:
+      if (x->volatil)
+	return 1;
+    }
+
+  /* Recursively scan the operands of this expression.  */
+
+  {
+    register char *fmt = GET_RTX_FORMAT (code);
+    register int i;
+    
+    for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+      {
+	if (fmt[i] == 'e')
+	  {
+	    if (volatile_refs_p (XEXP (x, i)))
+	      return 1;
+	  }
+	if (fmt[i] == 'E')
+	  {
+	    register int j;
+	    for (j = 0; j < XVECLEN (x, i); j++)
+	      if (volatile_refs_p (XVECEXP (x, i, j)))
+		return 1;
+	  }
+      }
+  }
+  return 0;
+}
+
 /* Printing rtl for debugging dumps.  */
 
 static FILE *outfile;

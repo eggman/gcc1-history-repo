@@ -1,7 +1,7 @@
 .\	" ======================
-.\	" This version is 1.22
+.\	" This version is 1.24.
 .\	" ======================
-.TH GCC 1 "17 May 1988" "Version 1.22"
+.TH GCC 1 "8 July 1988" "Version 1.24"
 .SH NAME
 gcc \- GNU project C Compiler
 .SH SYNOPSIS
@@ -12,7 +12,6 @@ This man page is an extract of the documentation of the
 .I GNU\ C\ compiler
 and is limited to the meaning of the options.  It is updated only
 occasionally, because the GNU project does not use nroff.
-
 For complete, current documentation, refer to the Info file
 .B internals
 or the DVI file
@@ -336,13 +335,12 @@ The linker uses this file as if it had been specified precisely by name.
 The directories searched include several standard system directories
 plus any that you specify with `\fB\-L\fR'.
 Normally the files found this way are library files - archive files whose
-members are object files. The linker handles an archive file by through
-it for members which define symbols that have so far been referenced
-but not defined. But if the file that is found is an ordinary
+members are object files. The linker handles an archive file by scanning
+through it for members which define symbols that have so far been
+referenced but not defined. But if the file that is found is an ordinary
 object file, it is linked in the usual fashion. 
-The only difference between an `\fB\-l\fR' option and the full file name of
-the file that is found is syntactic and the fact that several directories
-are searched.
+The only difference between an `\fB\-l\fR' option and specifying
+a file name is that `\fB-l\fR' searches several directories.
 .TP
 .BI \-L "dir"
 Add directory \fIdir\fR to the list of directories to be searched

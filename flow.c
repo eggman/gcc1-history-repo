@@ -256,7 +256,6 @@ static int insn_dead_p ();
 static int try_pre_increment ();
 static int try_pre_increment_1 ();
 static rtx find_use_as_address ();
-static int volatile_refs_p ();
 void dump_flow_info ();
 
 /* Find basic blocks of the current function and perform data flow analysis.
@@ -465,11 +464,16 @@ find_basic_blocks (f)
 		for (j = i; j < n_basic_blocks; j++)
 		  if (block_live[j])
 		    {
+		      rtx label;
 		      insn = basic_block_end[i - 1];
 		      if (GET_CODE (insn) == JUMP_INSN
-			  && JUMP_LABEL (insn) != 0
-			  && INSN_UID (JUMP_LABEL (insn)) != 0
-			  && BLOCK_NUM (JUMP_LABEL (insn)) == j)
+			  /* An unconditional jump is the only possibility
+			     we must check for, since a conditional one
+			     would make these blocks live.  */
+			  && simplejump_p (insn)
+			  && (label = XEXP (SET_SRC (PATTERN (insn)), 0), 1)
+			  && INSN_UID (label) != 0
+			  && BLOCK_NUM (label) == j)
 			{
 			  PUT_CODE (insn, NOTE);
 			  NOTE_LINE_NUMBER (insn) = NOTE_INSN_DELETED;
@@ -616,6 +620,18 @@ life_analysis (f, nregs)
 	  if (GET_CODE (PATTERN (insn)) != USE)
 	    INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
 	}
+      /* A SET that makes space on the stack cannot be dead.
+	 Even if this function never uses this stack pointer value,
+	 signal handlers do!  */
+      else if (code1 == INSN && GET_CODE (PATTERN (insn)) == SET
+	       && SET_DEST (PATTERN (insn)) == stack_pointer_rtx
+#ifdef STACK_GROWS_DOWNWARD
+	       && GET_CODE (SET_SRC (PATTERN (insn))) == MINUS
+#else
+	       && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
+#endif
+	       && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx)
+	INSN_VOLATILE (insn) = 1;
     }
 
   if (n_basic_blocks > 0)
@@ -1134,17 +1150,6 @@ insn_dead_p (x, needed, strict_low_ok)
   if (code == SET)
     {
       register rtx r = SET_DEST (x);
-      /* A SET that makes space on the stack cannot be dead.
-	 Even if this function never uses this stack pointer value,
-	 signal handlers do!  */
-      if (r == stack_pointer_rtx
-#ifdef STACK_GROWS_DOWNWARD
-	  && GET_CODE (SET_SRC (x)) == MINUS
-#else
-	  && GET_CODE (SET_SRC (x)) == PLUS
-#endif
-	  && XEXP (SET_SRC (x), 0) == r)
-	return 0;
       /* A SET that is a subroutine call cannot be dead.  */
       if (GET_CODE (SET_SRC (x)) == CALL)
 	return 0;
@@ -1608,8 +1613,9 @@ mark_used_regs (needed, live, x, final, insn)
 
 	if (GET_CODE (testreg) == REG
 	    && (regno = REGNO (testreg), regno != FRAME_POINTER_REGNUM)
-	    && regno != ARG_POINTER_REGNUM)
-	  /*  && regno != STACK_POINTER_REGNUM) -- let's try without this.  */
+	    && regno != ARG_POINTER_REGNUM
+	    && (regno >= FIRST_PSEUDO_REGISTER
+		|| INSN_VOLATILE (insn)))
 	  {
 	    register int offset = regno / REGSET_ELT_BITS;
 	    register int bit = 1 << (regno % REGSET_ELT_BITS);
@@ -1654,66 +1660,6 @@ mark_used_regs (needed, live, x, final, insn)
 	  }
       }
   }
-}
-
-/* Nonzero if X contains any volatile memory references
-   or volatile ASM_OPERANDS expressions.  */
-
-static int
-volatile_refs_p (x)
-     rtx x;
-{
-  register RTX_CODE code;
-
-  code = GET_CODE (x);
-  switch (code)
-    {
-    case LABEL_REF:
-    case SYMBOL_REF:
-    case CONST_INT:
-    case CONST:
-    case CONST_DOUBLE:
-    case CC0:
-    case PC:
-    case REG:
-    case CLOBBER:
-    case ASM_INPUT:
-    case ADDR_VEC:
-    case ADDR_DIFF_VEC:
-      return 0;
-
-    case CALL:
-      return 1;
-
-    case MEM:
-    case ASM_OPERANDS:
-      if (x->volatil)
-	return 1;
-    }
-
-  /* Recursively scan the operands of this expression.  */
-
-  {
-    register char *fmt = GET_RTX_FORMAT (code);
-    register int i;
-    
-    for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
-      {
-	if (fmt[i] == 'e')
-	  {
-	    if (volatile_refs_p (XEXP (x, i)))
-	      return 1;
-	  }
-	if (fmt[i] == 'E')
-	  {
-	    register int j;
-	    for (j = 0; j < XVECLEN (x, i); j++)
-	      if (volatile_refs_p (XVECEXP (x, i, j)))
-		return 1;
-	  }
-      }
-  }
-  return 0;
 }
 
 #ifdef AUTO_INC_DEC

@@ -593,12 +593,6 @@ build_real_from_int_cst (type, i)
   tree v;
   double d;
 
-  /* Check for valid float value for this type on this target machine;
-     if not, can print error message and store a valid value in D.  */
-#ifdef CHECK_FLOAT_VALUE
-  CHECK_FLOAT_VALUE (TYPE_MODE (type), d);
-#endif
-
   v = make_node (REAL_CST);
   TREE_TYPE (v) = type;
 
@@ -617,6 +611,12 @@ build_real_from_int_cst (type, i)
 	    * (double) (1 << (HOST_BITS_PER_INT / 2)));
       d += (double) (unsigned) TREE_INT_CST_LOW (i);
     }
+
+  /* Check for valid float value for this type on this target machine;
+     if not, can print error message and store a valid value in D.  */
+#ifdef CHECK_FLOAT_VALUE
+  CHECK_FLOAT_VALUE (TYPE_MODE (type), d);
+#endif
 
   TREE_REAL_CST (v) = d;
   return v;

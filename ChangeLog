@@ -1,3 +1,432 @@
+Wed Aug  3 08:29:31 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (expand_inline_function): Don't let MEM be inline_target.
+
+Tue Aug  2 09:13:37 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (INTEGRATE_THRESHOLD): New macro, default dfn here.
+	(function_cannot_inline_p): Use it.
+
+	* rtl.h (REG_FUNCTION_VALUE_P): New macro.
+	* stmt.c (expand_function_start): Set that flag in the return reg.
+	* integrate.c (expand_inline_function, copy_rtx_and_substitute):
+	Test that flag to test for the return value.
+	* expmed.c (expand_fixed_bit_field, expand_mult, expand_divmod): ditto.
+	FUNCTION_VALUE_OUTGOING_REGNO_P no longer needed.
+
+Mon Aug  1 02:46:08 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (copy_rtx_and_substitute): If NO_FUNCTION_CSE,
+	don't break out constant fcn addresses here.
+
+	* expmed.c (expand_fixed_bit_field): Tests of FUNCTION_VALUE_REGNO_P
+	were backwards.
+
+Sun Jul 31 13:10:07 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* recog.c (indirect_operand): New function.
+
+	* output-i386.c (print_operand): define %*. eliminate %s.
+	(fp_top_dead_p): In nonopt case, skip stack-adjusts while looking
+	for the insn that uses the function value.
+
+	* varasm.c (text_section, data_section): New functions.
+	Replaced explicit printfs elsewhere with calls to them.
+	* final.c (final_start_function): Use these fns.
+	* sdbout.c (sdbout_one_type): Use text_section.
+	* tm-att386.h (ASM_OUTPUT_LOCAL): Use data_section.
+
+	* expr.c (prepare_call_address): Don't pass const via reg if no -O.
+
+	* tm-sparc.h (FUNCTION_{PROLOGUE,EPILOGUE}) Round the size of saved
+	registers.  Fix bug counting saved registers.
+
+	* tm-sparc.h (ASM_OUTPUT_SOURCE_LINE): Define this macro.
+
+	* tm-sparc.h (DEFAULT_SIGNED_CHAR): Now 1.
+
+	* expr.c (expand_builtin, alloca case): Adding stack offset needs
+	special code if TARGET is a MEM.
+
+	* dbxout.c (dbxout_init): Define Ltext: after the reference to it.
+
+	* tm-3b1.h (ASM_OUTPUT_CASE_LABEL): `short 0' triggers assembler bug;
+	`short L%nn-L%nn' supposedly works.
+
+Sat Jul 30 00:25:52 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* sparc.md (floatsidf2): Minor change in output.
+	(fix_trunc{sf,df}si2): Similar.
+
+	* output-sparc.c (output_fp_move_double): Minor change in output.
+
+	* stmt.c (assign_parms): Don't count stack space for struct value
+	address if the function does not have one.
+
+	* sdbout.c: Output .dim's and total size for arrays.
+	Detect bit-fields properly.
+	Changed handling of structure tags.
+
+	* reload1.c (new_spill_reg): counted_for_nongroups is a new arg;
+	store 1 in it if this reg is needed for max_nongroups.
+
+	* reload1.c (choose_reload_targets): Allow inheritance of DFmode
+	if it needs only one register.
+
+	* reload1.c (choose_reload_targets): Delete the death-note from the
+	store-insn of an inherited reload if PRESERVE_DEATH_INFO_REGNO_P.
+
+	* reload.c (push_reload): Crash if PREFERRED_RELOAD_CLASS is NO_REGS.
+	(find_reloads): Smarter handling of forcing CONST_DOUBLE into mem.
+	Check PREFERRED_RELOAD_CLASS & do this if it says NO_REGS.
+
+	* reload.c (subst_indexed_address): Handle case with 2 regs
+	and no constant term.
+
+	* local-alloc.c: New variable qty_n_refs, set from reg_n_refs
+	and tested in qty_compare{,_1}.
+	(combine_regs): Update qty_n_refs.
+	Update qty_preferred_or_nothing more intelligently.
+
+	* regclass.c (regclass, reg_class_record, record_address_regs):
+	Count the number of refs to each reg along with the costs,
+	and use it when computing the preferred_or_nothing flag.
+	(Can't use reg_n_refs since that is weighted by loop depth).
+
+	* global-alloc.c (global_alloc): Enable test of OVERLAPPING_REGNO_P
+	for setting no_global_alloc_regs.
+
+	* expr.c (prepare_call_address): Use force_reg, so it gets a REG_EQUIV.
+
+	* optabs.c (can_{fix,float}_p): Return enum insn_code, not a function.
+	(init_{fix,float}_tab): Store enum insn_code's in fixtab and floattab.
+	(expand_{fix,float}): Change calls to can_{fix,float}_p.
+	Also, use emit_unop_insn to make the actual insns.
+
+Fri Jul 29 02:42:40 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cccp.c (initialize_char_syntax): If dollars_in_identifiers is 0,
+	set entries for `$' to 0.
+	Set entries to 1 rather than incrementing them.
+
+Tue Jul 26 11:14:22 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* varasm.c (assemble_variable): Make SDB output only if top-level.
+
+	* local-alloc.c (reg_is_set): Arg to mark_life is regno, not qty.
+
+	* output-ns32k.c (print_operand_address): New flag SEQUENT_BASE_REGS
+	* tm-sequent.h: Define that flag.
+
+	* Makefile: add some missing deps.
+
+	* tm-encore.h (ASM_FILE_START): Changed to do nothing.
+
+	* sdbout.c (sdbout_init): Fix two dumb errors.
+
+	* sdbout.c (sdbout_end_epilogue): No longer takes arg.
+	Examine current_function_decl here, not in caller.
+	* final.c: Call changed.
+
+Mon Jul 25 01:32:54 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stor-layout.c (layout_record): Handle PCC_BITFIELD_TYPE_MATTERS.
+
+	* tm-3b1.h (__PTR_TO_INT, __INT_TO_PTR): Define these, to alter
+	parts of obstack.h.
+
+Sun Jul 24 17:56:53 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Padding for an arg may now go below or above it; new macro
+	FUNCTION_ARG_PADDING can now choose which, or can inhibit padding.
+	This makes for compatibility with PCC.
+	* expr.h: Default definition of that macro.
+	* expr.c (emit_push_insn): Put the padding above or below.
+	(expand_call): Don't count the padding if none wanted.
+	* stmt.c (assign_parms): Adjust parm stack addr if padded below.
+	Don't count the padding if none wanted.
+	* tm-3b1.h: Define FUNCTION_ARG_PADDING: no padding for > 4 bytes.
+
+	* final.c (alter_subreg): Now returns the altered value
+	(but may still modify the original structure).
+	Handles (SUBREG:DI (CONST_DOUBLE:DF...)) by returning the CONST_DOUBLE.
+
+	* m68k.md (DImode push): now allows `F'.
+	* ns32k.md (movdi): now allows `F'.
+
+	* tm-m68k.h (FIX_FRAME_POINTER_ADDRESS):
+	Handle indexed references to frame pointer.
+	* tm-i386.h, tm-m88k.h, tm-sparc.h: Likewise.
+
+	* cse.c (predecide_loop_entry): Must search for the loop top label.
+
+Sat Jul 23 08:53:01 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* parse.y (yylex): typo in wide strings.
+
+	* tm-vaxv.h, config-vaxv.h: New files for sysV on vax.
+
+	* config-sun4.h: If sparc and not compiling with GCC, include alloca.h.
+
+Fri Jul 22 02:38:02 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* tree.c (build_real_from_int_cst): CHECK_FLOAT_VALUE at proper place.
+
+	* tm-hp9k320.h ({TEXT,DATA}_SECTION_ASM_OP): Should not include a tab.
+	* final.c (final_start_function): Don't output a tab before those.
+
+	* sdbout.c (PUT_SDB_EPILOGUE_END): New macro.
+	* sdbout.c (sdbout_end_epilogue): New function to output the C_EFCN.
+	Like former sdbout_mark_end_function.  Uses that macro.
+	* final.c (final_end_function): Call that function.
+	* tm-3b1.h: Override PUT_SDB_EPILOGUE_END like the other PUT_SDB...
+
+	* tm-3b1.h (PRINT_OPERAND_ADDRESS, ASM_OUTPUT_INTERNAL_LABEL,
+	ASM_OUTPUT_CASE_{LABEL,END}): Put a % in names of internal labels.
+	(ASM_GENERATE_INTERNAL_LABEL, ASM_OUTPUT_ADDR_{VEC,DIFF}_ELT):
+	New macros, for same reason.
+	(FUNCTION_PROFILER): New macro, for % and also to put addr in a0.
+
+	* final.c (output_source_line): For fcn's first line, use lineno 1.
+	* sdbout.c (sdbout_end_function): Clear sdb_begin_function_line
+	so can recognize first line of next function.
+
+	* sdbout.c (sdbout_init): Output the .file pseudo here.
+	* tm-3b1.h, tm-att386.h (ASM_FILE_START): Don't do it here.
+
+	* sdbout.c (PUT_SDB_VAL): Output leading tab, like the other macros.
+	* tm-3b1.h (PUT_SDB_VAL): Likewise.
+
+	* regclass.c (regclass): Cast enums to int, not char.
+	* varasm.c (record_constant): Likewise.  Avoids 3b1 PCC bug.
+
+	* decl.c (pushdecl): Better choice of error message for extern/static.
+
+	* emit-rtl.c: Do look for STRUCT_VALUE_INCOMING_REGNUM.
+
+Thu Jul 21 02:13:03 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* cse.c (canon_hash): CONST_INT case failed to add to prev. value
+	of HASH; was inconsistent with cse_insn mem address hashing.
+
+	* m68k.md (divide insns): Alternate 3B1 syntax for `swap' insn.
+
+Wed Jul 20 18:27:10 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* m68k.md: In shift-by-24 patterns, rejects autoincrement memrefs
+	since they are mode-dependent.
+
+Tue Jul 19 13:01:38 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* parse.y (check_newline): Handle #ident by writing .ident to output.
+	* cccp.c: Don't handle #ident; delete IDENT_DIRECTIVE conditionals.
+
+	* stmt.c (expand_end_case): In compares, put constant arg second.
+
+	* jump.c (jump_optimize): Delete conditional jump if followed by
+	an unconditional jump to the same place.
+
+Mon Jul 18 17:49:13 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* emit-rtl.c (init_emit_once): Now STRUCT_VALUE_INCOMING is an
+	expression for an rtx.  It can make a MEM.  Likewise STRUCT_VALUE
+	for outgoing structure value addresses.
+
+	* stmt.c (assign_parms): If incoming struct addr on stack, leave room.
+	* expr.c (expand_call): If outgoing addr on stack, push it like an arg.
+
+	* PROMOTE_PROTOTYPES means if proto says `char', pass `int'.
+	* decl.c (get_parm_info): Alter DECL_ARG_TYPE to do this.
+	* typecheck.c (actualparameterlist): Convert value for this.
+	* tm-m68k.h: Define PROMOTE_PROTOTYPES.
+
+Sun Jul 17 14:25:47 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* jump.c (jump_optimize): peephole can delete insns following INSN.
+	Set NEXT after peephole.
+
+	* decl.c (finish_decl): Always restart perm alloc if global.
+
+	* stmt.c (assign_parms): When a float is passed as double, store the
+	float in low-numbered word.  Avoids trouble with parm_map in integrate.
+
+	* vax.md: New pattern for decrement and compare against -1.
+
+Sat Jul 16 14:18:00 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* decl.c (pushdecl): Ignore previous decl if it's really an error_mark.
+
+	* stmt.c (expand_start_case): Make sure case_stmt.start is a NOTE.
+
+	* combine.c (subst): In the simplification for
+	(set (zero_extract ...) (and/or/xor (zero_extract ...) const)),
+	require same memory location in both extracts.
+
+	* *386*: New files.
+
+	* cse.c (fold_rtx): Save time in memory address if it didn't change.
+	Don't replace cheaper expression with coslier one.
+	(cse_insn): Reenable generation of REG_WAS_0.  It wasn't obsolete.
+
+	* cccp.c: `ident' has 5 letters.
+
+	* final.c (output_source_line): SDB can't handle multiple source
+	files, so ignore line-NOTEs for other files.
+
+	* hard-reg-set.h: New var reg_class_size (# regs in the class).
+	* regclass.c (init_reg_class): Set it up.
+
+	* reload.c (find_reloads): If an earlyclobber is in a class of size 1
+	as an output, reload it as input instead of as output.
+
+	* reload1.c (choose_reload_targets): Improve elimimation of spilled
+	pseudos made dead by reloading: if pseudo is limited to one block
+	and that block contains just stores, delete all the stores.
+
+	* reload1.c (choose_reload_targets): reg_has_output_reload is now
+	static and survives through reload pass.
+	(forget_old_reloads): Don't cancel data on spilled regs of output
+	reloads of the insn just made.
+
+	* sdbout.c (sdbout_one_type): Go to .text before defining a type.
+	(sdbout_block): Test against do_block was backwards.
+
+	* stmt.c (expand_end_function): New args to make a NOTE for last line.
+	* decl.c (finish_function): Pass the args.
+
+	* rtl.c (no_labels_between): New function.
+	* vax.md (movsi): Call it.
+
+	* print-tree.c (dump): Don't follow chain of a decl.
+
+	* rtl.c (volatile_refs_p): Moved from flow.c.
+
+Fri Jul 15 13:36:20 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* sdbout.c (PUT_SDB...): Allow config to override any of them.
+	* sdbout.c (PUT_SDB_{BLOCK,FUNCTION}_{START,END}): New macros.
+	* tm-3b1.h: Override all of them.
+	* sdbout.c (SDB_GENERATE_FAKE): New macro to create dummy tag name.
+	(gen_fake_label): Use SDB_GENERATE_FAKE.
+	* tm-3b1.h: Override its defn.
+
+	* sdbout.c (sdbout_mark_function_end): Unused; deleted.
+
+	* tm-3b1.h: Define SDB_DEBUGGING_INFO.
+
+Thu Jul 14 01:55:15 1988  Richard Stallman  (rms at frosted-flakes.ai.mit.edu)
+
+	* config-sunv4.h: New file for Sunos version 4.
+
+	* tm-sun3.h (CPP_SPEC): Define mc68010 or mc68020, depending.
+
+Tue Jul 12 15:31:30 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* stmt.c (expand_fixup, expand_goto_internal): New functions to
+	emit a jump that can restore the stack level, even without tree node.
+	(expand_null_return, expand_exit_loop, etc.): Use expand_goto_internal.
+	(expand_end_function): Do fixup_gotos after emitting return_label.
+
+	* cse.c (predecide_loop_entry): Avoid using JUMP_LABEL.
+	* flow.c (find_basic_blocks): Avoid using JUMP_LABEL.
+
+	* flow.c (insn_dead_p): Delete special case for stack-adjust insns.
+	(life_analysis): Mark those insns with INSN_VOLATILE here.
+	(mark_used_regs): a SET of a hard reg, in a volatile insn,
+	always makes its source live.
+
+Mon Jul 11 10:46:26 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* ns32k.md (floatqidf2): Commented out since assemblers warn about it.
+
+Sun Jul 10 11:49:23 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* decl.c (xref_tag): Default the TYPE_MODE of enum xrefs
+	to avoid making MEM and REG with VOIDmode.
+
+	* vax.md (call): If > 255 args, pop them explicitly.
+
+Sat Jul  9 10:53:47 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* symout.c (symout_types): Fix up forward refs to previously
+	undefined structure types.
+	(filter_undefined_types): New function.
+	(symout_finish, symout_function_end): Output any never-defined structs.
+	* toplev.c (rest_of_compilation): call symout_function_end.
+
+	* parse.y: Don't declare errno if it's a macro.
+
+	* tm-hp9k320 (FUNCTION_PROFILER): Pass ptr in a0, not d0.
+
+	* typecheck.c (truthvalue_conversion): Flush unnec recursive call.
+	(build_cond_expr): Bug testing zeroness of IFEXP with TREE_LITERAL.
+
+	* cse.c (fold_cc0): Constants not CONST_INT are certainly nonzero.
+	* fold-const.c (fold): ADDR_EXPR is not equal to zero.
+
+	* cccp.c (macroexpand): Disable the macro even if traditional.
+	(rescan): Error if use a disabled macro.
+
+	* combine.c (try_combine): Don't substitute a different reg into
+	an auto-increment.  Handle multiple REG_INC notes in I1 or I2.
+
+	* decl.c (implicitly_declare): Don't reuse old implicit decl.
+
+	* varasm.c (assemble_variable): Avoid syntax err if no DBX and no SDB.
+	* final.c (output_source_line): likewise.
+
+	* fold-const.c (fold): PLUS/MINUS_EXPR: in case of cancellation,
+	convert result to original type.
+
+	* regclass.c (reg_class_record): Changed arguments include address
+	of entire vector of constraints.
+
+Fri Jul  8 07:59:00 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* reload1.c (reload): Find groups of more than 2 registers.
+
+Thu Jul  7 08:33:07 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* expr.c (emit_push_insn): Typo adjusting arg for bcopy
+	if not STACK_GROWS_DOWNWARD.
+
+	* gnulib.c (_cmpsf2): Value is int, not SFVALUE.
+
+Wed Jul  6 11:53:46 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* tm-encore.h, tm-3b1.h: Replace ASM_FILE_START; output a .file.
+
+	* *m88*: New files for Motorola 88000.  They don't really work.
+
+Tue Jul  5 14:40:03 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* local-alloc.c (combine_regs): Don't tie a reg to itself.
+
+	* finxincludes: Make a variable LIB for the target dir.
+
+	* m68k.md (movhi, addhi3, addsi3): Micro-optimize choice of asm insns.
+
+	* expr.c (expand_expr): Use new macros NO_DEFER_POP, OK_DEFER_POP
+	in several places, to keep stack predictable.
+
+Mon Jul  4 09:50:18 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* integrate.c (function_cannot_inline_p): Increase threshold size.
+
+	* flags.h (use_gdb_dbx_extensions): New variable.
+	* toplev.c:
+
+	* sdbout.c (PUT_SDB_TAG): Delete duplicate defn.
+
+	* expr.c (expand_expr): For FIX_TRUNC_EXPR to unsigned short/char,
+	REALLY go via signed int.
+
+	* loop.c (may_trap_p): Was detecting floating arithmetic incorrectly.
+
+	* tm-news800.h (CPP_PREDEFINES): Add sony and sony_news.
+
+	* parse.y (check_newline): Avoid infinite loop at eof.
+
 Sat Jul  2 10:35:17 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 
 	* Version 1.24 released.

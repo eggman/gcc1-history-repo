@@ -1291,8 +1291,8 @@ canon_hash (x, mode)
       }
 
     case CONST_INT:
-      hash = INTVAL (x);
-      hash = (int) mode + ((int) CONST_INT << 7) + hash + hash >> HASHBITS;
+      hash += ((int) mode + ((int) CONST_INT << 7)
+	       + INTVAL (x) + INTVAL (x) >> HASHBITS);
       return ((1 << HASHBITS) - 1) & hash;
 
       /* Assume there is only one rtx object for any given label.  */
@@ -1722,8 +1722,16 @@ fold_rtx (x, copyflag)
     case MEM:
       {
 	rtx newaddr = fold_rtx (XEXP (x, 0), 1);
+	/* Save time if no change was made.  */
+	if (XEXP (x, 0) == newaddr)
+	  return x;
+
 	if (! memory_address_p (GET_MODE (x), newaddr)
 	    && memory_address_p (GET_MODE (x), XEXP (x, 0)))
+	  return x;
+
+	/* Don't replace a value with a more expensive one.  */
+	if (rtx_cost (XEXP (x, 0)) < rtx_cost (newaddr))
 	  return x;
 
 	if (copyflag)
@@ -2298,9 +2306,10 @@ fold_cc0 (x)
     if (y0 == 0)
       return 0;
 
-    /* Value is frame-pointer plus a constant?
+    /* Value is frame-pointer plus a constant?  Or non-explicit constant?
        That isn't zero, but we don't know its sign.  */
-    if (FIXED_BASE_PLUS_P (y0))
+    if (FIXED_BASE_PLUS_P (y0)
+	|| GET_CODE (y0) == SYMBOL_REF || GET_CODE (y0) == CONST)
       return 0300 + (1<<3) + 1;
 
     /* Otherwise, only integers enable us to optimize.  */
@@ -2331,10 +2340,22 @@ predecide_loop_entry (insn)
      register rtx insn;
 {
   register rtx jump = NEXT_INSN (insn);
-  register rtx p = JUMP_LABEL (jump);
-  register rtx loop_top_label = NEXT_INSN (NEXT_INSN (jump));
+  register rtx p;
+  register rtx loop_top_label = NEXT_INSN (jump);
   enum { UNK, DELETE_LOOP, DELETE_JUMP } disposition = UNK;
   int count = 0;
+
+  /* Find the label at the top of the loop.  */
+  while (GET_CODE (loop_top_label) == BARRIER
+	 || GET_CODE (loop_top_label) == NOTE)
+    loop_top_label = NEXT_INSN (loop_top_label);
+  if (GET_CODE (loop_top_label) != CODE_LABEL)
+    abort ();
+
+  /* Find the label at which the loop is entered.  */
+  p = XEXP (SET_SRC (PATTERN (jump)), 0);
+  if (GET_CODE (p) != CODE_LABEL)
+    abort ();
 
   /* Trace the flow of control through the end test,
      propagating constants, to see if result is determined.  */
@@ -2620,7 +2641,6 @@ cse_insn (insn)
 	    src = y;
 	}
 
-#if 0
       /* If storing a constant value in a register that
 	 previously held the constant value 0,
 	 record this fact with a REG_WAS_0 note on this insn.  */
@@ -2630,7 +2650,6 @@ cse_insn (insn)
 	REG_NOTES (insn) = gen_rtx (INSN_LIST, REG_WAS_0,
 				    qty_const_insn[reg_qty[REGNO (dest)]],
 				    REG_NOTES (insn));
-#endif
 
       src_hash_code[i] = HASH (src, mode);
 

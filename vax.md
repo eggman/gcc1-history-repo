@@ -163,7 +163,9 @@
       && GET_MODE (REG_NOTES (insn)) == (enum machine_mode) REG_WAS_0
       /* Make sure the insn that stored the 0 is still present.  */
       && ! XEXP (REG_NOTES (insn), 0)->volatil
-      && GET_CODE (XEXP (REG_NOTES (insn), 0)) != NOTE)
+      && GET_CODE (XEXP (REG_NOTES (insn), 0)) != NOTE
+      /* Make sure cross jumping didn't happen here.  */
+      && no_labels_between_p (XEXP (REG_NOTES (insn), 0), insn))
     /* Fastest way to change a 0 to a 1.  */
     return \"incl %0\";
   if (GET_CODE (operands[1]) == SYMBOL_REF || GET_CODE (operands[1]) == CONST)
@@ -1822,6 +1824,24 @@
 		 (const_int 1)))]
   "!TARGET_UNIX_ASM"
   "jaobleq %1,%0,%l2")
+
+;; Something like a sob insn, but compares against -1.
+;; This finds `while (foo--)' which was changed to `while (--foo != -1)'.
+
+(define_insn ""
+  [(set (pc)
+	(if_then_else
+	 (ne (minus (plus:SI (match_operand:SI 0 "general_operand" "g")
+			     (const_int -1))
+		    (const_int -1))
+	     (const_int 0))
+	 (label_ref (match_operand 1 "" ""))
+	 (pc)))
+   (set (match_dup 0)
+	(plus:SI (match_dup 0)
+		 (const_int -1)))]
+  ""
+  "decl %0\;jgequ %l1")
 
 ;; Note that operand 1 is total size of args, in bytes,
 ;; and what the call insn wants is the number of words.
@@ -1830,6 +1850,9 @@
 	 (match_operand:QI 1 "general_operand" "g"))]
   ""
   "*
+  if (INTVAL (operands[1]) > 255 * 4)
+    /* Vax `calls' really uses only one byte of #args, so pop explicitly.  */
+    return \"calls $0,%0\;addl2 %1,sp\";
   operands[1] = gen_rtx (CONST_INT, VOIDmode, (INTVAL (operands[1]) + 3)/ 4);
   return \"calls %1,%0\";
 ")

@@ -148,7 +148,9 @@ typedef struct rtx_def
      See `unshare_all_rtl'.
      This bit is used to detect that event.  */
   unsigned int used : 1;
-  /* Nonzero if this rtx came from procedure integration.  */
+  /* Nonzero if this rtx came from procedure integration.
+     In a REG, nonzero means this reg refers to the return value
+     of the current function.  */
   unsigned integrated : 1;
   /* The first element of the operands of this rtx.
      The number of operands and their types are controlled
@@ -336,6 +338,11 @@ enum reg_note { REG_DEAD = 1, REG_INC = 2, REG_EQUIV = 3, REG_WAS_0 = 4,
 /* For a REG rtx, REGNO extracts the register number.  */
 
 #define REGNO(RTX) ((RTX)->fld[0].rtint)
+
+/* For a REG rtx, REG_FUNCTION_VALUE_P is nonzero if the reg
+   is the current function's return value.  */
+
+#define REG_FUNCTION_VALUE_P(RTX) ((RTX)->integrated)
 
 /* For a CONST_INT rtx, INTVAL extracts the integer.  */
 

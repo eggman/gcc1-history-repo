@@ -1445,14 +1445,22 @@ init_emit_once ()
 
   stack_pointer_rtx = gen_rtx (REG, Pmode, STACK_POINTER_REGNUM);
   frame_pointer_rtx = gen_rtx (REG, Pmode, FRAME_POINTER_REGNUM);
+#ifdef STRUCT_VALUE
+  struct_value_rtx = STRUCT_VALUE;
+#else
   struct_value_rtx = gen_rtx (REG, Pmode, STRUCT_VALUE_REGNUM);
-
-#ifdef STRUCT_VALUE_INCOMING_REGNUM
-  if (STRUCT_VALUE_INCOMING_REGNUM != STRUCT_VALUE_REGNUM)
-    struct_value_incoming_rtx = gen_rtx (REG, Pmode, STRUCT_VALUE_INCOMING_REGNUM);
-  else
 #endif
-    struct_value_incoming_rtx = struct_value_rtx;
+
+#ifdef STRUCT_VALUE_INCOMING
+  struct_value_incoming_rtx = STRUCT_VALUE_INCOMING;
+#else
+#ifdef STRUCT_VALUE_INCOMING_REGNUM
+  struct_value_incoming_rtx
+    = gen_rtx (REG, Pmode, STRUCT_VALUE_INCOMING_REGNUM);
+#else
+  struct_value_incoming_rtx = struct_value_rtx;
+#endif
+#endif
 
   static_chain_rtx = gen_rtx (REG, Pmode, STATIC_CHAIN_REGNUM);
 

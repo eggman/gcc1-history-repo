@@ -246,7 +246,7 @@ output_fp_move_double (operands)
 	  int offset = - get_frame_size () - 8;
 	  xoperands[0] = gen_rtx (CONST_INT, VOIDmode, offset);
 	  xoperands[1] = operands[1];
-	  output_asm_insn ("st %1,[%%fp+%0]", xoperands);
+	  output_asm_insn ("std %1,[%%fp+%0]", xoperands);
 	  xoperands[1] = operands[0];
 	  output_asm_insn ("ld [%%fp+%0],%1", xoperands);
 	  xoperands[1] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
@@ -738,16 +738,4 @@ make_f0_contain_0 (size)
   else if (size == 2)
     output_asm_insn ("ldd [%%fp%0],%%f0", xoperands);
 }
-
-#if 0
-/* This was needed only for the "alloca" instruction.  */
-#include "tree.h"
-
-int
-tree_uid (node)
-     tree node;
-{
-  return TREE_UID (node);
-}
-#endif
 

@@ -342,6 +342,8 @@ dump (node, indent)
 	    part ("initial", DECL_INITIAL (node));
 	}
       part ("chain", TREE_CHAIN (node));
+      /* A Decl's chain contents is not part of the decl.  */
+      nochain = 1;
       fputc ('\n', outfile);
       cwalk (DECL_SIZE (node), node, indent);
       walk (TREE_TYPE (node), node, indent);
@@ -390,9 +392,9 @@ dump (node, indent)
 	{
 	  part ("arg_types", TYPE_ARG_TYPES (node));
 	}
-      /* A type's chain is not printed because the chain of types
+      part ("chain", TREE_CHAIN (node));
+      /* A type's chain's contents are not printed because the chain of types
 	 is not part of the meaning of any particular type.  */
-      /* part ("chain", TREE_CHAIN (node)); */
       nochain = 1;
       fputc ('\n', outfile);
       cwalk (TYPE_SIZE (node), node, indent);

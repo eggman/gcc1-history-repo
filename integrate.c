@@ -42,6 +42,13 @@ extern struct obstack *rtl_obstack, *saveable_obstack, *current_obstack;
 #define MIN(x,y) ((x < y) ? x : y)
 
 extern tree pushdecl ();
+
+/* Default max number of insns a function can have and still be inline.
+   This is overridden on RISC machines.  */
+#ifndef INTEGRATE_THRESHOLD
+#define INTEGRATE_THRESHOLD(DECL) \
+  (8 * (8 + list_length (DECL_ARGUMENTS (DECL)) + 16*TREE_INLINE (DECL)))
+#endif
 
 /* This is the target of the inline function being expanded,
    or NULL if there is none.  */
@@ -85,7 +92,7 @@ static rtx try_fold_cc0 ();
 
 /* We do some simple constant folding optimization.  This optimization
    really exists primarily to save time inlining a function.  It
-   also help users who ask for inline functions without -O.  */
+   also helps users who ask for inline functions without -O.  */
 static rtx fold_out_const_cc0 ();
 
 /* Zero if the current function (whose FUNCTION_DECL is FNDECL)
@@ -99,8 +106,7 @@ function_cannot_inline_p (fndecl)
 {
   register rtx insn;
   tree last = tree_last (TYPE_ARG_TYPES (TREE_TYPE (fndecl)));
-  int nargs = list_length (DECL_ARGUMENTS (fndecl));
-  int max_insns = 4 * (4 + nargs + 16*TREE_INLINE (fndecl));
+  int max_insns = INTEGRATE_THRESHOLD (fndecl);
   register int ninsns = 0;
   register tree parms;
 
@@ -618,7 +624,11 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
       enum machine_mode arriving_mode
 	= TYPE_MODE (TREE_TYPE (DECL_RESULT (fndecl)));
 
-      if (target && GET_MODE (target) == departing_mode)
+      /* Don't use MEMs as direct targets because on some machines
+	 substituting a MEM for a REG makes invalid insns.
+	 Let the combiner substitute the MEM if that is valid.  */
+      if (target && GET_CODE (target) == REG
+	  && GET_MODE (target) == departing_mode)
 	inline_target = target;
       else
 	inline_target = target = gen_reg_rtx (departing_mode);
@@ -707,7 +717,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	     since we are changing (REG n) into inline_target.  */
 	  if (GET_CODE (pattern) == USE
 	      && GET_CODE (XEXP (pattern, 0)) == REG
-	      && FUNCTION_VALUE_REGNO_P (REGNO (XEXP (pattern, 0))))
+	      && REG_FUNCTION_VALUE_P (XEXP (pattern, 0)))
 	    break;
 
 	  /* Try to do some quick constant folding here.
@@ -899,7 +909,7 @@ copy_rtx_and_substitute (orig)
       regno = REGNO (orig);
       if (regno < FIRST_PSEUDO_REGISTER)
 	{
-	  if (FUNCTION_VALUE_REGNO_P (regno))
+	  if (REG_FUNCTION_VALUE_P (orig))
 	    return inline_target;
 	  if (regno == FRAME_POINTER_REGNUM)
 	    return plus_constant (orig, fp_delta);
@@ -924,6 +934,20 @@ copy_rtx_and_substitute (orig)
     case CONST_DOUBLE:
     case SYMBOL_REF:
       return orig;
+
+    case CALL:
+      /* This is given special treatment because the first
+	 operand of a CALL is a (MEM ...) which may get
+	 forced into a register for cse.  This is undesirable
+	 if function-address cse isn't wanted or if we won't do cse.  */
+#ifndef NO_FUNCTION_CSE
+      if (! (optimize && ! flag_no_function_cse))
+#endif
+	return gen_rtx (CALL, GET_MODE (orig),
+			gen_rtx (MEM, GET_MODE (XEXP (orig, 0)),
+				 copy_rtx_and_substitute (XEXP (XEXP (orig, 0), 0))),
+			copy_rtx_and_substitute (XEXP (orig, 1)));
+      break;
 
     case PLUS:
       /* Note:  the PLUS case is not nearly as careful as the MEM

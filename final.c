@@ -72,7 +72,7 @@ and this notice must be preserved on all copies.  */
 #define min(A,B) ((A) < (B) ? (A) : (B))
 
 void output_asm_insn ();
-static void alter_subreg ();
+static rtx alter_subreg ();
 static int alter_cond ();
 void output_asm_label ();
 static void output_operand ();
@@ -273,11 +273,11 @@ final_start_function (first, file, write_symbols, optimize)
   if (profile_flag)
     {
       int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
-      fprintf (file, "\t%s\n", DATA_SECTION_ASM_OP);
+      data_section ();
       ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
       ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
       assemble_integer_zero ();
-      fprintf (file, "\t%s\n", TEXT_SECTION_ASM_OP);
+      text_section ();
       FUNCTION_PROFILER (file, profile_label_no);
       profile_label_no++;
     }
@@ -314,6 +314,11 @@ final_end_function (first, file, write_symbols, optimize)
   /* Finally, output the function epilogue:
      code to restore the stack frame and return to the caller.  */
   FUNCTION_EPILOGUE (file, get_frame_size ());
+#endif
+
+#ifdef SDB_DEBUGGING_INFO
+  if (write_symbols == SDB_DEBUG)
+    sdbout_end_epilogue ();
 #endif
 
   /* If FUNCTION_EPILOGUE is not defined, then the function body
@@ -555,14 +560,16 @@ final (first, file, write_symbols, optimize)
 		&& GET_CODE (SET_DEST (body)) == CC0)
 	      {
 		if (GET_CODE (SET_SRC (body)) == SUBREG)
-		  alter_subreg (SET_SRC (body));
+		  SET_SRC (body) = alter_subreg (SET_SRC (body));
 		if ((cc_status.value1 != 0
 		     && rtx_equal_p (SET_SRC (body), cc_status.value1))
 		    || (cc_status.value2 != 0
 			&& rtx_equal_p (SET_SRC (body), cc_status.value2)))
 		  {
 		    /* Don't delete insn if has an addressing side-effect */
-		    if (! find_reg_note (insn, REG_INC, 0))
+		    if (! find_reg_note (insn, REG_INC, 0)
+			/* or if anything in it is volatile.  */
+			&& ! volatile_refs_p (PATTERN (insn)))
 		      break;
 		  }
 	      }
@@ -637,7 +644,7 @@ final (first, file, write_symbols, optimize)
 	    insn_extract (insn);
 	    for (i = 0; i < insn_n_operands[insn_code_number]; i++)
 	      if (GET_CODE (recog_operand[i]) == SUBREG)
-		alter_subreg (recog_operand[i]);
+		recog_operand[i] = alter_subreg (recog_operand[i]);
 
 #ifdef REGISTER_CONSTRAINTS
 	    if (! constrain_operands (insn_code_number))
@@ -730,30 +737,38 @@ output_source_line (file, insn, write_symbols)
 	       current_gdbfile->filenum, NOTE_LINE_NUMBER (insn));
     }
 
-#ifdef SDB_DEBUGGING_INFO
-  if (write_symbols == SDB_DEBUG)
+  if (write_symbols == SDB_DEBUG || write_symbols == DBX_DEBUG)
     {
+#ifdef SDB_DEBUGGING_INFO
+      if (write_symbols == SDB_DEBUG
+	  /* COFF can't handle multiple source files--lose, lose.  */
+	  && !strcmp (filename, main_input_filename))
+	{
 #ifdef ASM_OUTPUT_SOURCE_LINE
-      ASM_OUTPUT_SOURCE_LINE (file, last_linenum);
+	  ASM_OUTPUT_SOURCE_LINE (file, last_linenum);
 #else
-      fprintf (file, "\t.ln\t%d\n", last_linenum - sdb_begin_function_line);
+	  fprintf (file, "\t.ln\t%d\n",
+		   (sdb_begin_function_line
+		    ? last_linenum - sdb_begin_function_line : 1));
 #endif
+	}
 #endif
 
 #ifdef DBX_DEBUGGING_INFO
-  if (write_symbols == DBX_DEBUG)
-    {
-      /* Write DBX line number data.  */
-
-      if (filename && (lastfile == 0 || strcmp (filename, lastfile)))
+      if (write_symbols == DBX_DEBUG)
 	{
+	  /* Write DBX line number data.  */
+
+	  if (filename && (lastfile == 0 || strcmp (filename, lastfile)))
+	    {
 #ifdef ASM_OUTPUT_SOURCE_FILENAME
-	  ASM_OUTPUT_SOURCE_FILENAME (file, filename);
+	      ASM_OUTPUT_SOURCE_FILENAME (file, filename);
 #else
-	  fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
-		   filename, N_SOL);
+	      fprintf (file, "\t.stabs \"%s\",%d,0,0,Ltext\n",
+		       filename, N_SOL);
 #endif
-	  lastfile = filename;
+	      lastfile = filename;
+	    }
 	}
 
 #ifdef ASM_OUTPUT_SOURCE_LINE
@@ -769,13 +784,13 @@ output_source_line (file, insn, write_symbols)
 /* If X is a SUBREG, replace it with a REG or a MEM,
    based on the thing it is a subreg of.  */
 
-static void
+static rtx
 alter_subreg (x)
      register rtx x;
 {
   register rtx y = SUBREG_REG (x);
   if (GET_CODE (y) == SUBREG)
-    alter_subreg (y);
+    y = alter_subreg (y);
 
   if (GET_CODE (y) == REG)
     {
@@ -793,6 +808,10 @@ alter_subreg (x)
       PUT_CODE (x, MEM);
       XEXP (x, 0) = plus_constant (XEXP (y, 0), offset);
     }
+  else if (GET_CODE (y) == CONST_DOUBLE)
+    return y;
+
+  return x;
 }
 
 /* Do alter_subreg on all the SUBREGs contained in X.  */
@@ -814,7 +833,7 @@ walk_alter_subreg (x)
       break;
 
     case SUBREG:
-      alter_subreg (x);
+      return alter_subreg (x);
     }
 
   return x;
@@ -1100,7 +1119,7 @@ output_operand (x, code)
      int code;
 {
   if (x && GET_CODE (x) == SUBREG)
-    alter_subreg (x);
+    x = alter_subreg (x);
   PRINT_OPERAND (asm_out_file, x, code);
 }
 

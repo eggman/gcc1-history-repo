@@ -169,7 +169,7 @@ extern char *version_string;
 
 int do_define (), do_line (), do_include (), do_undef (), do_error (),
   do_pragma (), do_if (), do_xifdef (), do_else (),
-  do_elif (), do_endif (), do_sccs (), do_ident ();
+  do_elif (), do_endif (), do_sccs ();
 
 struct hashnode *install ();
 struct hashnode *lookup ();
@@ -498,9 +498,6 @@ struct directive directive_table[] = {
   {  5, do_error, "error", T_ERROR},
 #ifdef SCCS_DIRECTIVE
   {  4, do_sccs, "sccs", T_SCCS},
-#endif
-#ifdef IDENT_DIRECTIVE
-  {  4, do_ident, "ident", T_IDENT},
 #endif
 #if 0
   {  6, do_pragma, "pragma", T_PRAGMA},
@@ -1641,6 +1638,13 @@ do { ip = &instack[indepth];		\
       if (ip->macro != 0) {
 	obp--;
 	ibp--;
+	/* If traditional, and we have an identifier that ends here,
+	   process it now, so we get the right error for recursion.  */
+	if (traditional && ident_length
+	    && ! is_idchar[*instack[indepth - 1].bufp]) {
+	  redo_char = 1;
+	  goto randomchar;
+	}
 	POPMACRO;
 	RECACHE;
 	break;
@@ -1737,6 +1741,9 @@ randomchar:
 
 	    if (disabled)
 	      {
+		if (traditional)
+		  error ("recursive use of macro `%s'", hp->name);
+
 		if (output_marks) {
 		  check_expand (op, limit - ibp + 2);
 		  *obp++ = '\n';
@@ -3147,12 +3154,6 @@ do_sccs ()
   if (pedantic)
     error ("ANSI C does not allow #sccs");
 }
-
-do_ident ()
-{
-  if (pedantic)
-    error ("ANSI C does not allow #ident");
-}
 
 /*
  * handle #if command by
@@ -4021,8 +4022,7 @@ macroexpand (hp, op)
     ip2->macro = hp;
     ip2->if_stack = if_stack;
 
-    if (!traditional)
-      hp->type = T_DISABLED;
+    hp->type = T_DISABLED;
   }
 }
 
@@ -4735,31 +4735,29 @@ initialize_char_syntax ()
    * refer to them.
    */
   for (i = 'a'; i <= 'z'; i++) {
-    ++is_idchar[i - 'a' + 'A'];
-    ++is_idchar[i];
-    ++is_idstart[i - 'a' + 'A'];
-    ++is_idstart[i];
+    is_idchar[i - 'a' + 'A'] = 1;
+    is_idchar[i] = 1;
+    is_idstart[i - 'a' + 'A'] = 1;
+    is_idstart[i] = 1;
   }
   for (i = '0'; i <= '9'; i++)
-    ++is_idchar[i];
-  ++is_idchar['_'];
-  ++is_idstart['_'];
-  if (dollars_in_ident) {
-    ++is_idchar['$'];
-    ++is_idstart['$'];
-  }
+    is_idchar[i] = 1;
+  is_idchar['_'] = 1;
+  is_idstart['_'] = 1;
+  is_idchar['$'] = dollars_in_ident;
+  is_idstart['$'] = dollars_in_ident;
 
   /* horizontal space table */
-  ++is_hor_space[' '];
-  ++is_hor_space['\t'];
-  ++is_hor_space['\v'];
-  ++is_hor_space['\f'];
+  is_hor_space[' '] = 1;
+  is_hor_space['\t'] = 1;
+  is_hor_space['\v'] = 1;
+  is_hor_space['\f'] = 1;
 
-  ++is_space[' '];
-  ++is_space['\t'];
-  ++is_space['\v'];
-  ++is_space['\f'];
-  ++is_space['\n'];
+  is_space[' '] = 1;
+  is_space['\t'] = 1;
+  is_space['\v'] = 1;
+  is_space['\f'] = 1;
+  is_space['\n'] = 1;
 }
 
 /* Initialize the built-in macros.  */

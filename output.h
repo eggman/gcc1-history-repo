@@ -5,6 +5,7 @@
 int general_operand ();
 int push_operand ();
 int memory_operand ();
+int indirect_operand ();
 int immediate_operand ();
 int register_operand ();
 int address_operand ();

@@ -101,7 +101,7 @@
 %You are forbidden to forbid anyone else to use, share and improve
 %what you give them.   Help stamp out software-hoarding!
 
-\def\texinfoversion{1.12}
+\def\texinfoversion{1.13}
 \message{Loading texinfo package [Version \texinfoversion]:}
 \message{}
 
@@ -581,6 +581,7 @@
 % title on inside top of left hand pages, and page numbers on outside top
 % edge of all pages.
 \def\HEADINGSon{
+\pagealignmacro
 \global\pageno=1
 \global\evenfootline={\hfil}
 \global\oddfootline={\hfil}
@@ -1136,9 +1137,19 @@ July\or August\or September\or October\or November\or December\fi
 \def\chapoddpage{\chappager \ifodd\pageno \else \hbox to 0pt{} \chappager\fi}
 
 \def\setchapternewpage #1 {\csname CHAPPAG#1\endcsname}
-\def\CHAPPAGoff{\global\let\pchapsepmacro=\chapbreak}
-\def\CHAPPAGon{\global\let\pchapsepmacro=\chappager}
-\def\CHAPPAGodd{\global\let\pchapsepmacro=\chapoddpage}
+
+\def\CHAPPAGoff{
+\global\let\pchapsepmacro=\chapbreak
+\global\let\pagealignmacro=\chappager}
+
+\def\CHAPPAGon{
+\global\let\pchapsepmacro=\chappager
+\global\let\pagealignmacro=\chappager}
+
+\def\CHAPPAGodd{
+\global\let\pchapsepmacro=\chapoddpage
+\global\let\pagealignmacro=\chapoddpage}
+
 \CHAPPAGon
 
 \def\CHAPFplain{
@@ -1202,7 +1213,7 @@ July\or August\or September\or October\or November\or December\fi
 
 \def\finishcontents{%
 \ifnum\pageno>0 %
-\par\vfill\supereject %
+\pagealignmacro %
 \immediate\closeout \contentsfile%
 \pageno=-1		% Request roman numbered pages
 \fi}
@@ -1237,7 +1248,7 @@ July\or August\or September\or October\or November\or December\fi
 }
 \vfill \eject}
 
-\outer\def\bye{\par\vfill\supereject\tracingstats=1\ptexend}
+\outer\def\bye{\pagealignmacro\tracingstats=1\ptexend}
 
 % These macros generate individual entries in the table of contents
 % The first argument is the chapter or section name.
