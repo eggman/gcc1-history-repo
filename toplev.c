@@ -716,6 +716,41 @@ warning_with_decl (decl, s, v)
   fprintf (stderr, "\n");
 }
 
+/* Report a warning at the line number of the insn INSN.
+   S and V are a string and an arg for `printf'.
+   This is used only when INSN is an `asm' with operands,
+   and each ASM_OPERANDS records its own source file and line.  */
+
+void
+warning_for_asm (insn, s, v, v2)
+     rtx insn;
+     char *s;
+     int v;			/* @@also used as pointer */
+     int v2;			/* @@also used as pointer */
+{
+  char *filename;
+  int line;
+  rtx body = PATTERN (insn);
+  rtx asmop;
+
+  /* Find the (or one of the) ASM_OPERANDS in the insn.  */
+  if (GET_CODE (body) == SET && GET_CODE (SET_SRC (body)) == ASM_OPERANDS)
+    asmop = SET_SRC (body);
+  else if (GET_CODE (body) == ASM_OPERANDS)
+    asmop = body;
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == SET)
+    asmop = SET_SRC (XVECEXP (body, 0, 0));
+  else if (GET_CODE (body) == PARALLEL
+	   && GET_CODE (XVECEXP (body, 0, 0)) == ASM_OPERANDS)
+    asmop = XVECEXP (body, 0, 0);
+
+  filename = ASM_OPERANDS_SOURCE_FILE (asmop);
+  line = ASM_OPERANDS_SOURCE_LINE (asmop);
+
+  warning_with_file_and_line (filename, line, s, v, v2);
+}
+
 /* Apologize for not implementing some feature.
    S, V, and V2 are a string and args for `printf'.  */
 
@@ -1204,8 +1239,16 @@ compile_file (name)
   if (write_symbols == SDB_DEBUG)
     TIMEVAR (symout_time,
 	     {
+	       tree decl;
 	       sdbout_tags (gettags ());
 	       sdbout_types (get_permanent_types ());
+	       /* Output first static file-scope vars, then global ones.  */
+	       for (decl = globals; decl; decl = TREE_CHAIN (decl))
+		 if (TREE_CODE (decl) == VAR_DECL && !TREE_PUBLIC (decl))
+		   sdbout_symbol (decl, 1);
+	       for (decl = globals; decl; decl = TREE_CHAIN (decl))
+		 if (TREE_CODE (decl) == VAR_DECL && TREE_PUBLIC (decl))
+		   sdbout_symbol (decl, 1);
 	     });
 #endif
 
@@ -1888,6 +1931,11 @@ main (argc, argv, envp)
 	  optimize = 1, obey_regdecls = 0;
 	else if (!strcmp (str, "O"))
 	  optimize = 1, obey_regdecls = 0;
+	/* Accept -O1 and -O2 for compatibility with version 2.  */
+	else if (!strcmp (str, "O1") || !strcmp (str, "O2"))
+	  optimize = 1, obey_regdecls = 0;
+	else if (!strcmp (str, "O0"))
+	  optimize = 0, obey_regdecls = 1;
 	else if (!strcmp (str, "pedantic"))
 	  pedantic = 1;
 	else if (lang_decode_option (argv[i]))
@@ -1973,6 +2021,9 @@ main (argc, argv, envp)
 	else if (!strcmp (str, "G0"))
 	  write_symbols = SDB_DEBUG;
 #endif
+	else if (!strcmp (str, "g") || !strcmp (str, "G")
+		 || !strcmp (str, "g0") || !strcmp (str, "G0"))
+	  warning ("`%s' not supported on this system", str);
 	else if (!strcmp (str, "symout"))
 	  {
 	    if (write_symbols == NO_DEBUG)

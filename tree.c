@@ -1117,7 +1117,8 @@ save_expr (expr)
      Since it is no problem to reevaluate literals, we just return the 
      literal node. */
 
-  if (TREE_LITERAL (t) || TREE_READONLY (t) || TREE_CODE (t) == SAVE_EXPR)
+  if (TREE_LITERAL (t) || (TREE_READONLY (t) && !TREE_VOLATILE (t))
+      || TREE_CODE (t) == SAVE_EXPR)
     return t;
 
   return build (SAVE_EXPR, TREE_TYPE (expr), t, NULL);

@@ -499,6 +499,53 @@ dead_or_set_p (insn, reg)
   return 0;
 }
 
+/* Like dead_or_set_p, but return 1 if even a part
+   of the register's value is set.  */
+
+int
+dead_or_partially_set_p (insn, reg)
+     rtx insn;
+     rtx reg;
+{
+  register rtx link;
+  register int regno = REGNO (reg);
+
+  for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
+    if ((REG_NOTE_KIND (link) == REG_DEAD
+	 || REG_NOTE_KIND (link) == REG_INC)
+	&& REGNO (XEXP (link, 0)) == regno)
+      return 1;
+
+  if (GET_CODE (PATTERN (insn)) == SET)
+    {
+      rtx dest = SET_DEST (PATTERN (insn));
+      while (GET_CODE (dest) == SUBREG || GET_CODE (dest) == STRICT_LOW_PART
+	     || GET_CODE (dest) == ZERO_EXTRACT
+	     || GET_CODE (dest) == SIGN_EXTRACT)
+	dest = SUBREG_REG (dest);
+      return (GET_CODE (dest) == REG && REGNO (dest) == regno);
+    }
+  else if (GET_CODE (PATTERN (insn)) == PARALLEL)
+    {
+      register int i;
+      for (i = XVECLEN (PATTERN (insn), 0) - 1; i >= 0; i--)
+	{
+	  if (GET_CODE (XVECEXP (PATTERN (insn), 0, i)) == SET)
+	    {
+	      rtx dest = SET_DEST (XVECEXP (PATTERN (insn), 0, i));
+	      while (GET_CODE (dest) == SUBREG
+		     || GET_CODE (dest) == STRICT_LOW_PART
+		     || GET_CODE (dest) == ZERO_EXTRACT
+		     || GET_CODE (dest) == SIGN_EXTRACT)
+		dest = SUBREG_REG (dest);
+	      if (GET_CODE (dest) == REG && REGNO (dest) == regno)
+		return 1;
+	    }
+	}
+    }
+  return 0;
+}
+
 /* Return the reg-note of kind KIND in insn INSN, if there is one.
    If DATUM is nonzero, look for one whose datum is DATUM.  */
 

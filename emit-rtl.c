@@ -447,6 +447,12 @@ gen_highpart (mode, x)
 #endif
       return gen_rtx (SUBREG, mode, x, 0);
     }
+  else if (GET_CODE (x) == CONST_INT)
+    /* Assume that a const_int being used where a double is wanted
+       should be sign-extended.
+       This is right only if the use of const_int is carefully restricted.
+       In fact, I think it can happen only for numbers like 0 and 1.  */
+    return gen_rtx (CONST_INT, VOIDmode, (INTVAL (x) >> (BITS_PER_WORD - 1)));
   else
     abort ();
 }

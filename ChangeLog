@@ -1,3 +1,514 @@
+Thu Aug 27 04:20:43 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* version 1.41 released.
+
+Mon Aug 24 00:20:27 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* sparc.md (floatsisf2, floatsidf2): Make two alternatives;
+	put r for op1 in first, and fm in second.
+
+	* cse.c (fold_rtx): Don't make a constant that's a sum of two symbols.
+
+Sun Aug 23 02:45:28 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cccp.c (handle_directive): When copying directive, copy the char
+	after a \ without otherwise handling it.
+
+	* c-typeck.c (build_binary_op_nodefault): Don't shorten signed divide.
+
+Tue Aug 11 10:41:54 1992  Michael Meissner  (meissner@osf.org)
+
+	* config.gcc (mips-*-os5): Add new varients for MIPS computers
+	using RISC-OS revision 5.00, to turn off shared libraries by
+	default, since the MIPS linker complains about the location of the
+	frame pointer that GCC uses when linking against shared libraries.
+
+	* tm-mips-5.h (new file): Tm file for MIPS RISC-OS, revision 5.00.
+
+	* tm-mips-5b.h (new file): Tm file for MIPS RISC-OS, revision 5.00
+	with the BSD4.3 environment as default.
+
+	* tm-mips-5s.h (new file): Tm file for MIPS RISC-OS, revision 5.00
+	with the System V.3 environment as default.
+
+Mon Jul 20 16:07:12 1992  Pat Rankin  (rankin@eql.caltech.edu)
+
+	* tm-vms.h (MAYBE_VMS_FUNCTION_PROLOGUE): change _c$main_args to
+	uppercase instead of relying on gas to make the case translation
+
+Mon Jul 20 17:39:25 1992  Pat Rankin  (rankin@eql.caltech.edu)
+
+	* tm-vax.h (FUNCTION_PROLOGUE): adjust the stack allocation size by
+	STARTING_FRAME_OFFSET (normally 0, so no change in generated code).
+	* tm-vms.h (STARTING_FRAME_OFFSET): redefine, to reserve an extra
+	longword at top of local stack in case user calls VAXC$ESTABLISH().
+
+Sun Jul 12 15:29:46 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cse.c (canon_hash):
+	Fp and ap regs are not volatile even if SMALL_REGISTER_CLASSES.
+
+Sat Jul 11 16:21:52 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expmed.c (expand_divmod): Don't use non-register target.
+
+Sun Jul  5 13:09:21 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* configure: New file.
+
+Mon Jun 29 12:54:07 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* toplev.c (main): Accept -O0 (don't optimize).
+
+Tue Jun 23 06:15:47 1992  Richard Kenner  (kenner at vlsi1.ultra.nyu.edu)
+
+	* stmt.c (expand_return): Add missing emit_queue call in tail
+	recursion case.
+
+Wed Jun 10 17:56:57 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* c-parse.y (check_newline): After calling yylex, transfer nextchar
+	into finput using ungetc.
+
+Sat Jun  6 15:00:22 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* toplev.c (main): Accept -O1 and -O2.
+
+Fri May 29 22:10:58 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* reload.1 (new_spill_reg): Undo Nov 28 change.
+
+	* emit-rtl.c (gen_highpart): Typo sign-extending CONST_INT.
+
+	* expr.c (expand_expr): For VAR_DECL inside ARRAY_REF,
+	verify that DECL_INITIAL is really a CONSTRUCTOR.
+
+Wed May 27 06:44:42 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* dbxout.c (errno): Declare it.
+
+	* tm-pyr.h (PCC_BITFIELD_TYPE_MATTERS): Define as 1.
+
+Tue May 26 10:28:19 1992  Michael Meissner  (meissner@osf.org)
+
+	* loop.c (loop_has_volatile): New static variable to record
+	whether the loop has any volatile references in it.
+	(prescan_loop): Set loop_has_volatile.
+	(check_dbra_loop): Don't reverse loop if there are any volatile
+	references in it.
+
+Fri May 22 23:48:04 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cccp.c (finclude): Null-terminate input before trigraph_pcp.
+
+Sun May 17 22:32:22 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* rtlanal.c (dead_or_partially_set_p): New function.
+	* combine.c (move_deaths): Use that.
+
+Sat Apr 18 17:43:26 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* varasm.c (make_decl_rtl):
+	Don't warn if local explicit reg var has an initial value.
+
+Sat Apr 18 16:41:01 1992  Richard Kenner  (kenner at vlsi1.ultra.nyu.edu)
+
+	* tree.c (save_expr): Must do something with read-only tree that 
+	has side-effects.
+
+Thu Feb 13 02:34:02 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cccp.c (skip_if_group): Skip comments after the #.
+
+	* cccp.c (macarg): Don't assume stringify will compress spaces.
+	(macroexpand): In stringify, compress space only outside tokens.
+
+Tue Feb 11 16:58:27 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* combine.c (subst): Preserve all bits outside the field
+	when simplifying (set (zero_extend...) (and (zero_extend...) const)).
+
+Sat Feb  1 01:05:34 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expr.c: Include recog.h just once.
+
+	* dbxout.c (dbxout_init): Output current directory in N_SO sym.
+
+Tue Jan 28 00:39:34 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* fold-const.c (fold_convert): Properly handle real-to-real case.
+
+	* loop.c (can_jump_outside_range_p): New function.
+	(loop_can_jump_out_p): New function.
+	(check_dbra_loop): Check that.
+
+Mon Jan 27 22:55:19 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* cccp.c (main): Add terminating null, then call trigraph_pcp.
+
+Mon Jan 20 00:04:10 1992  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expr.c (expand_call): When clearing is_integrable, call
+	mark_addressable too.
+
+	* tm-pyr.h (PCC_BITFFIELD_TYPE_MATTERS): Defined.
+	(STRUCTURE_SIZE_BOUNDARY): Deleted.
+
+Wed Jan 15 01:16:05 1992  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-sparc.h (FIRST_PARM_OFFSET): Fix typo.
+
+Mon Jan 13 16:14:12 1992  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* c-decl.c (grokdeclarator): Turn off incomplete array element warning.
+
+Fri Dec 20 19:27:50 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-sparc.h (WORD_SWITCH_TAKES_ARG): Add -assert.
+	(LINK_SPEC): Pass -assert to linker.
+
+	* expr.c (expand_call): Treat vfork and sigsetjmp like setjmp.
+
+Thu Dec 19 01:34:32 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* expr.c (store_expr): Handle copying too-short STRING_CST.
+
+	* gstdarg.h (_VA_LIST): Handle this like _VA_LIST_.
+
+Sat Dec 14 16:10:11 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-ultrix.h (CPP_PREDEFINED): Add __unix, __ultrix, __bsd4_2.
+
+Tue Dec 10 16:11:18 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* expr.c (move_block_to_reg): No error if block appears unaligned.
+	(move_block_from_reg): Likewise.
+
+Thu Nov 28 14:18:28 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-mips-news (CPP_SPEC): Added more -D options.
+	(WORDS_BIG_ENDIAN, BYTES_BIG_ENDIAN, MIPS_NEWS): Deleted.
+
+	* reload1.c (new_spill_reg): Error if spill explicit reg.
+
+	* out-sparc.c (single_insn_src_p): Do test MINUS for large int arg.
+
+Sun Nov 24 23:08:13 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-sun3.h (LINK_SPEC): -g no longer sets -Bstatic.
+
+Tue Nov 19 14:58:56 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* fold-const.c (combine): If result is single-float, truncate to fit.
+	(fold): Don't add 1 to float constant if that doesn't change the value.
+
+Sun Nov 17 01:38:46 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* config.gcc (i860-gas): Set `machine'.
+
+Sat Nov 16 14:18:33 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* ecoff-cmp: Use ld to do stripping.
+
+	* sdbout.c (sdbout_symbol): Do nothing for var if LOCAL is 0.
+	* toplev.c (compile_file): For sdb, output file-scope vars at end.
+
+Mon Nov 11 09:22:41 1991  Michael Meissner  (meissner at osf.org)
+
+	* cccp.c (make_undef): Fix off by one error in calling do_under.
+
+Wed Oct 23 17:19:17 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* stddef.h: Conditional on __sys_stdtypes_h.
+
+	* m68k.md (compare shift right by 24): Don't allow increment addrs.
+
+Mon Oct 21 23:08:02 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* c-decl.c (grokdeclarator): Fix error message for long float.
+
+Sun Oct 20 22:16:40 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* reload.c (find_reloads): Warning or error for misuse of `&'.
+	(this_insn_is_asm): New variable.
+	(push_reload): Verify specified reg class is at least possible.
+	* toplev.c (warning_for_asm): New function.
+
+Sat Oct 19 12:22:23 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* tm-sun3.h, tm-sparc.h (WORD_SWITCH_TAKES_ARG):
+	Check for Tdata as well as target.
+
+Tue Oct  8 13:40:23 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expr.c (store_expr): All non-static constructors need spec. handling.
+
+	* tm-sparc.h (LINK_SPEC): -g no longer sets -Bstatic.
+
+Sat Oct  5 17:47:19 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* expmed.c (expand_mult): Avoid multiple refs to volatile mem.
+
+Thu Sep 26 20:52:17 1991  Michael Meissner  (meissner at osf.org)
+
+	* integrate.c (expand_inline_function): Make sure all REG_NOTES are
+	copied as needed as well as the normal pattern.
+
+Sun Sep 22 02:07:55 1991  Richard Stallman  (rms@mole.gnu.ai.mit.edu)
+
+	* c-typeck.c (build_unary_op): Disallow address of cast.
+
+	* caller-save.c (emit_mult_restore): Fix typo testing sign of offset.
+
+	* varasm.c (assemble_variable): Prevent overflow in size in bytes.
+
+	* fixincludes: Redirect cmp output to /dev/null; don't close it.
+
+	* i386.md (call_value) [FMTOWNS]: Don't use fpregs.
+	* tm-fmtowns.h: New file.
+
+Wed Sep 11 21:06:32 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* gvarargs.h, va-mips.h (va_list): Now an alias for __va___list.
+	(__va___list): This is a typedef.
+
+Sat Sep  7 13:09:51 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* optabs.c (expand_float, expand_fix): Use 0.5, not 1.0, in ldexp.
+
+Fri Sep  6 00:25:25 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* c-decl.c (init_decl_processing): Set up void_list_node.
+	(get_parm_info): Use that.
+
+	* reload1.c (eliminate_frame_pointer): If insn becomes unrecognizable,
+	assume it still fits the same pattern as before (but for reloading).
+
+Thu Sep  5 21:25:21 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* out-sparc.c (output_move_double): Properly unincrement addreg1.
+
+Wed Sep  4 18:53:16 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* fixincludes : Change `m68k' to `__m68k__' in all #if's.
+
+Mon Sep  2 15:08:38 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* c-typeck.c (build_array_type): Better error messages.
+
+Sat Aug 31 01:55:45 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* out-sparc.c (single_insn_src_p): Undo July 29 change
+	as regards everything except shifts.
+
+Fri Aug 30 04:42:19 1991  James Van Artsdalen  (james at bigtex.cactus.org)
+
+	* tm-i386.h (OUTPUT_JUMP): Use cc_prev_status.
+
+Thu Aug 29 01:17:06 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-delta68k.h (PUT_SDB_START_DIM): Renamed from PUT_SDB_DIM.
+
+Wed Aug 28 19:18:43 1991  Richard Stallman  (roland@pogo.gnu.ai.mit.edu)
+
+	* tm-sparc.h: Reverted change of Aug 4; loses with alloca.
+
+Tue Aug 27 23:20:50 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* expr.c (move_block_to_reg, move_block_from_reg):
+	Don't return prematurely after using movsi_unaligned.
+
+Mon Aug 26 20:59:17 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* c-parse.y (yylex): Cast shorts[n] to long before shifting.
+	* fold-const.c (decode): Likewise.
+
+	* i386.md (seq, etc.): Clear the cc_status.
+
+Sat Aug 24 14:31:19 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* expr.c (store_constructor): Handle union constructor.
+
+Sat Aug 17 14:34:35 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* stmt.c (expand_end_case):
+	When filling labelvec from case range, avoid overflow in i.
+
+Fri Aug 16 18:09:44 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* Makefile (install): Create bindir.  Install gcc as $(bindir)/gcc.
+
+Sat Aug 10 15:18:02 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* ns32k.md (call_value): Consistently realize function is operand 1.
+
+Thu Aug  8 13:36:25 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* toplev.c (main): Accept -g with warning if not supported.
+
+	* tm-m68k.h (LEGITIMIZE_ADDRESS): Copy address before changing it.
+	(COPY_ONCE): New macro, subroutine for LEGITIMIZE_ADDRESS.
+
+	* tm-i386.h (FIX_FRAME_POINTER_ADDRESS): Remove spurious backslash.
+
+Sun Aug  4 15:39:24 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* Kludge to preallocate stack space for stack args on Sparc.
+	* expr.c (expand_call): Support STACK_SPACE_FOR_CALLS.
+	(init_pending_stack_adjust): Likewise.
+	* stmt.c (frame_offset): No longer static.
+	* tm-sparc.h (STACK_SPACE_FOR_CALLS): Defined.
+	(STACK_ARGS_ADJUST): Defined.
+
+Thu Aug  1 17:22:40 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-i860.h (MAX_PARM_BOUNDARY): Defined.
+	(GO_IF_LEGITIMATE_ADDRESS): Add parens around & operator.
+	(ASM_OUTPUT_REG_PUSH, ASM_OUTPUT_REG_POP): Use sp, not r3 (that's fp).
+	* i860.md (movsf): Don't reload high address part if already loaded.
+	(cmplesf, cmpledf, cmpgesf, cmpgedf): Set CC_NEGATED; swap operands.
+	* out-i860.c (strict_single_insn_op_p):
+	Fix criterion for loading high half.
+	(output_load_address): #if 0 since not used.
+
+Wed Jul 31 12:36:37 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* fixincludes: New variable INCLUDES specifies input dir.
+
+Tue Jul 30 17:24:52 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* stmt.c (expand_end_stmt_expr): Force out the queue.
+	Protect the value from the queue.
+
+	* stddef.h (WCHAR_T): Also test and define _WCHAR_T_.
+
+	* expr.c (move_block_to_reg): Check for QUEUED only within MEM.
+
+Sun Jul 28 16:15:39 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* move-if-change: Use -f with rm and mv.
+
+Sat Jul 27 13:03:50 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* fixincludes (memvar.h): Make two defs of CAT, one ANSI and one trad.
+
+	* combine.c (try_combine): Reject if I1DEST used between I2 and I3.
+
+Wed Jul 24 13:54:41 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* cse.c (cse_insn): Don't use HASHREG.
+	Detect all volatile destinations.
+	(HASHREG): Deleted.
+
+	* tm-m68k.h (NOTICE_UPDATE_CC):
+	Calls clear status even if value in address reg.
+
+Fri Jul 19 15:50:46 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* varasm.c (make_decl_rtl): Set EXTERNAL_SYMBOL_P only if TREE_PUBLIC.
+
+Tue Jul 16 20:16:16 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* Makefile [comments for SCO] (CC, OLDCC): Add some -D options.
+
+Wed Jul 10 13:18:03 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* cccp.c (hack_vms_include_specification): Fix typos.
+
+Tue Jul  9 21:17:43 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* fold-const.c (mul_double): Add parens to avoid precedence errors.
+
+Mon Jul  8 22:17:20 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* c-parse.y (yylex): Pedantic warning here for `asm'.
+	No warning for `__asm__'.
+	(maybe_type_qual, maybeasm, extdef): No warning here.
+
+Sun Jul  7 15:29:42 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* README-ENCAP: New file.  (Actually, it used to exist, and went away.)
+
+	* emit-rtl.c (gen_highpart): Handle a const_int.
+
+	* integrate.c (copy_rtx_and_substitute): Avoid change_address.
+
+	* stmt.c (expand_end_stmt_expr): Instead of 0, use const0_rtx.
+
+	* c-decl.c (NULL): Undef before defining.
+
+	* tm-9k320.h (STANDARD_STARTFILE_PREFIX): Let this be overridden.
+
+Sat Jul  6 14:51:15 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* expr.c (expand_assignment): Don't abort for volatile structure field
+	even if the structure is in a register.
+
+	* fold-const.c (div_and_round_double): Make lnum and lden unsigned.
+	Use the small-denominator algorithm only for denom < 2**24.
+	Fix backward conditionals in ?: operators in general case.
+	Change i + j to i - 1 + j when indexing num.
+
+Wed Jul  3 11:40:27 1991  Michael Meissner  (meissner at osf.org)
+
+	* expr.c (move_block_from_reg, move_block_to_reg): Protect block
+	addresses from queued memory insns, which occur for things like *p++.
+
+	* expr.c (move_block_from_reg, move_block_to_reg):  Add an alignment
+	field that gives how much alignment the structure has.  If the md
+	file provides movsi_unaligned, use it if the structure is not
+	properly aligned.  Change all callers to pass the alignment in bits.
+
+	* stmt.c (assign_params): Pass structure alignment to
+	move_block_from_reg.
+
+	* mips.md (movsi_unaligned): New define_expand to handle unaligned
+	moves.
+	(movsi_ulw, movsi_usw): New define_insn's to handle unaligned moves
+	to/from a register.
+
+Tue Jul  2 16:56:28 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* cccp.c: Include descrip.h.
+
+Mon Jul  1 21:04:54 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* out-ns32k.c (output_move_double):
+	Use CONSTANT_P to check for single-word constant.
+
+Sun Jun 30 16:12:34 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* gnulib2.c (__builtin_saveregs):
+	For i860, make data structure fit in with va-i860.h.
+
+	* reload1.c (choose_reload_regs): Don't use reg_reloaded_contents
+	for a reg that has a reg_equiv_address.
+
+	* gnulib2.c, gnulib.c (abort): Get rid of any macro definition.
+
+Sat Jun 29 09:27:12 1991  Michael Tiemann  (tiemann at cygint.cygnus.com)
+
+	* out-sparc.c (single_insn_src_p): Reject any ASHIFT patterns with
+	non-REG second operand.
+
+Sat Jun 29 06:25:19 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* tm-vax.h (CPP_SPEC, LIB_SPEC): New macros.
+
+	* reload.c (push_reload): Handle two different inmodes, etc.
+
+	* gcc.c (S_ISREG): Define if not defined.
+	(delete_temp_files): Use it.
+
+	* limits.h (UCHAR_MAX, CHAR_MAX, USHRT_MAX): Delete `U'.
+	(LONG_MAX, ULONG_MAX): Add `L'.
+
+Fri Jun 28 22:21:54 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
+
+	* Makefile (realclean): Delete stage1, stage2, stage3.
+
+	* gcc.c (fatal) [HAVE_VFPRINTF]: Do print the program name.
+
 Sat Jun  1 01:10:32 1991  Richard Stallman  (rms at mole.gnu.ai.mit.edu)
 
 	* Version 1.40 released.

@@ -1,7 +1,7 @@
-This directory contains the version 1.40 release of the GNU C compiler.
-All bugs reported for previous test releases have been fixed.
-This version probably does not have very many bugs, and we no longer
-consider it a test version.
+This directory contains the version 1.41 release of the GNU C compiler.
+All serious bugs (that would make ordinary C programs fail) reported for
+previous test releases have been fixed.  We have often decided not to fix
+bugs that are Less important, to avoid risking creating new bugs.
 
 See the file gcc.texinfo for installation and porting information.
 The file INSTALL contains a copy of the installation information.

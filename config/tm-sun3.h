@@ -63,7 +63,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* These compiler options take an argument.  We ignore -target for now.  */
 
-#define WORD_SWITCH_TAKES_ARG(STR)	(!strcmp (STR, "target"))
+#define WORD_SWITCH_TAKES_ARG(STR) \
+  (!strcmp (STR, "target") || !strcmp (STR, "Tdata"))
 
 /* -m68000 requires special flags to the assembler.  */
 
@@ -139,7 +140,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Also, it is hard to debug with shared libraries,
    so don't use them if going to debug.  */
 
-#define LINK_SPEC "%{!e*:-e start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{-Bstatic}"
+#define LINK_SPEC "%{!e*:-e start} -dc -dp %{static:-Bstatic} %{-Bstatic}"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 

@@ -8,9 +8,13 @@
 
 /* The macro _VA_LIST_ is the same thing used by this file in Ultrix.  */
 #ifndef _VA_LIST_
+/* The macro _VA_LIST_ is used in SCO Unix 3.2.  */
+#ifndef _VA_LIST
 #define _VA_LIST_
+#define _VA_LIST
 typedef char *va_list;
-#endif
+#endif /* _VA_LIST */
+#endif /* _VA_LIST_ */
 
 /* Amount of space required in an argument list for an arg of type TYPE.
    TYPE may alternatively be an expression whose type is used.  */

@@ -41,6 +41,7 @@ enum decl_context
   FIELD,			/* Declaration inside struct or union */
   TYPENAME};			/* Typename (inside cast or sizeof)  */
 
+#undef NULL
 #define NULL 0
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
@@ -154,6 +155,10 @@ tree integer_one_node;
    of the RESULT_DECLs for values of functions.  */
 
 tree value_identifier;
+
+/* A permanent tree_list whose value slot is the void type.  */
+
+static tree void_list_node;
 
 /* While defining an enum type, this is 1 plus the last enumerator
    constant value.  */
@@ -1719,6 +1724,7 @@ init_decl_processing ()
   builtin_function ("__builtin_getman", double_ftype_double, BUILT_IN_GETMAN);
 #endif
 
+  void_list_node = tree_cons (NULL_TREE, void_type_node, NULL_TREE);
   start_identifier_warnings ();
 }
 
@@ -2373,9 +2379,7 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
   if (specbits & ((1 << (int) RID_LONG) | (1 << (int) RID_SHORT)
 		  | (1 << (int) RID_UNSIGNED) | (1 << (int) RID_SIGNED)))
     {
-      if (TREE_CODE (type) == REAL_TYPE)
-	error ("short, signed or unsigned invalid for `%s'", name);
-      else if (TREE_CODE (type) != INTEGER_TYPE)
+      if (TREE_CODE (type) != INTEGER_TYPE)
 	error ("long, short, signed or unsigned invalid for `%s'", name);
       else if ((specbits & 1 << (int) RID_LONG)
 	       && (specbits & 1 << (int) RID_SHORT))
@@ -2576,11 +2580,13 @@ grokdeclarator (declarator, declspecs, decl_context, initialized)
 		}
 	    }
 
+#if 0 /* This loses for  union incomplete (*foo)[4]; */
 	  /* Complain about arrays of incomplete types, except in typedefs.  */
 
 	  if (TYPE_SIZE (type) == 0
 	      && !(specbits & (1 << (int) RID_TYPEDEF)))
 	    warning ("array type has incomplete element type");
+#endif
 
 	  /* Build the array type itself.
 	     Merge any constancy or volatility into the target type.  */
@@ -3075,8 +3081,7 @@ get_parm_info (void_at_end)
     {
       parms = NULL_TREE;
       storedecls (NULL_TREE);
-      return saveable_tree_cons (NULL_TREE, NULL_TREE,
-				 saveable_tree_cons (NULL_TREE, void_type_node, NULL_TREE));
+      return saveable_tree_cons (NULL_TREE, NULL_TREE, void_list_node);
     }
 
   storedecls (parms);

@@ -80,8 +80,12 @@ decode (shorts, low, hi)
      short *shorts;
      int *low, *hi;
 {
-  *low = (shorts[3] << 24) | (shorts[2] << 16) | (shorts[1] << 8) | shorts[0];
-  *hi = (shorts[7] << 24) | (shorts[6] << 16) | (shorts[5] << 8) | shorts[4];
+  /* The casts in the following statement should not be
+     needed, but they get around bugs in some C compilers.  */
+  *low = (((long)shorts[3] << 24) | ((long)shorts[2] << 16)
+	  | ((long)shorts[1] << 8) | (long)shorts[0]);
+  *hi = (((long)shorts[7] << 24) | ((long)shorts[6] << 16)
+	 | ((long)shorts[5] << 8) | (long)shorts[4]);
 }
 
 /* Make the integer constant T valid for its type
@@ -221,7 +225,7 @@ mul_double (l1, h1, l2, h2, lv, hv)
       if (l2 == 4)
 	{
 	  unsigned temp = l1 + l1;
-	  h1 = h1 * 4 + (temp < l1) << 1;
+	  h1 = h1 * 4 + ((temp < l1) << 1);
 	  l1 = temp;
 	  temp += temp;
 	  h1 += (temp < l1);
@@ -232,7 +236,7 @@ mul_double (l1, h1, l2, h2, lv, hv)
       if (l2 == 8)
 	{
 	  unsigned temp = l1 + l1;
-	  h1 = h1 * 8 + (temp < l1) << 2;
+	  h1 = h1 * 8 + ((temp < l1) << 2);
 	  l1 = temp;
 	  temp += temp;
 	  h1 += (temp < l1) << 1;
@@ -439,8 +443,10 @@ div_and_round_double (code, uns,
   short num[9], den[8], quo[8];	/* extra element for scaling.  */
   register int i, j, work;
   register int carry = 0;
-  int lnum = lnum_orig, hnum = hnum_orig;
-  int lden = lden_orig, hden = hden_orig;
+  unsigned int lnum = lnum_orig;
+  int hnum = hnum_orig;
+  unsigned int lden = lden_orig;
+  int hden = hden_orig;
 
   if ((hden == 0) && (lden == 0))
     abort ();
@@ -463,7 +469,7 @@ div_and_round_double (code, uns,
   if (hnum == 0 && hden == 0)
     {				/* single precision */
       *hquo = *hrem = 0;
-      *lquo = (unsigned) lnum / lden;	/* rounds toward zero since positive args */
+      *lquo = lnum / lden;	/* rounds toward zero since positive args */
       goto finish_up;
     }
 
@@ -484,7 +490,11 @@ div_and_round_double (code, uns,
   encode (num, lnum, hnum); 
   encode (den, lden, hden);
 
-  if (hden == 0)
+  /* This code requires more than just hden == 0.
+     We also have to require that we don't need more than three bytes
+     to hold CARRY.  If we ever did need four bytes to hold it, we
+     would lose part of it when computing WORK on the next round.  */
+  if (hden == 0 && ((lden << 8) >> 8) == lden)
     {				/* simpler algorithm */
       /* hnum != 0 already checked.  */
       for (i = 7; i >= 0; i--)
@@ -544,7 +554,7 @@ div_and_round_double (code, uns,
 
       num_hi = i + den_hi_sig;
 
-      work = (num[num_hi] * BASE) + (num_hi ? 0 : num[num_hi - 1]);
+      work = (num[num_hi] * BASE) + (num_hi > 0 ? num[num_hi - 1] : 0);
       if (num[num_hi] != den[den_hi_sig]) {
 	quo_est = work / den[den_hi_sig];
       }
@@ -555,47 +565,53 @@ div_and_round_double (code, uns,
       /* refine quo_est so it's usually correct, and at most one high.   */
       while ((den[den_hi_sig - 1] * quo_est)
 	     > (((work - (quo_est * den[den_hi_sig])) * BASE)
-		 + ((num_hi - 1) ? 0 : num[num_hi - 2]))) {
+		 + ((num_hi - 1) > 0 ? num[num_hi - 2] : 0)))
 	quo_est--;
-      }
 
-      /* try quo_est as the quotient digit, by multiplying the
-         divisor by quo_est and subtracting from the remaining dividend.  */
+      /* Try QUO_EST as the quotient digit, by multiplying the
+         divisor by QUO_EST and subtracting from the remaining dividend.
+	 Keep in mind that QUO_EST is the I - 1st digit.  */
 
       carry = 0;
 
-      for (j = 0; j <= den_hi_sig; j++) {
-	int digit;
+      for (j = 0; j <= den_hi_sig; j++)
+	{
+	  int digit;
 
-	work = num[i + j] - (quo_est * den[j]) + carry;
-	digit = work & 0xff;
-	carry = work >> 8;
-	if (digit < 0) {
-	  digit += BASE;
-	  carry--;
+	  work = num[i + j - 1] - (quo_est * den[j]) + carry;
+	  digit = work & 0xff;
+	  carry = work >> 8;
+	  if (digit < 0)
+	    {
+	      digit += BASE;
+	      carry--;
+	    }
+	  num[i + j - 1] = digit;
 	}
-	num[i + j] = digit;
-      }
 
       /* if quo_est was high by one, then num[i] went negative and
 	 we need to correct things.  */
 
-      if (num[num_hi] < 0) {
-	quo_est--;
-	carry = 0;		/* add divisor back in */
-	for (j = 0; j <= den_hi_sig; j++) {
-	  work = num[i + j] + den[j] + carry;
-	  if (work > BASE) {
-	    work -= BASE;
-	    carry = 1;
-	  }
-	  else {
-	    carry = 0;
-	  }
-	  num[i + j] = work;
+      if (num[num_hi] < 0)
+	{
+	  quo_est--;
+	  carry = 0;		/* add divisor back in */
+	  for (j = 0; j <= den_hi_sig; j++)
+	    {
+	      work = num[i + j - 1] + den[j] + carry;
+	      if (work > BASE)
+		{
+		  work -= BASE;
+		  carry = 1;
+		}
+	      else
+		{
+		  carry = 0;
+		}
+	      num[i + j - 1] = work;
+	    }
+	  num [num_hi] += carry;
 	}
-	num [num_hi] += carry;
-      }
 
       /* store the quotient digit.  */
       quo[i - 1] = quo_est;
@@ -1033,6 +1049,8 @@ combine (code, arg1, arg2)
 	}
 #endif /* no REAL_ARITHMETIC */
       set_float_handler (0);
+      if (TYPE_MODE (TREE_TYPE (arg1)) == SFmode)
+	value = REAL_VALUE_TRUNCATE (value);
       return build_real (TREE_TYPE (arg1), value);
     }
 #endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
@@ -1164,7 +1182,14 @@ fold_convert (t)
 	return build_real_from_int_cst (type, arg1);
 #endif /* not REAL_IS_NOT_DOUBLE, or REAL_ARITHMETIC */
       if (TREE_CODE (arg1) == REAL_CST)
-	return build_real (type, TREE_REAL_CST (arg1));
+	{
+	  REAL_VALUE_TYPE r = TREE_REAL_CST (arg1);
+	  /* This handles conversion from double to float,
+	     which is the only nontrivial float conversion now supported.  */
+	  if (TYPE_PRECISION (type) < TYPE_PRECISION (TREE_TYPE (arg1)))
+	    r = REAL_VALUE_TRUNCATE (r);
+	  return build_real (type, r);
+	}
     }
   TREE_LITERAL (t) = 1;
   return t;
@@ -1707,9 +1732,16 @@ fold (expr)
 	    if (TREE_CODE (TREE_TYPE (varop)) == POINTER_TYPE
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
-		TREE_SET_CODE (varop, PREINCREMENT_EXPR);
-		*constoploc = newconst;
-		return t;
+		/* This optimization is invalid for floating point
+		   if adding one to the constant does not change it.  */
+		if (TREE_CODE (TREE_TYPE (newconst)) != REAL_TYPE
+		    || !REAL_VALUES_EQUAL (TREE_REAL_CST (newconst),
+					   TREE_REAL_CST (constop)))
+		  {
+		    TREE_SET_CODE (varop, PREINCREMENT_EXPR);
+		    *constoploc = newconst;
+		    return t;
+		  }
 	      }
 	  }
 	else if (constop && TREE_CODE (varop) == POSTDECREMENT_EXPR)
@@ -1720,9 +1752,14 @@ fold (expr)
 	    if (TREE_CODE (TREE_TYPE (varop)) == POINTER_TYPE
 		|| code == EQ_EXPR || code == NE_EXPR)
 	      {
-		TREE_SET_CODE (varop, PREDECREMENT_EXPR);
-		*constoploc = newconst;
-		return t;
+		if (TREE_CODE (TREE_TYPE (newconst)) != REAL_TYPE
+		    || !REAL_VALUES_EQUAL (TREE_REAL_CST (newconst),
+					   TREE_REAL_CST (constop)))
+		  {
+		    TREE_SET_CODE (varop, PREDECREMENT_EXPR);
+		    *constoploc = newconst;
+		    return t;
+		  }
 	      }
 	  }
       }

@@ -578,7 +578,7 @@ enum reg_class {
 	if (regs_ever_live[regno] && ! call_used_regs[regno])		\
 	  offset += 4;							\
       offset -= 4;							\
-      ADDR = plus_constant (regs, offset + (DEPTH)); } }		\
+      ADDR = plus_constant (regs, offset + (DEPTH)); } }
 
 /* Addressing modes, and classification of registers for them.  */
 
@@ -871,9 +871,9 @@ enum reg_class {
 
 #define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)			\
 {								\
-  if (cc_status.flags & CC_IN_80387)				\
+  if (cc_prev_status.flags & CC_IN_80387)				\
     return FLOAT;						\
-  if (cc_status.flags & CC_NO_OVERFLOW)				\
+  if (cc_prev_status.flags & CC_NO_OVERFLOW)				\
     return NO_OV;						\
   return NORMAL;						\
 }

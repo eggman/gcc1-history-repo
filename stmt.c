@@ -154,7 +154,7 @@ static int block_start_count;
 /* Offset to end of allocated area of stack frame.
    If stack grows down, this is the address of the last stack slot allocated.
    If stack grows up, this is the address for the next slot.  */
-static int frame_offset;
+int frame_offset;
 
 /* Nonzero if a stack slot has been generated whose address is not
    actually valid.  It means that the generated rtl must all be scanned
@@ -1130,6 +1130,8 @@ expand_end_stmt_expr (t)
 {
   rtx saved = RTL_EXPR_RTL (t);
 
+  emit_queue ();
+
   OK_DEFER_POP;
 
   if (last_expr_type == 0)
@@ -1137,6 +1139,13 @@ expand_end_stmt_expr (t)
       last_expr_type = void_type_node;
       last_expr_value = const0_rtx;
     }
+  else if (last_expr_value == 0)
+    /* There are some cases where this can happen, such as when the
+       statement is void type.  */
+    last_expr_value = const0_rtx;
+  else
+    last_expr_value = protect_from_queue (last_expr_value, 0);
+
   TREE_TYPE (t) = last_expr_type;
   RTL_EXPR_RTL (t) = last_expr_value;
   RTL_EXPR_SEQUENCE (t) = get_insns ();
@@ -1556,6 +1565,7 @@ expand_return (retval)
 	  emit_label_after (tail_recursion_label,
 			    tail_recursion_reentry);
 	}
+      emit_queue ();
       expand_goto_internal (0, tail_recursion_label, last_insn);
       emit_barrier ();
       return;
@@ -2788,10 +2798,15 @@ expand_end_case (orig_index)
 	      register int i
 		= TREE_INT_CST_LOW (n->low) - TREE_INT_CST_LOW (minval);
 
-	      while (i + TREE_INT_CST_LOW (minval)
-		     <= TREE_INT_CST_LOW (n->high))
-		labelvec[i++]
-		  = gen_rtx (LABEL_REF, Pmode, label_rtx (n->code_label));
+	      while (1)
+		{
+		  labelvec[i]
+		    = gen_rtx (LABEL_REF, Pmode, label_rtx (n->code_label));
+		  if (i + TREE_INT_CST_LOW (minval)
+		      == TREE_INT_CST_LOW (n->high))
+		    break;
+		  i++;
+		}
 	    }
 
 	  /* Fill in the gaps with the default.  */
@@ -4454,7 +4469,8 @@ assign_parms (fndecl)
 				   validize_mem (stack_parm),
 				   ((int_size_in_bytes (TREE_TYPE (parm))
 				     + UNITS_PER_WORD - 1)
-				    / UNITS_PER_WORD));
+				    / UNITS_PER_WORD),
+				   TYPE_ALIGN (TREE_TYPE (parm)));
 	    }
 	  DECL_RTL (parm) = stack_parm;
 	}

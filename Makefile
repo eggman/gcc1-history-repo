@@ -105,14 +105,18 @@ DIR = ../gcc
 # You might also want to remove limits.h from the definition of USER_H,
 # since the one that comes with the system is good for POSIX.
 # RANLIB = :
-# CC = rcc
-# OLDCC = rcc
+# CC = rcc -Di386 -DM_UNIX -DM_I386 -DM_SYSV -DM_COFF
+# OLDCC = rcc -Di386 -DM_UNIX -DM_I386 -DM_SYSV -DM_COFF
 
 # On a 386 running an ISC system, uncomment the following lines.
 # You also need to add -D_POSIX_SOURCE to CFLAGS
 # when compiling with GCC.
 # INSTALL = cp
 # CLIB = -lPW -lcposix
+
+# On a 386 running system V.4, uncomment the following lines.
+# INSTALL = cp
+# HARD_PARAMS_FLAGS = -DNO_LONG_DOUBLE
 
 # If you are making gcc for the first time, and if you are compiling it with
 # a non-gcc compiler, and if your system doesn't have a working alloca() in any
@@ -608,17 +612,18 @@ realclean: cleanconfig
 	-rm -f cpp.info* cpp.?? cpp.??s cpp.log cpp.toc cpp.*aux
 	-rm -f gcc.info* gcc.?? gcc.??s gcc.log gcc.toc gcc.*aux
 	-rm -f gplus.info* gplus.?? gplus.??s gplus.log gplus.toc gplus.*aux
-	-rm -f *.dvi
+	-rm -f *.dvi stage1 stage2 stage3
 
 # Copy the files into directories where they will be run.
 install: all $(USER_H) float.h gvarargs.h gstdarg.h gcc.1
 	-mkdir $(libdir)
+	-mkdir $(bindir)
 	-if [ -f cc1 ] ; then $(INSTALL) cc1 $(libdir)/gcc-cc1 ; else true; fi
 	-if [ -f cc1plus ] ; then $(INSTALL) cc1plus $(libdir)/gcc-cc1plus ; else true; fi
 	$(INSTALL) gnulib $(libdir)/gcc-gnulib
 	-if [ -f /usr/bin/ranlib -o -f /bin/ranlib ] ; then (cd $(libdir); $(RANLIB) gcc-gnulib) ; else true; fi
 	$(INSTALL) cpp $(libdir)/gcc-cpp
-	$(INSTALL) gcc $(bindir)
+	$(INSTALL) gcc $(bindir)/gcc
 	-mkdir $(libdir)/gcc-include
 	-chmod ugo+rx $(libdir)/gcc-include
 	for file in $(USER_H); do \

@@ -222,8 +222,8 @@ make_decl_rtl (decl, asmspec, top_level)
 	{
 	  int nregs;
 	  if (pedantic)
-	    warning ("ANSI C forbids global register variables");
-	  if (DECL_INITIAL (decl) != 0)
+	    warning ("ANSI C forbids explicit register variables");
+	  if (DECL_INITIAL (decl) != 0 && top_level)
 	    {
 	      DECL_INITIAL (decl) = 0;
 	      error ("global register variable has initial value");
@@ -260,7 +260,7 @@ make_decl_rtl (decl, asmspec, top_level)
 
 	  DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
 				     gen_rtx (SYMBOL_REF, Pmode, name));
-	  if (TREE_EXTERNAL (decl))
+	  if (TREE_EXTERNAL (decl) && TREE_PUBLIC (decl))
 	    EXTERNAL_SYMBOL_P (XEXP (DECL_RTL (decl), 0)) = 1; 
 	  if (TREE_VOLATILE (decl))
 	    MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
@@ -499,10 +499,15 @@ assemble_variable (decl, top_level, write_symbols, at_end)
 
   if (DECL_INITIAL (decl) == 0 || DECL_INITIAL (decl) == error_mark_node)
     {
-      int size = (TREE_INT_CST_LOW (DECL_SIZE (decl))
-		  * DECL_SIZE_UNIT (decl)
-		  / BITS_PER_UNIT);
-      int rounded = size;
+      int size, rounded;
+      if (DECL_SIZE_UNIT (decl) % BITS_PER_UNIT == 0)
+	size = (TREE_INT_CST_LOW (DECL_SIZE (decl))
+		* (DECL_SIZE_UNIT (decl) / BITS_PER_UNIT));
+      else
+	size = (TREE_INT_CST_LOW (DECL_SIZE (decl))
+		* DECL_SIZE_UNIT (decl)
+		/ BITS_PER_UNIT);
+      rounded = size;
       /* Don't allocate zero bytes of common,
 	 since that means "undefined external" in the linker.  */
       if (size == 0) rounded = 1;

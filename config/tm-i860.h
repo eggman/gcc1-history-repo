@@ -24,7 +24,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Di860 -Dunix"
+#define CPP_PREDEFINES "-Di860 -DI860 -Dunix"
 
 /* Print subsidiary information on the compiler version in use.  */
 #define TARGET_VERSION fprintf (stderr, " (i860)");
@@ -87,6 +87,9 @@ extern int target_flags;
 
 /* Allocation boundary (in *bits*) for storing arguments in argument list.  */
 #define PARM_BOUNDARY 32
+
+/* Give parms extra alignment, up to this much, if their types want it.  */
+#define MAX_PARM_BOUNDARY 64
 
 /* Boundary (in *bits*) on which stack pointer should be aligned.  */
 #define STACK_BOUNDARY 128
@@ -237,7 +240,7 @@ extern int target_flags;
 
    For any two classes, it is very desirable that there be another
    class that represents their union.  */
-   
+
 /* The i860 has two kinds of registers, hence four classes.  */
 
 enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
@@ -717,7 +720,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 	  if (GET_CODE (XEXP (X, 1)) == CONST_INT	\
 	      && INTVAL (XEXP (X, 1)) >= -0x8000	\
 	      && INTVAL (XEXP (X, 1)) < 0x8000		\
-	      && INTVAL (XEXP (X, 1)) & (GET_MODE_SIZE (MODE) - 1) == 0) \
+	      && (INTVAL (XEXP (X, 1)) & (GET_MODE_SIZE (MODE) - 1)) == 0) \
 	    goto ADDR;					\
 	}						\
       else if (GET_CODE (XEXP (X, 1)) == REG		\
@@ -726,7 +729,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 	  if (GET_CODE (XEXP (X, 0)) == CONST_INT	\
 	      && INTVAL (XEXP (X, 0)) >= -0x8000	\
 	      && INTVAL (XEXP (X, 0)) < 0x8000		\
-	      && INTVAL (XEXP (X, 0)) & (GET_MODE_SIZE (MODE) - 1) == 0) \
+	      && (INTVAL (XEXP (X, 0)) & (GET_MODE_SIZE (MODE) - 1)) == 0) \
 	    goto ADDR;					\
 	}						\
     }							\
@@ -1083,14 +1086,14 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    It need not be very fast code.  */
 
 #define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
-  fprintf (FILE, "\taddu -16,r3,r3\n\t%sst.l %s,0(r3)\n",	\
+  fprintf (FILE, "\taddu -16,sp,sp\n\t%sst.l %s,0(sp)\n",	\
 	   ((REGNO) < 32 ? "" : "f"), reg_names[REGNO])
 
 /* This is how to output an insn to pop a register from the stack.
    It need not be very fast code.  */
 
 #define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
-  fprintf (FILE, "\t%sld.l 0(r3),%s\n\taddu 16,r3,r3\n",	\
+  fprintf (FILE, "\t%sld.l 0(sp),%s\n\taddu 16,sp,sp\n",	\
 	   ((REGNO) < 32 ? "" : "f"), reg_names[REGNO])
 
 /* This is how to output an element of a case-vector that is absolute.  */

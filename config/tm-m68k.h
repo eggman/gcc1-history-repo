@@ -968,13 +968,15 @@ extern enum reg_class regno_reg_class[];
    However, if REG is a broken-out memory address or multiplication,
    nothing needs to be done because REG can certainly go in an address reg.  */
 
+#define COPY_ONCE(Y) if (!copied) { Y = copy_rtx (Y); copied = ch = 1; }
 #define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)   \
 { register int ch = (X) != (OLDX);					\
   if (GET_CODE (X) == PLUS)						\
-    { if (GET_CODE (XEXP (X, 0)) == MULT)				\
-	ch = 1, XEXP (X, 0) = force_operand (XEXP (X, 0), 0);		\
+    { int copied = 0;							\
+      if (GET_CODE (XEXP (X, 0)) == MULT)				\
+	{ COPY_ONCE (X); XEXP (X, 0) = force_operand (XEXP (X, 0), 0);}	\
       if (GET_CODE (XEXP (X, 1)) == MULT)				\
-	ch = 1, XEXP (X, 1) = force_operand (XEXP (X, 1), 0);		\
+	{ COPY_ONCE (X); XEXP (X, 1) = force_operand (XEXP (X, 1), 0);}	\
       if (ch && GET_CODE (XEXP (X, 1)) == REG				\
 	  && GET_CODE (XEXP (X, 0)) == REG)				\
 	return X;							\
@@ -986,6 +988,7 @@ extern enum reg_class regno_reg_class[];
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
 	  register rtx val = force_operand (XEXP (X, 1), 0);		\
 	  emit_move_insn (temp, val);					\
+	  COPY_ONCE (X);						\
 	  XEXP (X, 1) = temp;						\
 	  return X; }							\
       else if (GET_CODE (XEXP (X, 1)) == REG				\
@@ -995,6 +998,7 @@ extern enum reg_class regno_reg_class[];
 	{ register rtx temp = gen_reg_rtx (Pmode);			\
 	  register rtx val = force_operand (XEXP (X, 0), 0);		\
 	  emit_move_insn (temp, val);					\
+	  COPY_ONCE (X);						\
 	  XEXP (X, 0) = temp;						\
 	  return X; }}}
 
@@ -1113,7 +1117,9 @@ extern enum reg_class regno_reg_class[];
 	   && XEXP (XVECEXP (EXP, 0, 0), 0) == cc0_rtx))	\
     { CC_STATUS_INIT; }						\
   else if (GET_CODE (EXP) == SET)				\
-    { if (ADDRESS_REG_P (SET_DEST (EXP)))			\
+    { if (GET_CODE (SET_SRC (EXP)) == CALL)			\
+	{ CC_STATUS_INIT; }					\
+      else if (ADDRESS_REG_P (SET_DEST (EXP)))			\
 	{ if (cc_status.value1					\
 	      && reg_overlap_mentioned_p (SET_DEST (EXP), cc_status.value1)) \
 	    cc_status.value1 = 0;				\
@@ -1134,8 +1140,6 @@ extern enum reg_class regno_reg_class[];
 	       && (GET_CODE (SET_SRC (EXP)) == REG		\
 		   || GET_CODE (SET_SRC (EXP)) == MEM		\
 		   || GET_CODE (SET_SRC (EXP)) == CONST_DOUBLE))\
-	{ CC_STATUS_INIT; }					\
-      else if (GET_CODE (SET_SRC (EXP)) == CALL)		\
 	{ CC_STATUS_INIT; }					\
       else if (XEXP (EXP, 0) != pc_rtx)				\
 	{ cc_status.flags = 0;					\

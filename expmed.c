@@ -1564,7 +1564,11 @@ expand_mult (mode, op0, op1, target, unsignedp)
       foo = exact_log2 (absval - (1 << bar));
       if (bar >= 0 && foo >= 0)
 	{
-	  rtx tem =
+	  rtx tem;
+	  /* Prevent multiple refs to a volatile location.  */
+	  if (GET_CODE (op0) == MEM && MEM_VOLATILE_P (op0))
+	    op0 = force_reg (mode, op0);
+	  tem =
 	    force_operand (gen_rtx (PLUS, mode,
 				    expand_shift (LSHIFT_EXPR, mode, op0,
 				   		  build_int_2 (bar - foo, 0),
@@ -1620,6 +1624,12 @@ expand_divmod (rem_flag, code, mode, op0, op1, target, unsignedp)
   int can_clobber_op0;
   int mod_insn_no_good = 0;
   rtx adjusted_op0 = op0;
+
+  /* Don't use a non-register target.
+     It could cause a crash in copy_to_suggested_reg
+     when the value being copied has VOIDmode.  */
+  if (target && GET_CODE (target) != REG)
+    target = 0;
 
   /* Don't use the function value register as a target
      since we have to read it as well as write it,

@@ -188,6 +188,9 @@ static int n_memlocs;
    so we can test whether a register dies in it.  */
 static rtx this_insn;
 
+/* Nonzero if this instruction is a user-specified asm with operands.  */
+static int this_insn_is_asm;
+
 /* Nonzero means (MEM (REG n)) is valid even if (REG n) is spilled.  */
 static int indirect_ok;
 
@@ -340,6 +343,35 @@ push_reload (in, out, inloc, outloc, class,
   if (class == NO_REGS)
     abort ();
 
+  /* Verify that this class is at least possible for the mode that
+     is specified.  */
+  if (this_insn_is_asm)
+    {
+      enum machine_mode mode;
+      if (GET_MODE_SIZE (inmode) > GET_MODE_SIZE (outmode))
+	mode = inmode;
+      else
+	mode = outmode;
+      for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+	if (HARD_REGNO_MODE_OK (i, mode)
+	    && TEST_HARD_REG_BIT (reg_class_contents[(int) class], i))
+	  {
+	    int nregs = HARD_REGNO_NREGS (i, mode);
+
+	    int j;
+	    for (j = 1; j < nregs; j++)
+	      if (! TEST_HARD_REG_BIT (reg_class_contents[(int) class], i + j))
+		break;
+	    if (j == nregs)
+	      break;
+	  }
+      if (i == FIRST_PSEUDO_REGISTER)
+	{
+	  error_for_asm (this_insn, "impossible register constraint in `asm'");
+	  class = ALL_REGS;
+	}
+    }
+
   /* We can use an existing reload if the class is right
      and at least one of IN and OUT is a match
      and the other is at worst neutral.
@@ -411,11 +443,17 @@ push_reload (in, out, inloc, outloc, class,
       /* We are reusing an existing reload,
 	 but we may have additional information for it.
 	 For example, we may now have both IN and OUT
-	 while the old one may have just one of them.  */
+	 while the old one may have just one of them.
+	 If we have had two different inmodes or two different outmodes,
+	 use the wider one.  */
 
-      if (inmode != VOIDmode)
+      if (inmode != VOIDmode
+	  && (reload_inmode[i] == VOIDmode
+	      || GET_MODE_SIZE (inmode) > GET_MODE_SIZE (reload_inmode[i])))
 	reload_inmode[i] = inmode;
-      if (outmode != VOIDmode)
+      if (outmode != VOIDmode
+	  && (reload_outmode[i] == VOIDmode
+	      || GET_MODE_SIZE (outmode) > GET_MODE_SIZE (reload_outmode[i])))
 	reload_outmode[i] = outmode;
       if (in != 0)
 	reload_in[i] = in;
@@ -1133,6 +1171,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
   enum machine_mode operand_mode[MAX_RECOG_OPERANDS];
 
   this_insn = insn;
+  this_insn_is_asm = 0;		/* Tentative.  */
   n_reloads = 0;
   n_replacements = 0;
   n_memlocs = 0;
@@ -1174,6 +1213,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  /* This insn is an `asm' with operands.  */
 
 	  insn_code_number = -1;
+	  this_insn_is_asm = 1;
 
 	  /* expand_asm_operands makes sure there aren't too many operands.  */
 	  if (noperands > MAX_RECOG_OPERANDS)
@@ -1670,6 +1710,26 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	    int j;
 
 	    early_data = decompose (recog_operand[i]);
+
+	    if (modified[i] == RELOAD_READ)
+	      {
+		if (this_insn_is_asm)
+		  warning_for_asm (this_insn,
+				   "`&' constraint used with input operand");
+		else
+		  abort ();
+		continue;
+	      }
+	    
+	    if (this_alternative[i] == NO_REGS)
+	      {
+		this_alternative_earlyclobber[i] = 0;
+		if (this_insn_is_asm)
+		  error_for_asm (this_insn,
+				 "`&' constraint used with no register class");
+		else
+		  abort ();
+	      }
 
 	    for (j = 0; j < noperands; j++)
 	      /* Is this an input operand or a memory ref?  */

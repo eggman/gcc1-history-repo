@@ -311,72 +311,600 @@ State 184 contains 1 shift/reduce conflict.
 State 195 contains 1 shift/reduce conflict.
 State 201 contains 1 shift/reduce conflict.
 
+Grammar
+rule 1    program ->		/* empty */
+rule 2    program -> extdefs
+rule 3    @1 ->		/* empty */
+rule 4    extdefs -> @1 extdef
+rule 5    @2 ->		/* empty */
+rule 6    extdefs -> extdefs @2 extdef
+rule 7    extdef -> fndef
+rule 8    extdef -> datadef
+rule 9    extdef -> ASM '(' string ')' ';'
+rule 10   datadef -> setspecs notype_initdecls ';'
+rule 11   datadef -> declmods setspecs notype_initdecls ';'
+rule 12   datadef -> typed_declspecs setspecs initdecls ';'
+rule 13   datadef -> declmods ';'
+rule 14   datadef -> typed_declspecs ';'
+rule 15   datadef -> error ';'
+rule 16   datadef -> error '}'
+rule 17   datadef -> ';'
+rule 18   @3 ->		/* empty */
+rule 19   @4 ->		/* empty */
+rule 20   fndef -> typed_declspecs setspecs declarator @3 xdecls @4 compstmt_or_error
+rule 21   fndef -> typed_declspecs setspecs declarator error
+rule 22   @5 ->		/* empty */
+rule 23   @6 ->		/* empty */
+rule 24   fndef -> declmods setspecs notype_declarator @5 xdecls @6 compstmt_or_error
+rule 25   fndef -> declmods setspecs notype_declarator error
+rule 26   @7 ->		/* empty */
+rule 27   @8 ->		/* empty */
+rule 28   fndef -> setspecs notype_declarator @7 xdecls @8 compstmt_or_error
+rule 29   fndef -> setspecs notype_declarator error
+rule 30   identifier -> IDENTIFIER
+rule 31   identifier -> TYPENAME
+rule 32   unop -> '&'
+rule 33   unop -> '-'
+rule 34   unop -> '+'
+rule 35   unop -> PLUSPLUS
+rule 36   unop -> MINUSMINUS
+rule 37   unop -> '~'
+rule 38   unop -> '!'
+rule 39   expr -> nonnull_exprlist
+rule 40   exprlist ->		/* empty */
+rule 41   exprlist -> nonnull_exprlist
+rule 42   nonnull_exprlist -> expr_no_commas
+rule 43   nonnull_exprlist -> nonnull_exprlist ',' expr_no_commas
+rule 44   unary_expr -> primary
+rule 45   unary_expr -> '*' cast_expr
+rule 46   unary_expr -> unop cast_expr
+rule 47   unary_expr -> SIZEOF unary_expr
+rule 48   unary_expr -> SIZEOF '(' typename ')'
+rule 49   unary_expr -> ALIGNOF unary_expr
+rule 50   unary_expr -> ALIGNOF '(' typename ')'
+rule 51   cast_expr -> unary_expr
+rule 52   cast_expr -> '(' typename ')' cast_expr
+rule 53   cast_expr -> '(' typename ')' '{' initlist maybecomma '}'
+rule 54   expr_no_commas -> cast_expr
+rule 55   expr_no_commas -> expr_no_commas '+' expr_no_commas
+rule 56   expr_no_commas -> expr_no_commas '-' expr_no_commas
+rule 57   expr_no_commas -> expr_no_commas '*' expr_no_commas
+rule 58   expr_no_commas -> expr_no_commas '/' expr_no_commas
+rule 59   expr_no_commas -> expr_no_commas '%' expr_no_commas
+rule 60   expr_no_commas -> expr_no_commas LSHIFT expr_no_commas
+rule 61   expr_no_commas -> expr_no_commas RSHIFT expr_no_commas
+rule 62   expr_no_commas -> expr_no_commas ARITHCOMPARE expr_no_commas
+rule 63   expr_no_commas -> expr_no_commas EQCOMPARE expr_no_commas
+rule 64   expr_no_commas -> expr_no_commas '&' expr_no_commas
+rule 65   expr_no_commas -> expr_no_commas '|' expr_no_commas
+rule 66   expr_no_commas -> expr_no_commas '^' expr_no_commas
+rule 67   expr_no_commas -> expr_no_commas ANDAND expr_no_commas
+rule 68   expr_no_commas -> expr_no_commas OROR expr_no_commas
+rule 69   expr_no_commas -> expr_no_commas '?' xexpr ':' expr_no_commas
+rule 70   expr_no_commas -> expr_no_commas '=' expr_no_commas
+rule 71   expr_no_commas -> expr_no_commas ASSIGN expr_no_commas
+rule 72   primary -> IDENTIFIER
+rule 73   primary -> CONSTANT
+rule 74   primary -> string
+rule 75   primary -> '(' expr ')'
+rule 76   primary -> '(' error ')'
+rule 77   @9 ->		/* empty */
+rule 78   primary -> '(' @9 compstmt ')'
+rule 79   primary -> primary '(' exprlist ')'
+rule 80   primary -> primary '[' expr ']'
+rule 81   primary -> primary '.' identifier
+rule 82   primary -> primary POINTSAT identifier
+rule 83   primary -> primary PLUSPLUS
+rule 84   primary -> primary MINUSMINUS
+rule 85   string -> STRING
+rule 86   string -> string STRING
+rule 87   xdecls ->		/* empty */
+rule 88   xdecls -> decls
+rule 89   decls -> decl
+rule 90   decls -> errstmt
+rule 91   decls -> decls decl
+rule 92   decls -> decl errstmt
+rule 93   setspecs ->		/* empty */
+rule 94   decl -> typed_declspecs setspecs initdecls ';'
+rule 95   decl -> declmods setspecs notype_initdecls ';'
+rule 96   decl -> typed_declspecs ';'
+rule 97   decl -> declmods ';'
+rule 98   typed_declspecs -> typespec reserved_declspecs
+rule 99   typed_declspecs -> declmods typespec reserved_declspecs
+rule 100  reserved_declspecs ->		/* empty */
+rule 101  reserved_declspecs -> reserved_declspecs typespecqual_reserved
+rule 102  reserved_declspecs -> reserved_declspecs SCSPEC
+rule 103  declmods -> TYPE_QUAL
+rule 104  declmods -> SCSPEC
+rule 105  declmods -> declmods TYPE_QUAL
+rule 106  declmods -> declmods SCSPEC
+rule 107  typed_typespecs -> typespec reserved_typespecquals
+rule 108  typed_typespecs -> nonempty_type_quals typespec reserved_typespecquals
+rule 109  reserved_typespecquals ->		/* empty */
+rule 110  reserved_typespecquals -> reserved_typespecquals typespecqual_reserved
+rule 111  typespec -> TYPESPEC
+rule 112  typespec -> structsp
+rule 113  typespec -> TYPENAME
+rule 114  typespec -> TYPEOF '(' expr ')'
+rule 115  typespec -> TYPEOF '(' typename ')'
+rule 116  typespecqual_reserved -> TYPESPEC
+rule 117  typespecqual_reserved -> TYPE_QUAL
+rule 118  typespecqual_reserved -> structsp
+rule 119  initdecls -> initdcl
+rule 120  initdecls -> initdecls ',' initdcl
+rule 121  notype_initdecls -> notype_initdcl
+rule 122  notype_initdecls -> notype_initdecls ',' initdcl
+rule 123  maybeasm ->		/* empty */
+rule 124  maybeasm -> ASM '(' string ')'
+rule 125  @10 ->		/* empty */
+rule 126  initdcl -> declarator maybeasm maybe_attribute '=' @10 init
+rule 127  initdcl -> declarator maybeasm maybe_attribute
+rule 128  @11 ->		/* empty */
+rule 129  notype_initdcl -> notype_declarator maybeasm maybe_attribute '=' @11 init
+rule 130  notype_initdcl -> notype_declarator maybeasm maybe_attribute
+rule 131  maybe_attribute ->		/* empty */
+rule 132  maybe_attribute -> ATTRIBUTE '(' '(' attribute_list ')' ')'
+rule 133  attribute_list -> attrib
+rule 134  attribute_list -> attribute_list ',' attrib
+rule 135  attrib -> IDENTIFIER
+rule 136  attrib -> IDENTIFIER '(' CONSTANT ')'
+rule 137  attrib -> IDENTIFIER '(' identifiers ')'
+rule 138  init -> expr_no_commas
+rule 139  init -> '{' '}'
+rule 140  init -> '{' initlist '}'
+rule 141  init -> '{' initlist ',' '}'
+rule 142  init -> error
+rule 143  initlist -> init
+rule 144  initlist -> initlist ',' init
+rule 145  declarator -> after_type_declarator
+rule 146  declarator -> notype_declarator
+rule 147  after_type_declarator -> '(' after_type_declarator ')'
+rule 148  after_type_declarator -> after_type_declarator '(' parmlist_or_identifiers
+rule 149  after_type_declarator -> after_type_declarator '[' expr ']'
+rule 150  after_type_declarator -> after_type_declarator '[' ']'
+rule 151  after_type_declarator -> '*' type_quals after_type_declarator
+rule 152  after_type_declarator -> TYPENAME
+rule 153  parm_declarator -> parm_declarator '(' parmlist_or_identifiers
+rule 154  parm_declarator -> parm_declarator '[' expr ']'
+rule 155  parm_declarator -> parm_declarator '[' ']'
+rule 156  parm_declarator -> '*' type_quals parm_declarator
+rule 157  parm_declarator -> TYPENAME
+rule 158  notype_declarator -> notype_declarator '(' parmlist_or_identifiers
+rule 159  notype_declarator -> '(' notype_declarator ')'
+rule 160  notype_declarator -> '*' type_quals notype_declarator
+rule 161  notype_declarator -> notype_declarator '[' expr ']'
+rule 162  notype_declarator -> notype_declarator '[' ']'
+rule 163  notype_declarator -> IDENTIFIER
+rule 164  @12 ->		/* empty */
+rule 165  structsp -> STRUCT identifier '{' @12 component_decl_list '}'
+rule 166  structsp -> STRUCT '{' component_decl_list '}'
+rule 167  structsp -> STRUCT identifier
+rule 168  @13 ->		/* empty */
+rule 169  structsp -> UNION identifier '{' @13 component_decl_list '}'
+rule 170  structsp -> UNION '{' component_decl_list '}'
+rule 171  structsp -> UNION identifier
+rule 172  @14 ->		/* empty */
+rule 173  structsp -> ENUM identifier '{' @14 enumlist maybecomma_warn '}'
+rule 174  @15 ->		/* empty */
+rule 175  structsp -> ENUM '{' @15 enumlist maybecomma_warn '}'
+rule 176  structsp -> ENUM identifier
+rule 177  maybecomma ->		/* empty */
+rule 178  maybecomma -> ','
+rule 179  maybecomma_warn ->		/* empty */
+rule 180  maybecomma_warn -> ','
+rule 181  component_decl_list -> component_decl_list2
+rule 182  component_decl_list -> component_decl_list2 component_decl
+rule 183  component_decl_list2 ->		/* empty */
+rule 184  component_decl_list2 -> component_decl_list2 component_decl ';'
+rule 185  component_decl_list2 -> component_decl_list2 ';'
+rule 186  component_decl -> typed_typespecs setspecs components
+rule 187  component_decl -> nonempty_type_quals setspecs components
+rule 188  component_decl -> error
+rule 189  components ->		/* empty */
+rule 190  components -> component_declarator
+rule 191  components -> components ',' component_declarator
+rule 192  component_declarator -> declarator maybe_attribute
+rule 193  component_declarator -> declarator ':' expr_no_commas maybe_attribute
+rule 194  component_declarator -> ':' expr_no_commas
+rule 195  enumlist -> enumerator
+rule 196  enumlist -> enumlist ',' enumerator
+rule 197  enumerator -> identifier
+rule 198  enumerator -> identifier '=' expr_no_commas
+rule 199  typename -> typed_typespecs absdcl
+rule 200  typename -> nonempty_type_quals absdcl
+rule 201  absdcl ->		/* empty */
+rule 202  absdcl -> absdcl1
+rule 203  nonempty_type_quals -> TYPE_QUAL
+rule 204  nonempty_type_quals -> nonempty_type_quals TYPE_QUAL
+rule 205  type_quals ->		/* empty */
+rule 206  type_quals -> type_quals TYPE_QUAL
+rule 207  absdcl1 -> '(' absdcl1 ')'
+rule 208  absdcl1 -> '*' type_quals absdcl1
+rule 209  absdcl1 -> '*' type_quals
+rule 210  absdcl1 -> absdcl1 '(' parmlist
+rule 211  absdcl1 -> absdcl1 '[' expr ']'
+rule 212  absdcl1 -> absdcl1 '[' ']'
+rule 213  absdcl1 -> '(' parmlist
+rule 214  absdcl1 -> '[' expr ']'
+rule 215  absdcl1 -> '[' ']'
+rule 216  stmts -> stmt
+rule 217  stmts -> stmts stmt
+rule 218  stmts -> stmts errstmt
+rule 219  xstmts ->		/* empty */
+rule 220  xstmts -> stmts
+rule 221  errstmt -> error ';'
+rule 222  pushlevel ->		/* empty */
+rule 223  compstmt_or_error -> compstmt
+rule 224  compstmt_or_error -> error compstmt
+rule 225  compstmt -> '{' '}'
+rule 226  compstmt -> '{' pushlevel decls xstmts '}'
+rule 227  compstmt -> '{' pushlevel error '}'
+rule 228  compstmt -> '{' pushlevel stmts '}'
+rule 229  @16 ->		/* empty */
+rule 230  simple_if -> IF '(' expr ')' @16 stmt
+rule 231  stmt -> compstmt
+rule 232  stmt -> expr ';'
+rule 233  @17 ->		/* empty */
+rule 234  stmt -> simple_if ELSE @17 stmt
+rule 235  stmt -> simple_if
+rule 236  @18 ->		/* empty */
+rule 237  @19 ->		/* empty */
+rule 238  stmt -> WHILE @18 '(' expr ')' @19 stmt
+rule 239  @20 ->		/* empty */
+rule 240  @21 ->		/* empty */
+rule 241  stmt -> DO @20 stmt WHILE @21 '(' expr ')' ';'
+rule 242  @22 ->		/* empty */
+rule 243  @23 ->		/* empty */
+rule 244  @24 ->		/* empty */
+rule 245  stmt -> FOR '(' xexpr ';' @22 xexpr ';' @23 xexpr ')' @24 stmt
+rule 246  @25 ->		/* empty */
+rule 247  stmt -> SWITCH '(' expr ')' @25 stmt
+rule 248  @26 ->		/* empty */
+rule 249  stmt -> CASE expr ':' @26 stmt
+rule 250  @27 ->		/* empty */
+rule 251  stmt -> DEFAULT ':' @27 stmt
+rule 252  stmt -> BREAK ';'
+rule 253  stmt -> CONTINUE ';'
+rule 254  stmt -> RETURN ';'
+rule 255  stmt -> RETURN expr ';'
+rule 256  stmt -> ASM maybe_type_qual '(' string ')' ';'
+rule 257  stmt -> ASM maybe_type_qual '(' string ':' asm_operands ')' ';'
+rule 258  stmt -> ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ')' ';'
+rule 259  stmt -> ASM maybe_type_qual '(' string ':' asm_operands ':' asm_operands ':' asm_clobbers ')' ';'
+rule 260  stmt -> GOTO identifier ';'
+rule 261  @28 ->		/* empty */
+rule 262  stmt -> identifier ':' @28 stmt
+rule 263  stmt -> ';'
+rule 264  maybe_type_qual ->		/* empty */
+rule 265  maybe_type_qual -> TYPE_QUAL
+rule 266  xexpr ->		/* empty */
+rule 267  xexpr -> expr
+rule 268  asm_operands ->		/* empty */
+rule 269  asm_operands -> nonnull_asm_operands
+rule 270  nonnull_asm_operands -> asm_operand
+rule 271  nonnull_asm_operands -> nonnull_asm_operands ',' asm_operand
+rule 272  asm_operand -> STRING '(' expr ')'
+rule 273  asm_clobbers -> string
+rule 274  asm_clobbers -> asm_clobbers ',' string
+rule 275  @29 ->		/* empty */
+rule 276  parmlist -> @29 parmlist_1
+rule 277  @30 ->		/* empty */
+rule 278  parmlist_or_identifiers -> @30 parmlist_or_identifiers_1
+rule 279  parmlist_or_identifiers_1 -> parmlist_2 ')'
+rule 280  parmlist_or_identifiers_1 -> identifiers ')'
+rule 281  parmlist_or_identifiers_1 -> error ')'
+rule 282  parmlist_1 -> parmlist_2 ')'
+rule 283  parmlist_1 -> error ')'
+rule 284  parmlist_2 ->		/* empty */
+rule 285  parmlist_2 -> parms
+rule 286  parmlist_2 -> parms ',' ELLIPSIS
+rule 287  parms -> parm
+rule 288  parms -> parms ',' parm
+rule 289  parm -> typed_declspecs parm_declarator
+rule 290  parm -> typed_declspecs notype_declarator
+rule 291  parm -> typed_declspecs absdcl
+rule 292  parm -> declmods notype_declarator
+rule 293  parm -> declmods absdcl
+rule 294  identifiers -> IDENTIFIER
+rule 295  identifiers -> identifiers ',' IDENTIFIER
 
-token types:
- type -1 is $
- type 33 is '!'
- type 37 is '%'
- type 38 is '&'
- type 40 is '('
- type 41 is ')'
- type 42 is '*'
- type 43 is '+'
- type 44 is ','
- type 45 is '-'
- type 46 is '.'
- type 47 is '/'
- type 58 is ':'
- type 59 is ';'
- type 61 is '='
- type 63 is '?'
- type 91 is '['
- type 93 is ']'
- type 94 is '^'
- type 123 is '{'
- type 124 is '|'
- type 125 is '}'
- type 126 is '~'
- type 256 is error
- type 258 is IDENTIFIER
- type 259 is TYPENAME
- type 260 is SCSPEC
- type 261 is TYPESPEC
- type 262 is TYPE_QUAL
- type 263 is CONSTANT
- type 264 is STRING
- type 265 is ELLIPSIS
- type 266 is SIZEOF
- type 267 is ENUM
- type 268 is STRUCT
- type 269 is UNION
- type 270 is IF
- type 271 is ELSE
- type 272 is WHILE
- type 273 is DO
- type 274 is FOR
- type 275 is SWITCH
- type 276 is CASE
- type 277 is DEFAULT
- type 278 is BREAK
- type 279 is CONTINUE
- type 280 is RETURN
- type 281 is GOTO
- type 282 is ASM
- type 283 is TYPEOF
- type 284 is ALIGNOF
- type 285 is ATTRIBUTE
- type 286 is ASSIGN
- type 287 is OROR
- type 288 is ANDAND
- type 289 is EQCOMPARE
- type 290 is ARITHCOMPARE
- type 291 is LSHIFT
- type 292 is RSHIFT
- type 293 is UNARY
- type 294 is PLUSPLUS
- type 295 is MINUSMINUS
- type 296 is HYPERUNARY
- type 297 is POINTSAT
+Terminals, with rules where they appear
+
+$ (-1)
+'!' (33) 38
+'%' (37) 59
+'&' (38) 32 64
+'(' (40) 9 48 50 52 53 75 76 78 79 114 115 124 132 136 137 147 148
+    153 158 159 207 210 213 230 238 241 245 247 256 257 258 259 272
+')' (41) 9 48 50 52 53 75 76 78 79 114 115 124 132 136 137 147 159
+    207 230 238 241 245 247 256 257 258 259 272 279 280 281 282 283
+'*' (42) 45 57 151 156 160 208 209
+'+' (43) 34 55
+',' (44) 43 120 122 134 141 144 178 180 191 196 271 274 286 288 295
+'-' (45) 33 56
+'.' (46) 81
+'/' (47) 58
+':' (58) 69 193 194 249 251 257 258 259 262
+';' (59) 9 10 11 12 13 14 15 17 94 95 96 97 184 185 221 232 241 245
+    252 253 254 255 256 257 258 259 260 263
+'=' (61) 70 126 129 198
+'?' (63) 69
+'[' (91) 80 149 150 154 155 161 162 211 212 214 215
+']' (93) 80 149 150 154 155 161 162 211 212 214 215
+'^' (94) 66
+'{' (123) 53 139 140 141 165 166 169 170 173 175 225 226 227 228
+'|' (124) 65
+'}' (125) 16 53 139 140 141 165 166 169 170 173 175 225 226 227 228
+'~' (126) 37
+error (256) 15 16 21 25 29 76 142 188 221 224 227 281 283
+IDENTIFIER (258) 30 72 135 136 137 163 294 295
+TYPENAME (259) 31 113 152 157
+SCSPEC (260) 102 104 106
+TYPESPEC (261) 111 116
+TYPE_QUAL (262) 103 105 117 203 204 206 265
+CONSTANT (263) 73 136
+STRING (264) 85 86 272
+ELLIPSIS (265) 286
+SIZEOF (266) 47 48
+ENUM (267) 173 175 176
+STRUCT (268) 165 166 167
+UNION (269) 169 170 171
+IF (270) 230
+ELSE (271) 234
+WHILE (272) 238 241
+DO (273) 241
+FOR (274) 245
+SWITCH (275) 247
+CASE (276) 249
+DEFAULT (277) 251
+BREAK (278) 252
+CONTINUE (279) 253
+RETURN (280) 254 255
+GOTO (281) 260
+ASM (282) 9 124 256 257 258 259
+TYPEOF (283) 114 115
+ALIGNOF (284) 49 50
+ATTRIBUTE (285) 132
+ASSIGN (286) 71
+OROR (287) 68
+ANDAND (288) 67
+EQCOMPARE (289) 63
+ARITHCOMPARE (290) 62
+LSHIFT (291) 60
+RSHIFT (292) 61
+UNARY (293)
+PLUSPLUS (294) 35 83
+MINUSMINUS (295) 36 84
+HYPERUNARY (296)
+POINTSAT (297) 82
+
+Nonterminals, with rules where they appear
+
+program (65)
+    on left: 1 2
+extdefs (66)
+    on left: 4 6, on right: 2 6
+@1 (67)
+    on left: 3, on right: 4
+@2 (68)
+    on left: 5, on right: 6
+extdef (69)
+    on left: 7 8 9, on right: 4 6
+datadef (70)
+    on left: 10 11 12 13 14 15 16 17, on right: 8
+fndef (71)
+    on left: 20 21 24 25 28 29, on right: 7
+@3 (72)
+    on left: 18, on right: 20
+@4 (73)
+    on left: 19, on right: 20
+@5 (74)
+    on left: 22, on right: 24
+@6 (75)
+    on left: 23, on right: 24
+@7 (76)
+    on left: 26, on right: 28
+@8 (77)
+    on left: 27, on right: 28
+identifier (78)
+    on left: 30 31, on right: 81 82 165 167 169 171 173 176 197 198
+    260 262
+unop (79)
+    on left: 32 33 34 35 36 37 38, on right: 46
+expr (80)
+    on left: 39, on right: 75 80 114 149 154 161 211 214 230 232 238
+    241 247 249 255 267 272
+exprlist (81)
+    on left: 40 41, on right: 79
+nonnull_exprlist (82)
+    on left: 42 43, on right: 39 41 43
+unary_expr (83)
+    on left: 44 45 46 47 48 49 50, on right: 47 49 51
+cast_expr (84)
+    on left: 51 52 53, on right: 45 46 52 54
+expr_no_commas (85)
+    on left: 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71
+   , on right: 42 43 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70
+    71 138 193 194 198
+primary (86)
+    on left: 72 73 74 75 76 78 79 80 81 82 83 84, on right: 44 79 80
+    81 82 83 84
+@9 (87)
+    on left: 77, on right: 78
+string (88)
+    on left: 85 86, on right: 9 74 86 124 256 257 258 259 273 274
+xdecls (89)
+    on left: 87 88, on right: 20 24 28
+decls (90)
+    on left: 89 90 91 92, on right: 88 91 226
+setspecs (91)
+    on left: 93, on right: 10 11 12 20 21 24 25 28 29 94 95 186 187
+decl (92)
+    on left: 94 95 96 97, on right: 89 91 92
+typed_declspecs (93)
+    on left: 98 99, on right: 12 14 20 21 94 96 289 290 291
+reserved_declspecs (94)
+    on left: 100 101 102, on right: 98 99 101 102
+declmods (95)
+    on left: 103 104 105 106, on right: 11 13 24 25 95 97 99 105 106
+    292 293
+typed_typespecs (96)
+    on left: 107 108, on right: 186 199
+reserved_typespecquals (97)
+    on left: 109 110, on right: 107 108 110
+typespec (98)
+    on left: 111 112 113 114 115, on right: 98 99 107 108
+typespecqual_reserved (99)
+    on left: 116 117 118, on right: 101 110
+initdecls (100)
+    on left: 119 120, on right: 12 94 120
+notype_initdecls (101)
+    on left: 121 122, on right: 10 11 95 122
+maybeasm (102)
+    on left: 123 124, on right: 126 127 129 130
+initdcl (103)
+    on left: 126 127, on right: 119 120 122
+@10 (104)
+    on left: 125, on right: 126
+notype_initdcl (105)
+    on left: 129 130, on right: 121
+@11 (106)
+    on left: 128, on right: 129
+maybe_attribute (107)
+    on left: 131 132, on right: 126 127 129 130 192 193
+attribute_list (108)
+    on left: 133 134, on right: 132 134
+attrib (109)
+    on left: 135 136 137, on right: 133 134
+init (110)
+    on left: 138 139 140 141 142, on right: 126 129 143 144
+initlist (111)
+    on left: 143 144, on right: 53 140 141 144
+declarator (112)
+    on left: 145 146, on right: 20 21 126 127 192 193
+after_type_declarator (113)
+    on left: 147 148 149 150 151 152, on right: 145 147 148 149 150
+    151
+parm_declarator (114)
+    on left: 153 154 155 156 157, on right: 153 154 155 156 289
+notype_declarator (115)
+    on left: 158 159 160 161 162 163, on right: 24 25 28 29 129 130
+    146 158 159 160 161 162 290 292
+structsp (116)
+    on left: 165 166 167 169 170 171 173 175 176, on right: 112 118
+@12 (117)
+    on left: 164, on right: 165
+@13 (118)
+    on left: 168, on right: 169
+@14 (119)
+    on left: 172, on right: 173
+@15 (120)
+    on left: 174, on right: 175
+maybecomma (121)
+    on left: 177 178, on right: 53
+maybecomma_warn (122)
+    on left: 179 180, on right: 173 175
+component_decl_list (123)
+    on left: 181 182, on right: 165 166 169 170
+component_decl_list2 (124)
+    on left: 183 184 185, on right: 181 182 184 185
+component_decl (125)
+    on left: 186 187 188, on right: 182 184
+components (126)
+    on left: 189 190 191, on right: 186 187 191
+component_declarator (127)
+    on left: 192 193 194, on right: 190 191
+enumlist (128)
+    on left: 195 196, on right: 173 175 196
+enumerator (129)
+    on left: 197 198, on right: 195 196
+typename (130)
+    on left: 199 200, on right: 48 50 52 53 115
+absdcl (131)
+    on left: 201 202, on right: 199 200 291 293
+nonempty_type_quals (132)
+    on left: 203 204, on right: 108 187 200 204
+type_quals (133)
+    on left: 205 206, on right: 151 156 160 206 208 209
+absdcl1 (134)
+    on left: 207 208 209 210 211 212 213 214 215, on right: 202 207
+    208 210 211 212
+stmts (135)
+    on left: 216 217 218, on right: 217 218 220 228
+xstmts (136)
+    on left: 219 220, on right: 226
+errstmt (137)
+    on left: 221, on right: 90 92 218
+pushlevel (138)
+    on left: 222, on right: 226 227 228
+compstmt_or_error (139)
+    on left: 223 224, on right: 20 24 28
+compstmt (140)
+    on left: 225 226 227 228, on right: 78 223 224 231
+simple_if (141)
+    on left: 230, on right: 234 235
+@16 (142)
+    on left: 229, on right: 230
+stmt (143)
+    on left: 231 232 234 235 238 241 245 247 249 251 252 253 254 255
+    256 257 258 259 260 262 263, on right: 216 217 230 234 238 241
+    245 247 249 251 262
+@17 (144)
+    on left: 233, on right: 234
+@18 (145)
+    on left: 236, on right: 238
+@19 (146)
+    on left: 237, on right: 238
+@20 (147)
+    on left: 239, on right: 241
+@21 (148)
+    on left: 240, on right: 241
+@22 (149)
+    on left: 242, on right: 245
+@23 (150)
+    on left: 243, on right: 245
+@24 (151)
+    on left: 244, on right: 245
+@25 (152)
+    on left: 246, on right: 247
+@26 (153)
+    on left: 248, on right: 249
+@27 (154)
+    on left: 250, on right: 251
+@28 (155)
+    on left: 261, on right: 262
+maybe_type_qual (156)
+    on left: 264 265, on right: 256 257 258 259
+xexpr (157)
+    on left: 266 267, on right: 69 245
+asm_operands (158)
+    on left: 268 269, on right: 257 258 259
+nonnull_asm_operands (159)
+    on left: 270 271, on right: 269 271
+asm_operand (160)
+    on left: 272, on right: 270 271
+asm_clobbers (161)
+    on left: 273 274, on right: 259 274
+parmlist (162)
+    on left: 276, on right: 210 213
+@29 (163)
+    on left: 275, on right: 276
+parmlist_or_identifiers (164)
+    on left: 278, on right: 148 153 158
+@30 (165)
+    on left: 277, on right: 278
+parmlist_or_identifiers_1 (166)
+    on left: 279 280 281, on right: 278
+parmlist_1 (167)
+    on left: 282 283, on right: 276
+parmlist_2 (168)
+    on left: 284 285 286, on right: 279 282
+parms (169)
+    on left: 287 288, on right: 285 286 288
+parm (170)
+    on left: 289 290 291 292 293, on right: 287 288
+identifiers (171)
+    on left: 294 295, on right: 137 280 295
 
 
 state 0
@@ -384,8 +912,8 @@ state 0
     $   	reduce using rule 1 (program)
     $default	reduce using rule 3 (@1)
 
-    extdefs	go to state 1
     program	go to state 513
+    extdefs	go to state 1
     @1  	go to state 2
 
 
@@ -8077,16 +8605,16 @@ state 512
 
 state 513
 
-    $   	shift, and go to state 514
+    $   	go to state 514
 
 
 
 state 514
 
-    $   	shift, and go to state 515
+    $   	go to state 515
 
 
 
 state 515
 
-    NO ACTIONS
+    $default	accept

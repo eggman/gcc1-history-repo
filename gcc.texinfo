@@ -42,12 +42,12 @@ Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 3 June 1991
+@center last updated 24 Aug 1992
 @sp 1
-@center for version 1.40
+@center for version 1.41
 @page
 @vskip 0pt plus 1filll
-Copyright @copyright{} 1988, 1989, 1990, 1991 Free Software Foundation, Inc.
+Copyright @copyright{} 1988, 1989, 1990, 1991, 1992 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -1273,6 +1273,9 @@ seems to result in better code than would otherwise be produced.
 This option is enabled by default on certain machines, usually those
 which have no call-preserved registers to use instead.
 
+Don't use @samp{-fcaller-saves} together with
+@samp{-fomit-frame-pointer}.  This combination does not work.
+
 @item -fkeep-inline-functions
 Even if all calls to a given function are integrated, and the
 function is declared @code{static}, nevertheless output a
@@ -1559,6 +1562,10 @@ Intel 386 PCs running system V.
 @item i386-sysv-gas
 Intel 386 PCs running system V, using the GNU assembler and GNU
 linker.
+@item i386-sysv4
+Intel 386 PCs running system V.4.  You must run the shell script
+@file{fixincludes-V4} in order for GNU CC to work properly.  You must
+also uncomment some lines in @file{Makefile}.
 @item sequent-i386
 Sequent with Intel 386 processors.
 @item i386-aix
@@ -1612,14 +1619,31 @@ The tahoe computer (running BSD, and using DBX).
 @item decstation
 The DEC 3100 Mips machine (``pmax'').  Note that GNU CC cannot generate
 debugging information in the unusual format used on the Mips.
+@item mips-sysv-os5
+The Mips computer, RS series, with the System V environment
+running on revision 5.00 of RISC-OS as default.
+Note that GNU CC cannot generate debugging information in the unusual
+format used on the Mips, and also cannot be used to create
+programs that use shared libraries.
 @item mips-sysv
 The Mips computer, RS series, with the System V environment as default.
 Note that GNU CC cannot generate debugging information in the unusual
 format used on the Mips.
+@item mips-bsd43-os5
+The Mips computer, RS series, with the BSD 4.3 environment
+running revision 5.00 of RISC-OS as default.
+Note that GNU CC cannot generate debugging information in the unusual
+format used on the Mips, and also cannot be used to create
+programs that use shared libraries.
 @item mips-bsd43
 The Mips computer, RS series, with the BSD 4.3 environment as default.
 Note that GNU CC cannot generate debugging information in the unusual
 format used on the Mips.
+@item mips-os5
+The Mips computer, M series running revision 5.00 of RISC-OS.
+Note that GNU CC cannot generate debugging information in the
+unusual format used on the Mips, and also cannot be used to
+create programs that use shared libraries.
 @item mips
 The Mips computer, M series.  Note that GNU CC cannot generate debugging
 information in the unusual format used on the Mips.
@@ -2141,12 +2165,15 @@ The compiler that comes with this system does not work properly with
 You should also edit @file{Makefile} to enable the lines that set
 @code{CLIB} to @code{-lPW}, and the ones specifically labeled as being
 for SCO, that set @code{RANLIB}, and that set @code{CC} and @code{OLDCC}
-to @code{rcc}.
+to @samp{rcc -Di386 -DM_UNIX -DM_I386 -DM_SYSV -DM_COFF}.
 
 Also, edit the definition of @code{USER_H} to remove the file @file{limits.h}.
 
 Then you can run @samp{config.gcc i386-sco} and finish building GNU CC
 normally.
+
+Note that the function @code{memmove} is broken in 3.2v2; it clobbers
+register @code{%ebx}.  See the file @file{sco-memmove.s}.
 
 The same recipe should work on ESIX, but use @samp{config.gcc i386-esix}
 instead.
@@ -2641,16 +2668,30 @@ There are also system-specific incompatibilities.
 @itemize @bullet
 @item
 On the Sparc, GNU CC uses an incompatible calling convention for
-structures.  It passes them by including their contents in the argument
-list, whereas the standard compiler passes them effectively by
-reference.
+structures and unions.  It passes them by including their contents in
+the argument list, whereas the standard compiler passes them effectively
+by reference.
 
-This really ought to be fixed, but such calling conventions are not
-yet supported in GNU CC, so it isn't straightforward to fix it.
-GNU CC version 2 will use a compatible calling convention.
+This is hard to fix in GCC version 1.  GNU CC version 2 will use a
+compatible calling convention.
 
-The convention for structure returning is also incompatible, and
-@samp{-fpcc-struct-return} does not help.
+The convention for structure or union returning is also incompatible,
+and @samp{-fpcc-struct-return} does not help.
+
+System functions which can't be called properly from code compiled with
+GCC include @code{fetch}, @code{store}, @code{delete}, @code{firstkey},
+@code{nextkey}, @code{inet_makeaddr}, @code{inet_lnaof},
+@code{inet_netof}, @code{inet_ntoa}, @code{mallinfo},
+@code{pmap_rmtcall}, @code{clnt_call}, @code{clntudp_bufcreate} and
+@code{clntudp_create}.
+
+@item 
+One consequence of the unusual calling convention used on the Sparc
+is that structures with less than word alignment do not work right
+when passed as arguments to varargs functions.
+
+It's not easy to fix this problem.  In any case, it will be gone in
+version 2 as a result of the changed calling convention.
 
 @item 
 The Sparc version of @code{setjmp} interacts badly with unexpected stack
@@ -2682,14 +2723,11 @@ restored, they are restored with random values.
 
 @item
 On Ultrix, the Fortran compiler expects registers 2 through 5 to be saved
-by function calls.  We have not been able to tell whether the C compiler
-agrees with the Fortran compiler.  Currently, GNU CC treats these registers
-as temporaries on the Vax, which is compatible with BSD Unix.
+by function calls.  However, the C compiler uses conventions compatible
+with BSD Unix: registers 2 through 5 may be clobbered by function calls.
 
-If we learn for certain that Ultrix has departed from the traditional
-BSD calling convention, we will change GNU CC for Ultrix to fit.  In the
-mean time, you can use these options to produce code compatible with the
-Fortran compiler:
+GNU CC uses the same convention as the Ultrix C compiler.  You can use
+these options to produce code compatible with the Fortran compiler:
 
 @example
 -fcall-saved-r2 -fcall-saved-r3 -fcall-saved-r4 -fcall-saved-r5
@@ -2928,27 +2966,17 @@ expressions are equivalent:
 (a ? b = 5 : (c = 5))
 @end example
 
-A cast is a valid lvalue if its operand is valid.  Taking the address of
-the cast is the same as taking the address without a cast, except for the
-type of the result.  For example, these two expressions are equivalent (but
-the second may be valid when the type of @code{a} does not permit a cast to
-@code{int *}).
-
-@example
-&(int *)a
-(int **)&a
-@end example
-
-A simple assignment whose left-hand side is a cast works by converting the
-right-hand side first to the specified type, then to the type of the inner
-left-hand side expression.  After this is stored, the value is converter
-back to the specified type to become the value of the assignment.  Thus, if
-@code{a} has type @code{char *}, the following two expressions are
-equivalent:
+A cast is a valid lvalue if its operand is an lvalue.  A simple
+assignment whose left-hand side is a cast works by converting the
+right-hand side first to the specified type, then to the type of the
+inner left-hand side expression.  After this is stored, the value is
+converted back to the specified type to become the value of the
+assignment.  Thus, if @code{a} has type @code{char *}, the following two
+expressions are equivalent:
 
 @example
 (int)a = 5
-(int)(a = (char *)5)
+(int)(a = (char *)(int)5)
 @end example
 
 An assignment-with-arithmetic operation such as @samp{+=} applied to a cast
@@ -2958,8 +2986,25 @@ equivalent:
 
 @example
 (int)a += 5
-(int)(a = (char *) ((int)a + 5))
+(int)(a = (char *)(int) ((int)a + 5))
 @end example
+
+You cannot take the address of an lvalue cast, because the use of its
+address would not work out coherently.  Suppose that @code{&(int)f} were
+permitted, where @code{f} has type @code{float}.  Then the following
+statement would try to store an integer bit-pattern where a floating
+point number belongs:
+
+@example
+*&(int)f = 1;
+@end example
+
+This is quite different from what @code{(int)f = 1} would do---that
+would convert 1 to floating point and store it.  Rather than cause this
+inconsistancy, we think it is better to prohibit use of @samp{&} on a cast.
+
+If you really do want an @code{int *} pointer with the address of
+@code{f}, you can simply write @code{(int *)&f}.
 
 @node Conditionals, Zero-Length, Lvalues, Extensions
 @section Conditional Expressions with Omitted Middle-Operands
@@ -3184,7 +3229,7 @@ arithmetic operator would be.  These functions should be declared
 @code{const}.  For example,
 
 @example
-extern const void square ();
+extern const int square ();
 @end example
 
 @noindent
@@ -6536,7 +6581,7 @@ a pattern could use @code{which_alternative} to choose between them:
 
 @example
 (define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "r,m")
+  [(set (match_operand:SI 0 "general_operand" "=r,m")
         (const_int 0))]
   ""
   "*
@@ -6718,7 +6763,7 @@ Contrast, therefore, the two instruction patterns that follow:
 
 @example
 (define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "r")
+  [(set (match_operand:SI 0 "general_operand" "=r")
         (plus:SI (match_dup 0)
                  (match_operand:SI 1 "general_operand" "r")))]
   ""
@@ -6730,7 +6775,7 @@ which has two operands, one of which must appear in two places, and
 
 @example
 (define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "r")
+  [(set (match_operand:SI 0 "general_operand" "=r")
         (plus:SI (match_operand:SI 1 "general_operand" "0")
                  (match_operand:SI 2 "general_operand" "r")))]
   ""
@@ -6875,7 +6920,7 @@ the first, 1 for the second alternative, etc.).  For example:
 
 @example
 (define_insn ""
-  [(set (match_operand:SI 0 "general_operand" "r,m")
+  [(set (match_operand:SI 0 "general_operand" "=r,m")
         (const_int 0))]
   ""
   "*
@@ -7071,6 +7116,12 @@ Like @samp{mov@var{m}} except that if operand 0 is a @code{subreg}
 with mode @var{m} of a register whose natural mode is wider,
 the @samp{movstrict@var{m}} instruction is guaranteed not to alter
 any of the register except the part which belongs to mode @var{m}.
+
+@item @samp{movsi_unaligned}
+Like @samp{movsi} except that the memory reference will not trap
+if loading or storing into unaligned memory.  You must define this
+pattern if you can pass structures or unions in registers when they 
+have less than a full word of alignment.
 
 @item @samp{add@var{m}3}
 Add operand 2 and operand 1, storing the result in operand 0.  All operands
@@ -7665,7 +7716,7 @@ Here is an example, taken from the 68000 machine description:
 @example
 (define_peephole
   [(set (reg:SI 15) (plus:SI (reg:SI 15) (const_int 4)))
-   (set (match_operand:DF 0 "register_operand" "f")
+   (set (match_operand:DF 0 "register_operand" "=f")
         (match_operand:DF 1 "register_operand" "ad"))]
   "FP_REG_P (operands[0]) && ! FP_REG_P (operands[1])"
   "*

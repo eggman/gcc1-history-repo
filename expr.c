@@ -29,7 +29,6 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "recog.h"
 #include "gvarargs.h"
 #include "typeclass.h"
-#include "recog.h"
 
 /* Decide whether a function's arguments should be processed
    from first to last or from last to first.  */
@@ -956,16 +955,21 @@ emit_block_move (x, y, size, align)
     }
 }
 
-/* Copy all or part of a BLKmode value X into registers starting at REGNO.
+/* Copy all or part of a value X into registers starting at REGNO.
    The number of registers to be filled is NREGS.  */
 
 static void
-move_block_to_reg (regno, x, nregs)
+move_block_to_reg (regno, x, nregs, align)
      int regno;
      rtx x;
      int nregs;
+     int align;
 {
   int i;
+
+  if (GET_CODE (x) == MEM && GET_CODE (XEXP (x, 0)) == QUEUED)
+    XEXP (x, 0) = protect_from_queue (XEXP (x, 0), 0);
+
   if (GET_CODE (x) == CONST_DOUBLE && x != dconst0_rtx)
     x = force_const_double_mem (x);
   for (i = 0; i < nregs; i++)
@@ -977,11 +981,51 @@ move_block_to_reg (regno, x, nregs)
 	emit_move_insn (gen_rtx (REG, SImode, regno + i),
 			const0_rtx);
       else
-	emit_move_insn (gen_rtx (REG, SImode, regno + i),
-			gen_rtx (MEM, SImode,
-				 memory_address (SImode,
-						 plus_constant (XEXP (x, 0),
-								i * GET_MODE_SIZE (SImode)))));
+	{
+	  int unaligned = (align < BITS_PER_WORD);
+	  rtx to = gen_rtx (REG, SImode, regno + i);
+	  rtx from = gen_rtx (MEM, SImode,
+			      memory_address (SImode,
+					      plus_constant (XEXP (x, 0),
+							     i * GET_MODE_SIZE (SImode))));
+
+#if (defined (HAVE_movsi_unaligned) || defined (STRICT_ALIGNMENT)) && defined (STACK_BOUNDARY)
+	  /* If this is a reference to an auto variable, and the structure
+	     is aligned appropriately, use normal aligned load.  */
+
+	  if (STACK_BOUNDARY >= BITS_PER_WORD && unaligned)
+
+	    {
+	      int offset = 0;
+	      rtx x_wo_const = eliminate_constant_term (XEXP (x, 0), &offset);
+
+	      if ((offset & ((BITS_PER_WORD / BITS_PER_UNIT) - 1)) == 0
+		  && (x_wo_const == frame_pointer_rtx
+		      || x_wo_const == stack_pointer_rtx
+		      || x_wo_const == arg_pointer_rtx))
+		unaligned = FALSE;
+	    }
+#endif
+
+#ifdef HAVE_movsi_unaligned
+	  if (unaligned)
+	    {
+	      emit_insn (gen_movsi_unaligned (to, from));
+	      return;
+	    }
+#else /* not HAVE_movsi_unaligned */
+#if 0 /* This gives spurious errors.  For example, a stack slot
+	 whose offset is out of range turns into (mem (plus (reg) (reg)))
+	 and gets this error.  */
+#ifdef STRICT_ALIGNMENT
+	  if (unaligned)
+	    error ("Attempt to move unaligned structure to register");
+#endif
+#endif /* 0 */
+#endif /* not HAVE_movsi_unaligned */
+   
+	  emit_move_insn (to, from);
+	}
     }
 }
 
@@ -989,23 +1033,67 @@ move_block_to_reg (regno, x, nregs)
    The number of registers to be filled is NREGS.  */
 
 void
-move_block_from_reg (regno, x, nregs)
+move_block_from_reg (regno, x, nregs, align)
      int regno;
      rtx x;
      int nregs;
+     int align;
 {
   int i;
+
+  if (GET_CODE (XEXP (x, 0)) == QUEUED)
+    XEXP (x, 0) = protect_from_queue (XEXP (x, 0), 1);
+
   for (i = 0; i < nregs; i++)
     {
       if (GET_CODE (x) == REG)
 	emit_move_insn (gen_rtx (SUBREG, SImode, x, i),
 			gen_rtx (REG, SImode, regno + i));
       else
-	emit_move_insn (gen_rtx (MEM, SImode,
-				 memory_address (SImode,
-						 plus_constant (XEXP (x, 0),
-								i * GET_MODE_SIZE (SImode)))),
-			gen_rtx (REG, SImode, regno + i));
+	{
+	  int unaligned = (align < BITS_PER_WORD);
+	  rtx from = gen_rtx (REG, SImode, regno + i);
+	  rtx to = gen_rtx (MEM, SImode,
+			    memory_address (SImode,
+					    plus_constant (XEXP (x, 0),
+							   i * GET_MODE_SIZE (SImode))));
+
+#if (defined(HAVE_movsi_unaligned) || defined(STRICT_ALIGNMENT)) && defined (STACK_BOUNDARY)
+	  /* If this is a reference to an auto variable, and the structure
+	     is aligned appropriately, use normal aligned load.  */
+
+	  if (STACK_BOUNDARY >= BITS_PER_WORD && unaligned)
+
+	    {
+	      int offset = 0;
+	      rtx x_wo_const = eliminate_constant_term (XEXP (x, 0), &offset);
+
+	      if ((offset & ((BITS_PER_WORD / BITS_PER_UNIT) - 1)) == 0
+		  && (x_wo_const == frame_pointer_rtx
+		      || x_wo_const == stack_pointer_rtx
+		      || x_wo_const == arg_pointer_rtx))
+		unaligned = FALSE;
+	    }
+#endif
+
+#ifdef HAVE_movsi_unaligned
+	  if (unaligned)
+	    {
+	      extern rtx gen_movsi_unaligned ();
+	      emit_insn (gen_movsi_unaligned (to, from));
+	      return;
+	    }
+#else /* not HAVE_movsi_unaligned */
+#if 0 /* This is to stay in sync with move_block_to_reg.  */
+#ifdef STRICT_ALIGNMENT
+	  if (unaligned)
+	    error ("Attempt to move unaligned structure to register");
+#endif
+#endif /* 0 */
+#endif /* not HAVE_movsi_unaligned */
+
+	  emit_move_insn (to, from);
+	}
     }
 }
 
@@ -1516,7 +1604,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
      into the appropriate registers.  Do this now, at the end,
      since mem-to-mem copies above may do function calls.  */
   if (partial > 0)
-    move_block_to_reg (REGNO (reg), x, partial);
+    move_block_to_reg (REGNO (reg), x, partial, align * BITS_PER_UNIT);
 
   if (extra)
     anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
@@ -1799,8 +1887,12 @@ expand_assignment (to, from, want_value, suggest_reg)
 	{
 	  if (GET_CODE (to_rtx) == MEM)
 	    MEM_VOLATILE_P (to_rtx) = 1;
+#if 0  /* This was turned off because, when a field is volatile
+	  in an object which is not volatile, the object may be in a register,
+	  and then we would abort over here.  */
 	  else
 	    abort ();
+#endif
 	}
 
       return store_field (to_rtx, bitsize, bitpos, mode1, from,
@@ -1846,7 +1938,7 @@ store_expr (exp, target, suggest_reg)
 
   /* Copying a non-constant CONSTRUCTOR needs special treatment.  */
 
-  if (TREE_CODE (exp) == CONSTRUCTOR && ! TREE_LITERAL (exp))
+  if (TREE_CODE (exp) == CONSTRUCTOR && ! TREE_STATIC (exp))
     {
       store_constructor (exp, target);
       return target;
@@ -1909,6 +2001,30 @@ store_expr (exp, target, suggest_reg)
 	    convert_move (target, temp, unsignedp);
 	}
 
+      else if (GET_MODE (temp) == BLKmode && TREE_CODE (exp) == STRING_CST)
+	{
+	  /* Handle copying a string constant into an array.
+	     The string constant may be shorter than the array.
+	     So copy just the string's actual length, and clear the rest.  */
+	  rtx size;
+
+	  emit_block_move (target, temp,
+			   gen_rtx (CONST_INT, VOIDmode,
+				    TREE_STRING_LENGTH (exp)),
+			   TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT);
+
+	  temp = plus_constant (XEXP (target, 0), TREE_STRING_LENGTH (exp));
+	  size = plus_constant (expr_size (exp), - TREE_STRING_LENGTH (exp));
+#ifdef TARGET_MEM_FUNCTIONS
+	  emit_library_call (gen_rtx (SYMBOL_REF, Pmode, "memset"),
+			     0, VOIDmode, 3,
+			     temp, Pmode, const0_rtx, Pmode, size, Pmode);
+#else
+	  emit_library_call (gen_rtx (SYMBOL_REF, Pmode, "bzero"),
+			     0, VOIDmode, 2,
+			     temp, Pmode, size, Pmode);
+#endif
+	}
       else if (GET_MODE (temp) == BLKmode)
 	emit_block_move (target, temp, expr_size (exp),
 			 TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT);
@@ -1939,15 +2055,18 @@ store_constructor (exp, target)
       return;
     }
 
-  if (TREE_CODE (TREE_TYPE (exp)) == RECORD_TYPE)
+  if (TREE_CODE (TREE_TYPE (exp)) == RECORD_TYPE
+      || TREE_CODE (TREE_TYPE (exp)) == UNION_TYPE)
     {
       register tree elt;
 
-      /* If the constructor has fewer fields than the structure,
+      if (TREE_CODE (TREE_TYPE (exp)) == UNION_TYPE)
+	/* Inform later passes that the whole union value is dead.  */
+	emit_insn (gen_rtx (CLOBBER, VOIDmode, target));
+      /* If a record constructor has fewer fields than the structure,
 	 clear the whole structure first.  */
-
-      if (list_length (CONSTRUCTOR_ELTS (exp))
-	  != list_length (TYPE_FIELDS (TREE_TYPE (exp))))
+      else if (list_length (CONSTRUCTOR_ELTS (exp))
+	       != list_length (TYPE_FIELDS (TREE_TYPE (exp))))
 	clear_storage (target, int_size_in_bytes (TREE_TYPE (exp)));
       else
 	/* Inform later passes that the old value is dead.  */
@@ -2502,7 +2621,7 @@ expand_expr (exp, target, tmode, modifier)
 	  && TREE_LITERAL (TREE_OPERAND (exp, 1))
 	  && TREE_CODE (TREE_OPERAND (exp, 0)) == VAR_DECL
 	  && DECL_INITIAL (TREE_OPERAND (exp, 0))
-	  && TREE_CODE (DECL_INITIAL (TREE_OPERAND (exp, 0))) != ERROR_MARK)
+	  && TREE_CODE (DECL_INITIAL (TREE_OPERAND (exp, 0))) == CONSTRUCTOR)
 	{
 	  tree index = fold (TREE_OPERAND (exp, 1));
 	  if (TREE_CODE (index) == INTEGER_CST)
@@ -3819,6 +3938,9 @@ void
 init_pending_stack_adjust ()
 {
   pending_stack_adjust = 0;
+#ifdef STACK_SPACE_FOR_CALLS
+  stack_space_for_calls=0;
+#endif  
 }
 
 /* When exiting from function, if safe, clear out any pending stack adjust
@@ -4035,6 +4157,8 @@ expand_call (exp, target, ignore)
 	{
 	  pcc_struct_value = 1;
 	  is_integrable = 0;  /* Easier than making that case work right.  */
+	  /* Make the called function be compiled separately.  */
+	  mark_addressable (fndecl);
 	}
       else
 #endif
@@ -4103,7 +4227,9 @@ expand_call (exp, target, ignore)
   is_setjmp
     = (fndecl != 0
        && (!strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "setjmp")
-	   || !strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "_setjmp")));
+	   || !strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "_setjmp")
+	   || !strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "sigsetjmp")
+	   || !strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "vfork")));
 
   is_builtin_new
     = (fndecl != 0
@@ -4521,7 +4647,11 @@ expand_call (exp, target, ignore)
 	}
     }
 #ifndef PUSH_ROUNDING
-  else if (BLKmode_parms_forced)
+  else if (BLKmode_parms_forced
+#ifdef STACK_SPACE_FOR_CALLS
+	   || stack_space_for_calls
+#endif	   
+	   )
     {
       /* If we have reg-parms that need to be temporarily on the stack,
 	 set up an arg block address even though there is no space
@@ -4896,7 +5026,8 @@ store_one_arg (arg, argblock, may_be_alloca)
 	    move_block_to_reg (REGNO (arg->reg), arg->value,
 			       ((int_size_in_bytes (TREE_TYPE (pval))
 				 + UNITS_PER_WORD - 1)
-				/ UNITS_PER_WORD));
+				/ UNITS_PER_WORD),
+			       TYPE_ALIGN (TREE_TYPE (pval)));
 	  else
 	    emit_move_insn (arg->reg, arg->value);
 	}
@@ -5023,7 +5154,8 @@ store_one_arg (arg, argblock, may_be_alloca)
 	 move the value from the stack to the registers
 	 that are supposed to hold the values.  */
       if (arg->partial > 0)
-	move_block_to_reg (REGNO (arg->reg), arg->stack, arg->partial);
+	move_block_to_reg (REGNO (arg->reg), arg->stack, arg->partial,
+			   TYPE_ALIGN (TREE_TYPE (pval)));
     }
   else
     {

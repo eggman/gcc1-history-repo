@@ -9,12 +9,12 @@
 #define SCHAR_MAX 127
 
 /* Maximum value an `unsigned char' can hold.  (Minimum is 0).  */
-#define UCHAR_MAX 255U
+#define UCHAR_MAX 255
 
 /* Minimum and maximum values a `char' can hold.  */
 #ifdef __CHAR_UNSIGNED__
 #define CHAR_MIN 0
-#define CHAR_MAX 255U
+#define CHAR_MAX 255
 #else
 #define CHAR_MIN (-128)
 #define CHAR_MAX 127
@@ -25,7 +25,7 @@
 #define SHRT_MAX 32767
 
 /* Maximum value an `unsigned short int' can hold.  (Minimum is 0).  */
-#define USHRT_MAX 65535U
+#define USHRT_MAX 65535
 
 /* Minimum and maximum values a `signed int' can hold.  */
 #define INT_MIN (-INT_MAX-1)
@@ -37,7 +37,7 @@
 /* Minimum and maximum values a `signed long int' can hold.
    (Same as `int').  */
 #define LONG_MIN (-LONG_MAX-1)
-#define LONG_MAX 2147483647
+#define LONG_MAX 2147483647L
 
 /* Maximum value an `unsigned long int' can hold.  (Minimum is 0).  */
-#define ULONG_MAX 4294967295U
+#define ULONG_MAX 4294967295UL

@@ -1157,6 +1157,16 @@ new_spill_reg (i, class, max_needs, max_nongroups, global, dumpfile)
   if (i >= FIRST_PSEUDO_REGISTER)
     abort ();	/* Caller failed to find any register.  */
 
+#if 0 /* This causes errors on the 386 for code that works ok.  */
+  if (regs_explicitly_used[regno])
+    {
+      error ("spilling register %s, which is explicitly used",
+	     reg_names[regno]);
+      error ("(Probably too many explicit register variables");
+      error (" are used in this function)");
+    }
+#endif
+
   /* Make reg REGNO an additional reload reg.  */
 
   potential_reload_regs[i] = -1;
@@ -1226,7 +1236,20 @@ eliminate_frame_pointer (first)
 	  alter_frame_pointer_addresses (pattern, depth);
 	  /* Rerecognize insn if changed.  */
 	  if (frame_pointer_address_altered)
-	    INSN_CODE (insn) = -1;
+	    {
+	      int old_code = INSN_CODE (insn);
+	      INSN_CODE (insn) = -1;
+	      /* It can happen that we fail to recognize the insn now
+		 because a pseudoreg inside an address got allocated
+		 to a hard reg that isn't valid for the address.
+		 When this happens, chances are it really still fits the
+		 same pattern as before.
+		 This is not a real fix for the bug, but it is safer than
+		 any real fix, and it should hold things till version 2
+		 comes out.  */
+	      if (recog_memoized (insn) < 0)
+		INSN_CODE (insn) = old_code;
+	    }
 
 	  /* Notice pushes and pops; update DEPTH.  */
 	  if (GET_CODE (pattern) == SET)
@@ -2329,6 +2352,11 @@ choose_reload_regs (insn, avoid_return_reg)
 	    i = spill_reg_order[REGNO (reg_last_reload_reg[regno])];
 
 	    if (reg_reloaded_contents[i] == regno
+		/* reg_reloaded_contents doesn't work right with regs
+		   that have reg_equiv_address, because they are replaced
+		   in find_reloads_toplev, and as a result, we can't find
+		   the places that new values are stored in those pseudos.  */
+		&& reg_equiv_address[regno] == 0
 		&& HARD_REGNO_MODE_OK (spill_regs[i], reload_mode)
 		&& TEST_HARD_REG_BIT (reg_class_contents[(int) reload_reg_class[r]],
 				      spill_regs[i])
@@ -3005,7 +3033,7 @@ emit_reload_insns (insn)
 #endif
 
       /* ??? The following code is inadequate.
-	 It handles regs inherited via reg_last_reloaded_contents
+	 It handles regs inherited via reg_reloaded_contents
 	 but not those inherited via find_equiv_reg.
 	 Note that we can't expect spill_reg_store to contain anything
 	 useful in the case of find_equiv_reg.  */

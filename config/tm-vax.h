@@ -22,6 +22,18 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_PREDEFINES "-Dvax -Dunix"
 
+/* If using g-format floating point, alter math.h.  */
+
+#define	CPP_SPEC "%{mg:-DGFLOAT}"
+
+/* Choose proper libraries depending on float format.
+   Note that there are no profiling libraries for g-format.  */
+
+#define LIB_SPEC "%{mg:%{lm:-lmg} -lcg \
+  %{p:%eprofiling not supported with -mg\n\
+  %{pg:%eprofiling not supported with -mg\n}\
+ %{!mg:%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p}}"
+
 /* Print subsidiary information on the compiler version in use.  */
 
 #define TARGET_VERSION fprintf (stderr, " (vax)");
@@ -392,7 +404,8 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* This macro generates the assembly code for function entry.
    FILE is a stdio stream to output the code to.
-   SIZE is an int: how many units of temporary storage to allocate.
+   SIZE is an int: how many units of temporary storage to allocate,
+   adjusted by STARTING_FRAME_OFFSET to accomodate tm-vms.h.
    Refer to the array `regs_ever_live' to determine which registers
    to save; `regs_ever_live[I]' is nonzero if register number I
    is ever used in the function.  This macro is responsible for
@@ -401,14 +414,15 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define FUNCTION_PROLOGUE(FILE, SIZE)     \
 { register int regno;						\
   register int mask = 0;					\
+  register int size = SIZE - STARTING_FRAME_OFFSET;		\
   extern char call_used_regs[];					\
   for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)	\
     if (regs_ever_live[regno] && !call_used_regs[regno])	\
        mask |= 1 << regno;					\
   fprintf (FILE, "\t.word 0x%x\n", mask);			\
   MAYBE_VMS_FUNCTION_PROLOGUE(FILE)				\
-  if ((SIZE) >= 64) fprintf (FILE, "\tmovab %d(sp),sp\n", -SIZE);\
-  else if (SIZE) fprintf (FILE, "\tsubl2 $%d,sp\n", (SIZE)); }
+  if (size >= 64) fprintf (FILE, "\tmovab %d(sp),sp\n", -size);	\
+  else if (size) fprintf (FILE, "\tsubl2 $%d,sp\n", size); }
 
 /* tm-vms.h redefines this.  */
 #define MAYBE_VMS_FUNCTION_PROLOGUE(FILE)

@@ -1291,13 +1291,9 @@ use_related_value (x, elt)
    if there is a MEM rtx which has the MEM_IN_STRUCT_P bit set.
 
    Note that cse_insn knows that the hash code of a MEM expression
-   is just (int) MEM plus the hash code of the address.
-   It also knows it can use HASHREG to get the hash code of (REG n).  */
+   is just (int) MEM plus the hash code of the address.  */
 
 #define HASHBITS 16
-
-#define HASHREG(RTX) \
- ((((int) REG << 7) + reg_qty[REGNO (RTX)]) % NBUCKETS)
 
 static int
 canon_hash (x, mode)
@@ -1332,7 +1328,8 @@ canon_hash (x, mode)
 	    return 0;
 	  }
 #ifdef SMALL_REGISTER_CLASSES
-	if (regno < FIRST_PSEUDO_REGISTER)
+	if (regno < FIRST_PSEUDO_REGISTER && regno != FRAME_POINTER_REGNUM
+	    && regno != ARG_POINTER_REGNUM)
 	  {
 	    do_not_record = 1;
 	    return 0;
@@ -2097,6 +2094,8 @@ fold_rtx (x, copyflag)
 	        {
 		  if (GET_CODE (const_arg1) == CONST_INT)
 		    new = plus_constant (const_arg0, INTVAL (const_arg1));
+#if 0 /* Don't combine two constants if neither is an explicit integer.
+	 Assemblers can't handle the sum of two symbols.  */
 		  else
 		    {
 		      new = gen_rtx (PLUS, GET_MODE (x), const0_rtx, const0_rtx);
@@ -2108,6 +2107,7 @@ fold_rtx (x, copyflag)
 			XEXP (new, 1) = XEXP (const_arg1, 0);
 		      new = gen_rtx (CONST, GET_MODE (new), new);
 		    }
+#endif /* 0 */
 		}
 	      else if (const_arg1 != 0
 		       && GET_CODE (const_arg1) == CONST_INT
@@ -3342,7 +3342,11 @@ cse_insn (insn)
 	sets[i].rtl = 0;
 
       if (sets[i].rtl != 0 && dest != SET_DEST (sets[i].rtl))
-	sets[i].dest_hash_code = HASH (SET_DEST (sets[i].rtl), mode);
+	{
+	  sets[i].dest_hash_code = HASH (SET_DEST (sets[i].rtl), mode);
+	  if (do_not_record)
+	    sets[i].rtl = 0;
+	}
 
       if (dest == cc0_rtx
 	  && (GET_CODE (src) == COMPARE
@@ -3488,7 +3492,7 @@ cse_insn (insn)
 	  if (insert_regs (dest, sets[i].src_elt, 1))
 	    /* If `insert_regs' changes something, the hash code must be
 	       recalculated.  */
-	    sets[i].dest_hash_code = HASHREG (dest);
+	    sets[i].dest_hash_code = HASH (dest, GET_MODE (dest));
 
 	if (GET_CODE (dest) == SUBREG)
 	  /* Registers must also be inserted into chains for quantities.  */

@@ -99,6 +99,11 @@ static int fixed_aggregate_altered;
 
 static int loop_has_call;
 
+/* Nonzero if there is a volatile memory reference in the current
+   loop.  */
+
+static int loop_has_volatile;
+
 /* Added loop_continue which is the NOTE_INSN_LOOP_CONT of the
    current loop.  A continue statement will generate a branch to
    NEXT_INSN (loop_continue).  */
@@ -1678,8 +1683,8 @@ constant_high_bytes (p, loop_start)
    really is a loop: nothing jumps into it from outside.
    Return the marker for the end of the loop, or zero if not a real loop.
 
-   Also set the variables `unknown_*_altered' and `loop_has_call',
-   and fill in the array `loop_store_addrs'.  */
+   Also set the variables `unknown_*_altered', `loop_has_call',
+   and `loop_has_volatile' and fill in the array `loop_store_addrs'.  */
 
 static rtx
 verify_loop (f, start)
@@ -1695,6 +1700,7 @@ verify_loop (f, start)
   unknown_aggregate_altered = 0;
   fixed_aggregate_altered = 0;
   loop_has_call = 0;
+  loop_has_volatile = 0;
   loop_store_addrs_idx = 0;
 
   num_mem_sets = 0;
@@ -1745,7 +1751,12 @@ verify_loop (f, start)
       else
 	{
 	  if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN)
-	    note_stores (PATTERN (insn), note_addr_stored);
+	    {
+	      if (volatile_refs_p (PATTERN (insn)))
+		loop_has_volatile = 1;
+
+	      note_stores (PATTERN (insn), note_addr_stored);
+	    }
 	}
     }
 
@@ -1816,6 +1827,44 @@ can_jump_into_range_p (x, beg, end)
 	  register int j;
 	  for (j = 0; j < XVECLEN (x, i); j++)
 	    if (can_jump_into_range_p (XVECEXP (x, i, j), beg, end))
+	      return 1;
+	}
+    }
+
+  return 0;
+}
+
+/* Return 1 if somewhere in X is a LABEL_REF to a label
+   that is *not* located between BEG and END.  */
+
+static int
+can_jump_outside_range_p (x, beg, end)
+     rtx x;
+     int beg, end;
+{
+  register enum rtx_code code = GET_CODE (x);
+  register int i;
+  register char *fmt;
+
+  if (code == LABEL_REF)
+    {
+      register int luid = INSN_LUID (XEXP (x, 0));
+      return !(luid > beg && luid < end);
+    }
+
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	{
+	  if (can_jump_outside_range_p (XEXP (x, i), beg, end))
+	    return 1;
+	}
+      else if (fmt[i] == 'E')
+	{
+	  register int j;
+	  for (j = 0; j < XVECLEN (x, i); j++)
+	    if (can_jump_outside_range_p (XVECEXP (x, i, j), beg, end))
 	      return 1;
 	}
     }
@@ -2295,6 +2344,29 @@ loop_reg_used_before_p (insn, loop_start, scan_start, loop_end)
       if (p == loop_end)
 	p = loop_start;
     }
+
+  return 0;
+}
+
+/* Return nonzero if the loop from START to END
+   contains a jump that jumps outside the loop.  */
+
+static int
+loop_can_jump_out_p (loop_start, loop_end)
+     rtx loop_start, loop_end;
+{
+  rtx insn;
+
+  /* Now scan all jumps in the function and see if any of them can
+     reach a label within the range of the loop.  */
+
+  for (insn = loop_start; insn != loop_end; insn = NEXT_INSN (insn))
+    if (GET_CODE (insn) == JUMP_INSN
+	/* We have a jump.  Does it jump out of the loop?  */
+	&& can_jump_outside_range_p (PATTERN (insn),
+				     INSN_LUID (loop_start),
+				     INSN_LUID (loop_end)))
+      return 1;
 
   return 0;
 }
@@ -4744,10 +4816,15 @@ check_dbra_loop (loop_end, iv_list, insn_count, loop_start)
 		 the memory address check by only reversing loops with
 		 zero or one memory access.
 		 Two memory accesses could involve parts of the same array,
-		 and that can't be reversed.  */
+		 and that can't be reversed.
+		 Finally, we must make sure that we can add an instruction
+		 to load the final value for the reversed biv,
+		 by making sure that there are no jumps out of the loop.  */
 
 	      if (num_nonfixed_reads <= 1
+		  && !loop_can_jump_out_p (loop_start, loop_end)
 		  && !loop_has_call
+		  && !loop_has_volatile
 		  && (no_use_except_counting
 		      || (bl->giv_count + bl->biv_count + num_mem_sets
 			  + num_movables + 2 == insn_count)))
@@ -4838,7 +4915,13 @@ check_dbra_loop (loop_end, iv_list, insn_count, loop_start)
 			 not delete the label.  */
 		      LABEL_NUSES (XEXP (jump_label, 0)) ++;
 
-		      if (regno_last_uid[bl->regno] != INSN_UID (PREV_INSN (loop_end)))
+		      /* Emit an insn after the end of the loop to set the biv's
+			 proper exit value if it is used anywhere outside the loop.  */
+		      if ((regno_last_uid[bl->regno]
+			   != INSN_UID (PREV_INSN (PREV_INSN (loop_end))))
+			  || ! bl->init_insn
+			  || (regno_first_uid[bl->regno]
+			      != INSN_UID (bl->init_insn)))
 			emit_insn_after (gen_rtx (SET, VOIDmode, reg,
 						  final_value),
 					 loop_end);

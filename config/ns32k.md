@@ -2315,13 +2315,13 @@
   "*
 {
 #ifndef JSR_ALWAYS
-  if (GET_CODE (operands[0]) == MEM)
+  if (GET_CODE (operands[1]) == MEM)
     {
-      rtx temp = XEXP (operands[0], 0);
+      rtx temp = XEXP (operands[1], 0);
       if (CONSTANT_ADDRESS_P (temp))
 	{
 #ifdef GAS_SYNTAX
-	  operands[0] = temp;
+	  operands[1] = temp;
 	  return \"bsr %1\";
 #else
 #ifdef GNX_V3
@@ -2331,7 +2331,7 @@
 #endif
 #endif
 	}
-      if (GET_CODE (XEXP (operands[0], 0)) == REG)
+      if (GET_CODE (XEXP (operands[1], 0)) == REG)
 #if defined(GNX_V3) || defined(GAS_SYNTAX)
 	return \"jsr %1\";
 #else

@@ -573,7 +573,10 @@ sdbout_syms (syms)
 }
 
 /* Output SDB information for a symbol described by DECL.
-   LOCAL is nonzero if the symbol is not file-scope.  */
+   LOCAL is nonzero if the symbol is not file-scope
+   except at the end of compilation when we really want those symbols
+   to be output.  In the case of a variable, we do not really output
+   the variable if LOCAL is 0.  */
 
 void
 sdbout_symbol (decl, local)
@@ -630,6 +633,15 @@ sdbout_symbol (decl, local)
       /* Don't mention a variable that is external.
 	 Let the file that defines it describe it.  */
       if (TREE_EXTERNAL (decl))
+	return;
+
+      /* Don't outpuit a file-scope variable where it is defined.
+	 At the end of compilation, this function is called once again
+	 for those variable, but this time with LOCAL nonzero.
+	 This is because COFF requires all file-scope variables
+	 to follow all typedefs.  We satisfy this requirement
+	 by putting all file-scope variables at the end.  */
+      if (!local)
 	return;
 
       value = DECL_RTL (decl);

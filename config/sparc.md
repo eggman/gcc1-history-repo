@@ -1286,8 +1286,8 @@
 }")
 
 (define_insn "floatsisf2"
-  [(set (match_operand:SF 0 "general_operand" "=f")
-	(float:SF (match_operand:SI 1 "general_operand" "rfm")))]
+  [(set (match_operand:SF 0 "general_operand" "=f,f")
+	(float:SF (match_operand:SI 1 "general_operand" "r,fm")))]
   ""
   "*
 {
@@ -1324,8 +1324,8 @@
 }")
 
 (define_insn "floatsidf2"
-  [(set (match_operand:DF 0 "general_operand" "=f")
-	(float:DF (match_operand:SI 1 "general_operand" "rfm")))]
+  [(set (match_operand:DF 0 "general_operand" "=f,f")
+	(float:DF (match_operand:SI 1 "general_operand" "r,fm")))]
   ""
   "*
 {

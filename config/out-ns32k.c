@@ -105,7 +105,7 @@ output_move_double (operands)
 
   if (REG_P (operands[1]))
     optype1 = REGOP;
-  else if (CONSTANT_ADDRESS_P (operands[1])
+  else if (CONSTANT_P (operands[1])
 	   || GET_CODE (operands[1]) == CONST_DOUBLE)
     optype1 = CNSTOP;
   else if (offsettable_memref_p (operands[1]))
@@ -144,7 +144,7 @@ output_move_double (operands)
     latehalf[1] = adj_offsettable_operand (operands[1], 4);
   else if (optype1 == CNSTOP)
     {
-      if (CONSTANT_ADDRESS_P (operands[1]))
+      if (CONSTANT_P (operands[1]))
 	latehalf[1] = const0_rtx;
       else if (GET_CODE (operands[1]) == CONST_DOUBLE)
 	{

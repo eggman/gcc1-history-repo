@@ -25,6 +25,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #undef TARGET_DEFAULT
 #undef CALL_USED_REGISTERS
 #undef MAYBE_VMS_FUNCTION_PROLOGUE
+#undef STARTING_FRAME_OFFSET
 
 /* Predefine this in CPP because VMS limits the size of command options
    and GNU CPP is not used on VMS except with GNU C.  */
@@ -37,6 +38,15 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define TARGET_VERSION fprintf (stderr, " (vax vms)");
 
 #define CALL_USED_REGISTERS {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1}
+
+/* The run-time library routine VAXC$ESTABLISH (necessary when mixing
+   VMS exception handling and setjmp/longjmp in the same program) requires
+   that a hidden automatic variable at the top of the stack be reserved
+   for its use.  We accomplish this by simply adding 4 bytes to the local
+   stack for all functions, and making sure that normal local variables
+   are 4 bytes lower on the stack then they would otherwise have been.  */
+
+#define STARTING_FRAME_OFFSET (-4)
 
 #define __MAIN_NAME " main ("
 /*
@@ -51,13 +61,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define MAYBE_VMS_FUNCTION_PROLOGUE(FILE)	\
 { extern char *current_function_name;		\
   if (!strcmp ("main", current_function_name))	\
-    fprintf(FILE, "\tjsb _c$main_args\n"); 	\
+    fprintf(FILE, "\tjsb _C$MAIN_ARGS\n"); 	\
   else {					\
     char *p = current_function_name;		\
     while (*p != '\0')				\
       if (*p == *__MAIN_NAME)			\
         if (strncmp(p, __MAIN_NAME, (sizeof __MAIN_NAME)-1) == 0) {\
-          fprintf(FILE, "\tjsb _c$main_args\n");\
+          fprintf(FILE, "\tjsb _C$MAIN_ARGS\n");\
           break;				\
         } else					\
           p++;					\

@@ -360,8 +360,8 @@ strict_single_insn_op_p (op, mode)
       if (SMALL_INT (op))
 	return 1;
       /* We can put this set insn into delay slot, because this is one
-	 insn; 'sethi'.  */
-      if ((INTVAL (op) & 0x3ff) == 0)
+	 insn; `orh'.  */
+      if ((INTVAL (op) & 0xffff) == 0)
 	return 1;
       return 0;
 
@@ -1035,6 +1035,7 @@ output_load (operands)
   return load_opcode (mode, "l%%%m1(r31),%0", operands[0]);
 }
 
+#if 0
 /* Load the address specified by OPERANDS[3] into the register
    specified by OPERANDS[0].
 
@@ -1111,6 +1112,7 @@ output_load_address (operands)
   else
     abort ();
 }
+#endif
 
 /* Output code to place a size count SIZE in register REG.  */
 

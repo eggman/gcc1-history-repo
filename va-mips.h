@@ -14,7 +14,9 @@
 #define va_dcl    int __builtin_va_alist;
 #ifndef _VA_LIST_
 #define _VA_LIST_
-#define va_list   char *
+/* Make this a macro rather than a typedef, so we can undef any other defn.  */
+#define va_list __va___list
+typedef char * __va___list;
 #endif
 
 #define va_start(AP)  AP = (char *) &__builtin_va_alist

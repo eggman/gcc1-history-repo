@@ -71,6 +71,26 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "rtl.h"
 #include "flags.h"
 #include <stdio.h>
+#include <sys/param.h>
+#include <errno.h>
+
+#ifndef errno
+extern int errno;
+#endif
+
+/* Virtually every UN*X system now in common use (except for pre-4.3-tahoe
+   BSD systems) now provides getcwd as called for by POSIX.  Allow for
+   the few exceptions to the general rule here.  */
+
+#if !(defined (USG) || defined (VMS))
+extern char *getwd ();
+#define getcwd(buf,len) getwd(buf)
+#define GUESSPATHLEN (MAXPATHLEN + 1)
+#else /* (defined (USG) || defined (VMS)) */
+extern char *getcwd ();
+/* We actually use this as a starting point, not a limit.  */
+#define GUESSPATHLEN 100
+#endif /* (defined (USG) || defined (VMS)) */
 
 /* Typical USG systems don't have stab.h, and they also have
    no use for DBX-format debugging info.  */
@@ -184,6 +204,45 @@ dbxout_init (asm_file, input_file_name)
   typevec_len = 100;
   typevec = (enum typestatus *) xmalloc (typevec_len * sizeof typevec[0]);
   bzero (typevec, typevec_len * sizeof typevec[0]);
+
+  /* Put the current working directory in an N_SO symbol.  */
+  {
+    static char *cwd;
+    static enum {not_gotten, gotten, error_getting} cwd_status = not_gotten;
+    int size;
+
+    if (cwd_status == not_gotten)
+      {
+	char *value;
+
+	/* Read the working directory, avoiding arbitrary limit.  */
+	size = GUESSPATHLEN;
+	while (1)
+	  {
+	    cwd = (char *) xmalloc (size);
+	    value = getcwd (cwd, size);
+	    if (value != 0 || errno != ERANGE)
+	      break;
+	    free (cwd);
+	    size *= 2;
+	  }
+
+	if (value != 0)
+	  cwd_status = gotten;
+	else
+	  cwd_status = error_getting;
+      }
+
+    if (cwd_status == gotten)
+      {
+#ifdef ASM_OUTPUT_MAIN_SOURCE_DIRECTORY
+	ASM_OUTPUT_MAIN_SOURCE_DIRECTORY (asmfile, cwd);
+#else /* no ASM_OUTPUT_MAIN_SOURCE_DIRECTORY */
+	fprintf (asmfile, "%s \"%s/\",%d,0,0,%s\n", ".stabs",
+		 cwd, N_SO, "Ltext");
+#endif /* no ASM_OUTPUT_MAIN_SOURCE_DIRECTORY */
+      }
+  }
 
   /* Used to put `Ltext:' before the reference, but that loses on sun 4.  */
   fprintf (asmfile,

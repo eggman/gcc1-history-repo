@@ -747,6 +747,120 @@
 ;;
 ;;  ....................
 
+;; unaligned word moves generated to move unaligned structs
+;; to/from registers.
+;; We use (use (reg:SI 0)) to select this pattern rather than the
+;; normal movsi.  Make these before the normal move patterns so they
+;; match first.
+
+(define_expand "movsi_unaligned"
+  [(parallel [(set (match_operand:SI 0 "general_operand" "")
+		   (match_operand:SI 1 "general_operand" ""))
+	      (use (reg:SI 0))])]
+  ""
+  "
+{
+  extern rtx force_reg ();
+  extern rtx gen_movsi_ulw ();
+  extern rtx gen_movsi ();
+
+  if (GET_CODE (operands[0]) == MEM && !register_operand (operands[1], SImode))
+    {
+      rtx reg = gen_reg_rtx (SImode);
+
+      emit_insn (gen_movsi_ulw (reg, operands[1]));
+      operands[1] = reg;
+    }
+
+  /* Generate appropriate load, store.  If not a load or store,
+     do a normal movsi.  */
+  if (GET_CODE (operands[0]) != MEM && GET_CODE (operands[1]) != MEM)
+    {
+      emit_insn (gen_movsi (operands[0], operands[1]));
+      DONE;
+    }
+
+  /* Fall through and generate normal code.  */
+}")
+
+(define_insn "movsi_ulw"
+  [(set (match_operand:SI 0 "register_operand" "=&r,r,r")
+	(match_operand:SI 1 "general_operand" "o,r,n"))
+   (use (reg:SI 0))]
+  ""
+  "*
+{
+  extern rtx eliminate_constant_term ();
+
+  switch (which_alternative)
+    {
+    case 0:			/* reg <- memory */
+      {
+	int offset = 0;
+	rtx addr = XEXP (operands[1], 0);
+	rtx mem_addr = eliminate_constant_term (addr, &offset);
+
+	/* The stack/frame pointers are always aligned, so we can convert
+	   to the faster lw if we are referencing an aligned stack location.  */
+
+	if ((offset & ~3) == 0
+	    && (mem_addr == stack_pointer_rtx || mem_addr == frame_pointer_rtx))
+	  return \"lw\\t%0,%1\";
+
+	if (TARGET_GAS)
+	  {
+	    enum rtx_code code = GET_CODE (addr);
+	    if (code == CONST || code == SYMBOL_REF || code == LABEL_REF)
+	      {
+		operands[2] = gen_rtx (REG, SImode, GP_REG_FIRST + 1);
+		return \".set\\tnoat\\n\\tla\\t%2,%1\;ulw\\t%0,0(%2)\\n\\t.set\\tat\";
+	      }
+	  }
+      }
+
+      return \"ulw\\t%0,%1\";
+
+    case 1:			/* reg <- reg */
+      return \"move\\t%0,%1\";
+
+    case 2:			/* reg <- integer constant */
+      return \"li\\t%0,%1\";
+    }
+}")
+
+(define_insn "movsi_usw"
+  [(set (match_operand:SI 0 "memory_operand" "=&o")
+	(match_operand:SI 1 "register_operand" "r"))
+   (use (reg:SI 0))]
+  ""
+  "*
+{
+  extern rtx eliminate_constant_term ();
+  int offset = 0;
+  rtx addr = XEXP (operands[0], 0);
+  rtx mem_addr = eliminate_constant_term (addr, &offset);
+
+  /* The stack/frame pointers are always aligned, so we can convert
+     to the faster sw if we are referencing an aligned stack location.
+     At present, it is not recognized if the frame pointer is omitted.  */
+
+  if ((offset & ~3) == 0
+      && (mem_addr == stack_pointer_rtx || mem_addr == frame_pointer_rtx))
+    return \"sw\\t%1,%0\";
+
+  if (TARGET_GAS)
+    {
+      enum rtx_code code = GET_CODE (XEXP (operands[0], 0));
+      if (code == CONST || code == SYMBOL_REF || code == LABEL_REF)
+	{
+	  operands[2] = gen_rtx (REG, SImode, GP_REG_FIRST + 1);
+	  return \".set\\tnoat\\n\\tla\\t%2,%0\;usw\\t%1,0(%2)\\n\\t.set\\tat\";
+	}
+    }
+
+  return \"usw\\t%1,%0\";
+}")
+
 (define_insn "movdi"
   [(set (match_operand:DI 0 "general_operand" "=r,*r,*m")
 	(match_operand:DI 1 "general_operand" "r,*miF,*r"))]

@@ -485,7 +485,7 @@ emit_mult_restore (insn, addr, offset)
       /* If any call-clobbered reg is dead, put it in TEMPREG.
 	 It can be used as a temporary at no extra cost.  */
       if (tempreg == 0 && call_used_regs[regno] && ! fixed_regs[regno]
-	  && ! offset[regno] >= 0
+	  && offset[regno] < 0
 	  && HARD_REGNO_MODE_OK (regno, Pmode))
 	{
 	  tempreg = gen_rtx (REG, Pmode, regno);

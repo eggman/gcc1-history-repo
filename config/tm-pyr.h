@@ -142,12 +142,12 @@ extern int target_flags;
 /* Alignment of field after `int : 0' in a structure.  */
 #define EMPTY_FIELD_BOUNDARY 32
 
-/* Every structure's size must be a multiple of this.  */
-/*  --> FIXME: I don't know if this is what pyr cc does.  */
-#define STRUCTURE_SIZE_BOUNDARY 32
-
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT 32
+
+/* Specified types of bitfields affect alignment of those fields
+   and of the structure as a whole.  */
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* Make strings word-aligned so dhrystone will run faster.
    Pyramid documentation says the best alignment is to align

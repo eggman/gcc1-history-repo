@@ -564,6 +564,10 @@ try_combine (i3, i2, i1)
 		  && reg_mentioned_p (XEXP (link, 0), PATTERN (i1)))))
 	return 0;
 
+  /* Make sure that I1DEST is not used between I2 and I3.  */
+  if (i1 && reg_used_between_p (i1dest, i2, i3))
+    return 0;
+
   /* Don't combine an insn I1 or I2 that follows a CC0-setting insn.
      An insn that uses CC0 must not be separated from the one that sets it.
      It would be more logical to test whether CC0 occurs inside I1 or I2,
@@ -1460,6 +1464,7 @@ subst (x, from, to)
 	      < GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))))
 	{
 	  int shiftcount;
+	  int fieldsize;
 	  int newmask;
 #ifdef BITS_BIG_ENDIAN
 	  shiftcount
@@ -1469,9 +1474,12 @@ subst (x, from, to)
 	  shiftcount
 	    = INTVAL (XEXP (XEXP (x, 0), 2));
 #endif
+	  fieldsize = INTVAL (XEXP (XEXP (x, 0), 1));
 	  newmask = ((INTVAL (XEXP (XEXP (x, 1), 1)) << shiftcount)
 		     + (GET_CODE (XEXP (x, 1)) == AND
-			? (1 << shiftcount) - 1
+			/* For AND, preserve the bits outside this field.  */
+			? ((1 << shiftcount) - 1
+			   + (-1 << (shiftcount + fieldsize)))
 			: 0));
 	  if (GET_MODE_BITSIZE (GET_MODE (XEXP (XEXP (x, 0), 0)))
 	      < HOST_BITS_PER_INT)
@@ -2380,7 +2388,7 @@ move_deaths (x, from_cuid, to_insn)
 	  && INSN_CUID (where_dead) < INSN_CUID (to_insn))
 	{
 	  remove_death (REGNO (x), reg_last_death[REGNO (x)]);
-	  if (! dead_or_set_p (to_insn, x))
+	  if (! dead_or_partially_set_p (to_insn, x))
 	    REG_NOTES (to_insn)
 	      = gen_rtx (EXPR_LIST, REG_DEAD, x, REG_NOTES (to_insn));
 	}

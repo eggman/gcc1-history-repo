@@ -356,17 +356,26 @@ single_insn_src_p (op, mode)
     case MINUS:
       /* If the target is cc0, then these insns will take
 	 two insns (one being a nop).  */
-      return (mode != SFmode && mode != DFmode);
+      if (mode != SFmode && mode != DFmode)
+	return 0;
     case PLUS:
     case AND:
     case IOR:
     case XOR:
+      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
+	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
+	return 0;
+      return 1;
+
     case LSHIFT:
     case ASHIFT:
     case ASHIFTRT:
     case LSHIFTRT:
-      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
-	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
+      if (GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
+	return 0;
+      if (GET_CODE (XEXP (op, 1)) != REG
+	  && (GET_CODE (XEXP (op, 1)) != SUBREG
+	      || GET_CODE (SUBREG_REG (XEXP (op, 1))) != REG))
 	return 0;
       return 1;
 
@@ -805,7 +814,7 @@ output_move_double (operands)
       if (addreg0)
 	output_asm_insn ("add %0,-0x4,%0", &addreg0);
       if (addreg1)
-	output_asm_insn ("add %0,-0x4,%0", &addreg0);
+	output_asm_insn ("add %0,-0x4,%0", &addreg1);
 
       /* Do low-numbered word.  */
       return singlemove_string (operands);

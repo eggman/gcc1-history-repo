@@ -1,19 +1,11 @@
 /* like pmax except BIG ENDIAN instead of LITTLE ENDIAN  */
 
-#define MIPS_NEWS
 #include "tm-mips.h"
 
 #undef CPP_SPEC
 				/* default RISC NEWS environment */
-#define CPP_SPEC "-Dr3000 -DLANGUAGE_C -DMIPSEB -DSYSTYPE_BSD -Dsony_news -Dunix -I/usr/include2.11"
+#define CPP_SPEC "-Dr3000 -Dnews7300 -DLANGUAGE_C -DMIPSEB -DSYSTYPE_BSD \
+ -Dsony_news -Dsony -Dunix -Dmips -Dhost_mips -I/usr/include2.11"
 
 #undef MACHINE_TYPE
 #define MACHINE_TYPE "Sony NEWS (RISC NEWS)"
-
-/* Define this if most significant byte of a word is the lowest numbered.
-*/
-#define BYTES_BIG_ENDIAN
-
-/* Define this if most significant word of a multiword number is numbered.
-*/
-#define WORDS_BIG_ENDIAN

@@ -30,7 +30,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Also, it is hard to debug with shared libraries,
    so don't use them if going to debug.  */
 
-#define LINK_SPEC "%{!e*:-e start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{Bstatic}"
+#define LINK_SPEC "%{!e*:-e start} -dc -dp %{static:-Bstatic} %{Bstatic} \
+  %{assert*}"
 
 /* Special flags to the Sun-4 assembler when using pipe for input.  */
 
@@ -42,7 +43,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* These compiler options take an argument.  We ignore -target for now.  */
 
-#define WORD_SWITCH_TAKES_ARG(STR)	(!strcmp (STR, "target"))
+#define WORD_SWITCH_TAKES_ARG(STR) \
+  (!strcmp (STR, "target") || !strcmp (STR, "Tdata")		\
+   || !strcmp (STR, "assert"))
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
@@ -423,7 +426,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    This is 64 for the ins and locals, plus 4 for the struct-return reg
    if this function isn't going to use it.  */
 #define FIRST_PARM_OFFSET(FNDECL)		\
-  (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode	\
+  (DECL_MODE (DECL_RESULT (FNDECL)) == BLKmode	\
    ? STRUCT_VALUE_OFFSET : STRUCT_VALUE_OFFSET + 4)
 
 /* Offset from top-of-stack address to location to store the
@@ -1432,4 +1435,3 @@ extern union tree_node *current_function_decl;
       output_addr_const (FILE, addr);				\
     }								\
 }
-

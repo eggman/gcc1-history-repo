@@ -1015,7 +1015,15 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 		 record the constantness.  */
 	      if (note)
 		REG_NOTES (copy)
-		  = gen_rtx (EXPR_LIST, REG_EQUIV, XEXP (note, 0),
+		  = gen_rtx (EXPR_LIST, REG_EQUIV,
+			     /* Copy the expression in the note.
+				This fixes a bug in
+				compiling GCC 2.00 cplus-lex.c
+				which has an inline function calling
+				another inline function, the inner
+				inline function has a switch statement,
+				and the switch expression is constant.  */
+			     copy_rtx_and_substitute (XEXP (note, 0)),
 			     REG_NOTES (copy));
 	    }
 	  break;
@@ -1528,6 +1536,26 @@ copy_rtx_and_substitute (orig)
 	}
       else
 	temp = copy_rtx_and_substitute (copy);
+
+      /* Avoid change_address if we can, because it copies certain
+	 valid addresses into registers.  And doing that on a memref
+	 that appears twice in the insn (with a match_dup) would lose.  */ 
+      if (memory_address_p (mode, temp))
+	{
+	  rtx new = gen_rtx (MEM, mode, temp);
+	  MEM_VOLATILE_P (new) = MEM_VOLATILE_P (orig);
+	  RTX_UNCHANGING_P (new) = RTX_UNCHANGING_P (orig);
+	  MEM_IN_STRUCT_P (new) = MEM_IN_STRUCT_P (orig);
+	  return new;
+	}
+
+      /* I think this will never be reached.  And I hope so, because if it
+	 is reached, that implies it can probably be reached for a memref
+	 that appears twice in one insn, and that would cause a crash.
+
+	 The clean thing to do would be to abort here, see if there is a
+	 bug, and fix it.  But that would probably cause more errors in the
+	 short term, and long-term cleanups in GCC version 1 don't matter.  */
 
       return change_address (orig, mode, temp);
 

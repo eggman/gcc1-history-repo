@@ -142,6 +142,11 @@ position among the other output files.
 #define vfork fork
 #endif /* USG */
 
+/* Test if something is a normal file.  */
+#ifndef S_ISREG
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#endif
+
 #define obstack_chunk_alloc xmalloc
 #define obstack_chunk_free free
 extern int xmalloc ();
@@ -493,7 +498,7 @@ delete_temp_files ()
 	  if (stat (temp->name, &st) >= 0)
 	    {
 	      /* Delete only ordinary files.  */
-	      if ((st.st_mode & S_IFMT) == S_IFREG)
+	      if (S_ISREG (st.st_mode))
 		if (unlink (temp->name) < 0)
 		  if (vflag)
 		    perror_with_name (temp->name);
@@ -1966,6 +1971,7 @@ fatal (va_alist)
   
   va_start(ap);
   format = va_arg (ap, char *);
+  fprintf (stderr, "%s: ", programname);
   vfprintf (stderr, format, ap);
   va_end (ap);
   fprintf (stderr, "\n");

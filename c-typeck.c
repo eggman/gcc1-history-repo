@@ -922,10 +922,20 @@ build_array_ref (array, index)
     tree ar = default_conversion (array);
     tree ind = default_conversion (index);
 
-    if ((TREE_CODE (TREE_TYPE (ar)) == POINTER_TYPE
-	 && TREE_CODE (TREE_TYPE (ind)) != INTEGER_TYPE)
-	|| (TREE_CODE (TREE_TYPE (ind)) == POINTER_TYPE
-	    && TREE_CODE (TREE_TYPE (ar)) != INTEGER_TYPE))
+    /* Put the integer in IND to simplify error checking.  */
+    if (TREE_CODE (TREE_TYPE (ar)) == INTEGER_TYPE)
+      {
+	tree temp = ar;
+	ar = ind;
+	ind = temp;
+      }
+
+    if (TREE_CODE (TREE_TYPE (ar)) != POINTER_TYPE)
+      {
+	error ("subscripted value is neither array nor pointer");
+	return error_mark_node;
+      }
+    if (TREE_CODE (TREE_TYPE (ind)) != INTEGER_TYPE)
       {
 	error ("array subscript is not an integer");
 	return error_mark_node;
@@ -1252,7 +1262,9 @@ build_binary_op_nodefault (code, op0, op1, error_code)
 	  if (!(code0 == INTEGER_TYPE && code1 == INTEGER_TYPE))
 	    resultcode = RDIV_EXPR;
 	  else
-	    shorten = 1;
+	    /* When dividing two signed integers, you have to promote to int.
+	       E.g. (short) -32868 / (short) -1 doesn't fit in a short.  */
+	    shorten = TREE_UNSIGNED (dt0);
 	  common = 1;
 	}
       break;
@@ -2280,6 +2292,9 @@ build_unary_op (code, xarg, noconvert)
       if (val != 0)
 	return val;
 
+#if 0 /* Turned off because inconsistent;
+	 float f; *&(int)f = 3.4 stores in int format
+	 whereas (int)f = 3.4 stores in float format.  */
       /* Address of a cast is just a cast of the address
 	 of the operand of the cast.  */
       switch (TREE_CODE (arg))
@@ -2297,6 +2312,7 @@ build_unary_op (code, xarg, noconvert)
 			  build_unary_op (ADDR_EXPR, TREE_OPERAND (arg, 0),
 					  0));
 	}
+#endif
 
       /* Allow the address of a constructor if all the elements
 	 are constant.  */

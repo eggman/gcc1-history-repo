@@ -4,6 +4,11 @@
 #include "config.h"
 #include <stddef.h>
 
+/* Don't use `fancy_abort' here even if config.h says to use it.  */
+#ifdef abort
+#undef abort
+#endif
+
 #ifndef SItype
 #define SItype long int
 #endif
@@ -862,6 +867,7 @@ __floatdidf (u)
 	asm ("	andnot	0x0f,sp,sp");
 	asm ("	adds	-96,sp,sp");  /* allocate sufficient space on the stack */
 
+/* Fill in the __va_struct.  */
 	asm ("	st.l	r16, 0(sp)"); /* save integer regs (r16-r27) */
 	asm ("	st.l	r17, 4(sp)"); /* int	fixed[12] */
 	asm ("	st.l	r18, 8(sp)");
@@ -878,12 +884,13 @@ __floatdidf (u)
 	asm ("	fst.q	f8, 48(sp)"); /* save floating regs (f8-f15) */
 	asm ("	fst.q	f12,64(sp)"); /* int floating[8] */
 
-	asm ("	st.l	r28,80(sp)"); /* pointer to more args */
-	asm ("	st.l	r0, 84(sp)"); /* nfixed */
-	asm ("	st.l	r0, 88(sp)"); /* nfloating */
-	asm ("	st.l	r0, 92(sp)"); /* pad */
+/* Fill in the __va_ctl.  */
+	asm ("  st.l    sp, 80(sp)"); /* __va_ctl points to __va_struct.  */
+	asm ("	st.l	r28,84(sp)"); /* pointer to more args */
+	asm ("	st.l	r0, 88(sp)"); /* nfixed */
+	asm ("	st.l	r0, 92(sp)"); /* nfloating */
 
-	asm ("	mov	sp,r16");
+	asm ("	adds	80,sp,r16");  /* return address of the __va_ctl.  */
 	asm ("	bri	r1");
 	asm ("	mov	r30,sp");
 				/* recover stack and pass address to start 

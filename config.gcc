@@ -105,6 +105,11 @@ then
 		configuration_file=xm-i386.h
 		target_machine=tm-seq386.h
 		;;
+	fmtowns)
+		cpu_type=i386
+		configuration_file=xm-i386.h
+		target_machine=tm-fmtowns.h
+		;;
 	i386-mach)
 		cpu_type=i386
 		configuration_file=xm-i386.h
@@ -148,6 +153,7 @@ then
 	i860)
 		;;
 	i860-gas)
+		machine=i860
 		target_machine=tm-i860g.h
 		;;
 	next )
@@ -300,12 +306,28 @@ then
 		;;
 	mips)				# Default MIPS environment
 		;;
-	mips-sysv)			# SYSV variant of MIPS system.
+	mips-os5)			# SYSV variant of MIPS system.
+		cpu_type=mips
+		target_machine=tm-mips-5.h
+		;;
+	mips-os4)			# Default MIPS environment on RISC-OS 4.00
+		cpu_type=mips
+		;;
+	mips-sysv-os5)			# SYSV variant of MIPS system, RISC-OS 5.00
+		cpu_type=mips
+		target_machine=tm-mips-5s.h
+		configuration_file=xm-umips.h
+	        ;;
+	mips-bsd43-os5)			# BSD 4.3 variant of MIPS system, RISC-OS 5.00
+		cpu_type=mips
+		target_machine=tm-mips-5b.h
+	        ;;
+	mips-sysv | mips-sysv-os4)	# SYSV variant of MIPS system, RISC-OS 4.00
 		cpu_type=mips
 		target_machine=tm-mips-sysv.h
 		configuration_file=xm-umips.h
 	        ;;
-	mips-bsd43)			# BSD 4.3 variant of MIPS system.
+	mips-bsd43 | mips-bsd43-os4)	# BSD 4.3 variant of MIPS system, RISC-OS 4.00
 		cpu_type=mips
 		target_machine=tm-mips-bsd.h
 	        ;;

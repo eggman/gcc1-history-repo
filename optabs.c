@@ -1254,7 +1254,8 @@ expand_float (real_to, from, unsignedp)
       emit_cmp_insn (to, GET_MODE (to) == DFmode ? dconst0_rtx : fconst0_rtx,
 		     0, 0, 0);
       emit_jump_insn (gen_bge (label));
-      offset = REAL_VALUE_LDEXP (1.0, GET_MODE_BITSIZE (GET_MODE (from)));
+      /* On SCO 3.2.1, ldexp rejects values outside [0.5, 1).  */
+      offset = REAL_VALUE_LDEXP (0.5, GET_MODE_BITSIZE (GET_MODE (from)) + 1);
       temp = expand_binop (GET_MODE (to), add_optab, to,
 			   immed_real_const_1 (offset, GET_MODE (to)),
 			   to, 0, OPTAB_LIB_WIDEN);
@@ -1332,7 +1333,8 @@ expand_fix (to, from, unsignedp)
 
 	      /* Subtract 2**(N-1), convert to signed number,
 		 then add 2**(N-1).  */
-	      offset = REAL_VALUE_LDEXP (1.0, bitsize - 1);
+	      /* On SCO 3.2.1, ldexp rejects values outside [0.5, 1).  */
+	      offset = REAL_VALUE_LDEXP (0.5, bitsize);
 	      temp = expand_binop (GET_MODE (from), sub_optab, from,
 				   immed_real_const_1 (offset, GET_MODE (from)),
 				   0, 0, OPTAB_LIB_WIDEN);

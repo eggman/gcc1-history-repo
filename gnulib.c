@@ -3,6 +3,11 @@
 
 #include "config.h"
 
+/* Don't use `fancy_abort' here even if config.h says to use it.  */
+#ifdef abort
+#undef abort
+#endif
+
 /* Define the C data type to use for an SImode value.  */
 
 #ifndef SItype

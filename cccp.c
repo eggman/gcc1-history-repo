@@ -74,6 +74,7 @@ typedef unsigned char U_CHAR;
 #include <time.h>
 #include <errno.h>		/* This defines "errno" properly */
 #include <perror.h>		/* This defines sys_errlist/sys_nerr properly */
+#include <descrip.h>
 #define O_RDONLY	0	/* Open arg for Read/Only  */
 #define O_WRONLY	1	/* Open arg for Write/Only */
 #define read(fd,buf,size)	VAX11_C_read(fd,buf,size)
@@ -1025,17 +1026,17 @@ main (argc, argv)
   }
   fp->bufp = fp->buf;
   fp->if_stack = if_stack;
-  
-  /* Unless inhibited, convert trigraphs in the input.  */
-
-  if (!no_trigraphs)
-    trigraph_pcp (fp);
 
   /* Make sure data ends with a newline.  And put a null after it.  */
 
   if (fp->length > 0 && fp->buf[fp->length-1] != '\n')
     fp->buf[fp->length++] = '\n';
   fp->buf[fp->length] = '\0';
+  
+  /* Unless inhibited, convert trigraphs in the input.  */
+
+  if (!no_trigraphs)
+    trigraph_pcp (fp);
 
   /* Now that we know the input file is valid, open the output.  */
 
@@ -2276,6 +2277,8 @@ handle_directive (ip, op)
 		*cp++ = *xp++;
 		SKIP_WHITE_SPACE (xp);
 	      }
+	    } else {
+	      *cp++ = *xp++;
 	    }
 	    break;
 
@@ -2778,12 +2781,14 @@ finclude (f, fname, op)
     free (basep);
   }
 
-  if (!no_trigraphs)
-    trigraph_pcp (fp);
+  /* Make sure data ends with a newline.  And put a null after it.  */
 
   if (fp->length > 0 && fp->buf[fp->length-1] != '\n')
     fp->buf[fp->length++] = '\n';
   fp->buf[fp->length] = '\0';
+
+  if (!no_trigraphs)
+    trigraph_pcp (fp);
 
   success = 1;
   indepth++;
@@ -3751,8 +3756,11 @@ skip_if_group (ip, any)
 	  bp += 2;
 	else if (*bp == '/' && bp[1] == '*') {
 	  bp += 2;
-	  while (!(*bp == '*' && bp[1] == '/'))
+	  while (!(*bp == '*' && bp[1] == '/')) {
+	    if (*bp == '\n')
+	      ip->lineno++;
 	    bp++;
+	  }
 	  bp += 2;
 	}
 	else if (cplusplus && *bp == '/' && bp[1] == '/') {
@@ -3766,7 +3774,7 @@ skip_if_group (ip, any)
 	break;
       }
 
-      bp = ip->bufp + 1;		/* point at '#' */
+      bp = ip->bufp + 1;	/* Point after '#'.  */
 
       /* Skip whitespace and \-newline.  */
       while (1) {
@@ -3774,6 +3782,16 @@ skip_if_group (ip, any)
 	  bp++;
 	else if (*bp == '\\' && bp[1] == '\n')
 	  bp += 2;
+	else if (*bp == '/' && bp[1] == '*') {
+	  bp += 2;
+	  while (!(*bp == '*' && bp[1] == '/'))
+	    bp++;
+	  bp += 2;
+	}
+	else if (cplusplus && *bp == '/' && bp[1] == '/') {
+	  bp += 2;
+	  while (*bp++ != '\n') ;
+        }
 	else break;
       }
 
@@ -4338,8 +4356,10 @@ macroexpand (hp, op)
 	      continue;
 	    }
 
-	    /* Internal sequences of whitespace are replaced by one space.  */
-	    if (c == '\n' ? arg->raw[i+1] == '\n' : is_space[c]) {
+	    /* Internal sequences of whitespace are replaced by one space
+	       except within an string or char token.  */
+	    if (! in_string
+		&& (c == '\n' ? arg->raw[i+1] == '\n' : is_space[c])) {
 	      while (1) {
 		/* Note that Newline Space does occur within whitespace
 		   sequences; consider it part of the sequence.  */
@@ -4585,10 +4605,16 @@ macarg (argptr)
     while (buf != lim) {
       register U_CHAR c = *buf++;
       totlen++;
+      /* Internal sequences of whitespace are replaced by one space
+	 in most cases, but not always.  So count all the whitespace
+	 in case we need to keep it all.  */
+#if 0
       /* If ANSI, replace internal sequences of whitespace with one space.  */
       if (is_space[c] && !traditional)
 	SKIP_ALL_WHITE_SPACE (buf);
-      else if (c == '\"' || c == '\\') /* escape these chars */
+      else
+#endif
+      if (c == '\"' || c == '\\') /* escape these chars */
 	totlen++;
       else if (!isprint (c))
 	totlen += 3;
@@ -5372,7 +5398,7 @@ make_undef (str)
   for (kt = directive_table; kt->type != T_UNDEF; kt++)
     ;
 
-  do_undef (str,str + strlen (str) - 1, NULL, kt);
+  do_undef (str, str + strlen (str), NULL, kt);
   --indepth;
 }
 
@@ -5625,8 +5651,8 @@ hack_vms_include_specification (fname)
     strcpy (fname, fname+2);
   /* Look for the boundary between the VMS and UNIX filespecs */
   cp = rindex (fname, ']');	/* Look for end of dirspec. */
-  if (cp == 0) cp == rindex (fname, '>'); /* ... Ditto		    */
-  if (cp == 0) cp == rindex (fname, ':'); /* Look for end of devspec. */
+  if (cp == 0) cp = rindex (fname, '>'); /* ... Ditto		    */
+  if (cp == 0) cp = rindex (fname, ':'); /* Look for end of devspec. */
   if (cp) {
     cp++;
   } else {

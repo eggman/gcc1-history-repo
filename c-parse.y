@@ -191,9 +191,7 @@ extdef:
 	fndef
 	| datadef
 	| ASM '(' string ')' ';'
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  if (TREE_CHAIN ($3)) $3 = combine_strings ($3);
+		{ if (TREE_CHAIN ($3)) $3 = combine_strings ($3);
 		  assemble_asm ($3); }
 	;
 
@@ -599,13 +597,9 @@ typespec: TYPESPEC
 	| structsp
 	| TYPENAME
 	| TYPEOF '(' expr ')'
-		{ $$ = TREE_TYPE ($3);
-		  if (pedantic)
-		    warning ("ANSI C forbids `typeof'"); }
+		{ $$ = TREE_TYPE ($3); }
 	| TYPEOF '(' typename ')'
-		{ $$ = groktypename ($3);
-		  if (pedantic)
-		    warning ("ANSI C forbids `typeof'"); }
+		{ $$ = groktypename ($3); }
 	;
 
 /* A typespec that is a reserved word, or a type qualifier.  */
@@ -631,8 +625,6 @@ maybeasm:
 	| ASM '(' string ')'
 		{ if (TREE_CHAIN ($3)) $3 = combine_strings ($3);
 		  $$ = $3;
-		  if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
 		}
 	;
 
@@ -1185,13 +1177,9 @@ stmt:
 
 maybe_type_qual:
 	/* empty */
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_line_note (input_filename, lineno); }
+		{ emit_line_note (input_filename, lineno); }
 	| TYPE_QUAL
-		{ if (pedantic)
-		    warning ("ANSI C forbids use of `asm' keyword");
-		  emit_line_note (input_filename, lineno); }
+		{ emit_line_note (input_filename, lineno); }
 	;
 
 xexpr:
@@ -1440,6 +1428,10 @@ static int *wide_buffer;	/* Pointer to wide-string buffer.
 
 /* Nonzero if end-of-file has been seen on input.  */
 static int end_of_file;
+
+/* Buffered character to reread.
+   I'm not sure why ungetc is not used.  */
+static int nextchar = -1;
 
 /* Data type that represents the GNU C reserved words. */
 struct resword { char *name; short token; enum rid rid; };
@@ -1839,6 +1831,8 @@ check_newline ()
 
 	      ungetc (c, finput);
 	      token = yylex ();
+	      if (nextchar >= 0)
+		ungetc (nextchar, finput), nextchar = -1;
 	      if (token != STRING
 		  || TREE_CODE (yylval.ttype) != STRING_CST)
 		{
@@ -1875,6 +1869,8 @@ linenum:
 
   ungetc (c, finput);
   token = yylex ();
+  if (nextchar >= 0)
+    ungetc (nextchar, finput), nextchar = -1;
 
   if (token == CONSTANT
       && TREE_CODE (yylval.ttype) == INTEGER_CST)
@@ -1900,6 +1896,8 @@ linenum:
       /* More follows: it must be a string constant (filename).  */
 
       token = yylex ();
+      if (nextchar >= 0)
+	ungetc (nextchar, finput), nextchar = -1;
       if (token != STRING || TREE_CODE (yylval.ttype) != STRING_CST)
 	{
 	  error ("invalid #line");
@@ -1923,6 +1921,8 @@ linenum:
       ungetc (c, finput);
 
       token = yylex ();
+      if (nextchar >= 0)
+	ungetc (nextchar, finput), nextchar = -1;
 
       /* `1' after file name means entering new file.
 	 `2' after file name means just left a file.  */
@@ -2092,8 +2092,6 @@ yyerror (string)
   error (buf, token_buffer);
 }
 
-static int nextchar = -1;
-
 static int
 yylex ()
 {
@@ -2222,7 +2220,16 @@ yylex ()
 			&& ptr->rid != RID_INLINE)
 		    /* Recognize __inline, etc. despite -ftraditional.  */
 		    || token_buffer[0] == '_'))
-	      value = (int) ptr->token;
+	      {
+		value = (int) ptr->token;
+		/* Even if we decided to recognize asm, still perhaps warn.  */
+		if (pedantic
+		    && (value == ASM || value == TYPEOF
+			|| ptr->rid == RID_INLINE)
+		    && token_buffer[0] != '_')
+		  warning ("ANSI does not permit the keyword `%s'",
+			   token_buffer);
+	      }
 	  }
       }
 
@@ -2552,11 +2559,15 @@ yylex ()
 
 	    /* This is simplified by the fact that our constant
 	       is always positive.  */
+	    /* The casts in the following statement should not be
+	       needed, but they get around bugs in some C compilers.  */
 	    yylval.ttype
 	      = (build_int_2
-		 ((shorts[3]<<24) + (shorts[2]<<16) + (shorts[1]<<8) + shorts[0],
+		 ((((long)shorts[3]<<24) + ((long)shorts[2]<<16)
+		   + ((long)shorts[1]<<8) + (long)shorts[0]),
 		  (spec_long_long
-		   ? (shorts[7]<<24) + (shorts[6]<<16) + (shorts[5]<<8) + shorts[4]
+		   ? (((long)shorts[7]<<24) + ((long)shorts[6]<<16)
+		      + ((long)shorts[5]<<8) + (long)shorts[4])
 		   : 0)));
 
 	    if (!spec_long && !spec_unsigned

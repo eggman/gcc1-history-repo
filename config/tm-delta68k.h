@@ -445,7 +445,7 @@ do { fprintf (asm_out_file, "\tdef\t");	\
 #define PUT_SDB_ENDEF fputs("\tendef\n", asm_out_file)
 #define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\ttype\t0%o;", a)
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\tsize\t%d;", a)
-#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\tdim\t%d;", a)
+#define PUT_SDB_START_DIM fprintf(asm_out_file, "\tdim\t")
 
 #define PUT_SDB_TAG(a)				\
 do { fprintf (asm_out_file, "\ttag\t");	\
