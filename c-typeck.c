@@ -3061,45 +3061,48 @@ digest_init (type, init, tail)
   /* Initialization of an array of chars from a string constant
      optionally enclosed in braces.  */
 
-  if (code == ARRAY_TYPE
-      && (TREE_TYPE (type) == char_type_node
-	  || TREE_TYPE (type) == signed_char_type_node
-	  || TREE_TYPE (type) == unsigned_char_type_node
-	  || TREE_TYPE (type) == unsigned_type_node
-	  || TREE_TYPE (type) == integer_type_node)
-      && ((init && TREE_CODE (init) == STRING_CST)
-	  || (element && TREE_CODE (element) == STRING_CST)))
+  if (code == ARRAY_TYPE)
     {
-      tree string = element ? element : init;
+      tree typ1 = TYPE_MAIN_VARIANT (TREE_TYPE (type));
+      if ((typ1 == char_type_node
+	   || typ1 == signed_char_type_node
+	   || typ1 == unsigned_char_type_node
+	   || typ1 == unsigned_type_node
+	   || typ1 == integer_type_node)
+	  && ((init && TREE_CODE (init) == STRING_CST)
+	      || (element && TREE_CODE (element) == STRING_CST)))
+	{
+	  tree string = element ? element : init;
 
-      if (TREE_TYPE (TREE_TYPE (string)) != char_type_node
-	  && TYPE_PRECISION (TREE_TYPE (type)) == BITS_PER_UNIT)
-	{
-	  error ("char-array initialized from wide string");
-	  return error_mark_node;
-	}
-      if (TREE_TYPE (TREE_TYPE (string)) == char_type_node
-	  && TYPE_PRECISION (TREE_TYPE (type)) != BITS_PER_UNIT)
-	{
-	  error ("int-array initialized from non-wide string");
-	  return error_mark_node;
-	}
+	  if (TREE_TYPE (TREE_TYPE (string)) != char_type_node
+	      && TYPE_PRECISION (typ1) == BITS_PER_UNIT)
+	    {
+	      error ("char-array initialized from wide string");
+	      return error_mark_node;
+	    }
+	  if (TREE_TYPE (TREE_TYPE (string)) == char_type_node
+	      && TYPE_PRECISION (typ1) != BITS_PER_UNIT)
+	    {
+	      error ("int-array initialized from non-wide string");
+	      return error_mark_node;
+	    }
 
-      if (pedantic && TREE_TYPE (type) != char_type_node)
-	warning ("ANSI C forbids string initializer except for `char' elements");
-      TREE_TYPE (string) = type;
-      if (TYPE_DOMAIN (type) != 0
-	  && TREE_LITERAL (TYPE_SIZE (type)))
-	{
-	  register int size
-	    = TREE_INT_CST_LOW (TYPE_SIZE (type)) * TYPE_SIZE_UNIT (type);
-	  size = (size + BITS_PER_UNIT - 1) / BITS_PER_UNIT;
-	  /* Subtract 1 because it's ok to ignore the terminating null char
-	     that is counted in the length of the constant.  */
-	  if (size < TREE_STRING_LENGTH (string) - 1)
-	    warning ("initializer-string for array of chars is too long");
+	  if (pedantic && typ1 != char_type_node)
+	    warning ("ANSI C forbids string initializer except for `char' elements");
+	  TREE_TYPE (string) = type;
+	  if (TYPE_DOMAIN (type) != 0
+	      && TREE_LITERAL (TYPE_SIZE (type)))
+	    {
+	      register int size
+		= TREE_INT_CST_LOW (TYPE_SIZE (type)) * TYPE_SIZE_UNIT (type);
+	      size = (size + BITS_PER_UNIT - 1) / BITS_PER_UNIT;
+	      /* Subtract 1 because it's ok to ignore the terminating null char
+		 that is counted in the length of the constant.  */
+	      if (size < TREE_STRING_LENGTH (string) - 1)
+		warning ("initializer-string for array of chars is too long");
+	    }
+	  return string;
 	}
-      return string;
     }
 
   /* Handle scalar types, including conversions.  */
@@ -3211,8 +3214,10 @@ process_init_constructor (type, init, elts)
 	  if (TREE_VALUE (tail) != 0)
 	    {
 	      tree tail1 = tail;
-	      next1 = digest_init (TREE_TYPE (type),
+	      next1 = digest_init (TYPE_MAIN_VARIANT (TREE_TYPE (type)),
 				   TREE_VALUE (tail), &tail1);
+	      if (tail1 != 0 && TREE_CODE (tail1) != TREE_LIST)
+		abort ();
 	      tail = tail1;
 	    }
 	  else
@@ -3244,6 +3249,8 @@ process_init_constructor (type, init, elts)
 	      tree tail1 = tail;
 	      next1 = digest_init (TREE_TYPE (field),
 				   TREE_VALUE (tail), &tail1);
+	      if (tail1 != 0 && TREE_CODE (tail1) != TREE_LIST)
+		abort ();
 	      tail = tail1;
 	    }
 	  else

@@ -37,11 +37,9 @@ extern void free ();
 /* flags to determine output of machine description dependent #define's.  */
 int max_recog_operands_flag;
 int max_dup_operands_flag;
-int max_sets_per_insn_flag;
 int max_clobbers_per_insn_flag;
 int register_constraint_flag;
 
-int sets_seen_this_insn;
 int clobbers_seen_this_insn;
 int dup_operands_seen_this_insn;
 
@@ -61,10 +59,6 @@ walk_insn_part (part)
   code = GET_CODE (part);
   switch (code)
     {
-    case SET:
-      sets_seen_this_insn++;
-      break;
-
     case CLOBBER:
       clobbers_seen_this_insn++;
       break;
@@ -115,15 +109,12 @@ gen_insn (insn)
   int i;
 
   /* Walk the insn pattern to gather the #define's status.  */
-  sets_seen_this_insn = 0;
   clobbers_seen_this_insn = 0;
   dup_operands_seen_this_insn = 0;
   if (XVEC (insn, 1) != 0)
     for (i = 0; i < XVECLEN (insn, 1); i++)
       walk_insn_part (XVECEXP (insn, 1, i));
 
-  if (sets_seen_this_insn > max_sets_per_insn_flag)
-    max_sets_per_insn_flag = sets_seen_this_insn;
   if (clobbers_seen_this_insn > max_clobbers_per_insn_flag)
     max_clobbers_per_insn_flag = clobbers_seen_this_insn;
   if (dup_operands_seen_this_insn > max_dup_operands_flag)
@@ -148,13 +139,10 @@ gen_expand (insn)
 	/* Compute the maximum SETs and CLOBBERS
 	   in any one of the sub-insns;
 	   don't sum across all of them.  */
-	sets_seen_this_insn = 0;
 	clobbers_seen_this_insn = 0;
 
 	walk_insn_part (XVECEXP (insn, 1, i));
 
-	if (sets_seen_this_insn > max_sets_per_insn_flag)
-	  max_sets_per_insn_flag = sets_seen_this_insn;
 	if (clobbers_seen_this_insn > max_clobbers_per_insn_flag)
 	  max_clobbers_per_insn_flag = clobbers_seen_this_insn;
       }
@@ -253,8 +241,6 @@ from the machine description file `md'.  */\n\n");
   if (max_dup_operands_flag == 0)
     max_dup_operands_flag = 1;
   printf ("\n#define MAX_DUP_OPERANDS %d\n", max_dup_operands_flag);
-
-  printf ("#define MAX_SETS_PER_INSN %d\n", max_sets_per_insn_flag);
 
   printf ("#define MAX_CLOBBERS_PER_INSN %d\n", max_clobbers_per_insn_flag);
 

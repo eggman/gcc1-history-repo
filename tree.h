@@ -700,6 +700,7 @@ extern tree chainon ();
 /* Make a new TREE_LIST node from specified PURPOSE, VALUE and CHAIN.  */
 
 extern tree tree_cons (), perm_tree_cons (), temp_tree_cons ();
+extern tree saveable_tree_cons ();
 
 /* Return the last tree node in a chain.  */
 

@@ -2205,6 +2205,10 @@ try_distrib (insn, xprev1, xprev2)
   src1 = SET_SRC (pat1);
   src2 = SET_SRC (pat2);
 
+  if (GET_CODE (SET_DEST (pat1)) != REG
+      || GET_CODE (SET_DEST (pat2)) != REG)
+    return 0;
+
   switch (code)
     {
     default:
@@ -2217,7 +2221,22 @@ try_distrib (insn, xprev1, xprev2)
       ;
     }
 
-  /* Don't bother if modes don't match.  */
+  /* Insns PREV1 and PREV2 must provide the two operands of the arithmetic
+     that is done in INSN.  */
+  if (! ((XEXP (SET_SRC (pat), 0) == SET_DEST (pat1)
+	  && XEXP (SET_SRC (pat), 1) == SET_DEST (pat2))
+	 ||
+	 (XEXP (SET_SRC (pat), 0) == SET_DEST (pat2)
+	  && XEXP (SET_SRC (pat), 1) == SET_DEST (pat1))))
+    return 0;
+
+  /* They must not be used in any other way in INSN.
+     In particular, they must not be used in a result memory address.  */
+  if (reg_mentioned_p (SET_DEST (pat1), SET_DEST (pat))
+      || reg_mentioned_p (SET_DEST (pat2), SET_DEST (pat)))
+    return 0;
+
+  /* Give up if the two operands' modes don't match.  */
   if (GET_MODE (src1) != GET_MODE (src2))
     return 0;
 

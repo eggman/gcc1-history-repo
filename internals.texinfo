@@ -39,9 +39,9 @@ Free Software Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 6 September 1988
+@center last updated 12 September 1988
 @sp 1
-@center for version 1.27
+@center for version 1.28
 @page
 @vskip 0pt plus 1filll
 Copyright @copyright{} 1988 Free Software Foundation, Inc.
@@ -58,9 +58,9 @@ distributed under the terms of a permission notice identical to this one.
 
 Permission is granted to copy and distribute translations of this manual
 into another language, under the above conditions for modified versions,
-except that the section entitled ``GNU CC General Public License'' may be
-included in a translation approved by the author instead of in the original
-English.
+except that the section entitled ``GNU CC General Public License'' and
+this permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 @end titlepage
 @page
 
@@ -439,6 +439,16 @@ constants in a macro definition (and their values are stringified,
 though without additional quote marks, when they appear in such a
 context).  The preprocessor always considers a string constant to end
 at a newline.
+
+@item
+The predefined macro @code{__STDC__} is not defined when you use
+@samp{-traditional}, but @code{__GNUC__} is (since the GNU extensions
+which @code{__GNUC__} indicates are not affected by
+@samp{-traditional}).  If you need to write header files that work
+differently depending on whether @samp{-traditional} is in use, by
+testing both of these predefined macros you can distinguish four
+situations: GNU C, traditional GNU C, other ANSI C compilers, and
+other old C compilers.
 @end itemize
 
 @item -O
@@ -1004,7 +1014,7 @@ for vaxen running system V.
 @item config-i386v.h
 for Intel 80386's running system V.
 @item config-sun4.h
-for Suns (model 3 or 4) running @emph{operating system} version 4.
+for Suns (model 2, 3 or 4) running @emph{operating system} version 4.
 @item config-hp9k3.h
 for the HP 9000 series 300.
 @item config-gnx.h
@@ -1086,9 +1096,8 @@ unnecessary if the Bison output files @file{c-parse.tab.c} and
 @file{cexp.c} are more recent than @file{c-parse.y} and @file{cexp.y}
 and you do not plan to change the @samp{.y} files.)
 
-Note that if you have an old version of Bison you may get an error
-from the line with the @samp{%expect} directive.  If so, simply remove
-that line from @file{c-parse.y} and proceed.
+Bison versions older that Sept 8, 1988 will produce incorrect output
+for @file{c-parse.tab.c}.
 
 @item
 If you are using a Sun, make sure the environment variable
@@ -2122,21 +2131,17 @@ example:
 
 @example
 #define set_priority(x)  \
-asm volatile ("set_priority %1":    \
-              "=m" (*(char *)0): "g" (x))
+asm volatile ("set_priority %0": /* no outputs */ : "g" (x))
 @end example
 
-@noindent
-Note that we have supplied an output operand which is not actually used in
-the instruction.  This is because @code{asm} requires at least one output
-operand.  This requirement exists for internal implementation reasons and
-we might be able to relax it in the future.
-
-In this case output operand has the additional benefit effect of giving the
-appearance of writing in memory.  As a result, GNU CC will assume that data
-previously fetched from memory must be fetched again if needed again later.
-This may be desirable if you have not employed the @code{volatile} keyword
-on all the variable declarations that ought to have it.
+It is a natural idea to look for a way to give access to the condition
+code left by the assembler instruction.  However, when we attempted to
+implement this, we found no way to make it work reliably.  The problem
+is that output operands might need reloading, which would result in
+additional following ``store'' instructions.  On most machines, these
+instructions would alter the condition code before there was time to
+test it.  This problem doesn't arise for ordinary ``test'' and
+``compare'' instructions because they don't have any output operands.
 
 @node Asm Labels,,Extended Asm, Extensions
 @section Controlling Names Used in Assembler Code
@@ -2468,27 +2473,43 @@ GNU CC is normally configured to use the same function calling convention
 normally in use on the target system.  This is done with the
 machine-description macros described (@pxref{Machine Macros}).
 
-However, returning of structure and union values is done differently.
-As a result, functions compiled with PCC returning such types cannot
-be called from code compiled with GNU CC, and vice versa.  This usually
-does not cause trouble because the Unix library routines don't return
-structures and unions.
+However, returning of structure and union values is done differently on
+some target machines.  As a result, functions compiled with PCC
+returning such types cannot be called from code compiled with GNU CC,
+and vice versa.  This does not cause trouble often because few Unix
+library routines return structures or unions.
 
-Structures and unions that are 1, 2, 4 or 8 bytes long are returned in the
-same registers used for @code{int} or @code{double} return values.  (GNU CC
-typically allocates variables of such types in registers also.)  Structures
-and unions of other sizes are returned by storing them into an address
-passed by the caller in a register.  This method is faster than the one
-normally used by PCC and is also reentrant.  The register used for passing
-the address is specified by the machine-description macro
-@code{STRUCT_VALUE}.
+GNU CC code returns structures and unions that are 1, 2, 4 or 8 bytes
+long in the same registers used for @code{int} or @code{double} return
+values.  (GNU CC typically allocates variables of such types in
+registers also.)  Structures and unions of other sizes are returned by
+storing them into an address passed by the caller (usually in a
+register).  The machine-description macros @code{STRUCT_VALUE} and
+@code{STRUCT_INCOMING_VALUE} tell GNU CC where to pass this address.
 
-GNU CC always passes arguments on the stack.  At some point it will be
-extended to pass arguments in registers, for machines which use that as
-the standard calling convention.  This will make it possible to use such
-a convention on other machines as well.  However, that would render it
-completely incompatible with PCC.  We will probably do this once we
-have a complete GNU system so we can compile the libraries with GNU CC.
+By contrast, PCC on most target machines returns structures and unions
+of any size by copying the data into an area of static storage, and then
+returning the address of that storage as if it were a pointer value.
+The caller must copy the data from that memory area to the place where
+the value is wanted.  This is slower than the method used by GNU CC, and
+fails to be reentrant.
+
+On some target machines, such as RISC machines and the 80386, the
+standard system convention is to pass to the subroutine the address of
+where to return the value.  On these machines, GNU CC has been
+configured to be compatible with the standard compiler, when this method
+is used.  It may not be compatible for structures of 1, 2, 4 or 8 bytes.
+
+GNU CC uses the system's standard convention for passing arguments.  On
+some machines, the first few arguments are passed in registers; in
+others, all are passed on the stack.  It would be possible to use
+registers for argument passing on any machine, and this would probably
+result in a significant speedup.  But the result would be complete
+incompatibility with code that follows the standard convention.  So this
+change is practical only if you are switching to GNU CC as the sole C
+compiler for the system.  We may implement register argument passing on
+certain machines once we have a complete GNU system so that we can
+compile the libraries with GNU CC.
 
 If you use @code{longjmp}, beware of automatic variables.  ANSI C says that
 automatic variables that are not declared @code{volatile} have undefined
@@ -2511,13 +2532,26 @@ go in a register:
 @}
 @end example
 
-Code compiled with GNU CC may call certain library routines.  The routines
-needed on the Vax and 68000 are in the file @file{gnulib.c}.  You must
-compile this file with the standard C compiler, not with GNU CC, and then
-link it with each program you compile with GNU CC.  (In actuality, many
-programs will not need it.)  The usual function call interface is used
-for calling the library routines.  Some standard parts of the C library,
-such as @code{bcopy}, are also called automatically.
+Code compiled with GNU CC may call certain library routines.  Most of
+them handle arithmetic for which there are no instructions.  This
+includes multiply and divide on some machines, and floating point
+operations on any machine for which floating point support is disabled
+with @samp{-msoft-float}.  Some standard parts of the C library, such as
+@code{bcopy} or @code{memcpy}, are also called automatically.  The usual
+function call interface is used for calling the library routines.
+
+These library routines should be defined in the library @file{gnulib},
+which GNU CC automatically searches whenever it links a program.  On
+machines that have multiply and divide instructions, if hardware
+floating point is in use, normally @file{gnulib} is not needed, but it
+is searched just in case.
+
+Each arithmetic function is defined in @file{gnulib.c} to use the
+corresponding C arithmetic operator.  As long as the file is compiled
+with another C compiler, which supports all the C arithmetic operators,
+this file will work portably.  However, @file{gnulib.c} does not work if
+compiled with GNU CC, because each arithmetic function would compile
+into a call to itself!
 
 @node Passes, RTL, Interface, Top
 @chapter Passes and Files of the Compiler
@@ -4623,6 +4657,20 @@ operand, the constraint letter @samp{o} is valid only when accompanied
 by both @samp{<} (if the target machine has predecrement addressing)
 and @samp{>} (if the target machine has preincrement addressing).
 
+When the constraint letter @samp{o} is used, the reload pass may
+generate instructions which copy a nonoffsetable address into an index
+register.  The idea is that the register can be used as a replacement
+offsetable address.  But this method requires that there be patterns
+to copy any kind of address into a register.  Auto-increment
+and auto-decrement addresses are an exception; there need not be an
+instruction that can copy such an address into a register, because
+reload handles these cases specially.
+
+Most older machine designs have ``load address'' instructions which do
+just what is needed here.  Some RISC machines do not advertise such
+instructions, but the possible addresses on these machines are very
+limited, so it is easy to fake them.
+
 @item @samp{<}
 A memory operand with autodecrement addressing (either predecrement or
 postdecrement) is allowed.
@@ -4781,16 +4829,51 @@ results might look like this:
   @dots{})
 @end example
 
-Because insns that don't fit the constraints are fixed up by loading
-operands into registers, every instruction pattern's constraints must
-permit the case where all the operands are in registers.  It need not
-permit all classes of registers; the compiler knows how to copy registers
-into other registers of the proper class in order to make an instruction
-valid.  But if no registers are permitted, the compiler will be stymied: it
-does not know how to save a register in memory in order to make an
-instruction valid.  Instruction patterns that reject registers can be
-made valid by attaching a condition-expression that refuses to match
-an insn at all if the crucial operand is a register.
+It is up to you to make sure that each operand, in each pattern, has
+constraints that can handle any RTL expression that could be present for
+that operand.  (When multiple alternatives are in use, each pattern must,
+for each possible combination of operand expressions, have at least one
+alternative which can handle that combination of operands.)  The
+constraints don't need to @emph{allow} any possible operand---when this is
+the case, they do not constrain---but they must at least point the way to
+reloading any possible operand so that it will fit.
+
+@itemize @bullet
+@item
+If the constraint accepts whatever operands the predicate permits,
+there is no problem: reloading is never necessary for this operand.
+
+For example, an operand whose constraints permit everything except
+registers is safe provided its predicate rejects registers.
+
+An operand whose predicate accepts only constant values is safe
+provided its constraints include the letter @samp{i}.  If any possible
+constant value is accepted, then nothing less than @samp{i} will do;
+if the predicate is more selective, than the constraints may also be
+more selective.
+
+@item
+Any operand expression can be reloaded by copying it into a register.
+So if an operand's constraints allow some kind of register, it is
+certain to be safe.  It need not permit all classes of registers; the
+compiler knows how to copy a register into another register of the
+proper class in order to make an instruction valid.
+
+@item
+A nonoffsetable memory reference can be reloaded by copying the
+address into a register.  So if the constraint uses the letter
+@samp{o}, all memory references are taken care of.
+
+@item
+A constant operand can be reloaded by storing it in memory; it then
+becomes an offsetable memory reference.  So if the constraint uses the
+letters @samp{o} or @samp{m}, constant operands are not a problem.
+@end itemize
+
+If the operand's predicate can recognize registers, but the constraint does
+not permit them, it can make the compiler crash.  When this operand happens
+to be a register, the reload pass will be stymied, because it does not know
+how to copy a register temporarily into memory.
 
 @node Multi-Alternative, Class Preferences, Simple Constraints, Constraints
 @subsection Multiple Alternative Constraints
@@ -5461,6 +5544,22 @@ will be incorrect if the constant value does not actually fit that mode.
 Such instructions to extend constants are rarely generated because they are
 optimized away, but they do occasionally happen in nonoptimized
 compilations.
+
+When an instruction has the constraint letter @samp{o}, the reload
+pass may generate instructions which copy a nonoffsetable address into
+an index register.  The idea is that the register can be used as a
+replacement offsetable address.  In order for these generated
+instructions to work, there must be patterns to copy any kind of valid
+address into a register.
+
+Most older machine designs have ``load address'' instructions which do
+just what is needed here.  Some RISC machines do not advertise such
+instructions, but the possible addresses on these machines are very
+limited, so it is easy to fake them.
+
+Auto-increment and auto-decrement addresses are an exception; there
+need not be an instruction that can copy such an address into a
+register, because reload handles these cases in a different manner.
 
 @node Jump Patterns, Peephole Definitions, Dependent Patterns, Machine Desc
 @section Defining Jump Instruction Patterns
@@ -6521,6 +6620,18 @@ Offset from the argument pointer register to the first argument's
 address.  On some machines it may depend on the data type of the
 function.  (In the next version of GNU CC, the argument will be
 changed to the function data type rather than its declaration.)
+
+@item FIRST_PARM_CALLER_OFFSET (@var{fundecl})
+Define this macro on machines where register parameters have shadow
+locations on the stack, at addresses below the nominal parameter.
+This matters because certain arguments cannot be passed on the stack.
+On these machines, such arguments must be stored into the shadow
+locations.
+
+This macro should expand into a C expression whose value is the offset
+of the first parameter's shadow location from the nominal stack
+pointer value.  (That value is itself computed by adding the value of
+@code{STACK_POINTER_OFFSET} to the stack pointer register.)
 
 @item RETURN_POPS_ARGS (@var{funtype})
 A C expression that should be 1 if a function pops its own arguments

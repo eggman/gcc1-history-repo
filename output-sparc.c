@@ -90,7 +90,8 @@ single_insn_src_p (op, mode)
     }
 }
 
-/* ??? Comment needed here */
+/* Return truth value of whether OP can be used as an operands in a three
+   address arithmetic insn (such as add %o1,7,%l2) of mode MODE.  */
 
 int
 arith_operand (op, mode)
@@ -101,7 +102,8 @@ arith_operand (op, mode)
 	  || (GET_CODE (op) == CONST_INT && SMALL_INT (op)));
 }
 
-/* ??? Comment needed here */
+/* Return truth value of whether OP can be used as an operand in a two
+   address arithmetic insn (such as set 123456,%o4) of mode MODE.  */
 
 int
 arith32_operand (op, mode)
@@ -110,6 +112,9 @@ arith32_operand (op, mode)
 {
   return (register_operand (op, mode) || GET_CODE (op) == CONST_INT);
 }
+
+/* Return truth value of whether OP is a integer which fits the
+   range constraining immediate operands in three-address insns.  */
 
 int
 small_int (op, mode)
@@ -449,6 +454,7 @@ find_addr_reg (addr)
    (2) REG + CONST_INT
    (3) REG + REG + CONST_INT
 
+   Note that (3) is not a legitimate address.
    All cases are handled here.  */
 
 void
@@ -505,109 +511,338 @@ output_load_address (operands)
     }
 }
 
-char *
-output_block_move (operands)
-     rtx *operands;
+/* Output code to place a size count SIZE in register REG.
+   If SIZE is round, then assume that we can use alignment
+   based on that roundness, and return an integer saying
+   what alignment (roundness, transfer size) we will be using.
+
+   Because block moves are pipelined, we don't include the
+   first element in the transfer of SIZE to REG.  */
+
+static int
+output_size_for_block_move (size, reg)
+     rtx size, reg;
 {
-  static int movstrsi_label = 0;
-  int align = 4;
-
-  rtx xoperands[9];
-  int available[3];
-  int i, j;
-
-  /* Since we clobber untold things, nix the condition codes.  */
-  CC_STATUS_INIT;
-
-  /* Get past the MEMs.  */
-  operands[0] = XEXP (operands[0], 0);
-  operands[1] = XEXP (operands[1], 0);
-
-  xoperands[0] = 0;
-  xoperands[1] = 0;
-  xoperands[2] = 0;
-
-  available[0] = 1;
-  available[1] = 1;
-  available[2] = 1;
-#if 1
-  /* Prepare to juggle registers if necessary.  */
-  if (REG_P (operands[0]) && (unsigned) (REGNO (operands[0]) - 8) < 3)
-    {
-      xoperands[0] = operands[0];
-      available[REGNO (operands[0]) - 8] = 0;
-    }
-  if (REG_P (operands[1]) && (unsigned) (REGNO (operands[1]) - 8) < 3)
-    {
-      xoperands[1] = operands[1];
-      available[REGNO (operands[1]) - 8] = 0;
-    }
-  if (REG_P (operands[2]) && (unsigned) (REGNO (operands[2]) - 8) < 3)
-    {
-      xoperands[2] = operands[2];
-      available[REGNO (operands[2]) - 8] = 0;
-    }
-  for (i = 0; i < 3; i++)
-    {
-      if (xoperands[i])
-	continue;
-      if (available[0])
-	{
-	  xoperands[i] = gen_rtx (REG, SImode, 8);
-	  available[0] = 0;
-	  continue;
-	}
-      if (available[1])
-	{
-	  xoperands[i] = gen_rtx (REG, SImode, 9);
-	  available[1] = 0;
-	  continue;
-	}
-      xoperands[i] = gen_rtx (REG, SImode, 10);
-      available[2] = 0;
-    }
-#endif
+  int align;
+  rtx xoperands[2];
+  xoperands[0] = reg;
 
   /* First, figure out best alignment we may assume.  */
-  if (REG_P (operands[2]))
+  if (REG_P (size))
     {
-      xoperands[5] = operands[2];
-      output_asm_insn ("sub %5,0x1,%2", xoperands);
+      xoperands[1] = size;
+      output_asm_insn ("sub %1,1,%0", xoperands);
       align = 1;
     }
   else
     {
-      int i = INTVAL (operands[2]);
+      int i = INTVAL (size);
 
       if (i & 1)
 	align = 1;
       else if (i & 3)
 	align = 2;
+      else
+	align = 4;
 
       /* predecrement count.  */
       i -= align;
       if (i < 0) abort ();
 
-      xoperands[5] = gen_rtx (CONST_INT, VOIDmode, i);
+      xoperands[1] = gen_rtx (CONST_INT, VOIDmode, i);
 
-      output_asm_insn ("set %5,%2", xoperands);
+      output_asm_insn ("set %1,%0", xoperands);
+    }
+  return align;
+}
+
+/* Emit code to perform a block move.
+
+   OPERANDS[0] is the destination.
+   OPERANDS[1] is the source.
+   OPERANDS[2] is the size.
+
+   We clobber registers 8,9,10, and register 1 (which we
+   do not need to worry about) during this move.
+
+   It may happen that registers 8,9, and/or 10 are live
+   up to this call, in which case we must be careful
+   to use their values before clobbering them.
+
+   This function attempts to take advantage of natural
+   luck, such as an operand which is already in an operand
+   register, and hence does not need to be moved around.
+
+   Perhaps some day, GNU CC will be able to handle dynamic register
+   allocation to such inline library calls.
+   [No, never, because there is already provision for handling
+   library calls at RTL generation time, and I have no interest
+   in maintaining a redundant mechanism for them.
+   I hope some day the movstrsi pattern
+   for sparc will be deleted and an ordinary library call will be
+   used instead.  Then this function will be unnecessary. - rms]  */
+
+#define COMPATIBLE(REG,OP) \
+  (reg_conflicts[REG].ops[0] == operands[OP]	\
+   && (op_conflicts[OP].n_regs == 0		\
+       || (op_conflicts[OP].n_regs == 1		\
+	   && op_conflicts[OP].regs[0] == REG)))
+
+char *
+output_block_move (operands)
+     rtx *operands;
+{
+  /* A vector for our computed operands.  Note that load_output_address
+     makes use of up to the 8th element of this vector.  */
+  rtx xoperands[10];
+  static int movstrsi_label = 0;
+  int align = -1;		/* not yet known */
+  int i, j;
+
+  /* For each of registers 8, 9, and 10, keep track of
+     which operands use them.  */
+  struct
+    {
+      int n_ops;
+      rtx ops[3];
+    } reg_conflicts[3];
+
+  /* For each of the 3 operands, keep track of which registers
+     they use.  Each operand can only use 2 registers.  */
+  struct
+    {
+      int n_regs;
+      char regs[2];
+    } op_conflicts[3];
+
+  /* Make rtxs for the register operands we are using, and
+     initialize all data structures.  */
+  rtx regs[3];
+  rtx reg8 = gen_rtx (REG, SImode, 8);
+  rtx reg9 = gen_rtx (REG, SImode, 9);
+  rtx reg10 = gen_rtx (REG, SImode, 10);
+  regs[0] = reg8;
+  regs[1] = reg9;
+  regs[2] = reg10;
+
+  /* Since we clobber untold things, nix the condition codes.  */
+  CC_STATUS_INIT;
+
+  /* Recognize special cases of block moves.  These occur
+     when GNU C++ is forced to treat something as BLKmode
+     to keep it in memory, when its mode could be represented
+     with something smaller.  */
+  if (GET_CODE (operands[2]) == CONST_INT
+      && INTVAL (operands[2]) <= 16)
+    {
+      int size = INTVAL (operands[2]);
+      xoperands[0] = XEXP (operands[0], 0);
+      xoperands[1] = XEXP (operands[1], 0);
+      /* If we are lucky, then this rtx can safely have
+	 its INTVAL clobbered.  */
+      xoperands[2] = gen_rtx (CONST_INT, VOIDmode, 13);
+
+      if (size & 1)
+	{
+	  if (memory_address_p (QImode, plus_constant (xoperands[0], size))
+	      && memory_address_p (QImode, plus_constant (xoperands[1], size)))
+	    {
+	      for (i = size-1; i >= 0; i--)
+		{
+		  INTVAL (xoperands[2]) = i;
+		  output_asm_insn ("ldub [%a1+%2],%%g1\n\tstb %%g1,[%a0+%2]",
+				   xoperands);
+		}
+	      return "";
+	    }
+	}
+      else if (size & 2)
+	{
+	  if (memory_address_p (HImode, plus_constant (xoperands[0], size))
+	      && memory_address_p (HImode, plus_constant (xoperands[1], size)))
+	    {
+	      for (i = (size>>1)-1; i >= 0; i--)
+		{
+		  INTVAL (xoperands[2]) = i<<1;
+		  output_asm_insn ("lduh [%a1+%2],%%g1\n\tsth %%g1,[%a0+%2]",
+				   xoperands);
+		}
+	      return "";
+	    }
+	}
+      else
+	{
+	  if (memory_address_p (SImode, plus_constant (xoperands[0], size))
+	      && memory_address_p (SImode, plus_constant (xoperands[1], size)))
+	    {
+	      for (i = (size>>2)-1; i >= 0; i--)
+		{
+		  INTVAL (xoperands[2]) = i<<2;
+		  output_asm_insn ("ld [%a1+%2],%%g1\n\tst %%g1,[%a0+%2]",
+				   xoperands);
+		}
+	      return "";
+	    }
+	}
     }
 
-  /* Now, set up for pipelined operation: dest must contain
-     a pre-incremented address, because its index is pre-decremented.  */
+  bzero (reg_conflicts, sizeof (reg_conflicts));
+  bzero (op_conflicts, sizeof (op_conflicts));
 
-  xoperands[3] = plus_constant (operands[0], align);
-  output_load_address (xoperands);
+  /* Get past the MEMs.  */
+  operands[0] = XEXP (operands[0], 0);
+  operands[1] = XEXP (operands[1], 0);
 
-  xoperands[4] = operands[1];
-  output_load_address (xoperands+1);
+  /* See which operands use which registers.  */
+  for (i = 0; i < 3; i++)
+    {
+      for (j = 0; j < 3; j++)
+	{
+	  if (reg_mentioned_p (regs[i], operands[j]))
+	    {
+	      reg_conflicts[i].ops[reg_conflicts[i].n_ops++] = operands[j];
+	      op_conflicts[j].regs[op_conflicts[j].n_regs++] = i;
+	    }
+	}
+    }
+
+  /* We need to know the alignment in order to set up
+     the destination address for a pipelined move.
+     Set it up first, if that is at all easy to do.  */
+  if (op_conflicts[2].n_regs == 0
+      || (op_conflicts[2].n_regs == 1
+	  && (reg_conflicts[op_conflicts[2].regs[0]].n_ops == 0
+	      || (reg_conflicts[op_conflicts[2].regs[0]].n_ops == 1
+		  && (reg_conflicts[op_conflicts[2].regs[0]].ops[0]
+		      == operands[2])))))
+    {
+      /* This is the size of the transfer.
+         Either use the register which already contains the size,
+	 or use a free register (used by no operands).  */
+      rtx reg = op_conflicts[2].n_regs == 1
+	? regs[op_conflicts[2].regs[0]]
+	  : reg_conflicts[0].n_ops == 0
+	    ? regs[0]
+	      : reg_conflicts[1].n_ops == 0
+		? regs[1] : regs[2];
+
+      align = output_size_for_block_move (operands[2], reg);
+
+      /* Mark this registers as being unavailable.  */
+      reg_conflicts[REGNO (reg) - 8].n_ops = -1;
+
+      /* Update register usage information for the size operand.  */
+      op_conflicts[2].n_regs = 0;
+      xoperands[2] = reg;
+    }
+     
+  /* If register is used by only one operand,
+     make that register the home for that operand.  */
+  for (i = 0; i < 3; i++)
+    {
+      if (reg_conflicts[i].n_ops == 0)
+	{
+	  /* No conflicts for this register.  We can
+	     immediately load it with an operand.  Try
+	     size first, then source, last dest.  */
+	  if (xoperands[2] == 0)
+	    {
+	      j = 2;
+	      /* This is the size of the transfer.  */
+	      align = output_size_for_block_move (operands[2], regs[i]);
+	      xoperands[2] = regs[i];
+	    }
+	  else if (xoperands[1] == 0)
+	    {
+	      /* The source.  */
+	      j = 1;
+	      xoperands[1] = regs[i];
+	      xoperands[4] = operands[1];
+	      output_load_address (xoperands + 1);
+	    }
+	  else
+	    {
+	      /* The destination.  */
+	      j = 0;
+	      xoperands[0] = regs[i];
+	      xoperands[3] = plus_constant (operands[0], align);
+	      output_load_address (xoperands);
+	    }
+	  /* Mark this register as now unavailable.  */
+	  reg_conflicts[i].n_ops = -1;
+	}
+      else if (reg_conflicts[i].n_ops == 1)
+	{
+	  /* One conflict.  If the conflict is one which
+	     does not clobber anything which depends on this
+	     register, go ahead and load the operand
+	     into this register.  */
+	  if (COMPATIBLE (i, 2))
+	    {
+	      j = 2;
+	      /* This is the size of the transfer.  */
+	      align = output_size_for_block_move (operands[2], regs[i]);
+	      xoperands[2] = regs[i];
+	    }
+	  else
+	    {
+	      /* An address for the transfer.
+		 Set up for pipelined operation: dest must contain
+		 a pre-incremented address, because its index is
+		 pre-decremented.  */
+
+	      if (COMPATIBLE (i, 0))
+		{
+		  /* The destination.  */
+		  if (align < 0)
+		    continue;
+		  j = 0;
+		  xoperands[0] = regs[i];
+		  xoperands[3] = plus_constant (operands[0], align);
+		  output_load_address (xoperands);
+		}
+	      else if (COMPATIBLE (i, 1))
+		{
+		  /* The source.  */
+		  j = 1;
+		  xoperands[1] = regs[i];
+		  xoperands[4] = operands[1];
+		  output_load_address (xoperands + 1);
+		}
+	      else continue;
+	    }
+	  /* Mark this register as now unavailable.  */
+	  reg_conflicts[i].n_ops = -1;
+
+	  /* Update register usage information for operands.  */
+	  op_conflicts[j].n_regs--;
+	  if (op_conflicts[j].n_regs && op_conflicts[j].regs[0] == i)
+	    op_conflicts[j].regs[0] = op_conflicts[j].regs[1];
+	}
+    }
+
+  if (xoperands[0] == 0 || xoperands[1] == 0 || xoperands[2] == 0)
+    {
+      /* There were interlocking register requirements.  First
+	 user to submit code which triggered that wins a prize.  */
+      abort ();
+    }
 
   xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
   xoperands[4] = gen_rtx (CONST_INT, VOIDmode, align);
 
-  output_asm_insn ("\nLm%3:\n\tld [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tst %%g1,[%0+%2]", xoperands);
+  if (align == 1)
+    output_asm_insn ("\nLm%3:\n\tldub [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tstb %%g1,[%0+%2]", xoperands);
+  else if (align == 2)
+    output_asm_insn ("\nLm%3:\n\tlduh [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tsth %%g1,[%0+%2]", xoperands);
+  else
+    output_asm_insn ("\nLm%3:\n\tld [%1+%2],%%g1\n\tsubcc %2,%4,%2\n\tbge Lm%3\n\tst %%g1,[%0+%2]", xoperands);
   return "";
 }
+
+/* What the sparc lacks in hardware, make up for in software.
+   Compute a fairly good sequence of shift and add insns
+   to make a multiply happen.  */
 
 #define ABS(x) ((x) < 0 ? -(x) : x)
 
@@ -633,12 +868,6 @@ output_mul_by_constant (insn, operands, unsignedp)
 	return "st %%g0,%0";
       return "mov %%g0,%0";
     }
-
-#if 0
-  printf ("open coding insn:\n");
-  debug_rtx (insn);
-  printf ("done.\n");
-#endif
 
   output_asm_insn ("! start open coded multiply");
 
@@ -672,12 +901,6 @@ output_mul_by_constant (insn, operands, unsignedp)
 	}
     }
 
-  /* For now, use a known clobberable register.  This could
-     be improved by looking at insn, and seeing if we
-     have a dying register contained therein.  */
-  regs_ever_live[15] = 1;
-  operands[3] = gen_rtx (REG, SImode, 15);
-
   /* Take care of the first insn in sequence.
      We know we have at least one. */
 
@@ -689,16 +912,15 @@ output_mul_by_constant (insn, operands, unsignedp)
 	if (i)
 	  {
 	    operands[2] = gen_rtx (CONST_INT, VOIDmode, i);
-	    output_asm_insn ("sll %1,%2,%3", operands);
+	    output_asm_insn ("sll %1,%2,%%g1", operands);
 	  }
-	else if (REGNO (operands[3]) == 15)
-	  output_asm_insn ("mov %1,%3", operands);
+	else output_asm_insn ("mov %1,%%g1", operands);
 
 	log = i;
 	if (shifts[i] < 0)
-	  output_asm_insn ("sub %%g0,%3,%0", operands);
+	  output_asm_insn ("sub %%g0,%%g1,%0", operands);
 	else
-	  output_asm_insn ("mov %3,%0", operands);
+	  output_asm_insn ("mov %%g1,%0", operands);
 	break;
       }
 
@@ -710,18 +932,18 @@ output_mul_by_constant (insn, operands, unsignedp)
 	if (i - log > 0)
 	  {
 	    operands[2] = gen_rtx (CONST_INT, VOIDmode, i - log);
-	    output_asm_insn ("sll %3,%2,%3", operands);
+	    output_asm_insn ("sll %%g1,%2,%%g1", operands);
 	  }
 	else
 	  {
 	    operands[2] = gen_rtx (CONST_INT, VOIDmode, log - i);
-	    output_asm_insn ("sra %3,%2,%3", operands);
+	    output_asm_insn ("sra %%g1,%2,%%g1", operands);
 	  }
 	log = i;
 	if (shifts[i] < 0)
-	  output_asm_insn ("sub %0,%3,%0", operands);
+	  output_asm_insn ("sub %0,%%g1,%0", operands);
 	else
-	  output_asm_insn ("add %0,%3,%0", operands);
+	  output_asm_insn ("add %0,%%g1,%0", operands);
       }
 
   output_asm_insn ("! end open coded multiply");
@@ -767,118 +989,6 @@ output_mul_insn (operands, unsignedp)
   return "mov %%o0,%0";
 }
 
-#if 0
-/* This function does not properly protect its operands.  */
-char *
-output_arith_insn (operands, name)
-     rtx *operands;
-     char *name;
-{
-  extern struct _iobuf *asm_out_file;
-
-  /* Does not commute.  */
-  rtx op1 = 0;
-  rtx op2 = 0;
-
-  abort ();
-  if (GET_CODE (operands[1]) == REG && REGNO (operands[1]) == 8)
-    op1 = operands[1];
-  if (GET_CODE (operands[2]) == REG && REGNO (operands[2]) == 8)
-    op2 = operands[2];
-
-  if (op1 && op2)
-    {
-      /* ?? should have been done earlier.  */
-      abort ();
-    }
-  else
-    {
-      if (op2)
-	{
-	  op1 = operands[1];
-	  if (REG_P (op1) && REGNO (op1) == 9)
-	    {
-	      output_asm_insn ("mov %%o1,%%o2\n\tmov %%o0,%%o1", operands);
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      output_asm_insn ("mov %%o2,%%o0", operands);
-	      goto done;
-	    }
-	  output_asm_insn ("mov %%o0,%%o1", operands);
-	  if (GET_CODE (op1) == CONST_INT && ! SMALL_INT (op1))
-	    {
-	      output_asm_insn ("sethi %%hi(%1),%%o0", operands);
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      output_asm_insn ("add %%o0,%%lo(%1),%%o0", operands);
-	    }
-	  else
-	    {
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      if (GET_CODE (op1) == MEM)
-		output_asm_insn ("ld %1,%%o0", operands);
-	      else
-		output_asm_insn ("mov %1,%%o0", operands);
-	    }
-	}
-      else if (op1)
-	{
-	  op2 = operands[2];
-	  if (REG_P (op2) && REGNO (operands[1]) == 9)
-	    {
-	      fprintf (asm_out_file, "\tcall %s,2\n\tnop\n");
-	      goto done;
-	    }
-	  if (GET_CODE (op2) == CONST_INT && ! SMALL_INT (op2))
-	    {
-	      output_asm_insn ("sethi %%hi(%2),%%o1", operands);
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      output_asm_insn ("add %%o1,%%lo(%2),%%o1", operands);
-	    }
-	  else
-	    {
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      if (GET_CODE (op2) == MEM)
-		output_asm_insn ("ld %2,%%o1", operands);
-	      else
-		output_asm_insn ("mov %2,%%o1", operands);
-	    }
-	}
-      else
-	{
-	  op1 = operands[1];
-	  op2 = operands[2];
-
-	  if (! REG_P (op2) || REGNO (op2) != 9)
-	    if (GET_CODE (op2) == MEM)
-	      output_asm_insn ("ld %2,%%o1", operands);
-	    else if (GET_CODE (op2) != CONST_INT || SMALL_INT (op2))
-	      output_asm_insn ("mov %2,%%o1", operands);
-	    else
-	      output_asm_insn ("sethi %%hi(%2),%%o1\n\tadd %%o1,%%lo(%2),%%o1", operands);
-	  if (GET_CODE (op1) == CONST_INT && ! SMALL_INT (op1))
-	    {
-	      output_asm_insn ("sethi %%hi(%1),%%o0", operands);
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      output_asm_insn ("add %%o0,%%lo(%1),%%o0", operands);
-	    }
-	  else
-	    {
-	      fprintf (asm_out_file, "\tcall %s,2\n", name);
-	      if (GET_CODE (op1) == MEM)
-		output_asm_insn ("ld %1,%%o0", operands);
-	      else
-		output_asm_insn ("mov %1,%%o0", operands);
-	    }
-	}
-    done:
-      if (REG_P (operands[0]) && REGNO (operands[0]) == 8)
-	return "";
-      if (GET_CODE (operands[0]) == MEM)
-	return "st %%o0,%0";
-      return "mov %%o0,%0";
-    }
-}
-#endif
-
 /* Make floating point register f0 contain 0.
    SIZE is the number of registers (including f0)
    which should contain 0.  */
@@ -913,71 +1023,74 @@ output_scc_insn (code, operands)
     {
     case NE:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fbne,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fbne,a %l0", &label);
       else
-	output_asm_insn ("bne,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bne,a %l0", &label);
       break;
     case EQ:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fbe,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fbe,a %l0", &label);
       else
-	output_asm_insn ("be,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("be,a %l0", &label);
       break;
     case GE:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fbge,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fbge,a %l0", &label);
       else
-	output_asm_insn ("bge,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bge,a %l0", &label);
       break;
     case GT:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fbg,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fbg,a %l0", &label);
       else
-	output_asm_insn ("bg,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bg,a %l0", &label);
       break;
     case LE:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fble,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fble,a %l0", &label);
       else
-	output_asm_insn ("ble,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("ble,a %l0", &label);
       break;
     case LT:
       if (cc_status.flags & CC_IN_FCCR)
-	output_asm_insn ("fbl,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("fbl,a %l0", &label);
       else
-	output_asm_insn ("bl,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bl,a %l0", &label);
       break;
     case GEU:
       if (cc_status.flags & CC_IN_FCCR)
 	abort ();
       else
-	output_asm_insn ("bgeu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bgeu,a %l0", &label);
       break;
     case GTU:
       if (cc_status.flags & CC_IN_FCCR)
 	abort ();
       else
-	output_asm_insn ("bgu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bgu,a %l0", &label);
       break;
     case LEU:
       if (cc_status.flags & CC_IN_FCCR)
 	abort ();
       else
-	output_asm_insn ("bleu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("bleu,a %l0", &label);
       break;
     case LTU:
       if (cc_status.flags & CC_IN_FCCR)
 	abort ();
       else
-	output_asm_insn ("blu,a %l1\n\tmov 1,%0\n\tmov 0,%0\n%l1:", xoperands);
+	output_asm_insn ("blu,a %l0", &label);
       break;
     default:
       abort ();
     }
+  output_asm_insn ("mov 1,%0\n\tmov 0,%0\n%l1", xoperands);
   return "";
 }
 
-/* ??? Comment needed here */
+/* Output a delayed branch insn with the delay insn in its
+   branch slot.  The delayed branch insn template is in TEMPLATE,
+   with operands OPERANDS.  The insn in its delay slot is INSN.  */
 
 char *
 output_delay_insn (template, operands, insn)

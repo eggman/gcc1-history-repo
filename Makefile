@@ -187,7 +187,7 @@ integrate.o : integrate.c $(CONFIG_H) $(RTL_H) $(TREE_H) flags.h expr.h \
 jump.o : jump.c $(CONFIG_H) $(RTL_H) flags.h regs.h
 stupid.o : stupid.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h
 
-cse.o : cse.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h hard-reg-set.h flags.h
+cse.o : cse.c $(CONFIG_H) $(RTL_H) regs.h hard-reg-set.h flags.h
 loop.o : loop.c $(CONFIG_H) $(RTL_H) insn-config.h regs.h recog.h
 flow.o : flow.c $(CONFIG_H) $(RTL_H) basic-block.h regs.h hard-reg-set.h
 combine.o : combine.c $(CONFIG_H) $(RTL_H) flags.h  \
@@ -388,11 +388,14 @@ stage3: force
 	-rm stage3/gnulib
 	-ln gnulib stage3 || cp gnulib stage3
 
-#In GNU Make, ignore whether `stage*' exists.
-.PHONY: stage1 stage2 stage3 clean realclean
-
 force:
 
 TAGS: force
+	mkdir temp
+	-mv c-parse.tab.c cexp.c temp
 	etags *.y *.h *.c
-.PHONY: TAGS
+	mv temp/* .
+	rmdir temp
+
+#In GNU Make, ignore whether `stage*' exists.
+.PHONY: stage1 stage2 stage3 clean realclean TAGS

@@ -137,6 +137,8 @@
 {
   if (operands[1] == fconst0_rtx)
     return \"clrf %0\";
+  if (GET_CODE (operands[1]) != CONST_DOUBLE)
+    return \"movl %1,%0\";
   return \"movf %1,%0\";
 }")
 
@@ -1863,7 +1865,7 @@
 	      (match_operand:QI 2 "general_operand" "g")))]
   ""
   "*
-  if (INTVAL (operands[1]) > 255 * 4)
+  if (INTVAL (operands[2]) > 255 * 4)
     /* Vax `calls' really uses only one byte of #args, so pop explicitly.  */
     return \"calls $0,%1\;addl2 %2,sp\";
   operands[2] = gen_rtx (CONST_INT, VOIDmode, (INTVAL (operands[2]) + 3)/ 4);

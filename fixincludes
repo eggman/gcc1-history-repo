@@ -38,6 +38,11 @@ EOF
   fi
 done
 
+# Fix one other error in this file: a mismatched quote not inside a C comment.
+ex ${LIB}/sundev/vuid_event.h <<EOF
+g/doesn't/s/doesn't/doesn''t/
+wq
+
 cp /usr/include/sys/ttychars.h ${LIB}/sys/ttychars.h
 chmod +w ${LIB}/sys/ttychars.h
 ex ${LIB}/sys/ttychars.h << EOF

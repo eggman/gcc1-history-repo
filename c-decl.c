@@ -577,7 +577,7 @@ pushtag (name, type)
       if (TYPE_NAME (type) == 0)
 	TYPE_NAME (type) = name;
 
-      b->tags = tree_cons (name, type, b->tags);
+      b->tags = saveable_tree_cons (name, type, b->tags);
     }
 }
 
@@ -2441,8 +2441,8 @@ get_parm_info (void_at_end)
     {
       parms = NULL_TREE;
       storedecls (NULL_TREE);
-      return tree_cons (NULL_TREE, NULL_TREE,
-			tree_cons (NULL_TREE, void_type_node, NULL_TREE));
+      return saveable_tree_cons (NULL_TREE, NULL_TREE,
+				 saveable_tree_cons (NULL_TREE, void_type_node, NULL_TREE));
     }
 
   storedecls (parms);
@@ -2459,7 +2459,7 @@ get_parm_info (void_at_end)
 	DECL_ARG_TYPE (decl) = integer_type_node;
 #endif
 
-      types = tree_cons (NULL_TREE, TREE_TYPE (decl), types);
+      types = saveable_tree_cons (NULL_TREE, TREE_TYPE (decl), types);
       if (TREE_VALUE (types) == void_type_node && ! erred)
 	{
 	  error ("`void' in parameter list must be the entire list");
@@ -2468,10 +2468,10 @@ get_parm_info (void_at_end)
     }
 
   if (void_at_end)
-    return tree_cons (parms, tags,
-		      nreverse (tree_cons (NULL_TREE, void_type_node, types)));
+    return saveable_tree_cons (parms, tags,
+			       nreverse (saveable_tree_cons (NULL_TREE, void_type_node, types)));
 
-  return tree_cons (parms, tags, nreverse (types));
+  return saveable_tree_cons (parms, tags, nreverse (types));
 }
 
 /* Get the struct, enum or union (CODE says which) with tag NAME.

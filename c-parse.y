@@ -216,7 +216,7 @@ datadef:
 fndef:
 	  typed_declspecs setspecs declarator
 		{ if (! start_function ($1, $3))
-		    YYFAIL;
+		    YYERROR;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -226,7 +226,7 @@ fndef:
 		{ }
 	| declmods setspecs notype_declarator
 		{ if (! start_function ($1, $3))
-		    YYFAIL;
+		    YYERROR;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -236,7 +236,7 @@ fndef:
 		{ }
 	| setspecs notype_declarator
 		{ if (! start_function (0, $2))
-		    YYFAIL;
+		    YYERROR;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -388,7 +388,7 @@ primary:
 		{ if (current_function_decl == 0)
 		    {
 		      error ("braced-group within expression allowed only inside a function");
-		      YYFAIL;
+		      YYERROR;
 		    }
 		  $<ttype>$ = expand_start_stmt_expr (); }
 	  compstmt ')'
@@ -1249,59 +1249,61 @@ static int maxtoken;		/* Current nominal length of token buffer */
 static char *token_buffer;	/* Pointer to token buffer.
 				   Actual allocated length is maxtoken + 2.  */
 
-#define MAXRESERVED 9
-
-/* frw[I] is index in `reswords' of the first word whose length is I;
-   frw[I+1] is one plus the index of the last word whose length is I.
-   The length of frw must be MAXRESERVED + 2 so there is an element
-   at MAXRESERVED+1 for the case I == MAXRESERVED.  */
-
-static char frw[MAXRESERVED+2] =
-  { 0, 0, 0, 2, 5, 13, 19, 29, 31, 35, 36 };
-
-/* Table of reserved words.  */
-
-struct resword { char *name; short token; enum rid rid;};
+#define MIN_WORD_SIZE       2      /* minimum size for C keyword */
+#define MAX_WORD_SIZE       9      /* maximum size for C keyword */
+#define MIN_KEY_SIZE        4      /* range of the hash keys values for the */
+#define MAX_KEY_SIZE        39     /* minimum perfect hash generator */
 
 #define NORID RID_UNUSED
 
-static struct resword reswords[]
-  = {{"if", IF, NORID},
-     {"do", DO, NORID},
-     {"int", TYPESPEC, RID_INT},
-     {"for", FOR, NORID},
-     {"asm", ASM, NORID},
-     {"case", CASE, NORID},
-     {"char", TYPESPEC, RID_CHAR},
-     {"auto", SCSPEC, RID_AUTO},
-     {"goto", GOTO, NORID},
+struct resword {char *name; short token; enum rid rid;};
+
+/* This is the hash table of keywords.
+   The order of keywords has been chosen for perfect hashing.
+   Therefore, this table cannot be updated by hand.
+   Use the program perfect-hash to generate an updated table.  */
+
+static struct resword reswords[] 
+  = {{NULL, 0, NORID},            
+     {NULL, 0, NORID}, /* these locations are not used. */
+     {NULL, 0, NORID}, /* they simplify the hashing.    */
+     {NULL, 0, NORID},
      {"else", ELSE, NORID},
-     {"long", TYPESPEC, RID_LONG},
-     {"void", TYPESPEC, RID_VOID},
      {"enum", ENUM, NORID},
-     {"float", TYPESPEC, RID_FLOAT},
-     {"short", TYPESPEC, RID_SHORT},
-     {"union", UNION, NORID},
-     {"break", BREAK, NORID},
      {"while", WHILE, NORID},
-     {"const", TYPE_QUAL, RID_CONST},
-     {"double", TYPESPEC, RID_DOUBLE},
-     {"static", SCSPEC, RID_STATIC},
      {"extern", SCSPEC, RID_EXTERN},
+     {"double", TYPESPEC, RID_DOUBLE},
+     {"default", DEFAULT, NORID},
+     {"do", DO, NORID},
+     {"goto", GOTO, NORID},
+     {"short", TYPESPEC, RID_SHORT},        
      {"struct", STRUCT, NORID},
      {"return", RETURN, NORID},
-     {"sizeof", SIZEOF, NORID},
+     {"signed", TYPESPEC, RID_SIGNED},       
+     {"float", TYPESPEC, RID_FLOAT},        
      {"typeof", TYPEOF, NORID},
+     {"typedef", SCSPEC, RID_TYPEDEF},        
      {"switch", SWITCH, NORID},
-     {"signed", TYPESPEC, RID_SIGNED},
-     {"inline", SCSPEC, RID_INLINE},
-     {"typedef", SCSPEC, RID_TYPEDEF},
-     {"default", DEFAULT, NORID},
-     {"unsigned", TYPESPEC, RID_UNSIGNED},
+     {"int", TYPESPEC, RID_INT},          
+     {"for", FOR, NORID},
+     {"register", SCSPEC, RID_REGISTER},       
+     {"inline", SCSPEC, RID_INLINE},         
+     {"sizeof", SIZEOF, NORID},
+     {"void", TYPESPEC, RID_VOID},         
+     {"__alignof", ALIGNOF, NORID},
+     {"volatile", TYPE_QUAL, RID_VOLATILE},    
+     {"case", CASE, NORID},
+     {"const", TYPE_QUAL, RID_CONST},       
+     {"if", IF, NORID},
+     {"long", TYPESPEC, RID_LONG},         
      {"continue", CONTINUE, NORID},
-     {"register", SCSPEC, RID_REGISTER},
-     {"volatile", TYPE_QUAL, RID_VOLATILE},
-     {"__alignof", ALIGNOF, NORID}};
+     {"asm", ASM, NORID},
+     {"union", UNION, NORID},
+     {"char", TYPESPEC, RID_CHAR},         
+     {"break", BREAK, NORID},               
+     {"static", SCSPEC, RID_STATIC},         
+     {"unsigned", TYPESPEC, RID_UNSIGNED},     
+     {"auto", SCSPEC, RID_AUTO}};
 
 /* The elements of `ridpointers' are identifier nodes
    for the reserved type names and storage classes.
@@ -1310,6 +1312,71 @@ static struct resword reswords[]
 tree ridpointers[(int) RID_MAX];
 
 int check_newline ();
+
+/* This function performs the minimum-perfect hash mapping from input
+   string to reswords table index.  It only looks at the first and 
+   last characters in the string, thus assuring the O(1) lookup time 
+   (this keeps our constant down to an insignificant amount!).  Compiling
+   the following 2 functions as inline removes all overhead of the
+   function calls. */
+
+#ifdef __GNUC__
+inline
+#endif
+static int
+hash (str, len)
+     register char *str;             
+     register int len;
+{
+  /* This table is used to build the hash table index that recognizes
+     reserved words in 0(1) steps.  It is larger than strictly necessary, 
+     but I'm trading off the space for the time-saving luxury of avoiding 
+     subtraction of an offset. */
+
+  static char hash_table[]
+    = {0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+       0,  0,  0,  0,  0,  6,  0, 29, 31, 24,
+       2,  0, 11,  1,  6, 17,  0,  0, 26,  1,
+       1,  6,  0,  0,  7,  7,  0, 28, 19,  1,
+       0,  0,  0,  0,  0,  0,  0,  0};
+
+  /* The hash function couldn't be simpler: add the length of the string
+     to the Hash_Table value of its first and last character. */
+
+  return len + hash_table[(int) str[0]] + hash_table[(int) str[len - 1]];
+}
+
+/* This routine attempts to match the string found in the reswords with
+   the one from the input stream.  If all the relevant details match an
+   actual strcmp comparison is performed.  */
+
+#ifdef __GNUC__
+inline
+#endif
+static struct resword *
+is_reserved_word (str,len)
+     register char *str;
+     register int len;
+{
+  if (len <= MAX_WORD_SIZE && len >= MIN_WORD_SIZE) 
+    {
+      register int key = hash (str, len);
+
+      if (key >= MIN_KEY_SIZE && key <= MAX_KEY_SIZE)
+	if (reswords[key].name[0] == str[0]
+	    && !strcmp (reswords[key].name + 1, str + 1))
+	  return &reswords[key];
+    }
+  return NULL;   
+}
 
 void
 init_lex ()
@@ -1844,35 +1911,30 @@ yylex ()
       value = IDENTIFIER;
       yylval.itype = 0;
 
-      /* Try to recognize a keyword.  */
+      /* Try to recognize a keyword.  Uses minimum-perfect hash function */
+  
+      {
+	register struct resword *ptr;
 
-      if (p - token_buffer <= MAXRESERVED)
-	{
-	  register int lim = frw [p - token_buffer + 1];
-	  register int i = frw[p - token_buffer];
-	  register struct resword *p = &reswords[i];
-
-	  for (; i < lim; i++, p++)
-	    if (p->name[0] == token_buffer[0]
-		&& !strcmp (p->name, token_buffer))
-	      {
-		if (p->rid)
-		  yylval.ttype = ridpointers[(int) p->rid];
-		if ((! flag_no_asm
-		     || ((int) p->token != ASM
-			 && (int) p->token != TYPEOF
-			 && p->rid != RID_INLINE))
-		    /* -ftraditional means don't recognize
-		       typeof, const, volatile, signed or inline.  */
-		    && (! flag_traditional
-			|| ((int) p->token != TYPE_QUAL
-			    && (int) p->token != TYPEOF
-			    && p->rid != RID_SIGNED
-			    && p->rid != RID_INLINE)))
-		  value = (int) p->token;
-		break;
-	      }
-	}
+	if (ptr = is_reserved_word (token_buffer, p - token_buffer))
+	  {
+	    if (ptr->rid)
+	      yylval.ttype = ridpointers[(int) ptr->rid];
+	    if ((! flag_no_asm
+		 /* -fno-asm means don't recognize the non-ANSI keywords.  */
+		 || ((int) ptr->token != ASM
+		     && (int) ptr->token != TYPEOF
+		     && ptr->rid != RID_INLINE))
+		/* -ftraditional means don't recognize nontraditional keywords
+		   typeof, const, volatile, signed or inline.  */
+		&& (! flag_traditional
+		    || ((int) ptr->token != TYPE_QUAL
+			&& (int) ptr->token != TYPEOF
+			&& ptr->rid != RID_SIGNED
+			&& ptr->rid != RID_INLINE)))
+	      value = (int) ptr->token;
+	  }
+      }
 
       /* If we did not find a keyword, look for an identifier
 	 (or a typename).  */

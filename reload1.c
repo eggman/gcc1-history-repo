@@ -169,6 +169,7 @@ static void choose_reload_targets ();
 static void forget_old_reloads ();
 static void order_regs_for_reload ();
 static void eliminate_frame_pointer ();
+static void inc_for_reload ();
 
 extern void remove_death ();
 extern rtx adj_offsetable_operand ();
@@ -1907,13 +1908,19 @@ choose_reload_targets (insn)
 	      && mode != GET_MODE (oldequiv))
 	    oldequiv = gen_rtx (SUBREG, mode, oldequiv, 0);
 
+	  if (GET_CODE (oldequiv) == POST_INC
+	      || GET_CODE (oldequiv) == POST_DEC
+	      || GET_CODE (oldequiv) == PRE_INC
+	      || GET_CODE (oldequiv) == PRE_DEC)
+	    inc_for_reload (reloadreg, oldequiv, reload_inc[j], insn);
+
 	  /* If we are reloading a pseudo-register that was set by the previous
 	     insn, see if we can get rid of that pseudo-register entirely
 	     by redirecting the previous insn into our reload register.  */
 
-	  if (optimize && GET_CODE (old) == REG
-	      && REGNO (old) >= FIRST_PSEUDO_REGISTER
-	      && dead_or_set_p (insn, old))
+	  else if (optimize && GET_CODE (old) == REG
+		   && REGNO (old) >= FIRST_PSEUDO_REGISTER
+		   && dead_or_set_p (insn, old))
 	    {
 	      rtx temp = PREV_INSN (insn);
 	      while (temp && GET_CODE (temp) == NOTE)
@@ -1968,46 +1975,7 @@ choose_reload_targets (insn)
 	    }
 #endif
 
-	  /* If this reload wants reload_in[j] incremented by a constant,
-	     output code to get this done before the insn reloaded for.  */
-
-	  if (reload_inc[j] != 0)
-	    {
-	      /* If reload_in[j] is a register, assume we can
-		 output an insn to increment it directly.  */
-	      if (GET_CODE (old) == REG &&
-		  (REGNO (old) < FIRST_PSEUDO_REGISTER
-		   || reg_renumber[REGNO (old)] >= 0))
-		emit_insn_before (gen_add2_insn (old,
-						 gen_rtx (CONST_INT, VOIDmode,
-							  reload_inc[j])),
-				  insn);
-	      else
-		/* Else we must not assume we can increment reload_in[j]
-		   (even though on many target machines we can);
-		   increment the copy in the reload register,
-		   save that back, then decrement the reload register
-		   so it has its original contents.  */
-		{
-		  rtx oldreal = old;
-		  /* OLDREAL is OLDEQUIV encapsulated in that mode,
-		     in case we need to write back to it.
-		     OLDEQUIV is good only for reading.  */
-		  if (GET_MODE (old) != VOIDmode
-		      && mode != GET_MODE (old))
-		    oldreal = gen_rtx (SUBREG, mode, oldreal, 0);
-
-		  emit_insn_before (gen_add2_insn (reloadreg,
-						   gen_rtx (CONST_INT, VOIDmode,
-							    reload_inc[j])),
-				    insn);
-		  emit_insn_before (gen_move_insn (oldreal, reloadreg), insn);
-		  emit_insn_before (gen_sub2_insn (reloadreg,
-						   gen_rtx (CONST_INT, VOIDmode,
-							    reload_inc[j])),
-				    insn);
-		}
-	    }
+	  /* reload_inc[j] was processed here.  */
 	}
 
 #ifdef PRESERVE_DEATH_INFO_REGNO_P
@@ -2164,4 +2132,96 @@ choose_reload_targets (insn)
       if (reload_spill_index[j] >= 0)
 	spill_reg_store[reload_spill_index[j]] = store_insn;
     }
+}
+
+/* Output reload-insns around INSN to reload VALUE into RELOADREG. 
+   VALUE is a autoincrement or autodecrement RTX whose operand
+   is a register or memory location;
+   so reloading involves incrementing that location.
+
+   INC_AMOUNT is the number to increment or decrement by (always positive).
+   This cannot be deduced from VALUE.  */
+
+static void
+inc_for_reload (reloadreg, value, inc_amount, insn)
+     rtx reloadreg;
+     rtx value;
+     int inc_amount;
+     rtx insn;
+{
+  /* REG or MEM to be copied and incremented.  */
+  rtx incloc = XEXP (value, 0);
+  /* Nonzero if increment after copying.  */
+  int post = (GET_CODE (value) == POST_DEC || GET_CODE (value) == POST_INC);
+
+  if (GET_CODE (value) == PRE_DEC || GET_CODE (value) == POST_DEC)
+    inc_amount = - inc_amount;
+
+  /* First handle preincrement, which is simpler.  */
+  if (! post)
+    {
+      /* If incrementing a register, assume we can
+	 output an insn to increment it directly.  */
+      if (GET_CODE (incloc) == REG &&
+	  (REGNO (incloc) < FIRST_PSEUDO_REGISTER
+	   || reg_renumber[REGNO (incloc)] >= 0))
+	{
+	  emit_insn_before (gen_add2_insn (incloc,
+					   gen_rtx (CONST_INT, VOIDmode,
+						    inc_amount)),
+			    insn);
+	  emit_insn_before (gen_move_insn (reloadreg, incloc), insn);
+	}
+      else
+	/* Else we must not assume we can increment the location directly
+	   (even though on many target machines we can);
+	   copy it to the reload register, increment there, then save back.  */
+	{
+	  emit_insn_before (gen_move_insn (reloadreg, incloc), insn);
+	  emit_insn_before (gen_add2_insn (reloadreg,
+					   gen_rtx (CONST_INT, VOIDmode,
+						    inc_amount)),
+			    insn);
+	  emit_insn_before (gen_move_insn (incloc, reloadreg), insn);
+	}
+    }
+  /* Postincrement.
+     Because this might be a jump insn or a compare, and because RELOADREG
+     may not be available after the insn in an input reload,
+     we must do the incrementation before the insn being reloaded for.  */
+  else
+    {
+      /* Copy the value, then increment it.  */
+      emit_insn_before (gen_move_insn (reloadreg, incloc), insn);
+
+      /* If incrementing a register, assume we can
+	 output an insn to increment it directly.  */
+      if (GET_CODE (incloc) == REG &&
+	  (REGNO (incloc) < FIRST_PSEUDO_REGISTER
+	   || reg_renumber[REGNO (incloc)] >= 0))
+	{
+	  emit_insn_before (gen_add2_insn (incloc,
+					   gen_rtx (CONST_INT, VOIDmode,
+						    inc_amount)),
+			    insn);
+	}
+      else
+	/* Else we must not assume we can increment INCLOC
+	   (even though on many target machines we can);
+	   increment the copy in the reload register,
+	   save that back, then decrement the reload register
+	   so it has the original value.  */
+	{
+	  emit_insn_before (gen_add2_insn (reloadreg,
+					   gen_rtx (CONST_INT, VOIDmode,
+						    inc_amount)),
+			    insn);
+	  emit_insn_before (gen_move_insn (incloc, reloadreg), insn);
+	  emit_insn_before (gen_sub2_insn (reloadreg,
+					   gen_rtx (CONST_INT, VOIDmode,
+						    inc_amount)),
+			    insn);
+	}
+    }
+
 }

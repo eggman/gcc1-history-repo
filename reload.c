@@ -93,8 +93,9 @@ actually doing the reloads, not when just counting them.
    reload_optional	  char, nonzero for an optional reload.
 			   Optional reloads are ignored unless the
 			   value is already sitting in a register.
-   reload_inc		  int, amount to increment reload_in by
-			   before this insn.
+   reload_inc		  int, positive amount to increment or decrement by if
+			   reload_in is a PRE_DEC, PRE_INC, POST_DEC, POST_INC.
+			   Ignored otherwise (don't assume it is zero).
    reload_reg_rtx	  rtx.  This is the register to reload into.
 			   If it is zero when `find_reloads' returns,
 			   you must find a suitable register in the class
@@ -249,13 +250,20 @@ push_reload (in, out, inloc, outloc, class,
 	out = gen_rtx (MEM, GET_MODE (out), XEXP (XEXP (out, 0), 0));
     }
 
-  /* If we are reloading a (SUBREG (MEM ...) ...),
-     really reload just the MEM in the MEM's own mode.  */
+  /* If we are reloading a (SUBREG (MEM ...) ...) or (SUBREG constant ...),
+     really reload just the inside expression in its own mode.
+     Note that the case of (SUBREG (CONST_INT...)...) is handled elsewhere;
+     we can't handle it here because CONST_INT does not indicate a mode.  */
 
-  if (in != 0 && GET_CODE (in) == SUBREG && GET_CODE (SUBREG_REG (in)) == MEM)
+  if (in != 0 && GET_CODE (in) == SUBREG && GET_CODE (SUBREG_REG (in)) != REG)
     {
       inloc = &SUBREG_REG (in);
       in = *inloc;
+      if (GET_CODE (SUBREG_REG (in)) == MEM)
+	/* This is supposed to happen only for paradoxical subregs made by
+	   combine.c.  (SUBREG (MEM)) isn't supposed to occur other ways.  */
+	if (GET_MODE_SIZE (GET_MODE (in)) > GET_MODE_SIZE (inmode))
+	  abort ();
       inmode = GET_MODE (in);
     }
 
@@ -328,6 +336,10 @@ push_reload (in, out, inloc, outloc, class,
   if (in != 0 && in != *inloc)
     reload_nocombine[i] = 1;
 
+#if 0
+  /* This was replaced by changes in find_reloads_addr_1 and the new
+     function inc_for_reload, which go with a new meaning of reload_inc.  */
+
   /* If this is an IN/OUT reload in an insn that sets the CC,
      it must be for an autoincrement.  It doesn't work to store
      the incremented value after the insn because that would clobber the CC.
@@ -345,6 +357,7 @@ push_reload (in, out, inloc, outloc, class,
       if (reload_inc[i] == 0)
 	abort ();
     }
+#endif
 
   /* If we will replace IN and OUT with the reload-reg,
      record where they are located so that substitution need
@@ -1030,7 +1043,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  substed_operand[i] = recog_operand[i] = *recog_operand_loc[i];
 	}
       else if (code == SUBREG)
-	find_reloads_toplev (recog_operand[i]);
+	substed_operand[i] = recog_operand[i] = *recog_operand_loc[i]
+	  = find_reloads_toplev (recog_operand[i]);
       else if (code == REG)
 	{
 	  /* This is equivalent to calling find_reloads_toplev.
@@ -1102,13 +1116,14 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	  int earlyclobber = 0;
 
 	  /* If the operand is a SUBREG, extract
-	     the REG or MEM (or maybe CONST_DOUBLE) within.  */
+	     the REG or MEM (or maybe even a constant) within.
+	     (Constants can occur as a result of reg_equiv_constant.)  */
 
 	  while (GET_CODE (operand) == SUBREG)
 	    {
 	      offset += SUBREG_WORD (operand);
 	      operand = SUBREG_REG (operand);
-	      if (GET_CODE (operand) == MEM)
+	      if (GET_CODE (operand) != REG)
 		force_reload = 1;
 	    }
 
@@ -1255,11 +1270,7 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		  win = 1;
 		if (GET_CODE (operand) == CONST_DOUBLE
 		    || CONSTANT_P (operand)
-		    || (GET_CODE (operand) == MEM
-			&& GET_CODE (XEXP (operand, 0)) != POST_INC
-			&& GET_CODE (XEXP (operand, 0)) != POST_DEC
-			&& GET_CODE (XEXP (operand, 0)) != PRE_INC
-			&& GET_CODE (XEXP (operand, 0)) != PRE_DEC))
+		    || GET_CODE (operand) == MEM)
 		  badop = 0;
 		offmemok = 1;
 		break;
@@ -1555,15 +1566,16 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 	   by reloading the address into a base register.  */
 	else if (goal_alternative_matched[i] == -1
 		 && goal_alternative_offmemok[i]
-		 && GET_CODE (recog_operand[i]) == MEM
-		 && GET_CODE (XEXP (recog_operand[i], 0)) != POST_INC
-		 && GET_CODE (XEXP (recog_operand[i], 0)) != POST_DEC
-		 && GET_CODE (XEXP (recog_operand[i], 0)) != PRE_INC
-		 && GET_CODE (XEXP (recog_operand[i], 0)) != PRE_DEC)
-	  push_reload (XEXP (recog_operand[i], 0), 0,
-		       &XEXP (recog_operand[i], 0), 0,
-		       BASE_REG_CLASS, GET_MODE (XEXP (recog_operand[i], 0)),
-		       0, 0, 0);
+		 && GET_CODE (recog_operand[i]) == MEM)
+	  {
+	    operand_reloadnum[i]
+	      = push_reload (XEXP (recog_operand[i], 0), 0,
+			     &XEXP (recog_operand[i], 0), 0,
+			     BASE_REG_CLASS, GET_MODE (XEXP (recog_operand[i], 0)),
+			     0, 0, 0);
+	    reload_inc[operand_reloadnum[i]]
+	      = GET_MODE_SIZE (GET_MODE (recog_operand[i]));
+	  }
 	else if (goal_alternative_matched[i] == -1)
 	  operand_reloadnum[i] =
 	    push_reload (modified[i] != RELOAD_WRITE ? recog_operand[i] : 0,
@@ -1744,7 +1756,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 			      XEXP (recog_operand[i], 0),
 			      &XEXP (recog_operand[i], 0));
       if (code == SUBREG)
-	find_reloads_toplev (recog_operand[i]);
+	recog_operand[i] = *recog_operand_loc[i]
+	  = find_reloads_toplev (recog_operand[i]);
       if (code == REG)
 	{
 	  register int regno = REGNO (recog_operand[i]);
@@ -1812,21 +1825,41 @@ find_reloads_toplev (x)
 				&XEXP (x, 0));
 	}
       return x;
-
-
     }
-  else if (code == MEM)
+  if (code == MEM)
     {
       rtx tem = x;
       find_reloads_address (GET_MODE (x), &tem, XEXP (x, 0), &XEXP (x, 0));
       return tem;
     }
-  else
-    for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
-      {
-	if (fmt[i] == 'e')
-	  XEXP (x, i) = find_reloads_toplev (XEXP (x, i));
-      }
+
+  if (code == SUBREG && GET_CODE (SUBREG_REG (x)) == REG)
+    {
+      /* Check for SUBREG containing a REG that's equivalent to a constant.  */
+      register int regno = REGNO (SUBREG_REG (x));
+      if (regno >= FIRST_PSEUDO_REGISTER && reg_renumber[regno] < 0
+	  && reg_equiv_constant[regno] != 0)
+	{
+	  /* If the constant has a known value, truncate it right now.  */
+	  if (GET_CODE (reg_equiv_constant[regno]) == CONST_INT)
+	    {
+	      int size = GET_MODE_BITSIZE (GET_MODE (x));
+	      if (size < BITS_PER_WORD)
+		return gen_rtx (CONST_INT, VOIDmode,
+				INTVAL (reg_equiv_constant[regno])
+				& ((1 << size) - 1));
+	      return reg_equiv_constant[regno];
+	    }
+	  /* If the constant is symbolic, allow it to be substituted normally.
+	     push_reload will strip the subreg later.  */
+	}
+    }
+
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	XEXP (x, i) = find_reloads_toplev (XEXP (x, i));
+    }
   return x;
 }
 
@@ -2095,7 +2128,8 @@ subst_indexed_address (addr)
 }
 
 /* Record the pseudo registers we must reload into hard registers
-   in a subexpression of a memory address, X.
+   in a subexpression of a would-be memory address, X.
+   (This function is not called if the address we find is strictly valid.)
    CONTEXT = 1 means we are considering regs as index regs,
    = 0 means we are considering them as base regs.
 
@@ -2181,6 +2215,7 @@ find_reloads_address_1 (x, context, loc)
       if (GET_CODE (XEXP (x, 0)) == REG)
 	{
 	  register int regno = REGNO (XEXP (x, 0));
+	  int reloadnum;
 
 	  /* A register that is incremented cannot be constant!  */
 	  if (regno >= FIRST_PSEUDO_REGISTER
@@ -2192,19 +2227,26 @@ find_reloads_address_1 (x, context, loc)
 	  if (reg_equiv_address[regno] != 0)
 	    {
 	      rtx tem = make_memloc (XEXP (x, 0), regno);
+	      int reloadnum;
 	      /* First reload the memory location's address.  */
 	      push_reload (XEXP (tem, 0), 0, &XEXP (tem, 0), 0,
 			   BASE_REG_CLASS,
 			   GET_MODE (XEXP (tem, 0)), 0, VOIDmode, 0);
-	      /* Then reload the memory reference itself,
-		 pretending it is located in the PRE_INC or whatever.  */
-	      push_reload (tem, tem, &XEXP (x, 0), 0,
-			   context ? INDEX_REG_CLASS : BASE_REG_CLASS,
-			   GET_MODE (tem), GET_MODE (tem), VOIDmode, 0);
-	      return;
+	      /* Put this inside a new increment-expression.  */
+	      x = gen_rtx (GET_CODE (x), GET_MODE (x), tem);
+	      /* Proceed to reload that, as if it contained a register.  */
 	    }
 
-	  /* Handle any other sort of register.  */
+	  /* If we have a hard register that is ok as an index,
+	     don't make a reload.  If an autoincrement of a nice register
+	     isn't "valid", it must be that no autoincrement is "valid".
+	     If that is true and something made an autoincrement anyway,
+	     this must be a special context where one is allowed.
+	     (For example, a "push" instruction.)
+	     We can't improve this address, so leave it alone.  */
+
+	  /* Otherwise, reload the autoincrement into a suitable hard reg
+	     and record how much to increment by.  */
 
 	  if (reg_renumber[regno] >= 0)
 	    regno = reg_renumber[regno];
@@ -2213,12 +2255,15 @@ find_reloads_address_1 (x, context, loc)
 		    : REGNO_OK_FOR_BASE_P (regno))))
 	    {
 	      register rtx link;
-	      int reloadnum
-		= push_reload (XEXP (x, 0), XEXP (x, 0),
-			       &XEXP (x, 0), 0,
+
+	      reloadnum
+		= push_reload (x, 0, loc, 0,
 			       context ? INDEX_REG_CLASS : BASE_REG_CLASS,
-			       GET_MODE (XEXP (x, 0)),
-			       GET_MODE (XEXP (x, 0)), VOIDmode, 0);
+			       GET_MODE (x), GET_MODE (x), VOIDmode, 0);
+	      reload_inc[reloadnum]
+		= find_inc_amount (PATTERN (this_insn), XEXP (x, 0));
+
+	      /* Update the REG_INC notes.  */
 
 	      for (link = REG_NOTES (this_insn);
 		   link; link = XEXP (link, 1))
@@ -2680,8 +2725,8 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
 }
 
 /* Find a place where INCED appears in an increment or decrement operator
-   within X, and return the amount INCED is incremented by
-   (negative if decremented).  */
+   within X, and return the amount INCED is incremented or decremented by.
+   The value is always positive.  */
 
 static int
 find_inc_amount (x, inced)
@@ -2695,10 +2740,8 @@ find_inc_amount (x, inced)
     {
       register rtx addr = XEXP (x, 0);
       if ((GET_CODE (addr) == PRE_DEC
-	   || GET_CODE (addr) == POST_DEC)
-	  && XEXP (addr, 0) == inced)
-	return - GET_MODE_SIZE (GET_MODE (x));
-      if ((GET_CODE (addr) == PRE_INC
+	   || GET_CODE (addr) == POST_DEC
+	   || GET_CODE (addr) == PRE_INC
 	   || GET_CODE (addr) == POST_INC)
 	  && XEXP (addr, 0) == inced)
 	return GET_MODE_SIZE (GET_MODE (x));

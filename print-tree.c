@@ -431,19 +431,61 @@ dump (node, indent)
       prtypeinfo (node);
       fprintf (outfile, " at %s line %d;",
 	       STMT_SOURCE_FILE (node), STMT_SOURCE_LINE (node));
-      fputs (" ops =", outfile);
-      len = tree_code_length[(int) code];
-      for (i = 0; i < len; i++)
+      switch (TREE_CODE (node))
 	{
-	  fputs (" ", outfile);
-	  wruid (TREE_OPERAND (node, i+2));
-	  fputs (";", outfile);
+	case IF_STMT:
+	  part ("cond", STMT_COND (node));
+	  part ("then", STMT_THEN (node));
+	  part ("else", STMT_ELSE (node));
+	  break;
+
+	case LET_STMT:
+	case WITH_STMT:
+	  part ("vars", STMT_VARS (node));
+	  part ("tags", STMT_TYPE_TAGS (node));
+	  part ("supercontext", STMT_SUPERCONTEXT (node));
+	  part ("bind_size", STMT_BIND_SIZE (node));
+	  part ("body", STMT_BODY (node));
+	  break;
+
+	case CASE_STMT:
+	  part ("case_index", STMT_CASE_INDEX (node));
+	  part ("case_list", STMT_CASE_LIST (node));
+	  break;
+
+	default:
+	  part ("body", STMT_BODY (node));
+	  break;
 	}
       part ("chain", TREE_CHAIN (node));
       fputc ('\n', outfile);
       walk (TREE_TYPE (node), node, indent);
-      for (i = 0; i < len; i++)
-	walk (TREE_OPERAND (node, i+2), node, indent);
+      switch (TREE_CODE (node))
+	{
+	case IF_STMT:
+	  walk (STMT_COND (node), node, indent);
+	  walk (STMT_THEN (node), node, indent);
+	  walk (STMT_ELSE (node), node, indent);
+	  break;
+
+	case LET_STMT:
+	case WITH_STMT:
+	  walk (STMT_VARS (node), node, indent);
+	  walk (STMT_TYPE_TAGS (node), node, indent);
+	  walk (STMT_SUPERCONTEXT (node), node, indent);
+	  walk (STMT_BIND_SIZE (node), node, indent);
+	  walk (STMT_BODY (node), node, indent);
+	  break;
+
+	case CASE_STMT:
+	  walk (STMT_CASE_INDEX (node), node, indent);
+	  walk (STMT_CASE_LIST (node), node, indent);
+	  break;
+
+	default:
+	  walk (STMT_BODY (node), node, indent);
+	  break;
+	}
       break;
 
     case 'c':

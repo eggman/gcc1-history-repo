@@ -667,7 +667,7 @@ expand_inline_function (fndecl, parms, target, ignore, type, structure_value_add
 	    reg_map[REGNO (DECL_RTL (formal))] = arg_vec[i];
 	}
 
-      /* Make certain that we can map struct_value_{incoming_rtx,rtx},
+      /* Make certain that we can accept struct_value_{incoming_rtx,rtx},
 	 and map it.  If it is a hard register, it is mapped automagically.  */
       if (GET_CODE (struct_value_incoming_rtx) == REG)
 	;
@@ -972,7 +972,16 @@ copy_decl_tree (let, level)
       DECL_SOURCE_LINE (d) = DECL_SOURCE_LINE (t);
       DECL_SOURCE_FILE (d) = DECL_SOURCE_FILE (t);
       if (DECL_RTL (t) != 0)
-	DECL_RTL (d) = copy_rtx_and_substitute (DECL_RTL (t));
+	{
+	  if (GET_CODE (DECL_RTL (t)) == MEM
+	      && CONSTANT_ADDRESS_P (XEXP (DECL_RTL (t), 0)))
+	    /* copy_rtx_and_substitute would call memory_address
+	       which would copy the address into a register.
+	       Then debugging-output wouldn't know how to handle it.  */
+	    DECL_RTL (d) = DECL_RTL (t);
+	  else
+	    DECL_RTL (d) = copy_rtx_and_substitute (DECL_RTL (t));
+	}
       TREE_EXTERNAL (d) = TREE_EXTERNAL (t);
       TREE_STATIC (d) = TREE_STATIC (t);
       TREE_PUBLIC (d) = TREE_PUBLIC (t);

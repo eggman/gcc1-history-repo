@@ -21,7 +21,6 @@ and this notice must be preserved on all copies.  */
 
 #include "config.h"
 #include "rtl.h"
-#include "insn-config.h"
 #include "regs.h"
 #include "hard-reg-set.h"
 #include "flags.h"
@@ -1994,33 +1993,37 @@ fold_rtx (x, copyflag)
 	  /* PLUS and MULT can appear inside of a MEM.
 	     In such situations, a constant term must come second.  */
 	  else if (code == MULT || code == PLUS)
-	    if (copyflag && const_arg0 != 0)
-	      {
-		if (! copied)
-		  x = gen_rtx (code, GET_MODE (x), XEXP (x, 0), XEXP (x, 1));
-		XEXP (x, 0) = XEXP (x, 1);
-		XEXP (x, 1) = const_arg0;
-	      }
+	    {
+	      if (copyflag && const_arg0 != 0)
+		{
+		  if (! copied)
+		    x = gen_rtx (code, GET_MODE (x), XEXP (x, 0), XEXP (x, 1));
+		  XEXP (x, 0) = XEXP (x, 1);
+		  XEXP (x, 1) = const_arg0;
+		}
+	    }
 
 	  /* If integer truncation is being done with SUBREG,
 	     we can compute the result.  */
 
 	  else if (code == SUBREG)
-	    if (SUBREG_WORD (x) == 0
-		&& const_arg0 != 0
-		&& GET_CODE (const_arg0) == CONST_INT
-		&& GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (GET_MODE (SUBREG_REG (x)))
-		&& (GET_MODE (x) == QImode || GET_MODE (x) == HImode
-		    || GET_MODE (x) == SImode))
-	      {
-		arg0 = INTVAL (const_arg0);
-		if (GET_MODE_BITSIZE (GET_MODE (x)) != 32)
-		  arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
-		if (arg0 == INTVAL (const_arg0))
-		  new = const_arg0;
-		else
-		  new = gen_rtx (CONST_INT, VOIDmode, arg0);
-	      }
+	    {
+	      if (SUBREG_WORD (x) == 0
+		  && const_arg0 != 0
+		  && GET_CODE (const_arg0) == CONST_INT
+		  && GET_MODE_SIZE (GET_MODE (x)) < GET_MODE_SIZE (GET_MODE (SUBREG_REG (x)))
+		  && (GET_MODE (x) == QImode || GET_MODE (x) == HImode
+		      || GET_MODE (x) == SImode))
+		{
+		  arg0 = INTVAL (const_arg0);
+		  if (GET_MODE_BITSIZE (GET_MODE (x)) != 32)
+		    arg0 &= (1 << GET_MODE_BITSIZE (GET_MODE (x))) - 1;
+		  if (arg0 == INTVAL (const_arg0))
+		    new = const_arg0;
+		  else
+		    new = gen_rtx (CONST_INT, VOIDmode, arg0);
+		}
+	    }
 
 	  if (new != 0 && LEGITIMATE_CONSTANT_P (new))
 	    return new;
@@ -2452,14 +2455,28 @@ predecide_loop_entry (insn)
    Then install the new sources and destinations in the table
    of available values.  */
 
-static rtx set[MAX_SETS_PER_INSN];
-static struct table_elt *src_elt[MAX_SETS_PER_INSN];
-static int src_hash_code[MAX_SETS_PER_INSN];
-static int dest_hash_code[MAX_SETS_PER_INSN];
-static char src_in_memory[MAX_SETS_PER_INSN];
-static char src_in_struct[MAX_SETS_PER_INSN];
-static rtx inner_dest[MAX_SETS_PER_INSN];
-static char src_volatile[MAX_SETS_PER_INSN];
+/* Data on one SET contained in the instruction.  */
+
+struct set
+{
+  /* The SET rtx itself.  */
+  rtx rtl;
+  /* The hash-table element for the SET_SRC of the SET.  */
+  struct table_elt *src_elt;
+  /* Hash code for the SET_SRC.  */
+  int src_hash_code;
+  /* Hash code for the SET_DEST.  */
+  int dest_hash_code;
+  /* The SET_DEST, with SUBREG, etc., stripped.  */
+  rtx inner_dest;
+  /* Nonzero if the SET_SRC is in memory.  */ 
+  char src_in_memory;
+  /* Nonzero if the SET_SRC is in a structure.  */ 
+  char src_in_struct;
+  /* Nonzero if the SET_SRC contains something
+     whose value cannot be predicted and understood.  */
+  char src_volatile;
+};
 
 static void
 cse_insn (insn)
@@ -2482,6 +2499,8 @@ cse_insn (insn)
   int src_eqv_volatile = 0;
   int src_eqv_hash_code;
 
+  struct set *sets;
+
   this_insn = insn;
   writes_memory = init;
 
@@ -2494,7 +2513,8 @@ cse_insn (insn)
     {
       rtx tem;
       n_sets = 1;
-      set[0] = x;
+      sets = (struct set *) alloca (sizeof (struct set));
+      sets[0].rtl = x;
 
       if (REG_NOTES (insn) != 0)
 	{
@@ -2533,11 +2553,14 @@ cse_insn (insn)
   else if (GET_CODE (x) == PARALLEL)
     {
       register int lim = XVECLEN (x, 0);
+
+      sets = (struct set *) alloca (lim * sizeof (struct set));
+
       for (i = 0; i < lim; i++)
 	{
 	  register rtx y = XVECEXP (x, 0, i);
 	  if (GET_CODE (y) == SET)
-	    set[n_sets++] = y;
+	    sets[n_sets++].rtl = y;
 	  else if (GET_CODE (y) == CLOBBER)
 	    note_mem_written (XEXP (y, 0), &writes_memory);
 	  else if (GET_CODE (y) == CALL)
@@ -2556,7 +2579,7 @@ cse_insn (insn)
     }
 
   /* Canonicalize sources and addresses of destinations.
-     set src_elt[i] to the class each source belongs to.
+     set sets[i].src_elt to the class each source belongs to.
      Detect assignments from or to volatile things
      and set set[i] to zero so they will be ignored
      in the rest of this function.
@@ -2569,8 +2592,8 @@ cse_insn (insn)
       register struct table_elt *elt;
       enum machine_mode mode;
 
-      dest = SET_DEST (set[i]);
-      src = SET_SRC (set[i]);
+      dest = SET_DEST (sets[i].rtl);
+      src = SET_SRC (sets[i].rtl);
 
       /* If SRC is a constant that has no machine mode,
 	 hash it with the destination's machine mode.
@@ -2664,9 +2687,9 @@ cse_insn (insn)
 				    qty_const_insn[reg_qty[REGNO (dest)]],
 				    REG_NOTES (insn));
 
-      src_hash_code[i] = HASH (src, mode);
+      sets[i].src_hash_code = HASH (src, mode);
 
-      src_volatile[i] = do_not_record;
+      sets[i].src_volatile = do_not_record;
 
 #if 0
       /* This code caused multiple hash-table entries
@@ -2675,8 +2698,8 @@ cse_insn (insn)
 	 I don't know what good this ever did.  */
       if (GET_CODE (src) == REG)
 	{
-	  src_in_memory[i] = 0;
-	  src_elt[i] = 0;
+	  sets[i].src_in_memory = 0;
+	  sets[i].src_elt = 0;
 	}
       else ...;
 #endif
@@ -2687,12 +2710,12 @@ cse_insn (insn)
       if (GET_CODE (src) == SUBREG
 	  && (GET_MODE_SIZE (GET_MODE (src))
 	      > GET_MODE_SIZE (GET_MODE (SUBREG_REG (src)))))
-	src_volatile[i] = 1;
-      else if (!src_volatile[i])
+	sets[i].src_volatile = 1;
+      else if (!sets[i].src_volatile)
 	{
 	  /* Replace the source with its cheapest equivalent.  */
 
-	  elt = lookup (src, src_hash_code[i], mode);
+	  elt = lookup (src, sets[i].src_hash_code, mode);
 	  if (elt && elt != elt->first_same_value)
 	    {
 	      elt = elt->first_same_value;
@@ -2704,7 +2727,7 @@ cse_insn (insn)
 	      src = copy_rtx (elt->exp);
 	      hash_arg_in_memory = 0;
 	      hash_arg_in_struct = 0;
-	      src_hash_code[i] = HASH (src, elt->mode);
+	      sets[i].src_hash_code = HASH (src, elt->mode);
 	    }
 
 	  /* If ELT is a constant, is there a register
@@ -2712,7 +2735,7 @@ cse_insn (insn)
 	     with the sum of that register plus an offset.  */
 
 	  if (GET_CODE (src) == CONST && n_sets == 1
-	      && SET_DEST (set[i]) != cc0_rtx)
+	      && SET_DEST (sets[i].rtl) != cc0_rtx)
 	    {
 	      rtx newsrc = use_related_value (src, elt);
 	      if (newsrc == 0 && src_eqv != 0)
@@ -2723,17 +2746,17 @@ cse_insn (insn)
 		  src = newsrc;
 		  hash_arg_in_memory = 0;
 		  hash_arg_in_struct = 0;
-		  src_hash_code[i] = HASH (src, GET_MODE (src));
+		  sets[i].src_hash_code = HASH (src, GET_MODE (src));
 		  /* The new expression for the SRC has the same value
 		     as the previous one; so if the previous one is in
 		     the hash table, put the new one in as equivalent.  */
 		  if (elt != 0)
-		    elt = insert (src, elt->first_same_value, src_hash_code[i],
+		    elt = insert (src, elt->first_same_value, sets[i].src_hash_code,
 				  elt->mode);
 		  else
 		    {
 		      /* Maybe the new expression is in the table already.  */
-		      elt = lookup (src, src_hash_code[i], mode);
+		      elt = lookup (src, sets[i].src_hash_code, mode);
 		      /* And maybe a register contains the same value.  */
 		      if (elt && elt != elt->first_same_value)
 			{
@@ -2746,7 +2769,7 @@ cse_insn (insn)
 			  src = copy_rtx (elt->exp);
 			  hash_arg_in_memory = 0;
 			  hash_arg_in_struct = 0;
-			  src_hash_code[i] = HASH (src, elt->mode);
+			  sets[i].src_hash_code = HASH (src, elt->mode);
 			}
 		    }
 
@@ -2754,19 +2777,19 @@ cse_insn (insn)
 		     note we are about to make.  */
 #if 0
 		  /* Deleted because the inhibition was deleted.  */
-		  SET_SRC (set[i]) = src;
+		  SET_SRC (sets[i].rtl) = src;
 #endif
 
 		  /* Record the actual constant value in a REG_EQUIV note.  */
-		  if (GET_CODE (SET_DEST (set[i])) == REG)
+		  if (GET_CODE (SET_DEST (sets[i].rtl)) == REG)
 		    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV,
 						oldsrc, 0);
 		}
 	    }
 
-	  src_elt[i] = elt;
-	  src_in_memory[i] = hash_arg_in_memory;
-	  src_in_struct[i] = hash_arg_in_struct;
+	  sets[i].src_elt = elt;
+	  sets[i].src_in_memory = hash_arg_in_memory;
+	  sets[i].src_in_struct = hash_arg_in_struct;
 	}
 
       /* Either canon_reg or the copy_rtx may have changed this.  */
@@ -2785,7 +2808,7 @@ cse_insn (insn)
 	if (REG_NOTES (insn) == 0
 	    || REG_NOTE_KIND (REG_NOTES (insn)) != REG_EQUIV)
 #endif
-	  SET_SRC (set[0]) = src;
+	  SET_SRC (sets[0].rtl) = src;
 
       do_not_record = 0;
 
@@ -2807,7 +2830,7 @@ cse_insn (insn)
 	    break;
 	}
 
-      inner_dest[i] = dest;
+      sets[i].inner_dest = dest;
 
       /* If storing into memory, do cse on the memory address.
 	 Also compute the hash code of the destination now,
@@ -2849,7 +2872,7 @@ cse_insn (insn)
 	      || (GET_CODE (addr) == REG
 		  && (hash = REGNO (addr),
 		      hash == FRAME_POINTER_REGNUM || hash == ARG_POINTER_REGNUM)))
-	    dest_hash_code[i] = ((int)MEM + canon_hash (addr)) % NBUCKETS;
+	    sets[i].dest_hash_code = ((int)MEM + canon_hash (addr)) % NBUCKETS;
 	  else
 	    {
 	      /* Look for a simpler equivalent for the destination address.  */
@@ -2857,7 +2880,7 @@ cse_insn (insn)
 	      if (! do_not_record)
 		{
 		  elt = lookup (addr, hash, Pmode);
-		  dest_hash_code[i] = ((int) MEM + hash) % NBUCKETS;
+		  sets[i].dest_hash_code = ((int) MEM + hash) % NBUCKETS;
 
 		  if (elt && elt != elt->first_same_value)
 		    {
@@ -2872,9 +2895,9 @@ cse_insn (insn)
 		      /* Create a new MEM rtx, in case the old one
 			 is shared somewhere else.  */
 		      dest = gen_rtx (MEM, GET_MODE (dest), addr);
-		      dest->volatil = inner_dest[i]->volatil;
-		      SET_DEST (set[i]) = dest;
-		      inner_dest[i] = dest;
+		      dest->volatil = sets[i].inner_dest->volatil;
+		      SET_DEST (sets[i].rtl) = dest;
+		      sets[i].inner_dest = dest;
 		    }
 		}
 	    }
@@ -2884,9 +2907,9 @@ cse_insn (insn)
 	 because the value in it after the store
 	 may not equal what was stored, due to truncation.  */
 
-      if (GET_CODE (SET_DEST (set[i])) == ZERO_EXTRACT
-	  || GET_CODE (SET_DEST (set[i])) == SIGN_EXTRACT)
-	src_volatile[i] = 1, src_eqv = 0;
+      if (GET_CODE (SET_DEST (sets[i].rtl)) == ZERO_EXTRACT
+	  || GET_CODE (SET_DEST (sets[i].rtl)) == SIGN_EXTRACT)
+	sets[i].src_volatile = 1, src_eqv = 0;
 
       /* No further processing for this assignment
 	 if destination is volatile.  */
@@ -2895,10 +2918,10 @@ cse_insn (insn)
 	       || (GET_CODE (dest) == REG 
 		   ? REGNO (dest) == STACK_POINTER_REGNUM
 		   : GET_CODE (dest) != MEM))
-	set[i] = 0;
+	sets[i].rtl = 0;
 
-      if (set[i] != 0 && dest != SET_DEST (set[i]))
-	dest_hash_code[i] = HASH (SET_DEST (set[i]), mode);
+      if (sets[i].rtl != 0 && dest != SET_DEST (sets[i].rtl))
+	sets[i].dest_hash_code = HASH (SET_DEST (sets[i].rtl), mode);
 
       if (dest == cc0_rtx
 	  && (GET_CODE (src) == MINUS
@@ -2914,10 +2937,10 @@ cse_insn (insn)
      the same classes even if the actual sources are no longer in them
      (having been invalidated).  */
 
-  if (src_eqv && src_eqv_elt == 0 && set[0] != 0)
+  if (src_eqv && src_eqv_elt == 0 && sets[0].rtl != 0)
     {
       register struct table_elt *elt;
-      rtx dest = SET_DEST (set[0]);
+      rtx dest = SET_DEST (sets[0].rtl);
       enum machine_mode eqvmode = GET_MODE (dest);
 
       if (GET_CODE (dest) == STRICT_LOW_PART)
@@ -2932,22 +2955,22 @@ cse_insn (insn)
     }
 
   for (i = 0; i < n_sets; i++)
-    if (set[i] && ! src_volatile[i])
+    if (sets[i].rtl && ! sets[i].src_volatile)
       {
-	if (GET_CODE (SET_DEST (set[i])) == STRICT_LOW_PART)
+	if (GET_CODE (SET_DEST (sets[i].rtl)) == STRICT_LOW_PART)
 	  {
 	    /* REG_EQUAL in setting a STRICT_LOW_PART
 	       gives an equivalent for the entire destination register,
 	       not just for the subreg being stored in now.
 	       This is a more interesting equivalent, so we arrange later
 	       to treat the entire reg as the destination.  */
-	    src_elt[i] = src_eqv_elt;
-	    src_hash_code[i] = src_eqv_hash_code;
+	    sets[i].src_elt = src_eqv_elt;
+	    sets[i].src_hash_code = src_eqv_hash_code;
 	  }
-	else if (src_elt[i] == 0)
+	else if (sets[i].src_elt == 0)
 	  {
-	    register rtx src = SET_SRC (set[i]);
-	    register rtx dest = SET_DEST (set[i]);
+	    register rtx src = SET_SRC (sets[i].rtl);
+	    register rtx dest = SET_DEST (sets[i].rtl);
 	    register struct table_elt *elt;
 	    enum machine_mode mode
 	      = GET_MODE (src) == VOIDmode ? GET_MODE (dest) : GET_MODE (src);
@@ -2956,11 +2979,11 @@ cse_insn (insn)
 	       any of the src_elt's, because they would have failed to match
 	       if not still valid.  */
 	    if (insert_regs (src, 0, 0))
-	      src_hash_code[i] = HASH (src, mode);
-	    elt = insert (src, src_eqv_elt, src_hash_code[i], mode);
-	    elt->in_memory = src_in_memory[i];
-	    elt->in_struct = src_in_struct[i];
-	    src_elt[i] = elt->first_same_value;
+	      sets[i].src_hash_code = HASH (src, mode);
+	    elt = insert (src, src_eqv_elt, sets[i].src_hash_code, mode);
+	    elt->in_memory = sets[i].src_in_memory;
+	    elt->in_struct = sets[i].src_in_struct;
+	    sets[i].src_elt = elt->first_same_value;
 	  }
       }
 
@@ -2968,13 +2991,13 @@ cse_insn (insn)
 
   /* Now invalidate everything set by this instruction.
      If a SUBREG or other funny destination is being set,
-     set[i] is still nonzero, so here we invalidate the reg
+     sets[i].rtl is still nonzero, so here we invalidate the reg
      a part of which is being set.  */
 
   for (i = 0; i < n_sets; i++)
-    if (set[i])
+    if (sets[i].rtl)
       {
-	register rtx dest = inner_dest[i];
+	register rtx dest = sets[i].inner_dest;
 
 	/* Needed for registers to remove the register from its
 	   previous quantity's chain.
@@ -2991,38 +3014,38 @@ cse_insn (insn)
      any invalid entry that refers to one of these registers.  */
 
   for (i = 0; i < n_sets; i++)
-    if (set[i] && GET_CODE (SET_DEST (set[i])) != REG)
-      mention_regs (SET_DEST (set[i]));
+    if (sets[i].rtl && GET_CODE (SET_DEST (sets[i].rtl)) != REG)
+      mention_regs (SET_DEST (sets[i].rtl));
 
   /* We may have just removed some of the src_elt's from the hash table.
      So replace each one with the current head of the same class.  */
 
   for (i = 0; i < n_sets; i++)
-    if (set[i])
+    if (sets[i].rtl)
       {
 	/* If the source is volatile, its destination goes in
 	   a class of its own.  */
-	if (src_volatile[i])
-	  src_elt[i] = 0;
+	if (sets[i].src_volatile)
+	  sets[i].src_elt = 0;
 
-	if (src_elt[i] && src_elt[i]->first_same_value == 0)
+	if (sets[i].src_elt && sets[i].src_elt->first_same_value == 0)
 	  /* If elt was removed, find current head of same class,
 	     or 0 if nothing remains of that class.  */
 	  {
-	    register struct table_elt *elt = src_elt[i];
+	    register struct table_elt *elt = sets[i].src_elt;
 
 	    while (elt && elt->first_same_value == 0)
 	      elt = elt->next_same_value;
-	    src_elt[i] = elt ? elt->first_same_value : 0;
+	    sets[i].src_elt = elt ? elt->first_same_value : 0;
 	  }
       }
 
   /* Now insert the destinations into their equivalence classes.  */
 
   for (i = 0; i < n_sets; i++)
-    if (set[i])
+    if (sets[i].rtl)
       {
-	register rtx dest = SET_DEST (set[i]);
+	register rtx dest = SET_DEST (sets[i].rtl);
 	register struct table_elt *elt;
 
 	if (flag_float_store
@@ -3032,30 +3055,30 @@ cse_insn (insn)
 
 	/* STRICT_LOW_PART isn't part of the value BEING set,
 	   and neither is the SUBREG inside it.
-	   Note that in this case SRC_ELT[I] is really SRC_EQV_ELT.  */
+	   Note that in this case SETS[I].SRC_ELT is really SRC_EQV_ELT.  */
 	if (GET_CODE (dest) == STRICT_LOW_PART)
 	  dest = SUBREG_REG (XEXP (dest, 0));
 
 	if (GET_CODE (dest) == REG)
 	  /* Registers must also be inserted into chains for quantities.  */
-	  if (insert_regs (dest, src_elt[i], 1))
+	  if (insert_regs (dest, sets[i].src_elt, 1))
 	    /* If `insert_regs' changes something, the hash code must be
 	       recalculated.  */
-	    dest_hash_code[i] = HASHREG (dest);
+	    sets[i].dest_hash_code = HASHREG (dest);
 
 	if (GET_CODE (dest) == SUBREG)
 	  /* Registers must also be inserted into chains for quantities.  */
-	  if (insert_regs (dest, src_elt[i], 1))
+	  if (insert_regs (dest, sets[i].src_elt, 1))
 	    /* If `insert_regs' changes something, the hash code must be
 	       recalculated.  */
-	    dest_hash_code[i] = canon_hash (dest) % NBUCKETS;
+	    sets[i].dest_hash_code = canon_hash (dest) % NBUCKETS;
 
-	elt = insert (dest, src_elt[i], dest_hash_code[i], GET_MODE (dest));
-	elt->in_memory = GET_CODE (inner_dest[i]) == MEM;
+	elt = insert (dest, sets[i].src_elt, sets[i].dest_hash_code, GET_MODE (dest));
+	elt->in_memory = GET_CODE (sets[i].inner_dest) == MEM;
 	if (elt->in_memory)
 	  {
-	    elt->in_struct = (inner_dest[i]->in_struct
-			      || inner_dest[i] != SET_DEST (set[i]));
+	    elt->in_struct = (sets[i].inner_dest->in_struct
+			      || sets[i].inner_dest != SET_DEST (sets[i].rtl));
 	  }
       }
 
@@ -3066,21 +3089,21 @@ cse_insn (insn)
      replace REG1 with REG0 in the previous insn that computed their value.
      Then REG1 will become a dead store and won't cloud the situation
      for later optimizations.  */
-  if (n_sets == 1 && set[0] && GET_CODE (SET_DEST (set[0])) == REG
-      && GET_CODE (SET_SRC (set[0])) == REG
-      && rtx_equal_p (canon_reg (SET_SRC (set[0])), SET_DEST (set[0])))
+  if (n_sets == 1 && sets[0].rtl && GET_CODE (SET_DEST (sets[0].rtl)) == REG
+      && GET_CODE (SET_SRC (sets[0].rtl)) == REG
+      && rtx_equal_p (canon_reg (SET_SRC (sets[0].rtl)), SET_DEST (sets[0].rtl)))
     {
       rtx prev = PREV_INSN (insn);
       while (prev && GET_CODE (prev) == NOTE)
 	prev = PREV_INSN (prev);
 
       if (prev && GET_CODE (prev) == INSN && GET_CODE (PATTERN (prev)) == SET
-	  && SET_DEST (PATTERN (prev)) == SET_SRC (set[0]))
+	  && SET_DEST (PATTERN (prev)) == SET_SRC (sets[0].rtl))
 	{
-	  rtx dest = SET_DEST (set[0]);
+	  rtx dest = SET_DEST (sets[0].rtl);
 	  SET_DEST (PATTERN (prev)) = dest;
-	  SET_DEST (set[0]) = SET_SRC (set[0]);
-	  SET_SRC (set[0]) = dest;
+	  SET_DEST (sets[0].rtl) = SET_SRC (sets[0].rtl);
+	  SET_SRC (sets[0].rtl) = dest;
 	}
     }
 
@@ -3263,7 +3286,9 @@ cse_main (f, nregs)
   free_element_chain = 0;
   n_elements_made = 0;
 
-  /* Loop over basic blocks */
+  /* Loop over basic blocks.
+     Compute the maximum number of qty's needed for each basic block
+     (which is 2 for each SET).  */
   while (insn)
     {
       register rtx p = insn;
@@ -3293,9 +3318,9 @@ cse_main (f, nregs)
 	  /* A PARALLEL can have lots of SETs in it,
 	     especially if it is really an ASM_OPERANDS.  */
 	  if (GET_CODE (p) == INSN && GET_CODE (PATTERN (p)) == PARALLEL)
-	    max_qty += XVECLEN (PATTERN (p), 0);
+	    max_qty += XVECLEN (PATTERN (p), 0) * 2;
 	  else
-	    i++;
+	    max_qty += 2;;
 
 	  last_uid = INSN_UID (p);
 	  p = NEXT_INSN (p);
@@ -3304,7 +3329,7 @@ cse_main (f, nregs)
       cse_basic_block_end = last_uid;
       cse_basic_block_start = INSN_UID (insn);
 
-      max_qty += max_reg + i * MAX_SETS_PER_INSN;
+      max_qty += max_reg;
 
       cse_basic_block (insn, p);
 

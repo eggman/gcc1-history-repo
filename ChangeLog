@@ -1,3 +1,145 @@
+Wed Sep 14 09:50:08 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* Version 1.28 released.
+
+	* tm-sparc.h (FIRST_PARM_CALLER_OFFSET): Defined.
+
+Tue Sep 13 00:11:37 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* tree.c (saveable_tree_cons): New function.
+	* c-decl.c (pushtag): Use it; lists of tags needed for inlining.
+	(get_parm_info): Likewise.
+
+	* print-tree.c (dump): Handle each kind of statement node individually.
+
+	* integrate.c (copy_decl_tree): Don't pass DECL_RTL through
+	copy_rtx_and_substitute if it's a memref with constant address.
+
+	* sdbout.c (sdbout_symbol): Don't output garbage when DECL_RTL
+	has a form we don't understand.
+
+	* reload.c (find_reloads_address_1): Don't reload an autoincrement
+	if it has a suitable hard reg already.
+
+	* c-typeck.c (process_init_constructor): Error check after digest_init.
+
+	* c-parse.y (is_reserved_word): Now static.
+
+Mon Sep 12 19:19:28 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* i386.md (all push insns): Use `<' for the constraint,
+	since a push_operand won't fit an `m' constraint on this machine.
+
+	* expr.c (expand_call): If fn name is `__builtin_alloca',
+	it may be alloca.  This case arises if the user redeclares
+	`__builtin_alloca'.
+
+Sun Sep 11 01:47:01 1988  Richard Stallman  (rms at gluteus.ai.mit.edu)
+
+	* Eliminate MAX_SETS_PER_INSN.
+	* cse.c (cse_insn): Combine all the tables and dynamically allocate.
+	(cse_main): Count the actual number of SETs; don't estimate.
+	* genconfig.c: Don't calculate MAX_SETS_PER_INSN.
+	* stmt.c (expand_asm_operands): No limit on # of output operands.
+
+	* expr.c (expand_call):
+	Store all non-reg parms first, then store all partially-in-reg
+	parms, then all the (precomputed) wholly-in-reg parms.
+	Special hair for BLKmode parms which must be passed entirely
+	in memory; also for BLKmode parms initialized from function calls,
+	for which it is best to allocate the space before computing value.
+	Use macro FIRST_PARM_CALLER_OFFSET to handle machines where reg
+	parms "take up space" on the stack below the stack pointer.
+	(store_one_arg): Handle case of preallocated stack loc for BLKmode.
+	Update current_args_size here, not in caller.
+
+Sat Sep 10 19:58:03 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* output-sparc.c (output_scc_insn): Changed asm templates.
+	Use common code to emit the move insns and label at the end of fn.
+	(output_mul_by_constant): Use %g1 as temporary reg.
+
+	* sparc.md (indexed load pattern): Deleted.
+	(fix_truncdfsi2): Don't ignore value of output_fp_move_double.
+	(cse'd multiply): Operand 1 predicate is general_operand.
+	(return peepholes): Conditionalize on ! TARGET_EPILOGUE.
+
+	* tm-sparc.h (INIT_CUMULATIVE_ARGS,FUNCTION_ARG...):
+	Use partial regs for args that start in regs but won't entirely fit.
+
+	* tm-sparc.h (CONST_COSTS): 0 for args that can be immediate.
+	(STRUCTURE_SIZE_BOUNDARY): Now 8.
+	(STRUCT_VALUE_OFFSET): Defined as symbolic name for `64'.
+
+	* expr.c (struct arg_data): New component `stack' says where in the
+	stack to put a BLKmode arg (if it's nonzero).
+	(store_one_arg): Handle case where it's nonzero.
+	(target_for_arg): New fn, precompute stack locn for BLKmode arg.
+
+Fri Sep  9 01:41:13 1988  Richard Stallman  (rms at corn-chex.ai.mit.edu)
+
+	* cse.c (fold_rtx): Misnested ifs screwed SUBREG case.
+
+	* reload.c (find_reloads_toplev): Special case for (SUBREG REG)
+	where REG is equivalent to a CONST_INT.
+	(find_reloads): Don't ignore the value returned by find_reloads_toplev.
+	Treat a (SUBREG constant) like a (SUBREG MEM): set force_reload.
+
+	* reload.c (push_reload): Abort if memory subreg is not
+	paradoxical; the MEM mode should be narrower than the SUBREG.
+
+	* stmt.c (fixup_var_ref_1): Fixup memory subregs in an insn
+	copying VAR to or from a register.
+
+	* m68k.md (movdi, movdf): the x-reg constraint accidentally allowed
+	moving rm to rm with no &.
+
+	* vax.md (call_value): Typo.
+
+	* expr.c (emit_block_move, emit_push_insn): prefer movstrqi to movstrsi
+
+	* m68k.md (FPA multiply): bad opcodes for 3-operand multiply insns.
+
+Thu Sep  8 18:22:14 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y: Use YYERROR instead of synonym YYFAIL.
+	BISON VERSIONS PRIOR TO THIS DATE WON'T WORK!
+
+	* c-typeck.c (digest_init): Use TYPE_MAIN_VARIANT of array elt type.
+
+	* tm-sun[23].h (CPP_SPEC, ASM_SPEC): Let -m(c|)680[12]0 control
+	options for CPP and assembler.
+
+Wed Sep  7 13:44:59 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* New handling of reloading of PRE_DEC, etc.
+	Now reload_in is the PRE_DEC, etc, and reload_inc is always positive.
+	* reload.c (push_reloads): Old code to set reload_inc deleted.
+	(find_reloads_address_1): Call push_reload the new way.
+	(find_inc_amount): Value always positive.
+	* reload1.c (choose_reload_targets): Detect this case.
+	(inc_for_reload): New fn; does the real work for this case.
+	* m68k.md (call, call_value): Fn address must be offsetable.
+
+	* combine.c (try_distrib): Reject strange cases such as if
+	result of PREV1 or PREV2 is used in a memory address in INSN.
+
+	* vax.md (movsf): Generate movl instead of movf.
+
+	* expr.c (expand_call): If have regparms, store all BLKmode args
+	before all the other args.
+	(store_one_arg): New subroutine broken out.
+
+	* output-sparc.c (output_block_move): Complete rewrite.
+
+	* sparc.md (cse'd multiply insn): Typo in asm-output code.
+
+Tue Sep  6 20:05:48 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
+
+	* c-parse.y (yylex, etc.) Install Schmidt's perfect hash table.
+
+	* gcc.c: handle extension `.cc'.
+
 Mon Sep  5 12:09:58 1988  Richard Stallman  (rms at sugar-bombs.ai.mit.edu)
 
 	* Version 1.27 released.

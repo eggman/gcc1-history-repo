@@ -94,6 +94,8 @@ static rtx expand_increment ();
 static void move_by_pieces_1 ();
 static int move_by_pieces_ninsns ();
 static void init_queue ();
+static void store_one_arg ();
+static rtx target_for_arg ();
 
 void do_pending_stack_adjust ();
 
@@ -835,10 +837,16 @@ emit_block_move (x, y, size, align)
     move_by_pieces (x, y, INTVAL (size), align);
   else
     {
-#ifdef HAVE_movstrsi
-      if (HAVE_movstrsi)
+      /* Try the most limited insn first, because there's no point
+	 including more than one in the machine description unless
+	 the more limited one has some advantage.  */
+#ifdef HAVE_movstrqi
+      if (HAVE_movstrqi
+	  && GET_CODE (size) == CONST_INT
+	  && ((unsigned) INTVAL (size)
+	      < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
 	{
-	  emit_insn (gen_movstrsi (x, y, size));
+	  emit_insn (gen_movstrqi (x, y, size));
 	  return;
 	}
 #endif
@@ -852,13 +860,10 @@ emit_block_move (x, y, size, align)
 	  return;
 	}
 #endif
-#ifdef HAVE_movstrqi
-      if (HAVE_movstrqi
-	  && GET_CODE (size) == CONST_INT
-	  && ((unsigned) INTVAL (size)
-	      < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
+#ifdef HAVE_movstrsi
+      if (HAVE_movstrsi)
 	{
-	  emit_insn (gen_movstrqi (x, y, size));
+	  emit_insn (gen_movstrsi (x, y, size));
 	  return;
 	}
 #endif
@@ -1213,10 +1218,17 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 			      INTVAL (size), align);
 	      return;
 	    }
-#ifdef HAVE_movstrsi
-	  if (HAVE_movstrsi)
+      /* Try the most limited insn first, because there's no point
+	 including more than one in the machine description unless
+	 the more limited one has some advantage.  */
+#ifdef HAVE_movstrqi
+	  if (HAVE_movstrqi
+	      && GET_CODE (size) == CONST_INT
+	      && ((unsigned) INTVAL (size)
+		  < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
 	    {
-	      emit_insn (gen_movstrsi (gen_rtx (MEM, BLKmode, temp), x, size));
+	      emit_insn (gen_movstrqi (gen_rtx (MEM, BLKmode, temp),
+				       x, size));
 	      return;
 	    }
 #endif
@@ -1231,14 +1243,10 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      return;
 	    }
 #endif
-#ifdef HAVE_movstrqi
-	  if (HAVE_movstrqi
-	      && GET_CODE (size) == CONST_INT
-	      && ((unsigned) INTVAL (size)
-		  < (1 << (GET_MODE_BITSIZE (QImode) - 1))))
+#ifdef HAVE_movstrsi
+	  if (HAVE_movstrsi)
 	    {
-	      emit_insn (gen_movstrqi (gen_rtx (MEM, BLKmode, temp),
-				       x, size));
+	      emit_insn (gen_movstrsi (gen_rtx (MEM, BLKmode, temp), x, size));
 	      return;
 	    }
 #endif
@@ -1268,7 +1276,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 
 	  /* Make current_args_size nonzero around the library call
 	     to force it to pop the bcopy-arguments right away.  */
-	  current_args_size += 1;
+	  NO_DEFER_POP;
 #ifdef TARGET_MEM_FUNCTIONS
 	  emit_library_call (gen_rtx (SYMBOL_REF, Pmode, "memcpy"),
 			     VOIDmode, 3, temp, Pmode, XEXP (xinner, 0), Pmode,
@@ -1278,7 +1286,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 			     VOIDmode, 3, XEXP (xinner, 0), Pmode, temp, Pmode,
 			     size, Pmode);
 #endif
-	  current_args_size -= 1;
+	  OK_DEFER_POP;
 	}
     }
   else if (partial > 0)
@@ -1290,6 +1298,9 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	 that we must make space for but need not store.  */
       int skip = partial % (PARM_BOUNDARY / BITS_PER_WORD);
       int args_offset = INTVAL (args_so_far);
+      int stack_offset;
+
+      stack_offset = 0;	/* This is a placeholder for a questionable change. */
 
       /* If we make space by pushing it, we might as well push
 	 the real data.  Otherwise, we can leave SKIP nonzero
@@ -1313,7 +1324,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	if (GET_CODE (x) == MEM)
 	  emit_push_insn (gen_rtx (MEM, SImode,
 				   plus_constant (XEXP (x, 0),
-						  i * UNITS_PER_WORD)),
+						  stack_offset + i * UNITS_PER_WORD)),
 			  SImode, 0, align, 0, 0, 0, args_addr,
 			  gen_rtx (CONST_INT, VOIDmode,
 				   args_offset + i * UNITS_PER_WORD));
@@ -1477,7 +1488,7 @@ emit_library_call (va_alist)
 	      * (PARM_BOUNDARY / BITS_PER_UNIT));
 
       args_size += arg_size;
-      current_args_size += arg_size;
+      NO_DEFER_POP;
       FUNCTION_ARG_ADVANCE (args_so_far, mode, 0, 1);
     }
 
@@ -1501,12 +1512,12 @@ emit_library_call (va_alist)
 
   /* Don't allow popping to be deferred, since then
      cse'ing of library calls could delete a call and leave the pop.  */
-  current_args_size += 1;
+  NO_DEFER_POP;
   emit_call_1 (fun, get_identifier (XSTR (orgfun, 0)), args_size,
 	       FUNCTION_ARG (args_so_far, VOIDmode, void_type_node, 1),
 	       outmode != VOIDmode ? hard_libcall_value (outmode) : 0,
 	       old_args_size + 1);
-  current_args_size -= 1;
+  OK_DEFER_POP;
 }
 
 /* Expand an assignment that stores the value of FROM into TO.
@@ -3024,9 +3035,9 @@ expand_builtin (exp, target, subtarget, mode)
       do_pending_stack_adjust ();
 
 #ifdef STACK_POINTER_OFFSET
-      /* If we will have to round the result up, make sure we
-	 have extra space so the user still gets at least as much
-	 space as he asked for.  */
+      /* If we will have to round the result down (which is up
+	 if stack grows down), make sure we have extra space so the
+	 user still gets at least as much space as he asked for.  */
       if ((STACK_POINTER_OFFSET + STACK_BYTES - 1) / STACK_BYTES
 	  != STACK_POINTER_OFFSET / STACK_BYTES)
 	op0 = plus_constant (op0, STACK_BYTES);
@@ -3415,6 +3426,32 @@ do_pending_stack_adjust ()
    If the value is stored in TARGET then TARGET is returned.
    If IGNORE is nonzero, then we ignore the value of the function call.  */
 
+struct arg_data
+{
+  /* Tree node for this argument.  */
+  tree tree_value;
+  /* Precomputed RTL value, or 0 if it isn't precomputed.  */
+  rtx value;
+  /* Register to pass this argument in, or 0 if passed on stack.  */
+  rtx reg;
+  /* Number of registers to use.  0 means put the whole arg in registers.
+     Also 0 if not passed in registers.  */
+  int partial;
+  /* Offset of this argument from beginning of stack-args.  */
+  struct args_size offset;
+  /* Size of this argument on the stack, rounded up for any padding it gets,
+     parts of the argument passed in registers do not count.
+     If the FIRST_PARM_CALLER_OFFSET is negative, then register parms
+     are counted here as well.  */
+  struct args_size size;
+  /* Nonzero if this arg has already been stored.  */
+  int stored;
+  /* const0_rtx means should preallocate stack space for this arg.
+     Other non0 value is the stack slot, preallocated.
+     Used only for BLKmode.  */
+  rtx stack;
+};
+
 static rtx
 expand_call (exp, target, ignore)
      tree exp;
@@ -3448,31 +3485,23 @@ expand_call (exp, target, ignore)
      and they must all go on the stack.  */
   int n_named_args;
 
-  /* The following vectors number the parms in the order they will be pushed,
+  /* Vector of information about each argument.
+     Arguments are numbered in the order they will be pushed,
      not the order they are written.  */
-  /* Elt N is offset in bytes in parmlist on stack of parm N.  */
-  struct args_size *arg_offset;
-  /* Elt N is size in bytes of parm N.  */
-  struct args_size *arg_size;
-  /* Elt N is the tree expression for parm N.  */
-  register tree *argvec;
-  /* Elt N is the precomputed RTX value for parm N,
-     or 0 if this parm was not precomputed.  */
-  rtx *valvec;
-  /* Elt N is the hard register for passing parm N, 
-     or 0 if it is passed in memory.  */
-  rtx *regvec;
-  /* Elt N is the number of bytes of parm N to pass in that register.
-     0 means pass all of parm N in its register
-     (provided the register isn't also 0).  */
-  int *partial;
+  struct arg_data *args;
 
   /* Total size in bytes of all the stack-parms scanned so far.  */
   struct args_size args_size;
+  /* Remember initial value of args_size.constant.  */
+  int starting_args_size;
+  /* Nonzero means count reg-parms' size in ARGS_SIZE.  */
+  int stack_count_regparms = 0;
   /* Data on reg parms scanned so far.  */
   CUMULATIVE_ARGS args_so_far;
   /* Nonzero if a reg parm has been scanned.  */
-  int reg_parm_seen = 0;
+  int reg_parm_seen;
+  /* Nonzero if we must avoid push-insns in the args for this call.  */
+  int must_preallocate;
   /* 1 if scanning parms front to back, -1 if scanning back to front.  */
   int inc;
   /* Address of space preallocated for stack parms
@@ -3488,16 +3517,26 @@ expand_call (exp, target, ignore)
   /* Nonzero if this is a call to __builtin_new.  */
   int is_builtin_new;
 
-  rtx old_stack_level;
+  /* Nonzero if there are BLKmode args whose data types require them
+     to be passed in memory, not (even partially) in registers.  */
+  int BLKmode_parms_forced = 0;
+  /* The offset of the first BLKmode parameter which 
+     *must* be passed in memory.  */
+  int BLKmode_parms_first_offset = 0;
+  /* Total size of BLKmode parms which could usefully be preallocated.  */
+  int BLKmode_parms_sizes = 0;
+
+  /* Amount stack was adjusted to protect BLKmode parameters
+     which are below the nominal "stack address" value.  */
+  rtx protected_stack = 0;
+
+  rtx old_stack_level = 0;
   int old_pending_adj;
   int old_current_args_size = current_args_size;
   tree old_cleanups = cleanups_of_this_call;
 
   register tree p;
   register int i;
-
-  args_size.constant = 0;
-  args_size.var = 0;
 
   /* See if we can find a DECL-node for the actual function.
      As a result, decide whether this is a call to an integrable function.  */
@@ -3531,7 +3570,11 @@ expand_call (exp, target, ignore)
     {
       /* This call returns a big structure.  */
       if (target)
-	structure_value_addr = XEXP (target, 0);
+	{
+	  structure_value_addr = XEXP (target, 0);
+	  if (reg_mentioned_p (stack_pointer_rtx, structure_value_addr))
+	    structure_value_addr = copy_to_reg (structure_value_addr);
+	}
       else
 	/* Make room on the stack to hold the value.  */
 	structure_value_addr = get_structure_value_addr (expr_size (exp));
@@ -3572,7 +3615,9 @@ expand_call (exp, target, ignore)
      makes no sense to pass it as a pointer-to-function to
      anything that does not understand its behavior.  */
   may_be_alloca =
-    (fndecl && ! strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "alloca"));
+    (fndecl && (! strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)), "alloca")
+		|| ! strcmp (IDENTIFIER_POINTER (DECL_NAME (fndecl)),
+			     "__builtin_alloca")));
 #endif
 
   /* See if this is a call to a function that can return more than once.  */
@@ -3644,20 +3689,21 @@ expand_call (exp, target, ignore)
     /* If we know nothing, treat all args as named.  */
     n_named_args = num_actuals;
 
-  /* Make a vector of the args, in the order we want to compute them,
-     and a parallel vector of where we want to put them.
-     regvec[I] is 0 to if should push argvec[I] or else a reg to put it in.
-     valvec[i] is the arg value as an rtx.  */
-  argvec = (tree *) alloca (num_actuals * sizeof (tree));
-  regvec = (rtx *) alloca (num_actuals * sizeof (rtx));
-  valvec = (rtx *) alloca (num_actuals * sizeof (rtx));
-  partial = (int *) alloca (num_actuals * sizeof (int));
-  arg_size = (struct args_size *) alloca (num_actuals * sizeof (struct args_size));
-  arg_offset = (struct args_size *) alloca (num_actuals * sizeof (struct args_size));
+  /* Make a vector to hold all the information about each arg.  */
+  args = (struct arg_data *) alloca (num_actuals * sizeof (struct arg_data));
+  bzero (args, num_actuals * sizeof (struct arg_data));
+
+  args_size.constant = 0;
+  args_size.var = 0;
+#ifdef FIRST_PARM_CALLER_OFFSET
+  args_size.constant = FIRST_PARM_CALLER_OFFSET (fntype);
+  stack_count_regparms = 1;
+#endif
+  starting_args_size = args_size.constant;
 
   /* In this loop, we consider args in the order they are written.
-     We fill up argvec from the front of from the back
-     so that the first arg to be pushed ends up at the front.  */
+     We fill up ARGS from the front of from the back if necessary
+     so that in any case the first arg to be pushed ends up at the front.  */
 
 #ifdef PUSH_ARGS_REVERSED
   i = num_actuals - 1, inc = -1;
@@ -3672,20 +3718,15 @@ expand_call (exp, target, ignore)
   for (p = actparms; p; p = TREE_CHAIN (p), i += inc)
     {
       tree type = TREE_TYPE (TREE_VALUE (p));
-      argvec[i] = p;
-      regvec[i] = 0;
-      valvec[i] = 0;
-      partial[i] = 0;
-      arg_size[i].constant = 0;
-      arg_size[i].var = 0;
-      arg_offset[i] = args_size;
+      args[i].tree_value = TREE_VALUE (p);
+      args[i].offset = args_size;
 
       if (type == error_mark_node)
 	continue;
 
       /* Decide where to pass this arg.  */
-      /* regvec[i] is nonzero if all or part is passed in registers.
-	 partial[i] is nonzero if part but not all is passed in registers,
+      /* args[i].reg is nonzero if all or part is passed in registers.
+	 args[i].partial is nonzero if part but not all is passed in registers,
 	  and the exact value says how many words are passed in registers.  */
 
       if (TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
@@ -3694,45 +3735,21 @@ expand_call (exp, target, ignore)
 	     for a structure value address.  */
 	  && TREE_PURPOSE (p) != error_mark_node)
 	{
-	  regvec[i] = FUNCTION_ARG (args_so_far, TYPE_MODE (type), type,
-				    i < n_named_args);
+	  args[i].reg = FUNCTION_ARG (args_so_far, TYPE_MODE (type), type,
+				      i < n_named_args);
 #ifdef FUNCTION_ARG_PARTIAL_NREGS
-	  partial[i] = FUNCTION_ARG_PARTIAL_NREGS (args_so_far,
-						   TYPE_MODE (type), type,
-						   i < n_named_args);
+	  args[i].partial
+	    = FUNCTION_ARG_PARTIAL_NREGS (args_so_far,
+					  TYPE_MODE (type), type,
+					  i < n_named_args);
 #endif
 	}
 
-      /* Once we see at least one parm that is being passed in a register,
-	 precompute that parm and all remaining parms (if they do arithmetic)
-	 before loading any of them into their specified registers.
-	 That way we don't lose if one of them involves
-	 a function call OR a library routine that needs the same regs.  */
-      if (regvec[i] != 0)
-	reg_parm_seen = 1;
+      /* Compute the stack-size of this argument.  */
 
-      if (reg_parm_seen)
-	{
-	  valvec[i] = expand_expr (TREE_VALUE (p), 0, VOIDmode, 0);
-	  if (GET_CODE (valvec[i]) != MEM
-	      && ! CONSTANT_P (valvec[i])
-	      && GET_CODE (valvec[i]) != CONST_DOUBLE)
-	    valvec[i] = force_reg (TYPE_MODE (type), valvec[i]);
-	  /* ANSI doesn't require a sequence point here,
-	     but PCC has one, so this will avoid some problems.  */
-	  emit_queue ();
-	}
-
-      /* Increment ARGS_SO_FAR, which has info about which arg-registers
-	 have been used, etc.  */
-
-      FUNCTION_ARG_ADVANCE (args_so_far, TYPE_MODE (type), type,
-			    i < n_named_args);
-
-      /* Increment ARGS_SIZE, which is the size of all args so far.  */
-
-      if (regvec[i] != 0 && partial[i] == 0)
-	/* A register-arg doesn't count.  */
+      if (args[i].reg != 0 && args[i].partial == 0
+	  && ! stack_count_regparms)
+	/* On most machines, don't count stack space for a register arg.  */
 	;
       else if (TYPE_MODE (type) != BLKmode)
 	{
@@ -3748,9 +3765,9 @@ expand_call (exp, target, ignore)
 	  /* Compute how much space the argument should get:
 	     maybe pad to a multiple of the alignment for arguments.  */
 	  if (none == FUNCTION_ARG_PADDING (TYPE_MODE (type), (rtx)0))
-	    arg_size[i].constant += size;
+	    args[i].size.constant = size;
 	  else
-	    arg_size[i].constant
+	    args[i].size.constant
 	      = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
 		  / (PARM_BOUNDARY / BITS_PER_UNIT))
 		 * (PARM_BOUNDARY / BITS_PER_UNIT));
@@ -3760,35 +3777,81 @@ expand_call (exp, target, ignore)
 	  register tree size = size_in_bytes (type);
 
 	  /* A nonscalar.  Round its size up to a multiple
-	     of the allocation unit for arguments.  */
-
-	  /* Now maybe round up to multiple of PARM_BOUNDARY bits.  */
+	     of PARM_BOUNDARY bits, unless it is not supposed to be padded.  */
 	  if (none
 	      != FUNCTION_ARG_PADDING (TYPE_MODE (type),
 				       expand_expr (size, 0, VOIDmode, 0)))
 	    size = convert_units (convert_units (size, BITS_PER_UNIT,
 						 PARM_BOUNDARY),
 				  PARM_BOUNDARY, BITS_PER_UNIT);
-	  ADD_PARM_SIZE (arg_size[i], size);
+	  ADD_PARM_SIZE (args[i].size, size);
+
+	  /* Certain data types may not be passed in registers
+	     (eg C++ classes with constructors).
+	     Also, BLKmode parameters initialized from CALL_EXPRs
+	     are treated specially, if it is a win to do so.  */
+	  if (TREE_CODE (TREE_VALUE (p)) == CALL_EXPR
+	      || TREE_ADDRESSABLE (TREE_TYPE (TREE_VALUE (p))))
+	    {
+	      if (TREE_ADDRESSABLE (TREE_TYPE (TREE_VALUE (p))))
+		BLKmode_parms_forced = 1;
+	      /* This is a marker for such a parameter.  */
+	      args[i].stack = const0_rtx;
+	      BLKmode_parms_sizes += TREE_INT_CST_LOW (size);
+
+	      /* If this parm's location is "below" the nominal stack pointer,
+		 note to decrement the stack pointer while it is computed.  */
+#ifdef FIRST_PARM_CALLER_OFFSET
+	      if (BLKmode_parms_first_offset == 0)
+		BLKmode_parms_first_offset
+		  /* If parameter's offset is variable, assume the worst.  */
+		  = (args[i].offset.var
+		     ? FIRST_PARM_CALLER_OFFSET (fntype)
+		     : args[i].offset.constant);
+#endif
+	    }
 	}
+
       /* If a part of the arg was put into registers,
 	 don't include that part in the amount pushed.  */
-      arg_size[i].constant
-	-= ((partial[i] * UNITS_PER_WORD)
-	    / (PARM_BOUNDARY / BITS_PER_UNIT)
-	    * (PARM_BOUNDARY / BITS_PER_UNIT));
+      if (! stack_count_regparms)
+	args[i].size.constant
+	  -= ((args[i].partial * UNITS_PER_WORD)
+	      / (PARM_BOUNDARY / BITS_PER_UNIT)
+	      * (PARM_BOUNDARY / BITS_PER_UNIT));
 
-      args_size.constant += arg_size[i].constant;
+      /* Update ARGS_SIZE, the total stack space for args so far.  */
 
-      if (arg_size[i].var)
+      args_size.constant += args[i].size.constant;
+      if (args[i].size.var)
 	{
-	  ADD_PARM_SIZE (args_size, arg_size[i].var);
+	  ADD_PARM_SIZE (args_size, args[i].size.var);
 	}
+
+      /* Increment ARGS_SO_FAR, which has info about which arg-registers
+	 have been used, etc.  */
+
+      FUNCTION_ARG_ADVANCE (args_so_far, TYPE_MODE (type), type,
+			    i < n_named_args);
     }
 
-  /* If we have no actual push instructions, or we need a variable
-     amount of space, make space for all the args right now.
-     In any case, round the needed size up to multiple of STACK_BOUNDARY.  */
+  /* If we would have to push a partially-in-regs parm
+     before other stack parms, preallocate stack space instead.  */
+  must_preallocate = 0;
+  {
+    int partial_seen = 0;
+    for (i = 0; i < num_actuals; i++)
+      {
+	if (args[i].partial > 0)
+	  partial_seen = 1;
+	else if (partial_seen && args[i].reg == 0)
+	  must_preallocate = 1;
+      }
+  }
+
+  /* If we have no actual push instructions, or shouldn't use them,
+     or we need a variable amount of space, make space for all args right now.
+     Round the needed size up to multiple of STACK_BOUNDARY.  */
 
   if (args_size.var != 0)
     {
@@ -3796,7 +3859,7 @@ expand_call (exp, target, ignore)
       old_pending_adj = pending_stack_adjust;
       argblock = push_block (round_push (ARGS_SIZE_RTX (args_size)));
     }
-  else if (args_size.constant != 0)
+  else if (args_size.constant > 0)
     {
       int needed = args_size.constant;
 
@@ -3805,22 +3868,73 @@ expand_call (exp, target, ignore)
       args_size.constant = needed;
 #endif
 
+      if (
 #ifndef PUSH_ROUNDING
-      /* Try to reuse some or all of the pending_stack_adjust
-	 to get this space.  Maybe we can avoid any pushing.  */
-      if (needed > pending_stack_adjust)
+	  1  /* Always preallocate if no push insns.  */
+#else
+	  must_preallocate || BLKmode_parms_forced
+	  || BLKmode_parms_sizes > (args_size.constant >> 1)
+#endif
+	  )
 	{
-	  needed -= pending_stack_adjust;
-	  pending_stack_adjust = 0;
+	  /* Try to reuse some or all of the pending_stack_adjust
+	     to get this space.  Maybe we can avoid any pushing.  */
+	  if (needed > pending_stack_adjust)
+	    {
+	      needed -= pending_stack_adjust;
+	      pending_stack_adjust = 0;
+	    }
+	  else
+	    {
+	      pending_stack_adjust -= needed;
+	      needed = 0;
+	    }
+	  argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed));
 	}
-      else
-	{
-	  pending_stack_adjust -= needed;
-	  needed = 0;
-	}
-      argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed));
-#endif /* no PUSH_ROUNDING */
     }
+
+  /* Don't try to defer pops if preallocating, not even from the first arg,
+     since ARGBLOCK probably refers to the SP.  */
+  if (argblock)
+    NO_DEFER_POP;
+
+#ifdef STACK_GROWS_DOWNWARD
+  /* If any BLKmode parms need to be preallocated in space
+     below the nominal stack-pointer address, we need to adjust the
+     stack pointer so that this location is temporarily above it.
+     This ensures that computation won't clobber that space.  */
+  if (BLKmode_parms_first_offset < 0 && argblock != 0)
+    {
+      int needed = -BLKmode_parms_first_offset;
+      argblock = copy_to_reg (argblock);
+
+#ifdef STACK_BOUNDARY
+      needed = (needed + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
+#endif
+      protected_stack = gen_rtx (CONST_INT, VOIDmode, needed);
+      anti_adjust_stack (protected_stack);
+    }
+#endif /* STACK_GROWS_DOWNWARD */
+
+  /* Precompute all register parameters.  It isn't safe to compute anything
+     once we have started filling any specific hard regs.  */
+
+  reg_parm_seen = 0;
+  for (i = 0; i < num_actuals; i++)
+    if (args[i].reg != 0)
+      {
+	reg_parm_seen = 1;
+	args[i].value = expand_expr (args[i].tree_value, 0, VOIDmode, 0);
+	if (GET_CODE (args[i].value) != MEM
+	    && ! CONSTANT_P (args[i].value)
+	    && GET_CODE (args[i].value) != CONST_DOUBLE)
+	  args[i].value
+	    = force_reg (TYPE_MODE (TREE_TYPE (args[i].tree_value)),
+			 args[i].value);
+	/* ANSI doesn't require a sequence point here,
+	   but PCC has one, so this will avoid some problems.  */
+	emit_queue ();
+      }
 
   /* Get the function to call, in the form of RTL.  */
   if (fndecl)
@@ -3833,134 +3947,49 @@ expand_call (exp, target, ignore)
       emit_queue ();
     }
 
-  /* Now actually compute the args, and push those that need pushing.  */
+  /* Now compute and store all non-register parms.
+     These come before register parms, since they can require block-moves,
+     which could clobber the registers used for register parms.
+     Parms which have partial registers are not stored here,
+     but we do preallocate space here if they want that.  */
 
   for (i = 0; i < num_actuals; i++)
     {
-      register tree p = argvec[i];
-      register tree pval = TREE_VALUE (p);
-      int used = 0;
-
-      /* Push the next argument.  Note that it has already been converted
-	 if necessary to the type that the called function expects.  */
-
-      if (TREE_CODE (pval) == ERROR_MARK)
-	;
-      else if (regvec[i] != 0 && partial[i] == 0)
-	{
-	  /* Being passed entirely in a register.  */
-	  if (valvec[i] != 0)
-	    {
-	      if (GET_MODE (valvec[i]) == BLKmode)
-		move_block_to_reg (REGNO (regvec[i]), valvec[i],
-				   (int_size_in_bytes (TREE_TYPE (pval))
-				    / UNITS_PER_WORD));
-	      else
-		emit_move_insn (regvec[i], valvec[i]);
-	    }
-	  else
-	    store_expr (pval, regvec[i], 0);
-
-	  /* Don't allow anything left on stack from computation
-	     of argument to alloca.  */
-	  if (may_be_alloca)
-	    do_pending_stack_adjust ();
-	}
-      else if (TYPE_MODE (TREE_TYPE (pval)) != BLKmode)
-	{
-	  register int size;
-	  rtx tem;
-
-	  /* Argument is a scalar, not entirely passed in registers.
-	     (If part is passed in registers, partial[I] says how much
-	     and emit_push_insn will take care of putting it there.)
-
-	     Push it, and if its size is less than the
-	     amount of space allocated to it,
-	     also bump stack pointer by the additional space.
-	     Note that in C the default argument promotions
-	     will prevent such mismatches.  */
-
-	  used = size = GET_MODE_SIZE (TYPE_MODE (TREE_TYPE (pval)));
-	  /* Compute how much space the push instruction will push.
-	     On many machines, pushing a byte will advance the stack
-	     pointer by a halfword.  */
-#ifdef PUSH_ROUNDING
-	  size = PUSH_ROUNDING (size);
-#endif
-	  /* Compute how much space the argument should get:
-	     round up to a multiple of the alignment for arguments.  */
-	  if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), (rtx)0))
-	    used = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
-		     / (PARM_BOUNDARY / BITS_PER_UNIT))
-		    * (PARM_BOUNDARY / BITS_PER_UNIT));
-
-	  tem = valvec[i];
-	  if (tem == 0)
-	    {
-	      tem = expand_expr (pval, 0, VOIDmode, 0);
-	      /* ANSI doesn't require a sequence point here,
-		 but PCC has one, so this will avoid some problems.  */
-	      emit_queue ();
-	    }
-
-	  /* Don't allow anything left on stack from computation
-	     of argument to alloca.  */
-	  if (may_be_alloca)
-	    do_pending_stack_adjust ();
-
-	  emit_push_insn (tem, TYPE_MODE (TREE_TYPE (pval)), 0, 0,
-			  partial[i], regvec[i], used - size,
-			  argblock, ARGS_SIZE_RTX (arg_offset[i]));
-	}
+      /* Preallocate the stack space for a parm if appropriate
+	 so it can be computed directly in the stack space.  */
+      if (args[i].stack != 0 && argblock != 0)
+	args[i].stack = target_for_arg (TREE_TYPE (args[i].tree_value),
+					ARGS_SIZE_RTX (args[i].size),
+					argblock, args[i].offset);
       else
-	{
-	  register rtx tem
-	    = valvec[i] ? valvec[i] : expand_expr (pval, 0, VOIDmode, 0);
-	  register int excess;
-	  rtx size_rtx;
+	args[i].stack = 0;
 
-	  /* Pushing a nonscalar.
-	     If part is passed in registers, partial[I] says how much
-	     and emit_push_insn will take care of putting it there.  */
-
-	  /* Round its size up to a multiple
-	     of the allocation unit for arguments.  */
-
-	  if (arg_size[i].var != 0)
-	    {
-	      excess = 0;
-	      size_rtx = ARGS_SIZE_RTX (arg_size[i]);
-	    }
-	  else
-	    {
-	      register tree size = size_in_bytes (TREE_TYPE (pval));
-	      /* PUSH_ROUNDING has no effect on us, because
-		 emit_push_insn for BLKmode is careful to avoid it.  */
-	      excess = arg_size[i].constant - TREE_INT_CST_LOW (size);
-	      size_rtx = expand_expr (size, 0, VOIDmode, 0);
-	    }
-
-	  emit_push_insn (tem, TYPE_MODE (TREE_TYPE (pval)), size_rtx,
-			  TYPE_ALIGN (TREE_TYPE (pval)) / BITS_PER_UNIT,
-			  partial[i], regvec[i], excess, argblock,
-			  ARGS_SIZE_RTX (arg_offset[i]));
-	}
-
-      /* Account for the stack space thus used.  */
-
-
-      current_args_size += arg_size[i].constant;
-      if (arg_size[i].var)
-	current_args_size += 1;
+      if (args[i].reg == 0)
+	store_one_arg (&args[i], argblock, may_be_alloca);
     }
 
-  /* Perform postincrements before actually calling the function.  */
-  emit_queue ();
+  /* Now store any partially-in-registers parm.
+     This is the last place a block-move can happen.  */
+  if (reg_parm_seen)
+    for (i = 0; i < num_actuals; i++)
+      if (args[i].partial != 0)
+	store_one_arg (&args[i], argblock, may_be_alloca);
+
+  if (protected_stack != 0)
+    adjust_stack (protected_stack);
 
   /* Pass the function the address in which to return a structure value.  */
   if (structure_value_addr && ! structure_value_addr_parm)
-    emit_move_insn (struct_value_rtx, structure_value_addr);
+    emit_move_insn (struct_value_rtx, force_reg (Pmode, structure_value_addr));
+
+  /* Now set up any wholly-register parms.  They were computed already.  */
+  if (reg_parm_seen)
+    for (i = 0; i < num_actuals; i++)
+      if (args[i].reg != 0 && args[i].partial == 0)
+	store_one_arg (&args[i], argblock, may_be_alloca);
+
+  /* Perform postincrements before actually calling the function.  */
+  emit_queue ();
 
   /* All arguments and registers used for the call must be set up by now!  */
 
@@ -3974,19 +4003,19 @@ expand_call (exp, target, ignore)
      won't be used for reloading.  But if the reloader becomes smarter,
      this will have to change somehow.  */
   for (i = 0; i < num_actuals; i++)
-    if (regvec[i] != 0)
+    if (args[i].reg != 0)
       {
-	if (partial[i] > 0)
-	  use_regs (REGNO (regvec[i]), partial[i]);
-	else if (GET_MODE (regvec[i]) == BLKmode)
-	  use_regs (REGNO (regvec[i]),
-		    (int_size_in_bytes (TREE_TYPE (TREE_VALUE (argvec[i])))
+	if (args[i].partial > 0)
+	  use_regs (REGNO (args[i].reg), args[i].partial);
+	else if (GET_MODE (args[i].reg) == BLKmode)
+	  use_regs (REGNO (args[i].reg),
+		    (int_size_in_bytes (TREE_TYPE (TREE_VALUE (args[i].tree_value)))
 		     / UNITS_PER_WORD));
 	else
-	  emit_insn (gen_rtx (USE, VOIDmode, regvec[i]));
+	  emit_insn (gen_rtx (USE, VOIDmode, args[i].reg));
       }
 
-  if (structure_value_addr)
+  if (structure_value_addr && GET_CODE (struct_value_rtx) == REG)
     emit_insn (gen_rtx (USE, VOIDmode, struct_value_rtx));
 
   /* Figure out the register where the value, if any, will come back.  */
@@ -3996,6 +4025,8 @@ expand_call (exp, target, ignore)
     valreg = hard_function_value (TREE_TYPE (exp), fndecl);
 
   /* Generate the actual call instruction.  */
+  if (args_size.constant < 0)
+    args_size.constant = 0;
   emit_call_1 (funexp, funtype, args_size.constant,
 	       FUNCTION_ARG (args_so_far, VOIDmode, void_type_node, 1),
 	       valreg, old_current_args_size);
@@ -4041,22 +4072,224 @@ expand_call (exp, target, ignore)
   else
     target = copy_to_reg (valreg);
 
-  /* If size of args is variable, restore saved stack-pointer value.  */
-
-  if (args_size.var != 0)
-    {
-      emit_move_insn (stack_pointer_rtx, old_stack_level);
-      pending_stack_adjust = old_pending_adj;
-    }
-
-  /* C++.  We have evaluated our function.  Expand all cleanups
-     which are needed by its temporaries.  */
+  /* Perform all cleanups needed for the arguments of this call
+     (i.e. destructors in C++).  */
   while (cleanups_of_this_call != old_cleanups)
     {
       expand_expr (TREE_VALUE (cleanups_of_this_call), 0, VOIDmode, 0);
       cleanups_of_this_call = TREE_CHAIN (cleanups_of_this_call);
     }
+
+  /* If size of args is variable, restore saved stack-pointer value.  */
+
+  if (old_stack_level)
+    {
+      emit_move_insn (stack_pointer_rtx, old_stack_level);
+      pending_stack_adjust = old_pending_adj;
+    }
+
   return target;
+}
+
+/* Return an rtx which represents a suitable home on the stack
+   given TYPE, the type of the argument looking for a home.
+   This is called only for BLKmode arguments.
+
+   SIZE is the size needed for this target.
+   ARGS_ADDR is the address of the bottom of the argument block for this call.
+   OFFSET describes this parameter's offset into ARGS_ADDR.  It is meaningless
+   if this machine uses push insns.  */
+
+static rtx
+target_for_arg (type, size, args_addr, offset)
+     tree type;
+     rtx size;
+     rtx args_addr;
+     struct args_size offset;
+{
+  rtx target;
+
+  enum direction stack_direction
+#ifdef STACK_GROWS_DOWNWARD
+    = downward;
+#else
+    = upward;
+#endif
+
+  /* Decide where to pad the argument: `downward' for below,
+     `upward' for above, or `none' for don't pad it.
+     Default is below for small data on big-endian machines; else above.  */
+  enum direction where_pad = FUNCTION_ARG_PADDING (TYPE_MODE (type), size);
+
+  rtx offset_rtx = ARGS_SIZE_RTX (offset);
+
+  /* We do not call memory_address if possible,
+     because we want to address as close to the stack
+     as possible.  For non-variable sized arguments,
+     this will be stack-pointer relative addressing.  */
+  if (GET_CODE (offset_rtx) == CONST_INT)
+    target = plus_constant (args_addr, INTVAL (offset_rtx));
+  else
+    {
+      /* I have no idea how to guarantee that this
+	 will work in the presence of register parameters.  */
+      target = gen_rtx (PLUS, Pmode, args_addr, offset_rtx);
+      target = memory_address (QImode, target);
+    }
+
+  return gen_rtx (MEM, BLKmode, target);
+}
+
+/* Store a single argument for a function call
+   into the register or memory area where it must be passed.
+   *ARG describes the argument value and where to pass it.
+   ARGBLOCK is the address of the stack-block for all the arguments,
+   or 0 on a machine where arguemnts are pushed individually.
+   MAY_BE_ALLOCA nonzero says this could be a call to `alloca'
+   so must be careful about how the stack is used.  */
+
+static void
+store_one_arg (arg, argblock, may_be_alloca)
+     struct arg_data *arg;
+     rtx argblock;
+     int may_be_alloca;
+{
+  register tree pval = arg->tree_value;
+  int used = 0;
+
+  if (TREE_CODE (pval) == ERROR_MARK)
+    return;
+
+  if (arg->reg != 0 && arg->partial == 0)
+    {
+      /* Being passed entirely in a register.  */
+      if (arg->value != 0)
+	{
+	  if (GET_MODE (arg->value) == BLKmode)
+	    move_block_to_reg (REGNO (arg->reg), arg->value,
+			       (int_size_in_bytes (TREE_TYPE (pval))
+				/ UNITS_PER_WORD));
+	  else
+	    emit_move_insn (arg->reg, arg->value);
+	}
+      else
+	store_expr (pval, arg->reg, 0);
+
+      /* Don't allow anything left on stack from computation
+	 of argument to alloca.  */
+      if (may_be_alloca)
+	do_pending_stack_adjust ();
+    }
+  else if (TYPE_MODE (TREE_TYPE (pval)) != BLKmode)
+    {
+      register int size;
+      rtx tem;
+
+      /* Argument is a scalar, not entirely passed in registers.
+	 (If part is passed in registers, arg->partial says how much
+	 and emit_push_insn will take care of putting it there.)
+	 
+	 Push it, and if its size is less than the
+	 amount of space allocated to it,
+	 also bump stack pointer by the additional space.
+	 Note that in C the default argument promotions
+	 will prevent such mismatches.  */
+
+      used = size = GET_MODE_SIZE (TYPE_MODE (TREE_TYPE (pval)));
+      /* Compute how much space the push instruction will push.
+	 On many machines, pushing a byte will advance the stack
+	 pointer by a halfword.  */
+#ifdef PUSH_ROUNDING
+      size = PUSH_ROUNDING (size);
+#endif
+      /* Compute how much space the argument should get:
+	 round up to a multiple of the alignment for arguments.  */
+      if (none != FUNCTION_ARG_PADDING (TYPE_MODE (TREE_TYPE (pval)), (rtx)0))
+	used = (((size + PARM_BOUNDARY / BITS_PER_UNIT - 1)
+		 / (PARM_BOUNDARY / BITS_PER_UNIT))
+		* (PARM_BOUNDARY / BITS_PER_UNIT));
+
+      tem = arg->value;
+      if (tem == 0)
+	{
+	  tem = expand_expr (pval, 0, VOIDmode, 0);
+	  /* ANSI doesn't require a sequence point here,
+	     but PCC has one, so this will avoid some problems.  */
+	  emit_queue ();
+	}
+
+      /* Don't allow anything left on stack from computation
+	 of argument to alloca.  */
+      if (may_be_alloca)
+	do_pending_stack_adjust ();
+
+      emit_push_insn (tem, TYPE_MODE (TREE_TYPE (pval)), 0, 0,
+		      arg->partial, arg->reg, used - size,
+		      argblock, ARGS_SIZE_RTX (arg->offset));
+    }
+  else if (arg->stack != 0)
+    {
+      /* BLKmode argument that should go in a prespecified stack location.  */
+      if (arg->value == 0)
+	/* Not yet computed => compute it there.  */
+	/* ??? This should be changed to tell expand_expr
+	   that it can store directly in the target.  */
+	arg->value = store_expr (arg->tree_value, arg->stack, 0);
+      else if (arg->value != arg->stack)
+	/* It was computed somewhere, but not where we wanted.
+	   For example, the value may have come from an official
+	   local variable or parameter.  In that case, expand_expr
+	   does not fill our suggested target.  */
+	emit_block_move (arg->stack, arg->value, ARGS_SIZE_RTX (arg->size),
+			 TYPE_ALIGN (TREE_TYPE (pval)));
+
+      /* Now, if this value wanted to be partly in registers,
+	 move the value from the stack to the registers
+	 that are supposed to hold the values.  */
+      if (arg->partial > 0)
+	move_block_to_reg (REGNO (arg->reg), arg->stack, arg->partial);
+    }
+  else
+    {
+      /* No place on the stack waiting for it, so just push.  */
+      register rtx tem
+	= arg->value ? arg->value : expand_expr (pval, 0, VOIDmode, 0);
+      register int excess;
+      rtx size_rtx;
+
+      /* Pushing a nonscalar.
+	 If part is passed in registers, arg->partial says how much
+	 and emit_push_insn will take care of putting it there.  */
+
+      /* Round its size up to a multiple
+	 of the allocation unit for arguments.  */
+
+      if (arg->size.var != 0)
+	{
+	  excess = 0;
+	  size_rtx = ARGS_SIZE_RTX (arg->size);
+	}
+      else
+	{
+	  register tree size = size_in_bytes (TREE_TYPE (pval));
+	  /* PUSH_ROUNDING has no effect on us, because
+	     emit_push_insn for BLKmode is careful to avoid it.  */
+	  excess = arg->size.constant - TREE_INT_CST_LOW (size);
+	  size_rtx = expand_expr (size, 0, VOIDmode, 0);
+	}
+
+      if (arg->stack)
+	abort ();
+
+      emit_push_insn (tem, TYPE_MODE (TREE_TYPE (pval)), size_rtx,
+		      TYPE_ALIGN (TREE_TYPE (pval)) / BITS_PER_UNIT,
+		      arg->partial, arg->reg, excess, argblock,
+		      ARGS_SIZE_RTX (arg->offset));
+    }
+
+  /* Once we have pushed something, pops can't safely
+     be deferred during the rest of the arguments.  */
+  NO_DEFER_POP;
 }
 
 /* Expand conditional expressions.  */

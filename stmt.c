@@ -382,7 +382,7 @@ expand_goto (body)
 /* Generate RTL code for a `goto' statement with target label BODY.
    LABEL should be a LABEL_REF.
    LAST_INSN, if non-0, is the rtx we should consider as the last
-   insn emitted (for the purposes of cleaning up a return.  */
+   insn emitted (for the purposes of cleaning up a return).  */
 
 static void
 expand_goto_internal (body, label, last_insn)
@@ -619,12 +619,6 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol)
   if (ninputs + noutputs > MAX_RECOG_OPERANDS)
     {
       error ("more than %d operands in `asm'", MAX_RECOG_OPERANDS);
-      return;
-    }
-
-  if (noutputs > MAX_SETS_PER_INSN)
-    {
-      error ("more than %d output operands in `asm'", MAX_SETS_PER_INSN);
       return;
     }
 
@@ -2369,16 +2363,22 @@ fixup_var_refs_1 (var, x, insn)
 
 	/* An insn to copy VAR into or out of a register
 	   must be left alone, to avoid an infinite loop here.
-	   But do fix up the address of VAR's stack slot if nec.  */
+	   But do fix up the address of VAR's stack slot if nec,
+	   and fix up SUBREGs containing VAR
+	   (since they are now memory subregs).  */
 
-	if (GET_CODE (SET_SRC (x)) == REG || GET_CODE (SET_DEST (x)) == REG)
-	  return fixup_stack_1 (x, insn);
-
-	if ((GET_CODE (SET_SRC (x)) == SUBREG
-	     && GET_CODE (SUBREG_REG (SET_SRC (x))) == REG)
+	if (GET_CODE (SET_SRC (x)) == REG || GET_CODE (SET_DEST (x)) == REG
+	    || (GET_CODE (SET_SRC (x)) == SUBREG
+		&& GET_CODE (SUBREG_REG (SET_SRC (x))) == REG)
 	    || (GET_CODE (SET_DEST (x)) == SUBREG
 		&& GET_CODE (SUBREG_REG (SET_DEST (x))) == REG))
-	  return fixup_stack_1 (x, insn);
+	  {
+	    if (src == var && GET_CODE (SET_SRC (x)) == SUBREG)
+	      SET_SRC (x) = fixup_memory_subreg (SET_SRC (x));
+	    if (dest == var && GET_CODE (SET_DEST (x)) == SUBREG)
+	      SET_DEST (x) = fixup_memory_subreg (SET_DEST (x));
+	    return fixup_stack_1 (x, insn);
+	  }
 
 	/* Otherwise, storing into VAR must be handled specially
 	   by storing into a temporary and copying that into VAR

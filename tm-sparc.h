@@ -19,6 +19,8 @@ can know your rights and responsibilities.  It should be in a
 file named COPYING.  Among other things, the copyright notice
 and this notice must be preserved on all copies.  */
 
+/* Note that some other tm- files include this one and then override
+   many of the definitions that relate to assembler syntax.  */
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
@@ -114,7 +116,7 @@ extern int target_flags;
 #define EMPTY_FIELD_BOUNDARY 32
 
 /* Every structure's size must be a multiple of this.  */
-#define STRUCTURE_SIZE_BOUNDARY 32
+#define STRUCTURE_SIZE_BOUNDARY 8
 
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT 64
@@ -223,16 +225,18 @@ extern int target_flags;
 /* ??? */
 #define STATIC_CHAIN_REGNUM 1
   
+
 /* Functions which return large structures get the address
    to place the wanted value at offset 64 from the frame.  */
+#define STRUCT_VALUE_OFFSET 64 /* Used only in other #defines in this file.  */
 #define STRUCT_VALUE \
   gen_rtx (MEM, Pmode,					\
 	   gen_rtx (PLUS, SImode, stack_pointer_rtx,	\
-		    gen_rtx (CONST_INT, VOIDmode, 64)))
+		    gen_rtx (CONST_INT, VOIDmode, STRUCT_VALUE_OFFSET)))
 #define STRUCT_VALUE_INCOMING \
   gen_rtx (MEM, Pmode,					\
 	   gen_rtx (PLUS, SImode, frame_pointer_rtx,	\
-		    gen_rtx (CONST_INT, VOIDmode, 64)))
+		    gen_rtx (CONST_INT, VOIDmode, STRUCT_VALUE_OFFSET)))
 
 /* Define the classes of registers for register constraints in the
    machine description.  Also define ranges of constants.
@@ -352,8 +356,15 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 /* Offset of first parameter from the argument pointer register value.
    This is 64 for the ins and locals, plus 4 for the struct-return reg
    if this function isn't going to use it.  */
-#define FIRST_PARM_OFFSET(FNDECL) \
-  (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode ? 64 : 68)
+#define FIRST_PARM_OFFSET(FNDECL)		\
+  (DECL_MODE (DECL_RESULT (fndecl)) == BLKmode	\
+   ? STRUCT_VALUE_OFFSET : STRUCT_VALUE_OFFSET + 4)
+
+/* Offset from top-of-stack address to location to store the
+   function parameter if it can't go in a register.
+   Addresses for following parameters are computed relative to this one.  */
+#define FIRST_PARM_CALLER_OFFSET(FNDECL)	\
+  (STRUCT_VALUE_OFFSET + 4 - STACK_POINTER_OFFSET)
 
 /* When a parameter is passed in a register, stack space is still
    allocated for it.  */
@@ -428,20 +439,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    for a call to a function whose data type is FNTYPE.
    For a library call, FNTYPE is 0.
 
-   On SPARC, the offset normally starts at 0, but starts at 4 bytes
-   when the function gets a structure-value-address as an
-   invisible first argument.  */
+   On SPARC, the offset always starts at 0: the first parm reg is always
+   the same reg.  */
 
-#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE)	\
- ((CUM) = ((FNTYPE) != 0 && TYPE_MODE (TREE_TYPE (FNTYPE)) == BLKmode))
+#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE) ((CUM) = 0)
 
 /* Update the data in CUM to advance over an argument
    of mode MODE and data type TYPE.
    (TYPE is null for libcalls where that information may not be available.)  */
 
 #define FUNCTION_ARG_ADVANCE(CUM, MODE, TYPE, NAMED)	\
- ((CUM) += ((MODE) != BLKmode			\
-	    ? (GET_MODE_SIZE (MODE) + 3) / 4	\
+ ((CUM) += ((MODE) != BLKmode				\
+	    ? (GET_MODE_SIZE (MODE) + 3) / 4		\
 	    : (int_size_in_bytes (TYPE) + 3) / 4))
 
 /* Determine where to put an argument to a function.
@@ -458,33 +467,34 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
     (otherwise it is an extra parameter matching an ellipsis).  */
 
 /* On SPARC the first six args are normally in registers
-   and the rest are pushed.  But any arg that won't entirely fit in regs
-   is pushed.  */
-
-#define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)		\
-(NPARM_REGS >= ((CUM)					\
-       + ((MODE) == BLKmode				\
-	  ? (int_size_in_bytes (TYPE) + 3) / 4		\
-	  : (GET_MODE_SIZE (MODE) + 3) / 4))		\
- ? gen_rtx (REG, (MODE), BASE_PASSING_ARG_REG (MODE) + (CUM))	\
- : 0)
+   and the rest are pushed.  Any arg that starts within the first 6 words
+   is at least partially passed in a register unless its data type forbids.  */
+  
+#define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)				\
+((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))		\
+ ? gen_rtx (REG, (MODE), BASE_PASSING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* Define where a function finds its arguments.
    This is different from FUNCTION_ARG because of register windows.  */
 
-#define FUNCTION_INCOMING_ARG(CUM, MODE, TYPE, NAMED)	\
-(NPARM_REGS >= ((CUM)					\
-       + ((MODE) == BLKmode				\
-	  ? (int_size_in_bytes (TYPE) + 3) / 4		\
-	  : (GET_MODE_SIZE (MODE) + 3) / 4))		\
- ? gen_rtx (REG, (MODE), BASE_INCOMING_ARG_REG (MODE) + (CUM))	\
- : 0)
+#define FUNCTION_INCOMING_ARG(CUM, MODE, TYPE, NAMED)			\
+((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))		\
+ ? gen_rtx (REG, (MODE), BASE_INCOMING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* For an arg passed partly in registers and partly in memory,
    this is the number of registers used.
-   For args passed entirely in registers or entirely in memory, zero.  */
-
-#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) 0
+   For args passed entirely in registers or entirely in memory, zero.
+   Any arg that starts in the first 6 regs but won't entirely fit in them
+   needs partial registers on the Sparc.  */
+  
+#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) 		\
+  (((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE (TYPE))	\
+    && ((CUM)								\
+	+ ((MODE) == BLKmode						\
+	   ? (int_size_in_bytes (TYPE) + 3) / 4				\
+	   : (GET_MODE_SIZE (MODE) + 3) / 4)) - NPARM_REGS > 0)		\
+   ? (NPARM_REGS - (CUM))						\
+   : 0)
 
 /* Output the label for a function definition.  */
 
@@ -887,7 +897,7 @@ extern union tree_node *current_function_decl;
 
 #define CONST_COSTS(RTX,CODE) \
   case CONST_INT:						\
-    if (INTVAL (RTX) < 0x1000 && INTVAL (RTX) >= -0x1000) return 1; \
+    if (INTVAL (RTX) < 0x1000 && INTVAL (RTX) >= -0x1000) return 0; \
   case CONST:							\
   case LABEL_REF:						\
   case SYMBOL_REF:						\
@@ -959,12 +969,12 @@ extern union tree_node *current_function_decl;
       else if (GET_CODE (SET_DEST (XVECEXP (EXP, 0, 0))) == MEM) \
 	{ CC_STATUS_INIT; }					\
     }								\
+  else if (GET_CODE (EXP) == PARALLEL				\
+	   && GET_CODE (XVECEXP (EXP, 0, 0)) == REG)		\
   /* insn-peep has changed this insn beyond recognition
      by NOTICE_UPDATE_CC.  However, we know it is either
      a call or a branch with a delay slot filled, so we can
      give up on knowing condition codes in any case.  */	\
-  else if (GET_CODE (EXP) == PARALLEL				\
-	   && GET_CODE (XVECEXP (EXP, 0, 0)) == REG)		\
     { CC_STATUS_INIT; }						\
   else if (GET_CODE (EXP) == CALL)				\
     { /* all bets are off */ CC_STATUS_INIT; }			\

@@ -538,15 +538,18 @@ sdbout_symbol (decl, local)
 	  type = build_pointer_type (TREE_TYPE (decl));
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
-	       && XEXP (DECL_RTL (decl), 0) != const0_rtx)
-	/* const0_rtx is used as the address for a variable that
-	   is a dummy due to an erroneous declaration.
-	   Ignore such vars.  */
+	       && GET_CODE (XEXP (DECL_RTL (decl), 0)) == PLUS
+	       && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 0)) == REG
+	       && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 1)) == CONST_INT)
 	{
 	  /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...))).
 	     We want the value of that CONST_INT.  */
 	  PUT_SDB_INT_VAL (INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1)));
 	  PUT_SDB_SCL (C_AUTO);
+	}
+      else
+	{
+	  /* It is something we don't know how to represent for SDB.  */
 	}
       break;
     }

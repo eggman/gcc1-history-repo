@@ -217,6 +217,18 @@ struct compiler compilers[] =
 		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
                       %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
+  {".cc",
+   "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{T} \
+        -undef -D__GNU__ -D__GNUC__ %{ansi:-T -$ -D__STRICT_ANSI__} %{!ansi:%p}\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
+	%{Wcomment} %{Wtrigraphs} %{Wall} %C\
+        %i %{!M*:%{!E:%g.cpp}}%{E:%{o*}}%{M*:%{o*}}\n\
+    %{!M*:%{!E:c++ %g.cpp %1 %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*}\
+		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
+		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
+		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %g.s}\n\
+              %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
+                      %g.s %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\n }}}"},
   {".i",
    "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*}\
 	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\

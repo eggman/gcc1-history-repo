@@ -41,7 +41,7 @@ Here is the procedure for installing GNU CC on a Unix system.
                for Intel 80386's running system V.
 
          `config-sun4.h'
-               for Suns (model 3 or 4) running *operating system*
+               for Suns (model 2, 3 or 4) running *operating system*
                version 4.
 
          `config-hp9k3.h'
@@ -125,9 +125,8 @@ Here is the procedure for installing GNU CC on a Unix system.
      `cexp.c' are more recent than `c-parse.y' and `cexp.y' and you
      do not plan to change the `.y' files.)
 
-     Note that if you have an old version of Bison you may get an
-     error from the line with the `%expect' directive.  If so, simply
-     remove that line from `c-parse.y' and proceed.
+     Bison versions older that Sept 8, 1988 will produce incorrect
+     output for `c-parse.tab.c'.
 
   5. If you are using a Sun, make sure the environment variable
      `FLOAT_OPTION' is not set.  If this option were set to `f68881'

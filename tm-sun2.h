@@ -4,9 +4,17 @@
 
 #define TARGET_DEFAULT 0
 
+/* Define __HAVE_FPU__ in preprocessor, unless -msoft-float is specified.
+   This will control the use of inline 68881 insns in certain macros.
+   Also inform the program which CPU this is for.  */
+
+#define CPP_SPEC "%{!msoft-float:-D__HAVE_FPU__}\
+%{m68020:-Dmc68020}%{mc68020:-Dmc68020}%{!mc68020:%{!m68020:-Dmc68010}}"
+
 /* -m68020 requires special flags to the assembler.  */
 
-#define ASM_SPEC "%{m68020:-mc68020}%{!m68020:-mc68010}"
+#define ASM_SPEC \
+ "%{m68020:-mc68020}%{mc68020:-mc68020}%{!mc68020:%{!m68020:-mc68010}}"
 
 /* Names to predefine in the preprocessor for this target machine.  */
 

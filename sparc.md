@@ -653,13 +653,6 @@
   return \"set %1,%0\";
 }")
 
-(define_insn ""
-  [(set (match_operand:SI 0 "register_operand" "=r")
-	(mem:SI (plus:SI (match_operand:SI 1 "register_operand" "r")
-			 (match_operand:SI 2 "register_operand" "r"))))]
-  ""
-  "ld [%1+%2],%0")
-
 (define_insn "movhi"
   [(set (match_operand:HI 0 "general_operand" "=r,m")
 	(match_operand:HI 1 "general_operand" "rmi,rJ"))]
@@ -1019,7 +1012,7 @@
 ;; (and therefore lacks a specific machine mode).
 ;; will be recognized as SImode (which is always valid)
 ;; rather than as QImode or HImode.
-  
+
 ;; This pattern forces (set (reg:SF ...) (float:SF (const_int ...)))
 ;; to be reloaded by putting the constant into memory.
 ;; It must come before the more general floatsisf2 pattern.
@@ -1097,7 +1090,7 @@
       rtx xoperands[2];
       xoperands[0] = gen_rtx (REG, DFmode, 32);
       xoperands[1] = operands[1];
-      output_fp_move_double (xoperands);
+      output_asm_insn (output_fp_move_double (xoperands), xoperands);
       output_asm_insn (\"fdtoi %%f0,%%f0\", 0);
     }
   if (GET_CODE (operands[0]) == MEM)
@@ -1257,7 +1250,7 @@
 
 (define_insn ""
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(match_operand:SI 1 "register_operand" "g"))
+	(match_operand:SI 1 "general_operand" "g"))
    (clobber (reg:SI 8))
    (clobber (reg:SI 9))
    (clobber (reg:SI 12))
@@ -1266,7 +1259,7 @@
   "*
   return (GET_CODE (operands[1]) == CONST_INT
 	  ? \"set %1,%0\"
-	  : \"mov %1,%0\";
+	  : \"mov %1,%0\");
 ")
 
 ;;- and instructions (with compliment also)			   
@@ -1783,7 +1776,7 @@
   [(set (reg:SI 24)
 	(match_operand:SI 0 "register_operand" "r"))
    (return)]
-  ""
+  "! TARGET_EPILOGUE"
   "ret\;restore %0,0x0,%%o0")
 
 (define_peephole
@@ -1791,7 +1784,7 @@
 	(plus:SI (match_operand:SI 0 "register_operand" "r%")
 		 (match_operand:SI 1 "arith_operand" "rI")))
    (return)]
-  ""
+  "! TARGET_EPILOGUE"
   "ret\;restore %0,%1,%%o0")
 
 (define_peephole
@@ -1799,7 +1792,7 @@
 	(minus:SI (match_operand:SI 0 "register_operand" "r")
 		  (match_operand:SI 1 "small_int" "I")))
    (return)]
-  ""
+  "! TARGET_EPILOGUE"
   "ret\;restore %0,-(%1),%%o0")
 
 ;;- Local variables:

@@ -802,6 +802,25 @@ temp_tree_cons (purpose, value, chain)
   return node;
 }
 
+/* Same as `tree_cons', but save this node if the function's RTL is saved.  */
+
+tree
+saveable_tree_cons (purpose, value, chain)
+     tree purpose, value, chain;
+{
+  register tree node;
+  register struct obstack *ambient_obstack = current_obstack;
+  current_obstack = saveable_obstack;
+
+  node = make_node (TREE_LIST);
+  TREE_CHAIN (node) = chain;
+  TREE_PURPOSE (node) = purpose;
+  TREE_VALUE (node) = value;
+
+  current_obstack = ambient_obstack;
+  return node;
+}
+
 /* Return the last node in a chain of nodes (chained through TREE_CHAIN).  */
 
 tree
