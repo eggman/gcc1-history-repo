@@ -36,6 +36,8 @@ __eprintf (string, expression, line, filename)
      char *filename;
 {
   fprintf (stderr, string, expression, line, filename);
+  fflush (stderr);
+  abort ();
 }
 #endif
 
@@ -305,8 +307,10 @@ __extendsfdf2 (a)
 }
 #endif
 
-#ifdef L_bb_init_func
-#if defined (sun) && defined (m68k)
+#ifdef L_bb
+int __avoid_ranlib_warning;  /* Don't let symbol table be empty.  */
+
+#if defined (sun) && defined (mc68000)
 struct bb
 {
   int initialized;
@@ -317,15 +321,15 @@ struct bb
   int *addresses;
 };
 
-__bb_init_function (blocks)
+__bb_init_func (blocks)
 	struct bb *blocks;
 {
-  extern int __tcov_init;
+  extern int ___tcov_init;
 
   if (! ___tcov_init)
     ___tcov_init_func ();
 
-  ___bb_link (blocks->filename, blocks->counts, blocks->nblocks);
+  ___bb_link (blocks->filename, blocks->counts, blocks->ncounts);
 }
 
 #endif

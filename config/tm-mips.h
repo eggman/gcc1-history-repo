@@ -1,6 +1,7 @@
 /* Definitions of target machine for GNU compiler.  MIPS version.
    Contributed by   A. Lichnewsky, lich@inria.inria.fr
-   Copyright (C) 1989 Free Software Foundation, Inc.
+   Changes by	    Michael Meissner, meissner@osf.org
+   Copyright (C) 1989, 1990 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -21,28 +22,21 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* ??? This file needs to be reformatted so that it looks like the
    rest of GCC. ???  */
 
-/* Names to predefine in the preprocessor for this target machine.  */
-
-#define CPP_PREDEFINES "-Dmips -Dunix -Dhost_mips -DMIPSEB -DR3000 -DLANGUAGE_C"
-
 /*----------------------------------------------------------------------
 
 SWITCHES:
 
-    -O    optimization. Implies -fstrength-reduce -fomit-frame-pointer
-    -O2   optimization. Implies -O
-
-          Tries to make use of short displacements using the
-          Sdata and Sbss sections. This uses the -G switches of as and ld.
-
-    -G <size>
-          Pass size to as and ld. Default -G 8.
+    -O    optimization. Implies -mgpOPT
+    -O1	  Same as -O, mips compatibility
+    -O2   Implies -O -fomit-frame-pointer -fstrength-reduce
+    -O3   Implies -O2 + -finline-functions
 
     -mG0 -mG1 -mG2
           Construct a size to be passed to GCC for Data / Sdata selection.
 
           Value is ( (i=G0 + 2 G1 + 4 G2) , (i < 6) ? ( 1<<i) :(1 <<(i+3)))
-          Same value should be passed to as + ld using -G.
+          Same value should be passed to as + ld using -G.  Use -G instead
+	  since it is now supported.
 
 	  Default = -mG1 -mG0 (Value = 8).
 
@@ -57,23 +51,11 @@ SWITCHES:
     -SBSD43 for RISC-OS: use the BSD 4.3  environment
 ----------------------------------------------------------------------*/
 
-
-
-/***********************************************************************
-
-WARNING:
-
-    No attempt to select (configure) the -B and -I parameters has been
-    made inside this version of gcc. They should be made (eg. thru a
-    shell script).
-
-    -I should be set in such a way that the include file "va-mips.h"
-    gets included (via "varargs.h") for varargs. Otherwise gcc will not
-    bootstrap -- and produce wrong code for varargs.
-
-
-***********************************************************************/
 
+
+/* Suppression of libg.a when debugging */
+#define NO_LIBG
+
 
 /* Switch  Recognition by gcc.c   */
 
@@ -88,125 +70,521 @@ WARNING:
    || (CHAR) == 'L' || (CHAR) == 'i' || (CHAR) == 'A' \
    || (CHAR) == 'G')
 
+/* Process -mGxx switches  */
+
+extern void overide_options ();
+
+#define OVERRIDE_OPTIONS overide_options ()
+
+
+/* Names to predefine in the preprocessor for this target machine.  */
+
+#ifndef CPP_PREDEFINES
+#define CPP_PREDEFINES "-Dmips -Dunix -Dhost_mips -DMIPSEB -DR3000 -DLANGUAGE_C"
+#endif
 
 /* Extra switches sometimes passed to the assembler.  */
 
-#define ASM_SPEC   "-nocpp %{O:-O2} %{O2: -O2} %{!G32: %{G*}}		\
-%{!G:%{!G32: -G 8}} %{G32: -G 32}"
+#ifndef ASM_SPEC
+#ifndef OSF_OS			/* normal MIPS system */
+#ifndef DECSTATION		/* big endian MIPS (MIPS, SGI) */
+#ifndef SGI_TARGET		/* not Silicon Graphics (ie, MIPSco) */
 
+#define ASM_SPEC	"%{!mrnames:-nocpp}				\
+			 %{!mgas:					\
+				%{pipe: %e-pipe is not supported.}	\
+				%{EB} %{!EB:-EB}			\
+				%{EL: %e-EL not supported}		\
+				%{O:-O2} %{O1:-O2} %{O2:-O2} %{O3:-O3}	\
+				%{g} %{g1} %{g2} %{g3} %{g0}}		\
+			 %{G*}						\
+			 %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+				%{G32: -G 32}}				\
+			 %{v} %{K}"
+
+#else				/* Silicon Graphics */
+#define ASM_SPEC	"%{!mrnames:-nocpp}				\
+			 %{!mgas:					\
+				%{pipe: %e-pipe is not supported.}	\
+				%{O:-O2} %{O1:-O2} %{O2:-O2} %{O3:-O3}	\
+				%{g} %{g1} %{g2} %{g3} %{g0}}		\
+			 %{G*}						\
+			 %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+				%{G32: -G 32}}				\
+			 %{v} %{K}"
+
+#endif				/* Silicon Graphics */
+#else				/* Ultrix Decstation (little endian) */
+#define ASM_SPEC	"%{!mrnames:-nocpp}				\
+			 %{!mgas:					\
+				%{pipe:%e:-pipe not supported}		\
+				%{EL} %{!EL:-EL}			\
+				%{EB: %e-EB not supported}		\
+				%{O:-O2} %{O1:-O2} %{O2:-O2} %{O3:-O3}	\
+				%{g} %{g1} %{g2} %{g3} %{g0}}		\
+			 %{G*}						\
+			 %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+				%{G32: -G 32}}				\
+			 %{v} %{K}"
+#endif				/* DECstation running Ultrix */
+#else				/* OSF/1 of some sort */
+#ifndef DECSTATION
+				/* Big endian MIPS running OSF/1 */
+#define ASM_SPEC	"%{mmips-as:					\
+				%{pipe:%e:-pipe not supported}		\
+				%{EB} %{!EB:-EB}			\
+				%{EL: %e-EL not supported}		\
+				%{!mrnames:-nocpp}			\
+				%{O:-O2} %{O1:-O2} %{O2:-O2} %{O3:-O3}	\
+				%{g} %{g1} %{g2} %{g3} %{g0}		\
+				%{v} %{K}}				\
+			 %{G*}						\
+			 %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{!mmips-as:-G 0}		\
+					%{!pic:%{!mpic:%{mmips-as:-G 8}}}} \
+				%{G32: -G 32}}"
+#else
+				/* Little endian OSF/1 Decstation */
+#define ASM_SPEC	"%{mmips-as:					\
+				%{pipe:%e:-pipe not supported}		\
+				%{EL} %{!EL:-EL}			\
+				%{EB: %e-EB not supported}		\
+				%{!mrnames:-nocpp}			\
+				%{O:-O2} %{O1:-O2} %{O2:-O2} %{O3:-O3}	\
+				%{g} %{g1} %{g2} %{g3} %{g0}		\
+				%{v} %{K}}				\
+			 %{G*}						\
+			 %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{!mmips-as:-G 0}		\
+					%{!pic:%{!mpic:%{mmips-as:-G 8}}}} \
+				%{G32: -G 32}}"
+
+#endif				/* little endian OSF/1 DECstation */
+#endif				/* OSF/1 */
+#endif				/* ASM_SPEC */
+
+/* Redefinition of libraries used.  Mips doesn't support normal
+   UNIX style profiling via calling _mcount.  It does offer
+   profiling that samples the PC, so do what we can... */
+
+#ifndef LIB_SPEC
+#define LIB_SPEC "%{pg:%e-pg is not supported on the MIPS}%{p:-lprof1} -lc"
+#endif
 
 /* Extra switches sometimes passed to the loader.  */
 
 
-#if defined(MIPS_SYSV)		/* RISC-OS SYSTEM V */
+#ifndef LINK_SPEC
+#ifdef MIPS_SYSV		/* RISC-OS SYSTEM V */
 
+#ifndef STARTFILE_SPEC
 #define STARTFILE_SPEC						\
   "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt1.o%s crtn.o%s}}"
+#endif
 
-#define LINK_SPEC  "%{!G32:%{G*}					\
-%{!G:%{!G32:%{mG0:%eYou should include ld/as option -G}			\
-%{mG1:%eYou should include ld/as option -G}				\
-%{mG2:%eYou should include ld/as option -G}				\
- -G 8}}}								\
-%{G32: -G 32}								\
-%{bestGnum: -bestGnum}							\
-%{!ZBSD43:-systype /sysv/}%{ZBSD43:-systype /bsd43/}			\
-"
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{bestGnum}						\
+		    %{!ZBSD43:-systype /sysv/}%{ZBSD43:-systype /bsd43/} \
+		    %{EB} %{!EB:-EB} %{EL:%e-EL not supported}"
 
-#else
-#if defined(MIPS_BSD43)		/* RISC-OS BSD */
+#else				/* RISC-OS SYSTEM V */
+#ifdef MIPS_BSD43		/* RISC-OS BSD */
 
+#ifndef STARTFILE_SPEC
 #define STARTFILE_SPEC							\
   "%{pg:gcrt0.o%s}%{!pg:%{p:mcrt0.o%s}%{!p:crt1.o%s crtn.o%s}}"
-
-#define LINK_SPEC  "%{!G32:%{G*}					\
-%{!G:%{!G32:%{mG0:%eYou should include ld/as option -G}			\
-%{mG1:%eYou should include ld/as option -G}				\
-%{mG2:%eYou should include ld/as option -G}				\
- -G 8}}}								\
-%{G32: -G 32}								\
-%{bestGnum: -bestGnum}							\
-%{!ZSYSV:-systype /bsd43/}%{ZSYSV:-systype /sysv/}"
-
-#else		/* Default for MIPS BSD and ULTRIX */
-
-#define LINK_SPEC  "%{!G32:%{G*}					\
-%{!G:%{!G32:%{mG0:%eYou should include ld/as option -G}		\
-%{mG1:%eYou should include ld/as option -G}				\
-%{mG2:%eYou should include ld/as option -G}				\
- -G 8}}}								\
-%{G32: -G 32}								\
-%{bestGnum: -bestGnum} "
 #endif
-#endif
+
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{bestGnum}						\
+		    %{!ZSYSV:-systype /bsd43/}%{ZSYSV:-systype /sysv/}	\
+		    %{EB} %{!EB:-EB} %{EL:%e-EL not supported}"
+
+#else
+
+#ifndef DECSTATION		/* Big endian BSD or OSF/1 system */
+#ifndef OSF_OS			/* Big endian BSD system */
+#ifndef SGI_TARGET		/* Big endian non Silicon Graphics system */
+
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{!mgas: %{EB} %{!EB:-EB} %{EL:%e-EL not supported}	\
+			     %{bestGnum}}"
+
+#else				/* Silicon graphics system */
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{!mgas: %{bestGnum}}"
+
+#endif				/* Silicon Graphics system */
+#else				/* Big endian OSF/1 system */
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{!mmips-as:-G 0}		\
+					%{!pic:%{!mpic:%{mmips-as:-G 8}}}} \
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{mmips-as: %{EB} %{!EB:-EB} %{EL:%e-EL not supported} \
+			%{bestGnum}}					\
+		    %{nostdlib}"
+#endif				/* Big endian BSD or OSF/1 system */
+
+#else				/* Little endian Ultrix or OSF/1 */
+#ifndef OSF_OS			/* Little endian Ultrix system */
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{mgas:-G 0}			\
+					%{!pic:%{!mpic:%{!mgas:-G 8}}}}	\
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{!mgas: %{EL} %{!EL:-EL} %{EB:%e-EB not supported}	\
+			     %{bestGnum}}"
+
+#else				/* Little endian OSF/1 system */
+#define LINK_SPEC  "%{G*}						\
+		    %{!G:%{!G32:	%{mpic:-G 0} %{pic:-G 0}	\
+					%{!mmips-as:-G 0}		\
+					%{!pic:%{!mpic:%{mmips-as:-G 8}}}} \
+			%{G32:-G 32}}					\
+		    %{!G:%{!G32:					\
+			%{mG0:%eYou should include ld/as option -G}	\
+			%{mG1:%eYou should include ld/as option -G}	\
+			%{mG2:%eYou should include ld/as option -G}}}	\
+		    %{mmips-as: %{EL} %{!EL:-EL} %{EB:%e-EB not supported} \
+			%{bestGnum}}					\
+		    %{nostdlib}"
+
+#endif				/* Little endian OSF/1 system */
+#endif				/* Little endian BSD or OSF/1 system */
+#endif				/* RISC-OS BSD */
+#endif				/* RISC-OS SYSTEM V */
+#endif				/* LINK_SPEC defined */
 
 /* CC1 SPECS */
 
-#define CC1_SPEC   "%{O2:-O -fstrength-reduce -fomit-frame-pointer -mgpOPT}\
-                    %{G32: -mG2 -mnG1 }					\
-                    %{G32:%{!O2:%eOption -G32 may require -O2}}"
+#define CC1_SPEC   "%{O: %{!mngpOPT:-mgpOPT}}				\
+                    %{O1:-O %{!mngpOPT:-mgpOPT}}			\
+		    %{O2:-O %{!fnostrength-reduce:-fstrength-reduce}	\
+			    %{!fnoomit-frame-pointer:-fomit-frame-pointer} \
+			    %{!mngpOPT:-mgpOPT}}			\
+		    %{O3:-O %{!fnostrength-reduce:-fstrength-reduce}	\
+			    %{!fnoomit-frame-pointer:-fomit-frame-pointer} \
+			    %{!fnoinline-functions:-finline-functions}	\
+			    %{!mngpOPT:-mgpOPT}}			\
+                    %{O4:%eGCC does not support -O4}			\
+		    %{!g: %{g1:-g} %{g2:-g} %{g3:-g}}			\
+		    %{G32: -mG2 -mnG1 }"
 
 /* CPP SPECS */
 
 #ifndef DECSTATION
 
+#ifdef SGI_TARGET		/* Silicon Graphics */
+#define CPP_SPEC " %{!ansi:-D__EXTENSIONS__}				\
+		   -D_MIPSEB -D_SYSTYPE_SYSV -D_LANGUAGE_C		\
+		   %{O1:-D__OPTIMIZE__}					\
+		   %{O2:-D__OPTIMIZE__}					\
+		   %{O3:-D__OPTIMIZE__}"
+
+#else
 #if defined(MIPS_SYSV) || defined(MIPS_BSD43)
 				/* MIPS RISC-OS environments */
 
 #ifdef MIPS_SYSV
 #define CPP_SPEC " %{!ansi:%{!ZBSD43:-DSYSTYPE_SYSV}%{ZBSD43:-DSYSTYPE_BSD43}}\
 		   %{!ZBSD43:-D__SYSTYPE_SYSV__}%{ZBSD43:-D__SYSTYPE_BSD43__} \
-                   %{!ZBSD43:-I/sysv/usr/include}			\
-                   %{ZBSD43:-I/bsd43/usr/include}"
+		   %{!nostdinc:%{!ZBSD43:-I/sysv/usr/include}		\
+			       %{ZBSD43:-I/bsd43/usr/include}}		\
+		   %{O1:-D__OPTIMIZE__}					\
+		   %{O2:-D__OPTIMIZE__}					\
+		   %{O3:-D__OPTIMIZE__}"
 #else /* not MIPS_SYSV */
 #define CPP_SPEC " %{!ansi:%{!ZSYSV:-DSYSTYPE_BSD43}%{ZSYSV:-DSYSTYPE_SYSV}}\
 		   %{!ZSYSV:-D__SYSTYPE_BSD43__}%{ZSYSV:-D__SYSTYPE_SYSV__}\
-                   %{!ZSYSV:-I/bsd43/usr/include}%{ZSYSV:-I/sysv/usr/include}"
+		   %{!nostdinc:%{!ZSYSV:-I/bsd43/usr/include}		\
+			       %{ZSYSV:-I/sysv/usr/include}}		\
+		   %{O1:-D__OPTIMIZE__}					\
+		   %{O2:-D__OPTIMIZE__}					\
+		   %{O3:-D__OPTIMIZE__}"
+
 #endif /* not MIPS_SYSV */
 
 #else /* not MIPS_SYSV and not MIPS_BSD43 */
 				/* default MIPS Bsd environment */
-#define CPP_SPEC "%{!ansi:-DSYSTYPE_BSD} -D__SYSTYPE_BSD__ "
+#define CPP_SPEC "%{!ansi:-DSYSTYPE_BSD} -D__SYSTYPE_BSD__		\
+		   %{O1:-D__OPTIMIZE__}					\
+		   %{O2:-D__OPTIMIZE__}					\
+		   %{O3:-D__OPTIMIZE__}"
 
 #endif /* not MIPS_SYSV and not MIPS_BSD43 */
+#endif /* not Silicon Graphics */
+
+#else	/* DECSTATION */
+#define CPP_SPEC  "%{O1:-D__OPTIMIZE__}					\
+		   %{O2:-D__OPTIMIZE__}					\
+		   %{O3:-D__OPTIMIZE__}"
+
 #endif /* not DECSTATION */
 
 /* Print subsidiary information on the compiler version in use.  */
 
-#ifdef DECSTATION
-#define TARGET_VERSION printf (" (AL-MIPS 1.11) <Decstation>\n");
-				/* Depends on MIPS ASM. */
-#else
-#define TARGET_VERSION printf (" (AL-MIPS 1.11) <MIPS>\n");
-				/* Depends on MIPS ASM. */
+#ifndef __DATE__
+#define __DATE__ "[unknown date]"
 #endif
-#define TARGET_VERSNUM "1 11"
 
-/* Do not Generate DBX debugging information.  */
+#define MIPS_VERSION "AL-MIPS 1.1"
 
-/* #define DBX_DEBUGGING_INFO */
+#ifdef DECSTATION
+#ifdef OSF_OS
+#define MACHINE_TYPE "OSF/1 Dec Mips"
+#else
+#define MACHINE_TYPE "Ultrix Dec Mips"
+#endif
 
+#else
+#ifdef SGI_TARGET
+#define MACHINE_TYPE "Sgi Mips"
+
+#else
+#if defined(MIPS_SYSV) || defined(MIPS_BSD43)
+				/* MIPS RISC-OS environments */
+#ifdef MIPS_SYSV
+#define MACHINE_TYPE "RISC-OS System V Mips"
+
+#else /* not MIPS_SYSV */
+#define MACHINE_TYPE "RISC-OS BSD Mips"
+
+#endif /* not MIPS_SYSV */
+#else /* not MIPS_SYSV and not MIPS_BSD43 */
+				/* default MIPS Bsd environment */
+#define MACHINE_TYPE "BSD Mips"
+#endif /* not SGI iris */
+#endif /* not MIPS_SYSV and not MIPS_BSD43 */
+#endif /* not DECSTATION */
+
+#define TARGET_VERSION							\
+{									\
+  fprintf (stderr, " %s %s %s", MIPS_VERSION, MACHINE_TYPE, __DATE__);	\
+}
+
+
+#define SDB_DEBUGGING_INFO	/* generate debug info inside of comments */
+#define MIPS_DEBUGGING_INFO	/* MIPS specific debugging info */
+
+/* On Sun 4, this limit is 2048.  We use 1500 to be safe,
+   since the length can run past this up to a continuation point.  */
+#define DBX_CONTIN_LENGTH 1500
+
+
+/* How to renumber registers for dbx and gdb.
+   MIPS needs no change in the numeration.  */
+
+#define DBX_REGISTER_NUMBER(REGNO) (REGNO)
+
+
+/* Overides for the COFF debug format.  */
+#define PUT_SDB_SCL(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.scl\t%d;", (a));	\
+} while (0)
+
+#define PUT_SDB_INT_VAL(a)				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.val\t%d;", (a));	\
+} while (0)
+
+#define PUT_SDB_VAL(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fputs ("\t.val\t", asm_out_text_file);		\
+  output_addr_const (asm_out_text_file, (a));		\
+  fputc (';', asm_out_text_file);			\
+} while (0)
+
+#define PUT_SDB_DEF(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t#.def\t");		\
+  ASM_OUTPUT_LABELREF (asm_out_text_file, a); 		\
+  fputc (';', asm_out_text_file);			\
+} while (0)
+
+#define PUT_SDB_PLAIN_DEF(a)				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t#.def\t.%s;", (a));	\
+} while (0)
+
+#define PUT_SDB_ENDEF					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.endef\n");		\
+} while (0)
+
+#define PUT_SDB_TYPE(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.type\t0x%x;", (a));	\
+} while (0)
+
+#define PUT_SDB_SIZE(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.size\t%d;", (a));	\
+} while (0)
+
+#define PUT_SDB_DIM(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.dim\t%d;", (a));	\
+} while (0)
+
+#ifndef PUT_SDB_START_DIM
+#define PUT_SDB_START_DIM				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.dim\t");		\
+} while (0)
+#endif
+
+#ifndef PUT_SDB_NEXT_DIM
+#define PUT_SDB_NEXT_DIM(a)				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "%d,", a);		\
+} while (0)
+#endif
+
+#ifndef PUT_SDB_LAST_DIM
+#define PUT_SDB_LAST_DIM(a)				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "%d;", a);		\
+} while (0)
+#endif
+
+#define PUT_SDB_TAG(a)					\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file, "\t.tag\t");		\
+  ASM_OUTPUT_LABELREF (asm_out_text_file, a); 		\
+  fputc (';', asm_out_text_file);			\
+} while (0)
+
+/* For block start and end, we create labels, so that
+   later we can figure out where the correct offset is.
+   The normal .ent/.end serve well enough for functions,
+   so those are just commented out.  */
+
+#define PUT_SDB_BLOCK_START(LINE)			\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file,				\
+	   "$Lb%d:\n\t#.begin\t$Lb%d\t%d\n",		\
+	   sdb_label_count,				\
+	   sdb_label_count,				\
+	   (LINE));					\
+  sdb_label_count++;					\
+} while (0)
+
+#define PUT_SDB_BLOCK_END(LINE)				\
+do {							\
+  extern FILE *asm_out_text_file;			\
+  fprintf (asm_out_text_file,				\
+	   "$Le%d:\n\t#.bend\t$Le%d\t%d\n",		\
+	   sdb_label_count,				\
+	   sdb_label_count,				\
+	   (LINE));					\
+  sdb_label_count++;					\
+} while (0)
+
+#define PUT_SDB_FUNCTION_START(LINE)
+
+#define PUT_SDB_FUNCTION_END(LINE)
+
+#define PUT_SDB_EPILOGUE_END(NAME)
+
+#define SDB_GENERATE_FAKE(BUFFER, NUMBER) \
+  sprintf ((BUFFER), ".%dfake", (NUMBER));
+
+
 /* Run-time compilation parameters selecting different hardware subsets.  */
 
 extern int target_flags;
 
 /* Macros used in the machine description to test the flags.  */
 
-/* Nonzero if compiling code that Unix assembler can assemble.  */
-#define TARGET_UNIX_ASM (target_flags & 1)
-				/* Debug Mode */
-#define TARGET_DEBUG_MODE (target_flags & 2)
-#define TARGET_DEBUGA_MODE (target_flags & 4)
-#define TARGET_DEBUGB_MODE (target_flags & 16)
-#define TARGET_DEBUGC_MODE (target_flags & 32)
-#define TARGET_DEBUGD_MODE (target_flags & 64)
-				/* Register Naming in .s ($21 vs. $a0) */
-#define TARGET_NAME_REGS (target_flags & 8)
-				/* Use addu / subbu or get FIXED_OVFL TRAPS */
-#define TARGET_NOFIXED_OVFL (target_flags & 128)
-				/* Optimize for Sdata/Sbss */
-#define TARGET_GP_OPT (target_flags & 4096)
-#define TARGET_GVALUE ((target_flags >> 8 ) & 0xf)
+					/* Mips vs. GNU assembler */
+#define TARGET_UNIX_ASM		(target_flags & 0x00000001)
+#define TARGET_MIPS_AS		TARGET_UNIX_ASM
+#define TARGET_GAS		(TARGET_UNIX_ASM == 0)
+
+					/* Debug Mode */
+#define TARGET_DEBUG_MODE	(target_flags & 0x00000002)
+#define TARGET_DEBUGA_MODE	(target_flags & 0x00000004)
+#define TARGET_DEBUGB_MODE	(target_flags & 0x00000010)
+#define TARGET_DEBUGC_MODE	(target_flags & 0x00000020)
+#define TARGET_DEBUGD_MODE	(target_flags & 0x00000040)
+#define TARGET_DEBUGE_MODE	(target_flags & 0x00008000)
+
+					/* Reg. Naming in .s ($21 vs. $a0) */
+#define TARGET_NAME_REGS	(target_flags & 0x00000008)
+
+					/* addu/subbu vs. add/sub */
+#define TARGET_NOFIXED_OVFL	(target_flags & 0x00000080)
+
+					/* Optimize for Sdata/Sbss */
+#define TARGET_GP_OPT		(target_flags & 0x00001000)
+#define TARGET_GVALUE_MASK	(target_flags & 0x00000f00)
+#define TARGET_GVALUE		(TARGET_GVALUE_MASK >> 8)
+
+					/* Position independent code */
+#define TARGET_PIC		(target_flags & 0x00002000)
+#define TARGET_PIC_LARGE_OBJECT (target_flags & 0x00004000)
 
 
 
@@ -217,44 +595,57 @@ extern int target_flags;
    An empty string NAME is used to identify the default VALUE.  */
 
 #define TARGET_SWITCHES							\
-  { {"unix", 1},							\
-    {"gnu", -1},							\
-    {"debug", 2 }, 		/* RELOAD and CONSTRAINTS Related DEBUG */\
-    {"nodebug", -2 },							\
-    {"debuga",   4 }, 		/* CALLING SEQUENCE RELATED DEBUG */	\
-    {"nodebuga", -4 },							\
-    {"debugb",   16 }, 		/* GLOBAL/LOCAL ALLOC  DEBUG */		\
-    {"nodebugb", -16 },							\
-    {"debugc",   32 }, 		/* SPILL/RELOAD REGISTER ALLOCATOR DEBUG */\
-    {"nodebugc", -32 },							\
-    {"debugd",   64 }, 		/* CSE DEBUG */				\
-    {"nodebugd", -64 },							\
-    {"rnames",   8 }, 		/* Output register names like $a0 */	\
-    {"nornames", -8 },  	/* Output register numbers like $21 */	\
-    {"nofixed-ovfl",128},       /* use addu and subu                */	\
-    {"fixed-ovfl", -128},       /* use add and sub                */	\
-				/* Following used to support the data/sdata */\
-				/* feature */				\
-    {"G0",256},								\
-    {"nG0",-256},							\
-    {"G1",512},								\
-    {"nG1",-512},							\
-    {"G2",1024},							\
-    {"nG2",-1024},							\
-    {"gpOPT", 4096},		/* DO the full GP optimization data/sdata.. */\
-    {"ngpOPT", -4096},\
-    { "", TARGET_DEFAULT}}
+{ {"mips-as",		  0x00000001},	/* MIPS assembler */		\
+  {"gas",		 -0x00000001},	/* GNU  assembler */		\
+  {"debug",		  0x00000002},	/* Eliminate version in output*/ \
+  {"nodebug",		 -0x00000002},					\
+  {"debuga",		  0x00000004},	/* don't fold SP pushes into frame */ \
+  {"nodebuga",		 -0x00000004},					\
+  {"debugb",		  0x00000010},	/* GO_IF_LEGITIMATE_ADDRESS debug */ \
+  {"nodebugb",		 -0x00000010},					\
+  {"debugc",		  0x00000020},	/* fix frame ptr debug */	\
+  {"nodebugc",		 -0x00000020},					\
+  {"debugd",		  0x00000040},	/* branch/cc0 debug */		\
+  {"nodebugd",		 -0x00000040},					\
+  {"rnames",		  0x00000008},	/* Register names like $a0 */	\
+  {"nornames",		 -0x00000008},	/* Register names like $21 */	\
+  {"nofixed-ovfl",	  0x00000080},	/* Use addu and subu */		\
+  {"fixed-ovfl",	 -0x00000080},	/* Use add  and sub */		\
+  {"G0",		  0x00000100},	/* Bit 1 of sdata size */	\
+  {"nG0",		 -0x00000100},					\
+  {"noG0",		 -0x00000100},					\
+  {"G1",		  0x00000200},	/* Bit 2 of sdata size */	\
+  {"nG1",		 -0x00000200},					\
+  {"noG1",		 -0x00000200},					\
+  {"G2",		  0x00000400},	/* Bit 3 of sdata size */	\
+  {"nG2",		 -0x00000400},					\
+  {"noG2",		 -0x00000400},					\
+  {"gpOPT",		  0x00001000},	/* Optimize for global ptr */	\
+  {"ngpOPT",		 -0x00001000},					\
+  {"nogpOPT",		 -0x00001000},					\
+  {"pic",		  0x00002000},	/* Position independent code */	\
+  {"npic",		 -0x00002000},					\
+  {"nopic",		 -0x00002000},					\
+  {"pic-large-object",	  0x00004000},	/* Don't opt pic local funcs */	\
+  {"nopic-large-object", -0x00004000},					\
+  {"debuge",		  0x00008000},	/* FUNCTION_ARG debug */	\
+  {"nodebuge",		 -0x00008000},					\
+  {"",			 TARGET_DEFAULT}}
 
-/* Default target_flags if no switches specified.  */
+/* Default target_flags if no switches specified (-mmips-as, -mnofixed-ovfl,
+   -G0, -G1 [same as -G 8]).  OSF/1 does not set -mmips-as, and sets -G 0. */
 
-#define TARGET_DEFAULT 897
+#ifndef OSF_OS
+#define TARGET_DEFAULT 0x00000381
+#else
+#define TARGET_DEFAULT 0x00000080
+#endif
 
 /* Default GVALUE  (data item size threshold for selection of Sdata/data)
    is computed : GVALUE ==  ( ((i=G0+2*G1+4*G2) < 6)
 				        ? 1<<i
-					: 1<< (i+6))
+					: 1<< (i+3))
 */
-#define MIPS_GVALUE_DEFAULT 8
 
 /* Target machine storage layout */
 
@@ -263,16 +654,28 @@ extern int target_flags;
 */
 /* #define BITS_BIG_ENDIAN */
 
-/* Define this if most significant byte of a word is the lowest numbered.
-*/
+/* Define this if most significant byte of a word is the lowest numbered. */
 #ifndef DECSTATION
 #define BYTES_BIG_ENDIAN
 #endif
-/* Define this if most significant word of a multiword number is numbered.
-*/
+
+/* Define this if most significant word of a multiword number is numbered. */
 #ifndef DECSTATION
 #define WORDS_BIG_ENDIAN
 #endif
+
+/* Define macros to easily access the most and least significant words
+   without a lot of #ifdef's.  */
+
+#ifdef WORDS_BIG_ENDIAN
+#define MOST_SIGNIFICANT_WORD	0
+#define LEAST_SIGNIFICANT_WORD	1
+
+#else
+#define MOST_SIGNIFICANT_WORD	1
+#define LEAST_SIGNIFICANT_WORD	0
+#endif
+
 /* Number of bits in an addressible storage unit */
 #define BITS_PER_UNIT 8
 
@@ -305,7 +708,7 @@ extern int target_flags;
 #define EMPTY_FIELD_BOUNDARY 32
 
 /* Every structure's size must be a multiple of this.  */
-#define STRUCTURE_SIZE_BOUNDARY 16
+#define STRUCTURE_SIZE_BOUNDARY 8
 
 /* There is no point aligning anything to a rounder boundary than this.  */
 #define BIGGEST_ALIGNMENT 64
@@ -313,6 +716,13 @@ extern int target_flags;
 /* Define this if move instructions will actually fail to work
    when given unaligned data.  */
 #define STRICT_ALIGNMENT
+
+/* Define this macro if an argument declared as `char' or `short' in a
+   prototype should actually be passed as an `int'.  In addition to
+   avoiding errors in certain cases of mismatch, it also makes for
+   better code on certain machines. */
+#define PROMOTE_PROTOTYPES
+
 
 /* Standard register usage.  */
 
@@ -329,11 +739,11 @@ extern int target_flags;
    On the MIPS, see conventions, page D-2
 
    I have chosen not to  take Multiply/Divide HI,LO or PC into
-   account.
-*/
+   account.  */
+
 #define FIXED_REGISTERS {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,\
 		         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,\
-		         1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\
+		         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,\
 		         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0	\
 }
 
@@ -344,11 +754,34 @@ extern int target_flags;
    The latter must include the registers where values are returned
    and the register where structure-value addresses are passed.
    Aside from that, you can include as many other registers as you like.  */
+
 #define CALL_USED_REGISTERS {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,\
 		             0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1,\
 		             1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,\
 		             1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0\
 }
+
+
+/* Internal macros to classify a register number as to whether it's a
+   general purpose register or a floating point register.  The macro
+   FP_CALL_REG_P also allows registers $4 and $6 as floating point
+   registers to pass floating point as per MIPS spec. */
+
+#define GP_REG_FIRST 0
+#define GP_REG_LAST  31
+#define GP_REG_NUM   (GP_REG_LAST - GP_REG_FIRST + 1)
+
+#define FP_REG_FIRST 32
+#define FP_REG_LAST  63
+#define FP_REG_NUM   (FP_REG_LAST - FP_REG_FIRST + 1)
+
+#define GP_REG_P(REGNO) ((unsigned) ((REGNO) - GP_REG_FIRST) < GP_REG_NUM)
+#define FP_REG_P(REGNO) ((unsigned) ((REGNO) - FP_REG_FIRST) < FP_REG_NUM)
+
+#define FP_CALL_REG_P(REGNO)					\
+  (FP_REG_P (REGNO)						\
+   || (REGNO) == (4 + GP_REG_FIRST)				\
+   || (REGNO) == (6 + GP_REG_FIRST))
 
 
 /* Return number of consecutive hard regs needed starting at reg REGNO
@@ -357,10 +790,10 @@ extern int target_flags;
    but can be less for certain modes in special long registers.
 
    On the MIPS, all general registers are one word long. I have chosen to
-   use Floating point register pairs.
-*/
+   use Floating point register pairs.  */
+
 #define HARD_REGNO_NREGS(REGNO, MODE)					\
- (((MODE == SFmode) ||(MODE == DFmode)) ? 2 :				\
+ ((MODE == SFmode) ? 2 :						\
   ((GET_MODE_SIZE (MODE) + UNITS_PER_WORD - 1) / UNITS_PER_WORD))
 
 /* Value is 1 if hard register REGNO can hold a value of machine-mode MODE.
@@ -368,9 +801,11 @@ extern int target_flags;
    FLOATING POINT.  */
 
 #define HARD_REGNO_MODE_OK(REGNO, MODE)					\
-   ((REGNO) < 32 ? (int) (((MODE) != SFmode) && ((MODE) != DFmode))	\
-    : (int) (((MODE) == SFmode || (MODE) == DFmode)			\
-	     && ((REGNO) & 1) == 0))
+  ((GET_MODE_CLASS (MODE) == MODE_INT || MODE == VOIDmode)		\
+	? (GP_REG_P (REGNO))						\
+	: (GET_MODE_CLASS (MODE) == MODE_FLOAT)				\
+		?  (((REGNO) & 1) == 0 && FP_CALL_REG_P (REGNO))	\
+		: 0)							\
 
 
 /* Value is 1 if it is a good idea to tie two pseudo registers
@@ -387,18 +822,22 @@ extern int target_flags;
 /* Register to use for pushing function arguments.  */
 #define STACK_POINTER_REGNUM 29
 
+/* Offset from the stack pointer to the first available location.  */
+#define STACK_POINTER_OFFSET 0
+
 /* Base register for access to local variables of the function.  */
 #define FRAME_POINTER_REGNUM 30
 
 /* Value should be nonzero if functions must have frame pointers.
    Zero means the frame pointer need not be set up (and parms
    may be accessed via the stack pointer) in functions that seem suitable.
-   This is computed in `reload', in reload1.c.  */
+   This is computed in `reload', in reload1.c.
 
-/* This is now 1 because we don't know until too late
-   whether the function is a varargs function.
-   Such functions currently require extra stack slots on the mips.  */
-#define FRAME_POINTER_REQUIRED 1
+   At present this is required if we are not a leaf procedure.  This
+   is because the .frame directive requires a register that does not
+   change throughout the procedure call, and until stack pushes are
+   folded into the initial stack allocation, we need an unvarying fp.  */
+#define FRAME_POINTER_REQUIRED (stack_args_pushed > 0)
 
 /* Base register for access to arguments of the function.  */
 #define ARG_POINTER_REGNUM FRAME_POINTER_REGNUM
@@ -408,7 +847,20 @@ extern int target_flags;
 
 /* Register in which address to store a structure value
    is passed to a function.  */
-#define STRUCT_VALUE_REGNUM 3
+#define STRUCT_VALUE_REGNUM 4
+
+/* Mips registers used in prologue/epilogue code when the stack frame
+   is larger than 32K bytes.  These registers must come from the
+   scratch register set, and not used for passing and returning
+   arguments and any other information used in the calling sequence
+   (such as pic).  */
+#define MIPS_TEMP1_REGNUM 8
+#define MIPS_TEMP2_REGNUM 9
+
+/* Define NO_FUNCTION_CSE if it is as good or better to call a constant
+   function address than to call an address kept in a register.  */
+#define NO_FUNCTION_CSE
+
 
 /* Define the classes of registers for register constraints in the
    machine description.  Also define ranges of constants.
@@ -430,8 +882,7 @@ extern int target_flags;
    For any two classes, it is very desirable that there be another
    class that represents their union.  */
 
-/* The MIPS has general and floating point registers,
-*/
+/* The MIPS has general and floating point registers.  */
 
 
 enum reg_class  { NO_REGS, GR_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES } ;
@@ -460,8 +911,7 @@ enum reg_class  { NO_REGS, GR_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES } ;
    reg number REGNO.  This could be a conditional expression
    or could index an array.  */
 
-#define REGNO_REG_CLASS(REGNO)						\
-   ( (REGNO >= 32) ? FP_REGS : GR_REGS)
+#define REGNO_REG_CLASS(REGNO) ((FP_REG_P (REGNO)) ? FP_REGS : GR_REGS)
 
 /* Define a table that lets us find quickly all the reg classes
    containing a given one.  This is the initializer for an
@@ -506,7 +956,8 @@ enum reg_class  { NO_REGS, GR_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES } ;
    array of reg class codes.  The subunion of classes C1 and C2
    is just element [C1, C2].  */
 
-#define REG_CLASS_SUBUNION  {{NO_REGS,  GR_REGS,   FP_REGS,  ALL_REGS},	\
+#define REG_CLASS_SUBUNION						\
+{{NO_REGS,  GR_REGS,   FP_REGS,  ALL_REGS},				\
  {GR_REGS,  GR_REGS,   ALL_REGS, ALL_REGS},				\
  {FP_REGS,  ALL_REGS,  FP_REGS,  ALL_REGS},				\
  {ALL_REGS, ALL_REGS,  ALL_REGS, ALL_REGS}}
@@ -616,72 +1067,59 @@ description.  */
 
 /* #define PUSH_ROUNDING(BYTES) 0 */
 
-
 /* Offset of first parameter from the argument pointer register value.  */
 #define FIRST_PARM_OFFSET(FNDECL) 0
 
 /* Offset from top-of-stack address to location to store the
    function parameter if it can't go in a register.
-   Addresses for following parameters are computed relative to this one.  */
+   Addresses for following parameters are computed relative to this one.
+
+   It also has the effect of counting register arguments in the total
+   argument size. */
 #define FIRST_PARM_CALLER_OFFSET(FNDECL) 0
 
 /* When a parameter is passed in a register, stack space is still
-   allocated for it.  */
-/* For the MIPS, stack space must be allocated, cf Asm Lang Prog Guide
-   page 7-8
+   allocated for it.  For the MIPS, stack space must be allocated, cf
+   Asm Lang Prog Guide page 7-8.
 
    BEWARE that some space is also allocated for non existing arguments
-   in register. In case an argument list is of form
-   GF used registers are a0 (a2,a3), but we should push over a1... not
-    used..
-*/
+   in register. In case an argument list is of form GF used registers
+   are a0 (a2,a3), but we should push over a1...  */
 #define REG_PARM_STACK_SPACE
-   /* Align stack frames on 64 bits (Double Word )
-   */
 
+/* Align stack frames on 64 bits (Double Word ).  */
 #define STACK_BOUNDARY 64
+
 
-/* For the MIPS, there seems to be a minimum to the amount of stack space
-   used... for varargs using functions.
-   evidence comes from the dis-assembled version of printf:
+/* Standard GCC stack related variables that we reference.  */
 
- cc (cc)
-        Mips Computer Systems 1.31
- /usr/lib/cpp1.31
+extern int optimize;
+extern int may_call_alloca;
+extern int current_function_calls_alloca;
+extern int frame_pointer_needed;
+extern int flag_omit_frame_pointer;
+
+/* MIPS external variables defined in out-mips.c.  */
+
+extern char *reg_numchar[];		/* register names as $r2, etc. */
+extern char *current_function_name;	/* current function being compiled */
+extern int num_source_filenames;	/* current .file # */
+extern int inside_function;		/* != 0 if inside of a function */
+extern int stack_args_pushed;		/* max bytes pushed for calls */
+extern int stack_args_preallocated;	/* # bytes for args preallocated */
+extern int sdb_label_count;		/* block start/end next label # */
+extern int mips_section_threshold;	/* # bytes of data/sdata cutoff */
+extern int sym_lineno;			/* sgi next label # for each stmt */
 
 
-printf:
-  [printf.c:  14] 0x400510:     27bdffe8        addiu   sp,sp,-24
-  [printf.c:  14] 0x400514:     afbf0014        sw      ra,20(sp)
-  [printf.c:  14] 0x400518:     afa5001c        sw      a1,28(sp)
-  [printf.c:  14] 0x40051c:     afa60020        sw      a2,32(sp)
-  [printf.c:  14] 0x400520:     afa70024        sw      a3,36(sp)
-  [printf.c:  18] 0x400524:     27a5001c        addiu   a1,sp,28
-
-  it is however OK for functions that do not take arguments to have 0 size
-  frames.
-
-*/
-
+/* Make sure 16 bytes are always allocated on the stack.  */
+#ifndef STACK_ARGS_ADJUST
 #define STACK_ARGS_ADJUST(SIZE)						\
 {									\
-  SIZE.constant += 4;							\
-  if (SIZE.var)								\
-    {									\
-      rtx size1 = ARGS_SIZE_RTX (SIZE);					\
-      rtx rounded = gen_reg_rtx (SImode);				\
-      rtx label = gen_label_rtx ();					\
-      emit_move_insn (rounded, size1);					\
-      /* Needed: insns to jump to LABEL if ROUNDED is < 16.  */		\
-      abort ();								\
-      emit_move_insn (rounded, gen_rtx (CONST_INT, VOIDmode, 16));	\
-      emit_label (label);						\
-      SIZE.constant = 0;						\
-      SIZE.var = (tree) rounded;					\
-    }									\
-  else if (SIZE.constant < 16)						\
+  if (SIZE.constant < 16)						\
     SIZE.constant = 16;							\
 }
+#endif
 
 /* Value is 1 if returning from a function call automatically
    pops the arguments described by the number-of-args field in the call.
@@ -691,34 +1129,70 @@ printf:
 #define RETURN_POPS_ARGS(FUNTYPE) 0
 
 
+/* Symbolic macros for the registers used to return integer and floating
+   point values.  */
+
+#define GP_RETURN 2
+#define FP_RETURN 32
+
+/* Symbolic macros for the first/last argument registers.  */
+
+#define GP_ARG_FIRST 4
+#define GP_ARG_LAST  7
+#define FP_ARG_FIRST 44
+#define FP_ARG_LAST  47
+
+#define MAX_ARGS_IN_REGISTERS	4
+
+/* Define how to find the value returned by a library function
+   assuming the value has mode MODE.  */
+
+#define LIBCALL_VALUE(MODE)						\
+  gen_rtx (REG, MODE,							\
+	   (GET_MODE_CLASS (MODE) == MODE_FLOAT)			\
+		? FP_RETURN						\
+		: GP_RETURN)
+
 /* Define how to find the value returned by a function.
    VALTYPE is the data type of the value (as a tree).
    If the precise function being called is known, FUNC is its FUNCTION_DECL;
    otherwise, FUNC is 0.  */
 
-#define FUNCTION_VALUE(VALTYPE, FUNC)					\
-  gen_rtx (REG, TYPE_MODE (VALTYPE),					\
-  (TYPE_MODE (VALTYPE) == SFmode) ||(TYPE_MODE (VALTYPE) == DFmode)?32 : 2)
+#define FUNCTION_VALUE(VALTYPE, FUNC) LIBCALL_VALUE (TYPE_MODE (VALTYPE))
 
-/* Define how to find the value returned by a library function
-   assuming the value has mode MODE.  */
-
-
-#define LIBCALL_VALUE(MODE)  gen_rtx (REG, MODE,			\
-   ((MODE) == DFmode || ( MODE) == SFmode) ? 32 : 2)
 
 /* 1 if N is a possible register number for a function value.
-   On the MIPS, R2 R3 and F0 F2 are the only register thus used.  */
-/* Currently, R2 and F0 are only implemented  here ( C has no complex type)
-*/
+   On the MIPS, R2 R3 and F0 F2 are the only register thus used.
+   Currently, R2 and F0 are only implemented  here (C has no complex type)  */
 
-#define FUNCTION_VALUE_REGNO_P(N) ((N) == 2 || (N) == 32)
+#define FUNCTION_VALUE_REGNO_P(N) ((N) == GP_RETURN || (N) == FP_RETURN)
 
-/* 1 if N is a possible register number for function argument passing.
-    */
+/* 1 if N is a possible register number for function argument passing.  */
 
-#define FUNCTION_ARG_REGNO_P(N) (((N) < 8 && (N) > 3)			\
-                                ||((N) < 48 && (N) > 44 && (0 == (N) % 2)))
+#define FUNCTION_ARG_REGNO_P(N) (((N) >= GP_ARG_FIRST && (N) <= GP_ARG_LAST)   \
+				 || ((N) >= FP_ARG_FIRST && (N) <= FP_ARG_LAST \
+				     && (0 == (N) % 2)))
+
+/* A C expression which can inhibit the returning of certain function
+   values in registers, based on the type of value.  A nonzero value says
+   to return the function value in memory, just as large structures are
+   always returned.  Here TYPE will be a C expression of type
+   `tree', representing the data type of the value.
+
+   Note that values of mode `BLKmode' are returned in memory
+   regardless of this macro.  Also, the option `-fpcc-struct-return'
+   takes effect regardless of this macro.  On most systems, it is
+   possible to leave the macro undefined; this causes a default
+   definition to be used, whose value is the constant 0.
+
+   GCC normally converts 1 byte structures into chars, 2 byte
+   structs into shorts, and 4 byte structs into ints, and returns
+   them this way.  Defining the following macro overides this,
+   to give us MIPS cc compatibility.  */
+
+#define RETURN_IN_MEMORY(TYPE)	\
+  ((TREE_CODE (TYPE) == RECORD_TYPE) || (TREE_CODE (TYPE) == UNION_TYPE))
+
 
 /* Define a data type for recording info about an argument list
    during the scan of that argument list.  This data type should
@@ -726,43 +1200,12 @@ printf:
    and about the args processed so far, enough to enable macros
    such as FUNCTION_ARG to determine where the next arg should go.
 */
-				/* On MIPS the following automaton decides */
-				/* where to put things. */
-				/* If you dont believe it, look at Gerry Kane*/
-				/* 's book page D-22 */
 
-#define CUMULATIVE_ARGS struct    { enum arg_state arg_rec_state;int restype,arg_num;}
-
-enum arg_state     { ARG_STA_INIT =0,
-		     ARG_STA_F    =1, /* $f12 */
-		     ARG_STA_FF   =2, /* $f12 $f14 */
-		     ARG_STA_FG   =3, /* $f12 $6   */
-		     ARG_STA_FGG  =4, /* $f12 $6 $7 */
-		     ARG_STA_FGF  =5, /* $f12 $6 STACK */
-		     ARG_STA_G    =6, /* $4 */
-		     ARG_STA_GF   =7, /* $4  ($6,$7) */
-		     ARG_STA_GG   =8, /* $4 $5 */
-		     ARG_STA_GGF  =9, /* $4 $5 ($6,$7) */
-		     ARG_STA_GGG  =10,/* $4 $5 $6 */
-		     ARG_STA_GGGF =11,/* $4 $5 $6 STACK */
-		     ARG_STA_GGGG =12 /* $4 $5 $6 $7 */
-		     };
-#define ARG_STA_AUTOMA							\
-{									\
-  {ARG_STA_F,ARG_STA_G,44,4        },   /* ARG_STA_INIT */		\
-  {ARG_STA_FF,ARG_STA_FG,46,6      },   /* ARG_STA_F    */		\
-  {ARG_STA_FF,ARG_STA_FF,-1,-1     },   /* ARG_STA_FF   */		\
-  {ARG_STA_FGF,ARG_STA_FGG,-1,7    },   /* ARG_STA_FG   */		\
-  {ARG_STA_FGG,ARG_STA_FGG,-1,-1   },   /* ARG_STA_FGG  */		\
-  {ARG_STA_FGF,ARG_STA_FGF,-1,-1   },   /* ARG_STA_FGF  */		\
-  {ARG_STA_GF,ARG_STA_GG,-2,5      },   /* ARG_STA_G    */		\
-  {ARG_STA_GF,ARG_STA_GF,-1,-1     },   /* ARG_STA_GF   */		\
-  {ARG_STA_GGF,ARG_STA_GGG,-2,6    },   /* ARG_STA_GG   */		\
-  {ARG_STA_GGF,ARG_STA_GGF,-1,-1   },   /* ARG_STA_GGF  */		\
-  {ARG_STA_GGGF,ARG_STA_GGGG,-1,7  },   /* ARG_STA_GGG  */		\
-  {ARG_STA_GGGF,ARG_STA_GGGF,-1,-1 },   /* ARG_STA_GGGF */		\
-  {ARG_STA_GGGG,ARG_STA_GGGG,-1,-1 }    /* ARG_STA_GGGG */		\
-}
+typedef struct mips_args {
+  int gp_reg_found;
+  int arg_number;
+  int arg_words;
+} *CUMULATIVE_ARGS;
 
 /* Initialize a variable CUM of type CUMULATIVE_ARGS
    for a call to a function whose data type is FNTYPE.
@@ -770,17 +1213,22 @@ enum arg_state     { ARG_STA_INIT =0,
 
 */
 
-#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE) ((CUM.arg_rec_state) = ARG_STA_INIT,\
-   (CUM.arg_num) = 0, (CUM.restype = (int)VOIDmode))
+extern void init_cumulative_args ();
+
+#define INIT_CUMULATIVE_ARGS(CUM,FNTYPE)				\
+do {									\
+  CUM = (CUMULATIVE_ARGS) alloca (sizeof (*CUM));			\
+  init_cumulative_args (CUM, FNTYPE);					\
+} while (0)
 
 /* Update the data in CUM to advance over an argument
    of mode MODE and data type TYPE.
    (TYPE is null for libcalls where that information may not be available.)  */
 
 #define FUNCTION_ARG_ADVANCE(CUM, MODE, TYPE, NAMED)			\
-			    ( function_arg_advance(&CUM,MODE,TYPE));
+  (function_arg_advance(CUM, MODE, TYPE, NAMED))
 
-extern  enum arg_state function_arg_advance();
+extern void function_arg_advance();
 
 /* Determine where to put an argument to a function.
    Value is zero to push the argument on the stack,
@@ -795,19 +1243,22 @@ extern  enum arg_state function_arg_advance();
    NAMED is nonzero if this argument is a named parameter
     (otherwise it is an extra parameter matching an ellipsis).  */
 
+extern struct rtx_def *function_arg ();
 
-
-#define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)				\
-     ( (rtx) function_arg(&CUM,MODE,TYPE,NAMED))
+#define FUNCTION_ARG(CUM, MODE, TYPE, NAMED) \
+  (function_arg(CUM, MODE, TYPE, NAMED))
 
 /* For an arg passed partly in registers and partly in memory,
    this is the number of registers used.
    For args passed entirely in registers or entirely in memory, zero.
 */
 
-#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) (0)
-
+extern int function_arg_partial_nregs ();
 
+#define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) \
+  (function_arg_partial_nregs (CUM, MODE, TYPE, NAMED))
+
+
 /* This macro generates the assembly code for function entry.
    FILE is a stdio stream to output the code to.
    SIZE is an int: how many units of temporary storage to allocate.
@@ -816,320 +1267,66 @@ extern  enum arg_state function_arg_advance();
    is ever used in the function.  This macro is responsible for
    knowing which registers should not be saved even if used.  */
 
+extern void function_prologue ();
+
+#define FUNCTION_PROLOGUE(FILE, SIZE) function_prologue(FILE, SIZE)
+
+/* This macro generates the assembly code for function exit,
+   on machines that need it.  If FUNCTION_EPILOGUE is not defined
+   then individual return instructions are generated for each
+   return statement.  Args are same as for FUNCTION_PROLOGUE.  */
+
+extern void function_epilogue ();
+
+#define FUNCTION_EPILOGUE(FILE, SIZE) function_epilogue(FILE, SIZE)
+
+/* Tell prologue and epilogue if Register containing return
+   address should be saved / restored.  */
+
+#define MUST_SAVE_REGISTER(regno) \
+ ((regs_ever_live[regno] && !call_used_regs[regno]) || \
+  (regno == FRAME_POINTER_REGNUM && frame_pointer_needed) || \
+  (regno == 31 && regs_ever_live[31]))
 
 /* ALIGN FRAMES on double word boundaries */
 
 #define AL_ADJUST_ALIGN(LOC) (((LOC)+7) & 0xfffffff8)
 
 
-/* The problem of Varargs  comes from the register passing conventions
-   for Floating Point data. There is a conflict when we send registers
-   back  to stack between registers $4,$5 $6,$7 and $f12, $f14.
-
-   The current implementation:
-      a/ tries to figure out if the current routines uses varargs.(It becomes
-         ``suspect''.) This is currently done by looking for a special
-	 static character string constant.
-
-      b/when a function is suspected of using varags,  a larger reg
-        save_area is allocated which will hold regs f12 and f14. The varargs
-	macros then have to find where is the argument they are looking for.
-	This is made easier by a modification in stack frame layout for
-        these functions:the  stack frame-size is accessible on stack at
-        location 4($30).
-
-        Total overhead in PROLOGUE: 2 inns to put stacksize on stack
-                                    2 sw.d to save floating registers.
-        (Only when Varargs suspected)
-
-        The only problem with ``thinking'', is that when functions are
-        thought using varargs and dont do it, they get the above entry
-        overhead.However the current method is quite precise, and is *safe*.
-
-
-   See va-mips.h for more information on varargs
-
-*/
-extern int varargs_suspect;
-extern int  this_varargs_suspect ;
-
-#define VARARGS_SUSPECT(COND) varargs_suspect |= (COND)
-#define VARARGS_NOTSUSPECT    varargs_suspect = 0
-#define VARARGS_SUSPECTED    (varargs_suspect)
-
-#define THIS_VARARGS_SUSPECT(COND) this_varargs_suspect |= (COND)
-#define THIS_VARARGS_NOTSUSPECT    this_varargs_suspect = 0
-#define THIS_VARARGS_SUSPECTED    (this_varargs_suspect)
-
-/* When eliminating the frame pointer, this is the size of the frame
-   aside from explicit stack slots.  */
-extern int frame_stack_difference;
-
-#define FUNCTION_PROLOGUE(FILE, SIZE)					\
-{ register int regno;							\
-  register int mask = 0, fmask=0;					\
-  register int push_loc = 0,tsize = SIZE+8;				\
-  char *fp_str;								\
-  extern char *reg_numchar[];						\
-  extern int  current_function_total_framesize;				\
-  extern char call_used_regs[];						\
-  this_varargs_suspect = VARARGS_SUSPECTED  ;				\
-  fp_str = TARGET_NAME_REGS ? reg_names[STACK_POINTER_REGNUM]		\
-    : reg_numchar[STACK_POINTER_REGNUM];				\
-  for (regno = 0; regno < 32; regno++)					\
-    if (  MUST_SAVE_REG_LOGUES						\
-	|| (regs_ever_live[regno] && !call_used_regs[regno]))		\
-      {tsize += 4; mask |= 1 << regno;}					\
-  for (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if (regs_ever_live[regno] && !call_used_regs[regno])		\
-      {tsize += 8; fmask |= 1 << (regno-32);}				\
-  if (THIS_VARARGS_SUSPECTED) tsize += 16;				\
-  fprintf (FILE," #PROLOGUE\n");					\
-  regno = STACK_POINTER_REGNUM;						\
-  tsize = AL_ADJUST_ALIGN (tsize);					\
-									\
-  if (!frame_pointer_needed)						\
-    frame_stack_difference						\
-      = ((!(regs_ever_live[29] || regs_ever_live[30]			\
-	    || fmask || mask						\
-	    || (SIZE > 0)))						\
-	 ? 0:tsize);							\
-									\
-  push_loc = 0; current_function_total_framesize = tsize;		\
-  fprintf (FILE, " #\t.mask\t0x%x\n", mask);				\
-  if (frame_pointer_needed || regs_ever_live[29] || regs_ever_live[30]	\
-      || fmask || mask							\
-      || (SIZE > 0))							\
-    fprintf (FILE,"\tsubu\t%s,%d\t#temp=%5d,saveregs=%5d, sfo=%5d\n",	\
-	     TARGET_NAME_REGS ? reg_names[29]				\
-	     :reg_numchar[29],tsize,SIZE,tsize-SIZE,			\
-	     STARTING_FRAME_OFFSET);					\
-  else fprintf (FILE," #NO STACK PUSH:\tSP %sused, FP %sused, FP %sneeded\n",\
-		regs_ever_live[29]? "":"un",				\
-		regs_ever_live[30]? "":"un",				\
-	       frame_pointer_needed ?"" : "not ");			\
-  for  (regno = 31; regno >= 30; regno--)				\
-    {									\
-      if (MUST_SAVE_REG_LOGUES						\
-	  || (regs_ever_live[regno] && !call_used_regs[regno]))		\
-	{								\
-	  fprintf (FILE, "\tsw\t%s,%d(%s)\n",				\
-		   TARGET_NAME_REGS ? reg_names[regno] : reg_numchar[regno], \
-		   push_loc, fp_str);					\
-	  push_loc += 4;						\
-	}								\
-    }									\
-  if (THIS_VARARGS_SUSPECTED)						\
-    { int fregno;							\
-      fprintf (FILE, "\taddi\t%s,$0,%d\t#Varargs suspicion\n",		\
-	       TARGET_NAME_REGS ? reg_names[9] : reg_numchar[9],	\
-	       tsize);							\
-      fprintf (FILE, "\tsw\t%s,%d(%s)\t#Varargs suspicion\n",		\
-	       TARGET_NAME_REGS ? reg_names[9] : reg_numchar[9],	\
-	       tsize - 4,						\
-	       TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]);	\
-      for (fregno = 44; fregno< 48; fregno += 2)			\
-	{								\
-	  fprintf (FILE, "\ts.d\t%s,%d(%s)\t#Varargs Suspicion\n",	\
-		   ((TARGET_NAME_REGS)					\
-		    ? reg_names[fregno] : reg_numchar[fregno]),		\
-		   push_loc, fp_str);					\
-	  push_loc += 8;						\
-	}								\
-    }									\
-  for (regno = 29; regno >= 0; regno--)					\
-    {									\
-      if (MUST_SAVE_REG_LOGUES						\
-	  || (regs_ever_live[regno] && !call_used_regs[regno]))		\
-	{								\
-	  fprintf (FILE, "\tsw\t%s,%d(%s)\n",				\
-		   TARGET_NAME_REGS ? reg_names[regno] : reg_numchar[regno], \
-		   push_loc, fp_str);					\
-	  push_loc += 4;						\
-	}								\
-    }									\
-  fprintf (FILE, " #\t.fmask\t0x%x\n", fmask);				\
-  for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if (regs_ever_live[regno] && !call_used_regs[regno])		\
-      {									\
-	fprintf (FILE, "\ts.d\t%s,%d(%s)\n",				\
-		 (TARGET_NAME_REGS) ? reg_names[regno] : reg_numchar[regno], \
-		 push_loc, fp_str);					\
-	push_loc += 8;							\
-      }									\
-  if (frame_pointer_needed)						\
-    {									\
-      if (CONST_OK_FOR_LETTER_P (tsize, 'I'))				\
-	fprintf (FILE, "\taddiu %s,%s,%d\t#Establish FramePTR\n",	\
-		 (TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]	\
-		  : reg_numchar[FRAME_POINTER_REGNUM]),			\
-		 (TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]),	\
-		 tsize);						\
-      else								\
-        {								\
-	  fprintf (FILE, "\tlui $15,0x%x\n", (tsize >> 16) & 0xffff);	\
-	  fprintf (FILE, "\tori $15,0x%x\n", tsize & 0xffff);		\
-	  fprintf (FILE, "\taddu %s,%s,$15\t#Establish FramePTR\n",	\
-		   (TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]	\
-		    : reg_numchar[FRAME_POINTER_REGNUM]),		\
-		   (TARGET_NAME_REGS ? reg_names[29] : reg_numchar[29]));\
-        }								\
-    }									\
-  fprintf (FILE," #END PROLOGUE\n");					\
-}
-
-/* Output assembler code to FILE to increment profiler label # LABELNO
-   for profiling a function entry.  */
-
-#define FUNCTION_PROFILER(FILE, LABELNO)				\
-   fprintf (FILE, "ERROR\t profiler LP%d,r0\n", (LABELNO));
-
-/* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
-   the stack pointer does not matter.  The value is tested only in
-   functions that have frame pointers.
-   No definition is equivalent to always zero.  */
-
-extern int may_call_alloca;
-extern int current_function_pretend_args_size;
-
-#define EXIT_IGNORE_STACK 0
-
-
-/* This declaration is needed due to traditional/ANSI
-   incompatibilities which cannot be #ifdefed away
-   because they occur inside of macros.  Sigh.  */
-
-
-extern union tree_node *current_function_decl;
-extern char *current_function_name;
-
-/* Tell prologue and epilogue if Register containing return
-   address should be saved / restored
-*/
-
-#define MUST_SAVE_REG_LOGUES (( frame_pointer_needed && (regno == 30))	\
-                              ||( (regno == 31) && regs_ever_live[31])	\
-                                 )
-
-
-/* This macro generates the assembly code for function exit,
-   on machines that need it.  If FUNCTION_EPILOGUE is not defined
-   then individual return instructions are generated for each
-   return statement.  Args are same as for FUNCTION_PROLOGUE.  */
-
-
-#define FUNCTION_EPILOGUE(FILE, SIZE)					\
-{ register int regno;							\
-  register int mask = 0;						\
-  register int fmask = 0;						\
-  char *fp_str;								\
-  char *sp_str;								\
-  register int push_loc ;						\
-  extern char *reg_numchar[];						\
-  extern char *current_function_name;					\
-  extern int  current_function_total_framesize;				\
-  extern char call_used_regs[];						\
-  push_loc = 0;								\
-  regno = STACK_POINTER_REGNUM;						\
-  sp_str = TARGET_NAME_REGS ? reg_names[STACK_POINTER_REGNUM]		\
-    : reg_numchar[STACK_POINTER_REGNUM];				\
-  fp_str = TARGET_NAME_REGS ? reg_names[8]				\
-    :reg_numchar[8];							\
-  fprintf (FILE," #EPILOGUE\n");					\
-  if (frame_pointer_needed)						\
-    fprintf (FILE,"\taddu\t%s,$0,%s\t# sp not trusted  here \n",	\
-	     fp_str,							\
-	     TARGET_NAME_REGS ? reg_names[FRAME_POINTER_REGNUM]		\
-	     :reg_numchar[FRAME_POINTER_REGNUM]				\
-	     );								\
-  for  (regno = 0; regno < 32; regno++)					\
-    if  ( MUST_SAVE_REG_LOGUES						\
-	 || (regs_ever_live[regno] && !call_used_regs[regno]))		\
-      mask |= 1 << regno;						\
-  fprintf  (FILE, " #\t.mask\t0x%x\n", mask);				\
-  for  (regno = 31; regno >= 0; regno--)				\
-    { if  ( MUST_SAVE_REG_LOGUES					\
-	   || (regs_ever_live[regno] && !call_used_regs[regno]))	\
-	{								\
-	  fprintf (FILE,"\tlw\t%s,%d(%s)\n",				\
-		   TARGET_NAME_REGS ? reg_names[regno]			\
-		   : reg_numchar[regno],				\
-		   (frame_pointer_needed ?				\
-		    push_loc - current_function_total_framesize:	\
-		    push_loc),						\
-		   (frame_pointer_needed ? fp_str :sp_str));		\
-	  push_loc += 4;						\
-	}								\
-      if ( THIS_VARARGS_SUSPECTED &&  (regno == 30)) push_loc += 16;	\
-    }									\
-  for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)		\
-    if  (regs_ever_live[regno] && !call_used_regs[regno])		\
-      fmask |= 1 <<  (regno-32);					\
-  fprintf  (FILE, " #\t.fmask\t0x%x\n", fmask);				\
-    for  (regno = 32; regno < FIRST_PSEUDO_REGISTER; regno += 2)	\
-    {									\
-      if  (regs_ever_live[regno] && !call_used_regs[regno])		\
-	{								\
-	  fprintf (FILE,"\tl.d\t%s,%d(%s)\n",				\
-		   ( ( TARGET_NAME_REGS) ? reg_names[regno]		\
-		    : reg_numchar[regno]),				\
-		   (frame_pointer_needed ?				\
-		    push_loc - current_function_total_framesize		\
-		    : push_loc),					\
-		   (frame_pointer_needed ? fp_str :sp_str));		\
-	  push_loc += 8;						\
-	}								\
-    }									\
-  if (frame_pointer_needed)						\
-    fprintf (FILE,"\taddu\t%s,$0,%s\t# sp not trusted  here \n",	\
-	     TARGET_NAME_REGS ? reg_names[STACK_POINTER_REGNUM]		\
-	     :reg_numchar[STACK_POINTER_REGNUM],			\
-	     TARGET_NAME_REGS ? reg_names[8]				\
-	     :reg_numchar[8]						\
-	     );								\
-  else									\
-    if (regs_ever_live[29]|| regs_ever_live[30]				\
-	|| fmask || mask						\
-	||  (SIZE > 0))			\
-      fprintf (FILE,"\taddu\t%s,%d\t\n",TARGET_NAME_REGS ? reg_names[29]\
-	       :reg_numchar[29],current_function_total_framesize);	\
-  fprintf (FILE,"\tj\t$31\n");						\
-  fprintf (FILE," #END EPILOGUE\n");					\
-  fprintf (FILE," \t.end\t%s\n",current_function_name);			\
-  THIS_VARARGS_NOTSUSPECT; VARARGS_NOTSUSPECT;}
-
 /* If the memory Address ADDR is relative to the frame pointer,
    correct it to be relative to the stack pointer. This is for
    when we don't use a frame pointer.
    ADDR should be a variable name.  */
 
 #define FIX_FRAME_POINTER_ADDRESS(ADDR,DEPTH)				\
-{ rtx newaddr;								\
-    int frame_offset = -1;						\
-    /* fprintf(stderr,"FIX_FRAME depth=%d\n",DEPTH); */			\
-  if(ADDR == frame_pointer_rtx)						\
-    frame_offset = 0;							\
-  else									\
-      if (GET_CODE(ADDR) == PLUS)					\
-          if(XEXP(ADDR,0) == frame_pointer_rtx)				\
-             if(GET_CODE(XEXP(ADDR,1)) == CONST_INT)			\
-	       frame_offset = INTVAL(XEXP(ADDR,1));			\
-             else abort_with_insn(ADDR,"Unable to FIX");		\
-          else if (XEXP(ADDR,1) == frame_pointer_rtx)			\
-             if(GET_CODE(XEXP(ADDR,0)) == CONST_INT)			\
-	       frame_offset = INTVAL(XEXP(ADDR,0));			\
-             else abort_with_insn(ADDR,"Unable to FIX");		\
-	  else;								\
-   if (frame_offset >= 0)						\
-    { newaddr								\
-	= gen_rtx (PLUS,Pmode,stack_pointer_rtx,			\
-		   gen_rtx (CONST_INT, VOIDmode,			\
-			    (frame_offset + (DEPTH)			\
-			     + frame_stack_difference)));		\
-      ADDR = newaddr;							\
-    }									\
-  }
+{ ADDR = mips_fix_frame_pointer(ADDR, DEPTH); }
 
+extern struct rtx_def *mips_fix_frame_pointer ();
+
+/* Output assembler code to FILE to increment profiler label # LABELNO
+   for profiling a function entry.  */
+
+#define FUNCTION_PROFILER(FILE, LABELNO)				\
+{									\
+  register char **reg_ptr = (TARGET_NAME_REGS) ? reg_names : reg_numchar; \
+									\
+  fprintf (FILE, "\t.set\tnoreorder\n");				\
+  fprintf (FILE, "\t.set\tnoat\n");					\
+  fprintf (FILE, "\tmove\t%s,%s\t\t# save current return address\n",	\
+	   reg_ptr[1], reg_ptr[31]);					\
+  fprintf (FILE, "\tjal\t_mcount\n");					\
+  fprintf (FILE, "\tsubu\t%s,%s,8\t\t# _mcount pops 2 words from  stack\n", \
+	   reg_ptr[STACK_POINTER_REGNUM], reg_ptr[STACK_POINTER_REGNUM]); \
+  fprintf (FILE, "\t.set\treorder\n");					\
+  fprintf (FILE, "\t.set\tat\n");					\
+}
+
+/* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
+   the stack pointer does not matter.  The value is tested only in
+   functions that have frame pointers.
+   No definition is equivalent to always zero.  */
+
+#define EXIT_IGNORE_STACK 1
 
 
 /* Addressing modes, and classification of registers for them.  */
@@ -1147,10 +1344,9 @@ extern char *current_function_name;
 
 #define REGNO_OK_FOR_INDEX_P(regno)					\
 ((regno) < FIRST_PSEUDO_REGISTER || reg_renumber[regno] >= 0)
+
 #define REGNO_OK_FOR_BASE_P(regno)					\
 ((regno) < FIRST_PSEUDO_REGISTER || reg_renumber[regno] >= 0)
-#define REGNO_OK_FOR_FP_P(REGNO)					\
-(((REGNO) ^ 0x20) < 32 || (unsigned) (reg_renumber[REGNO] ^ 0x20) < 32)
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -1165,32 +1361,16 @@ extern char *current_function_name;
 
 #ifndef REG_OK_STRICT
 
-/* Nonzero if X is a hard reg that can be used as an index or if
-   it is a pseudo reg.  */
-#define REG_OK_FOR_INDEX_P(X) 1
-/* Nonzero if X is a hard reg that can be used as a base reg
-   of if it is a pseudo reg.  */
-#define REG_OK_FOR_BASE_P(X) 1
+#define REG_OK_FOR_INDEX_P(X) 1		/* ok if index or pseudo reg */
+#define REG_OK_FOR_BASE_P(X)  1		/* ok if base reg. of pseudo reg */
 
 #else
 
-/* Nonzero if X is a hard reg that can be used as an index.  */
 #define REG_OK_FOR_INDEX_P(X) REGNO_OK_FOR_INDEX_P (REGNO (X))
-/* Nonzero if X is a hard reg that can be used as a base reg.  */
-#define REG_OK_FOR_BASE_P(X) REGNO_OK_FOR_BASE_P (REGNO (X))
+#define REG_OK_FOR_BASE_P(X)  REGNO_OK_FOR_BASE_P  (REGNO (X))
 
 #endif
 
-#define REG_OK_FOR_CLASS_P(X, C) 0
-
-#define REGNO_OK_FOR_CLASS_P(X, C)  0
-
-#define ADDRESS_REG_P(X)						\
-  (GET_CODE (X) == REG )
-
-/* 1 if X is an fp register.  */
-
-#define FP_REG_P(X) (REG_P (X) && REGNO_OK_FOR_FP_P (REGNO (X)))
 
 /* Maximum number of registers that can appear in a valid memory address.  */
 
@@ -1209,44 +1389,63 @@ extern char *current_function_name;
   (CONSTANT_ADDRESS_P (X)						\
    || (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
    || (GET_CODE (X) == PLUS						\
-       && GET_CODE (XEXP (X, 0)) == REG					\
-       && REG_OK_FOR_BASE_P (XEXP (X, 0))				\
-       && CONSTANT_ADDRESS_P (XEXP (X, 1))))
+       && ((xplus0 = XEXP (X, 0)),					\
+	   (xplus1 = XEXP (X, 1)),					\
+	   ((GET_CODE (xplus0) != REG && GET_CODE (xplus1) == REG)	\
+	    ? ((xplus0 = XEXP (X, 1)), (xplus1 = XEXP (X, 0)))		\
+	    : 0),							\
+	   GET_CODE (xplus0) == REG)					\
+       && REG_OK_FOR_BASE_P (xplus0)					\
+       && ((GET_CODE (xplus1) == CONST_INT && SMALL_INT (xplus1))	\
+	   || (GET_CODE (xplus1) == LABEL_REF)				\
+	   || (GET_CODE (xplus1) == SYMBOL_REF)				\
+	   || (GET_CODE (xplus1) == CONST)				\
+	   || (xplus0 == stack_pointer_rtx				\
+	       && (GET_CODE (xplus1) == CONST || (GET_CODE (xplus1) == SYMBOL_REF))))))
 
 
+#if 1
+extern void trace ();
+#define GO_PRINTF(x)	trace(x)
+#define GO_DEBUG_RTX(x) debug_rtx(x)
 
-/* 1 if X is an address which is (+ (reg) (+ (const_int) (symbol_ref)  )) */
-#define FIXED_FRAME_PTR_REL_P(X)					\
-  (    (GET_CODE(X) == PLUS)						\
-   &&  (GET_CODE(XEXP((X),0)) == REG)					\
-   &&  (GET_CODE(XEXP((X),1)) == PLUS)					\
-   &&  (GET_CODE(XEXP(XEXP((X),1),0)) == CONST_INT)			\
-   &&   (GET_CODE(XEXP(XEXP((X),1),1)) == SYMBOL_REF))
+#else
+#define GO_PRINTF(x)
+#define GO_DEBUG_RTX(x)
+#endif
 
 /* Go to ADDR if X is a valid address not using indexing.
    (This much is the easy part.)  */
 #define GO_IF_LEGITIMATE_ADDRESS(MODE, X, ADDR)				\
-{ register rtx xfoob = (X);						\
-  if (GET_CODE (xfoob) == REG) goto ADDR;				\
-  if (INDIRECTABLE_ADDRESS_P (xfoob))   goto ADDR;			\
-  if (FIXED_FRAME_PTR_REL_P (xfoob))    goto ADDR;                      \
-  }
+{									\
+  register rtx xinsn = (X);						\
+  register rtx xplus0, xplus1;						\
+									\
+  if (TARGET_DEBUGB_MODE)						\
+    {									\
+      GO_PRINTF ("\n==================== GO_IF_LEGITIMATE_ADDRESS\n");	\
+      GO_DEBUG_RTX (xinsn);						\
+    }									\
+									\
+  if (GET_CODE (xinsn) == REG)		goto ADDR;			\
+  if (INDIRECTABLE_ADDRESS_P (xinsn))   goto ADDR;			\
+									\
+  if (TARGET_DEBUGB_MODE)						\
+    GO_PRINTF ("Not a legitimate address\n");				\
+}
 
 
+#define CONSTANT_ADDRESS_P(X) CONSTANT_P (X)
 
-
-#define CONSTANT_ADDRESS_P(X)						\
-  (GET_CODE (X) == LABEL_REF || GET_CODE (X) == SYMBOL_REF		\
-   || GET_CODE (X) == CONST_INT						\
-   || GET_CODE (X) == CONST)
 
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.
 
-   Anything but a CONST_DOUBLE can be made to work.  */
+   At present, GAS doesn't understand li.[sd], so don't allow it
+   to be generated at present.  Also, the MIPS assembler does not
+   grok li.d Infinity.  */
 
-#define LEGITIMATE_CONSTANT_P(X)					\
- (GET_CODE (X) != CONST_DOUBLE)
+#define LEGITIMATE_CONSTANT_P(X) (GET_CODE (X) != CONST_DOUBLE)
 
 /* Try machine-dependent ways of modifying an illegitimate address
    to be legitimate.  If we find one, return the new, valid address.
@@ -1268,18 +1467,14 @@ extern char *current_function_name;
 
 */
 
-#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN)  {}
+#define LEGITIMIZE_ADDRESS(X,OLDX,MODE,WIN) {}
 
 /* Go to LABEL if ADDR (a legitimate address expression)
-   has an effect that depends on the machine mode it is used for.
-*/
+   has an effect that depends on the machine mode it is used for.  */
+
+#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL) {}
+
 
-				/* See if this is of any use here */
-
-#define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)			\
-{ }
-
-
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
 #define CASE_VECTOR_MODE SImode
@@ -1305,14 +1500,14 @@ extern char *current_function_name;
 /* Nonzero if access to memory by bytes is slow and undesirable.  */
 #define SLOW_BYTE_ACCESS 0
 
-/* On Sun 4, this limit is 2048.  We use 1500 to be safe,
-   since the length can run past this up to a continuation point.  */
-#define DBX_CONTIN_LENGTH 1500
-
 /* We assume that the store-condition-codes instructions store 0 for false
    and some other value for true.  This is the value stored for true.  */
 
 #define STORE_FLAG_VALUE 1
+
+/* Declarations for condition code stuff.  */
+extern void compare_collect ();
+extern void compare_restore ();
 
 /* Define this if zero-extension is slow (more than one real instruction).  */
 #define SLOW_ZERO_EXTEND
@@ -1357,6 +1552,10 @@ extern char *current_function_name;
     return 3;								\
   case CONST_DOUBLE:							\
     return 5;
+
+/* Used in by the peephole code.  */
+#define additive_op(op,mode) (GET_CODE (op) == PLUS || GET_CODE (op) == MINUS)
+
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -1384,16 +1583,32 @@ extern char *current_function_name;
 
 /* Control the assembler format that we output.  */
 
-/* Output at beginning of assembler file.  */
+/* Output at beginning of assembler file.
+   If we are optimizing to use the global pointer, create a temporary
+   file to hold all of the text stuff, and write it out to the end.
+   This is needed because the MIPS assembler is evidently one pass,
+   and if it hasn't seen the relevant .comm/.lcomm/.extern/.sdata
+   declaration when the code is processed, it generates a two
+   instruction sequence.  */
 
-#define ASM_FILE_START(FILE)						\
+#define ASM_FILE_START(STREAM)						\
 {									\
+  extern FILE *asm_out_text_file, *asm_out_data_file;			\
+  extern FILE *tmpfile ();						\
   if (TARGET_NAME_REGS)							\
-    fprintf (FILE, "#include <regdef.h>\n\t.verstamp\t%s\n", TARGET_VERSNUM);\
-  else fprintf (FILE, " #\t.verstamp\t%s\n", TARGET_VERSNUM);		\
-/* print_options(FILE);  */						\
+    fprintf (STREAM, "#include <regdef.h>\n");				\
+  ASM_OUTPUT_SOURCE_FILENAME (STREAM, main_input_filename);		\
+  print_options(STREAM);						\
+  data_section ();		/* put gcc_compiled. in data, not text*/\
   if (TARGET_GP_OPT)							\
-    fprintf (FILE, "#ifdef %sRESCAN_GCC\n", "__x_");			\
+    {									\
+      asm_out_data_file = STREAM;					\
+      asm_out_text_file = tmpfile ();					\
+      if (!asm_out_text_file)						\
+	pfatal_with_name ("Can't open temporary file with tmpfile");	\
+    }									\
+  else									\
+    asm_out_data_file = asm_out_text_file = STREAM;			\
 }
 
 /* Output to assembler file text saying following lines
@@ -1405,22 +1620,6 @@ extern char *current_function_name;
    no longer contain unusual constructs.  */
 
 #define ASM_APP_OFF " #NO_APP\n"
-
-/* Output before read-only data.  */
-
-#define TEXT_SECTION_ASM_OP ".text"
-
-/* Output before writable data.  */
-
-#define DATA_SECTION_ASM_OP ".data"
-
-#define  ASM_OUTPUT_MIPS_SECTIONS
-#define  OUTPUT_MIPS_SECTION_THRESHOLD  ((mips_section_threshold >= 0 )?\
-					mips_section_threshold : mips_section_get())
-
-/* Output before writable  short data.  */
-
-#define SDATA_SECTION_ASM_OP ".sdata"
 
 /* How to refer to registers in assembler output.
    This sequence is indexed by compiler's hard-register-number (see above).  */
@@ -1439,19 +1638,16 @@ extern char *current_function_name;
 {									\
 "$0","$1","$2","$3","$4","$5","$6","$7","$8","$9",			\
 "$10","$11","$12","$13","$14","$15","$16","$17","$18","$19",		\
-"$20","$21","$22","$23","$24","$25","$26","$27","$28","$29",		\
-"$30","$31",								\
+"$20","$21","$22","$23","$24","$25","$26","$27","$28","$sp",		\
+"$fp","$31",								\
 "$f0","$f1","$f2","$f3","$f4","$f5","$f6","$f7","$f8","$f9",		\
 "$f10","$f11","$f12","$f13","$f14","$f15","$f16","$f17","$f18","$f19",	\
 "$f20","$f21","$f22","$f23","$f24","$f25","$f26","$f27","$f28","$f29",	\
 "$f30","$f31"								\
 }
 
+#define REG_NAME(reg) (TARGET_NAME_REGS ? reg_names[reg] : reg_numchar[reg])
 
-/* How to renumber registers for dbx and gdb.
-   MIPS needs no change in the numeration.  */
-
-#define DBX_REGISTER_NUMBER(REGNO) (REGNO)
 
 /* Define results of standard character escape sequences.  */
 #define TARGET_BELL 007
@@ -1462,213 +1658,293 @@ extern char *current_function_name;
 #define TARGET_FF 014
 #define TARGET_CR 015
 
-				/*  LIST OF PRINT OPERAND CODES
-
-
-				/* 'x'  X is CONST_INT, prints 16 bits in
-				**      Hexadecimal format = "0x%4x",
-				** 'd'  output integer constant in decimal,
-				** 'u'  Prints an 'u' if flag -mnofixed-ovfl
-				**      has been set, thus selecting addu
-				**      instruction instead of add.
-				*/
-
 
 /* Print an instruction operand X on file FILE.
    CODE is the code from the %-spec that requested printing this operand;
    if `%z3' was used to print operand 3, then CODE is 'z'.
    CODE is used as follows:
 
-				    LIST OF PRINT OPERAND CODES
+    LIST OF PRINT OPERAND CODES:
 
-
-				   'x'  X is CONST_INT, prints 16 bits in
-				**      Hexadecimal format = "0x%4x",
-				** 'd'  output integer constant in decimal,
-				** ':'  Prints an 'u' if flag -mnofixed-ovfl
-				**      has been set, thus selecting addu
-				**      instruction instead of add.
-				*/
+	'x'  X is CONST_INT, prints 16 bits in hex format.
+	'd'  output integer constant in decimal,
+	':'  Prints an 'u' if flag -mnofixed-ovfl (for addu vs. add)  */
 
 #define PRINT_OPERAND_PUNCT_VALID_P(CODE)				\
   ((CODE) == ':')
 
 #define PRINT_OPERAND(FILE, X, CODE)					\
-{ if ((CODE) == ':')							\
-    {if (TARGET_NOFIXED_OVFL)fprintf(FILE,"u");}			\
-  else if (GET_CODE (X) == REG)						\
-    { extern char *reg_numchar[];					\
-      fprintf (FILE, "%s", TARGET_NAME_REGS ?reg_names[REGNO (X)]	\
-	       :reg_numchar[REGNO (X) ]);				\
-    }									\
-  else									\
+{									\
+  if ((CODE) == ':')							\
     {									\
-      if (GET_CODE (X) == MEM)						\
-	output_address (XEXP (X, 0));					\
-      else if (GET_CODE (X) == CONST_DOUBLE)				\
-	{ union { double d; int i[2]; } u;				\
-	  union { float f; int i; } u1;					\
-	  u.i[0] = CONST_DOUBLE_LOW (X);				\
-	  u.i[1] = CONST_DOUBLE_HIGH (X);				\
-	  u1.f = u.d;							\
-	  if (GET_MODE (X) == SFmode)					\
-	    u.d = u1.f;							\
-	  fprintf (FILE, "%.20e", u.d); }				\
-      else								\
-	{ if ((CODE == 'x') && (GET_CODE(X) == CONST_INT))		\
-	    fprintf(FILE,"0x%x",0xffff & (INTVAL(X)));			\
-	  else { if ((CODE == 'd') && (GET_CODE(X) == CONST_INT))	\
-		   fprintf(FILE,"%d",(INTVAL(X)));			\
-	         else							\
-		   {							\
-		      if ((CODE) == 'd') abort();			\
-		      else output_addr_const (FILE, X);}		\
-		}}}}
+      if (TARGET_NOFIXED_OVFL)						\
+	fprintf(FILE,"u");						\
+    }									\
+									\
+  else if (GET_CODE (X) == REG)						\
+    {									\
+      int regnum = REGNO (X);						\
+									\
+      if (CODE == 'M')							\
+	regnum += MOST_SIGNIFICANT_WORD;				\
+      else if (CODE == 'L')						\
+	regnum += LEAST_SIGNIFICANT_WORD;				\
+      else if (CODE == 'D')						\
+	regnum++;							\
+									\
+      fprintf (FILE, "%s",						\
+	       ((TARGET_NAME_REGS) ? reg_names : reg_numchar)[regnum]); \
+    }									\
+									\
+  else if (GET_CODE (X) == MEM)						\
+    output_address (XEXP (X, 0));					\
+									\
+  else if (GET_CODE (X) == CONST_DOUBLE)				\
+    {									\
+      union { double d; int i[2]; } u;					\
+      u.i[0] = CONST_DOUBLE_LOW (X);					\
+      u.i[1] = CONST_DOUBLE_HIGH (X);					\
+      if (GET_MODE (X) == SFmode)					\
+	{								\
+	  float f;							\
+	  f = u.d;							\
+	  u.d = f;							\
+	}								\
+      fprintf (FILE, "%.20e", u.d);					\
+    }									\
+									\
+  else if ((CODE == 'x') && (GET_CODE(X) == CONST_INT))			\
+    fprintf(FILE,"0x%x", 0xffff & (INTVAL(X)));				\
+									\
+  else if ((CODE == 'd') && (GET_CODE(X) == CONST_INT))			\
+    fprintf(FILE,"%d", (INTVAL(X)));					\
+									\
+  else if ((CODE) == 'd')						\
+    fatal ("Code d was found & insn was not CONST_INT");		\
+									\
+  else									\
+    output_addr_const (FILE, X);					\
+}
+
 
 /* Print a memory operand whose address is X, on file FILE.  */
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)				\
-{ register rtx reg1, reg2, breg, ireg;					\
-  register rtx addr = ADDR;						\
-  rtx offset;								\
-  extern char *reg_numchar[];						\
-/*	my_print_rtx(addr);*/						\
- retry:									\
+{									\
+  register rtx addr	 = ADDR;					\
+  register char **reg_ptr = (TARGET_NAME_REGS) ? reg_names : reg_numchar; \
+									\
   switch (GET_CODE (addr))						\
     {									\
-    case REG:								\
-      fprintf (FILE, "0(%s)", TARGET_NAME_REGS ? reg_names [REGNO (addr)]\
-	       : reg_numchar[REGNO(addr)]);				\
-      break;								\
-    case MEM:								\
-    case PRE_DEC:							\
-    case POST_INC:							\
-      abort();								\
-      break;								\
-    case PLUS:								\
-      if(   (GET_CODE (XEXP(addr,0)) == REG)				\
-         && (GET_CODE (XEXP(addr,1)) == PLUS)				\
-         && (GET_CODE (XEXP(XEXP(addr,1),1)) == SYMBOL_REF)		\
-         && (GET_CODE (XEXP(XEXP(addr,1),0)) == CONST_INT))		\
-	{output_address(XEXP(XEXP(addr,1),0));				\
-         fprintf(FILE,"+");						\
-         output_address(XEXP(XEXP(addr,1),1));				\
-         breg = XEXP(addr,0);						\
-	 fprintf(FILE,"(%s)", TARGET_NAME_REGS ?			\
-		   reg_names[REGNO (breg)]: reg_numchar[REGNO(breg)]);	\
-	 break;								\
-        }								\
-									\
-      reg1 = 0;	reg2 = 0;						\
-      ireg = 0;	breg = 0;						\
-      offset = 0;							\
-        /*fprintf(stderr,"PRINT_OPERAND_ADDRESS"); */			\
-      if (CONSTANT_ADDRESS_P (XEXP (addr, 0))				\
-	  || GET_CODE (XEXP (addr, 0)) == MEM)				\
-	{								\
-	  offset = XEXP (addr, 0);					\
-	  addr = XEXP (addr, 1);					\
-	}								\
-      else if (CONSTANT_ADDRESS_P (XEXP (addr, 1))			\
-	       || GET_CODE (XEXP (addr, 1)) == MEM)			\
-	{								\
-	  offset = XEXP (addr, 1);					\
-	  addr = XEXP (addr, 0);					\
-	}								\
-      if (GET_CODE (addr) != PLUS) ;					\
-      else if (GET_CODE (XEXP (addr, 0)) == MULT)			\
-	{								\
-	  reg1 = XEXP (addr, 0);					\
-	  addr = XEXP (addr, 1);					\
-	}								\
-      else if (GET_CODE (XEXP (addr, 1)) == MULT)			\
-	{								\
-	  reg1 = XEXP (addr, 1);					\
-	  addr = XEXP (addr, 0);					\
-	}								\
-      else if (GET_CODE (XEXP (addr, 0)) == REG)			\
-	{								\
-	  reg1 = XEXP (addr, 0);					\
-	  addr = XEXP (addr, 1);					\
-	}								\
-      else if (GET_CODE (XEXP (addr, 1)) == REG)			\
-	{								\
-	  reg1 = XEXP (addr, 1);					\
-	  addr = XEXP (addr, 0);					\
-	}								\
-      if (GET_CODE (addr) == REG || GET_CODE (addr) == MULT)		\
-	{ if (reg1 == 0) reg1 = addr; else reg2 = addr; addr = 0; }	\
-      if (offset != 0) { if (addr != 0) abort (); addr = offset; }	\
-      if (reg1 != 0 && GET_CODE (reg1) == MULT)				\
-	{ breg = reg2; ireg = reg1; }					\
-      else if (reg2 != 0 && GET_CODE (reg2) == MULT)			\
-	{ breg = reg1; ireg = reg2; }					\
-      else if (reg2 != 0 || GET_CODE (addr) == MEM)			\
-	{ breg = reg2; ireg = reg1; }					\
-      else								\
-	{ breg = reg1; ireg = reg2; }					\
-      if (addr != 0)							\
-	output_address (offset);					\
-      if (breg != 0)							\
-	{ if (GET_CODE (breg) != REG) abort ();				\
-	  fprintf (FILE, "(%s)", TARGET_NAME_REGS ?			\
-		   reg_names[REGNO (breg)]: reg_numchar[REGNO(breg)]); }\
-      if (ireg != 0)							\
-	{ if (GET_CODE (ireg) == MULT) ireg = XEXP (ireg, 0);		\
-	  if (GET_CODE (ireg) != REG) abort ();				\
-	  fprintf (FILE, "[%s]",  TARGET_NAME_REGS ?			\
-		   reg_names[REGNO (ireg)]: reg_numchar[REGNO(ireg)]); }\
-      break;								\
     default:								\
+      abort_with_insn (addr, "PRINT_OPERAND_ADDRESS, illegal insn #1");	\
+      break;								\
+									\
+    case REG:								\
+      fprintf (FILE, "0(%s)", reg_ptr [REGNO (addr)]);			\
+      break;								\
+									\
+    case PLUS:								\
+      {									\
+	register rtx reg    = (rtx)0;					\
+	register rtx offset = (rtx)0;					\
+	register rtx arg0   = XEXP (addr, 0);				\
+	register rtx arg1   = XEXP (addr, 1);				\
+									\
+	if (GET_CODE (arg0) == REG)					\
+	  {								\
+	    reg = arg0;							\
+	    offset = arg1;						\
+	    if (GET_CODE (offset) == REG)				\
+	      abort_with_insn (addr, "PRINT_OPERAND_ADDRESS, 2 regs");	\
+	  }								\
+	else if (GET_CODE (arg1) == REG)				\
+	  {								\
+	    reg = arg1;							\
+	    offset = arg0;						\
+	  }								\
+	else if (CONSTANT_P (arg0) && CONSTANT_P (arg1))		\
+	  {								\
+	    output_addr_const (FILE, addr);				\
+	    break;							\
+	  }								\
+	else								\
+	  abort_with_insn (addr, "PRINT_OPERAND_ADDRESS, no regs");	\
+									\
+	if (!CONSTANT_P (offset))					\
+	  abort_with_insn (addr, "PRINT_OPERAND_ADDRESS, illegal insn #2"); \
+									\
+	output_addr_const (FILE, offset);				\
+	fprintf (FILE, "(%s)", reg_ptr [REGNO (reg)]);			\
+      }									\
+      break;								\
+									\
+    case LABEL_REF:							\
+    case SYMBOL_REF:							\
+    case CONST_INT:							\
+    case CONST:								\
       output_addr_const (FILE, addr);					\
-    }}
+      break;								\
+    }									\
+}
 
 
-/* This is how to output a note to DBX telling it the line number
+/* How to tell the debugger about changes of source files.  Note, the
+   mips ECOFF format cannot deal with changes of files inside of
+   functions, which means the output of parser generators like bison
+   is generally not debuggable without using the -l switch.  Lose,
+   lose, lose.  Silicon graphics seems to want all .file's hardwired
+   to 1.  */
+
+#ifndef SET_FILE_NUMBER
+#define SET_FILE_NUMBER() ++num_source_filenames
+#endif
+
+#define ASM_OUTPUT_SOURCE_FILENAME(STREAM, NAME)			\
+{									\
+  SET_FILE_NUMBER ();							\
+  fprintf (STREAM, "\t%s.file\t%d \"%s\"\n",				\
+	   (TARGET_GAS || !inside_function) ? "" : "#",			\
+	   num_source_filenames, NAME);					\
+}
+
+/* This is how to output a note the debugger telling it the line number
    to which the following sequence of instructions corresponds.
+   Silicon graphics puts a label after each .loc.  */
 
-   This is needed for SunOS 4.0, and should not hurt for 3.2
-   versions either.  */
-#define ASM_OUTPUT_SOURCE_LINE(file, line)				\
-  { static int sym_lineno = 1;						\
-    fprintf (file, " #.stabn 68,0,%d,LM%d\nLM%d:\n",			\
-	     line, sym_lineno, sym_lineno);				\
-    sym_lineno += 1; }
+#ifndef LABEL_AFTER_LOC
+#define LABEL_AFTER_LOC(STREAM)
+#endif
+
+#define ASM_OUTPUT_SOURCE_LINE(STREAM, LINE)				\
+{									\
+  fprintf (STREAM, "\n\t.loc\t%d %d\n", num_source_filenames, LINE);	\
+  LABEL_AFTER_LOC (STREAM);						\
+}
+
+/* The MIPS implementation uses some labels for it's own purposed.  The
+   following lists what labels are created, and are all formed by the
+   pattern $L[a-z].*.  The machine independent portion of GCC creates
+   labels matching:  $L[A-Z][0-9]+ and $L[0-9]+.
+
+	LM[0-9]+	Sillicon graphics label before each stmt.
+	$Lb[0-9]+	Begin blocks for MIPS debug support
+	$Ldtable	Beginning of the PIC data table
+	$Le[0-9]+	End blocks for MIPS debug support
+	$Ls[0-9]+	FP-SP difference if -fomit-frame-pointer  */
 
 /* This is how to output the definition of a user-level label named NAME,
-   such as the label on a static function or variable NAME.  */
+   such as the label on a static function or variable NAME.
 
-#define ASM_OUTPUT_LABEL(FILE,NAME)					\
-  do { assemble_name (FILE, NAME); fputs (":\n", FILE); } while (0)
+   If we are optimizing the gp, remember that this label has been put
+   out, so we know not to emit an .extern for it in mips_asm_file_end.
+   We use one of the common bits in the IDENTIFIER tree node for this,
+   since those bits seem to be unused, and we don't have any method
+   of getting the decl nodes from the name.  */
+
+#ifndef COLLECT
+#define ASM_OUTPUT_LABEL(STREAM,NAME)					\
+do {									\
+  assemble_name (STREAM, NAME);						\
+  fputs (":\n", STREAM);						\
+									\
+  if (TARGET_GP_OPT && mips_section_threshold != 0)			\
+    {									\
+      tree name_tree = get_identifier (NAME);				\
+      TREE_ADDRESSABLE (name_tree) = 1;					\
+    }									\
+} while (0)
+
+#else
+#define ASM_OUTPUT_LABEL(STREAM,NAME)					\
+do {									\
+  assemble_name (STREAM, NAME);						\
+  fputs (":\n", STREAM);						\
+} while (0)
+#endif
 
 /* This is how to output a command to make the user-level label named NAME
    defined for reference from other files.  */
 
-#define ASM_GLOBALIZE_LABEL(FILE,NAME)					\
-  do { fputs ("\t.globl ", FILE); assemble_name (FILE, NAME);		\
-       fputs ("\n", FILE);						\
-       if(TARGET_GP_OPT) {fputs ("#define _gccx__",FILE);		\
-       assemble_name(FILE,NAME);					\
-       fputs ("\n", FILE);						\
-       }								\
-     } while (0)
+#define ASM_GLOBALIZE_LABEL(STREAM,NAME)				\
+  do {									\
+    fputs ("\t.globl\t", STREAM);					\
+    assemble_name (STREAM, NAME);					\
+    fputs ("\n", STREAM);						\
+  } while (0)
 
-#define ASM_DECLARE_FUNCTION_NAME(FILE,NAME,DECL)			\
-  fprintf(FILE,"\t.ent\t%s\n",NAME);					\
+/* This says how to output an assembler line
+   to define a global common symbol.  */
+
+#define ASM_OUTPUT_COMMON(STREAM, NAME, SIZE, ROUNDED)			\
+do {									\
+  fputs ("\n\t.comm\t", (STREAM));					\
+  assemble_name ((STREAM), (NAME));					\
+  fprintf ((STREAM), ",%u\n", (ROUNDED));				\
+									\
+  if (TARGET_GP_OPT && mips_section_threshold != 0)			\
+    {									\
+      tree name_tree = get_identifier (NAME);				\
+      TREE_ADDRESSABLE (name_tree) = 1;					\
+    }									\
+} while (0)
+
+/* This says how to output an assembler line
+   to define a local common symbol.  */
+
+#define ASM_OUTPUT_LOCAL(STREAM, NAME, SIZE, ROUNDED)			\
+do {									\
+  fputs ("\n\t.lcomm\t", (STREAM));					\
+  assemble_name ((STREAM), (NAME));					\
+  fprintf ((STREAM), ",%u\n", (ROUNDED));				\
+									\
+  if (TARGET_GP_OPT && mips_section_threshold != 0)			\
+    {									\
+      tree name_tree = get_identifier (NAME);				\
+      TREE_ADDRESSABLE (name_tree) = 1;					\
+    }									\
+} while (0)
+
+
+/* This says how to output an external.  It would be possible not to
+   output anything and let undefined symbol become external. However
+   the assembler uses length information on externals to allocate in
+   data/sdata bss/sbss, thereby saving exec time.  */
+
+#define ASM_OUTPUT_EXTERNAL(STREAM,DECL,NAME) \
+  mips_output_external(STREAM,DECL,NAME)
+
+/* This says what to print at the end of the assembly file */
+#define ASM_FILE_END(STREAM) mips_asm_file_end(STREAM)
+
+
+/* This is how to declare a function name.  The actual work of
+   emitting the label is moved to function_prologue, so that we can
+   get the line number correctly emitted before the .ent directive,
+   and after any .file directives.
+
+   Also, switch files if we are optimizing the global pointer.  */
+
+#define ASM_DECLARE_FUNCTION_NAME(STREAM,NAME,DECL)			\
+{									\
+  extern FILE *asm_out_text_file;					\
+  if (TARGET_GP_OPT)							\
+    STREAM = asm_out_text_file;						\
+									\
   current_function_name = NAME;						\
-  ASM_OUTPUT_LABEL(FILE,NAME);
+}
 
 /* This is how to output a reference to a user-level label named NAME.
    `assemble_name' uses this.  */
 
-#define ASM_OUTPUT_LABELREF(FILE,NAME)					\
-  fprintf (FILE, "%s", NAME)
+#define ASM_OUTPUT_LABELREF(STREAM,NAME)				\
+  fprintf (STREAM, "%s", NAME)
 
 /* This is how to output an internal numbered label where
    PREFIX is the class of label and NUM is the number within the class.  */
 
-#define ASM_OUTPUT_INTERNAL_LABEL(FILE,PREFIX,NUM)			\
-  fprintf (FILE, "$%s%d:\n", PREFIX, NUM)
+#define ASM_OUTPUT_INTERNAL_LABEL(STREAM,PREFIX,NUM)			\
+  fprintf (STREAM, "$%s%d:\n", PREFIX, NUM)
 
 /* This is how to store into the string LABEL
    the symbol_ref name of an internal numbered label where
@@ -1680,84 +1956,244 @@ extern char *current_function_name;
 
 /* This is how to output an assembler line defining a `double' constant.  */
 
-#define ASM_OUTPUT_DOUBLE(FILE,VALUE)					\
-  fprintf (FILE, "\t.double %.20e\n", (VALUE))
+#define ASM_OUTPUT_DOUBLE(STREAM,VALUE)					\
+{									\
+  union { double d; long l[2]; } u2;					\
+  u2.d = VALUE;								\
+  fprintf (STREAM, "\t.word\t0x%08lx\t\t# %.20g\n\t.word\t0x%08lx\n",	\
+	   u2.l[0], u2.d, u2.l[1]);					\
+}
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
-#define ASM_OUTPUT_FLOAT(FILE,VALUE)					\
-  fprintf (FILE, "\t.float %.12e\n", (VALUE))
+#define ASM_OUTPUT_FLOAT(STREAM,VALUE)					\
+{									\
+  union { float f; long l; } u2;					\
+  u2.f = VALUE;								\
+  fprintf (STREAM, "\t.word\t0x%08lx\t\t# %.12g\n", u2.l, u2.f);	\
+}
 
 /* This is how to output an assembler line defining an `int' constant.  */
 
-#define ASM_OUTPUT_INT(FILE,VALUE)					\
-( fprintf (FILE, "\t.word "),						\
-  output_addr_const (FILE, (VALUE)),					\
-  fprintf (FILE, "\n"))
+#define ASM_OUTPUT_INT(STREAM,VALUE)					\
+{									\
+  fprintf (STREAM, "\t.word\t");					\
+  output_addr_const (STREAM, (VALUE));					\
+  fprintf (STREAM, "\n");						\
+}
 
 /* Likewise for `char' and `short' constants.  */
 
-#define ASM_OUTPUT_SHORT(FILE,VALUE)					\
-( fprintf (FILE, "\t.half "),						\
-  output_addr_const (FILE, (VALUE)),					\
-  fprintf (FILE, "\n"))
+#define ASM_OUTPUT_SHORT(STREAM,VALUE)					\
+{									\
+  fprintf (STREAM, "\t.half\t");					\
+  output_addr_const (STREAM, (VALUE));					\
+  fprintf (STREAM, "\n");						\
+}
 
-#define ASM_OUTPUT_CHAR(FILE,VALUE)					\
-( fprintf (FILE, "\t.byte "),						\
-  output_addr_const (FILE, (VALUE)),					\
-  fprintf (FILE, "\n"))
+#define ASM_OUTPUT_CHAR(STREAM,VALUE)					\
+{									\
+  fprintf (STREAM, "\t.byte\t");					\
+  output_addr_const (STREAM, (VALUE));					\
+  fprintf (STREAM, "\n");						\
+}
+
+/* This is how to output an assembler line defining an `int' constant,
+   which is not in tree format (for collect.c).  */
+
+#define ASM_OUTPUT_INT_CONST(STREAM,VALUE) 				\
+  fprintf(STREAM, "\t.word\t%d\n", VALUE)
+
+/* This is how to output an assembler line defining an external/static
+   address which is not in tree format (for collect.c).  */
+
+#define ASM_OUTPUT_PTR_INT_SUM(STREAM, NAME, VALUE)			\
+do {									\
+  fprintf (STREAM, "\t.word\t");					\
+  ASM_OUTPUT_LABELREF (STREAM, NAME);					\
+  fprintf (STREAM, "+%d\n", VALUE);					\
+} while (0)
+
+#define ASM_OUTPUT_LABELREF_AS_INT(STREAM, NAME)			\
+do {									\
+  fprintf (STREAM, "\t.word\t");					\
+  ASM_OUTPUT_LABELREF (STREAM, NAME);					\
+  fprintf (STREAM, "\n");						\
+} while (0)
 
 /* This is how to output an assembler line for a numeric constant byte.  */
 
-#define ASM_OUTPUT_BYTE(FILE,VALUE)					\
-  fprintf (FILE, "\t.byte 0x%x\n", (VALUE))
+#define ASM_OUTPUT_BYTE(STREAM,VALUE)					\
+{									\
+  fprintf (STREAM, "\t.byte\t0x%x\n", (VALUE));				\
+}
 
 /* This is how to output an element of a case-vector that is absolute.  */
 
-#define ASM_OUTPUT_ADDR_VEC_ELT(FILE, VALUE)				\
-  fprintf (FILE, "\t.word $L%d\n", VALUE)
+#define ASM_OUTPUT_ADDR_VEC_ELT(STREAM, VALUE)				\
+{									\
+  fprintf (STREAM, "\t.word\t$L%d\n", VALUE);				\
+}
 
 /* This is how to output an element of a case-vector that is relative.
    (We  do not use such vectors,
    but we must define this macro anyway.)  */
 
-#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, VALUE, REL)			\
-  fprintf (FILE, "\t.word $L%d-$L%d\n", VALUE, REL)
+#define ASM_OUTPUT_ADDR_DIFF_ELT(STREAM, VALUE, REL)			\
+{									\
+  fprintf (STREAM, "\t.word\t$L%d-$L%d\n", VALUE, REL);			\
+}
+
+/* This is how to emit the initial label for switch statements.  We
+   need to put the switch labels somewhere else from the text section,
+   because the MIPS assembler gets real confused about line numbers if
+   .word's appear in the text section.  */
+
+#define ASM_OUTPUT_CASE_LABEL(STREAM, PREFIX, NUM, JUMPTABLE)		\
+{									\
+  rdata_section ();							\
+  ASM_OUTPUT_ALIGN (STREAM, 2);						\
+  ASM_OUTPUT_INTERNAL_LABEL (STREAM, PREFIX, NUM);			\
+}
+
+/* Output at the end of a switch's jump table.  */
+
+#define ASM_OUTPUT_CASE_END(STREAM, NUM, INSN)				\
+{									\
+  text_section ();							\
+}
 
 /* This is how to output an assembler line
    that says to advance the location counter
    to a multiple of 2**LOG bytes.  */
 
-#define ASM_OUTPUT_ALIGN(FILE,LOG)					\
-    fprintf (FILE, "\t.align %d\n", (LOG))
+#define ASM_OUTPUT_ALIGN(STREAM,LOG)					\
+{									\
+  int mask = (1 << (LOG)) - 1;						\
+  fprintf (STREAM, "\t.align\t%d\n", (LOG));				\
+}
 
-#define ASM_OUTPUT_SKIP(FILE,SIZE)					\
-  fprintf (FILE, "\t.space %d\n", (SIZE))
+/* This is how to output an assembler line to to advance the location
+   counter by SIZE bytes.  */
+#define ASM_OUTPUT_SKIP(STREAM,SIZE)					\
+{									\
+  fprintf (STREAM, "\t.space\t%u\n", (SIZE));				\
+}
+
+/* This is how to output a string.  */
+#define ASM_OUTPUT_ASCII(STREAM, STRING, LEN)				\
+do {									\
+  register int i, c, len = LEN, cur_pos = 17;				\
+  register unsigned char *string = (unsigned char *)STRING;		\
+  fprintf (STREAM, "\t.ascii\t\"");					\
+  for (i = 0; i < len; i++)						\
+    {									\
+      register int c = string[i];					\
+									\
+      switch (c)							\
+	{								\
+	case '\"':							\
+	case '\\':							\
+	  putc ('\\', STREAM);						\
+	  putc (c, STREAM);						\
+	  cur_pos += 2;							\
+	  break;							\
+									\
+	case TARGET_NEWLINE:						\
+	  fputs ("\\n", STREAM);					\
+	  if (i+1 < len							\
+	      && (((c = string[i+1]) >= '\040' && c <= '~')		\
+		  || c == TARGET_TAB))					\
+	    cur_pos = 32767;		/* break right here */		\
+	  else								\
+	    cur_pos += 2;						\
+	  break;							\
+									\
+	case TARGET_TAB:						\
+	  fputs ("\\t", STREAM);					\
+	  cur_pos += 2;							\
+	  break;							\
+									\
+	case TARGET_FF:							\
+	  fputs ("\\f", STREAM);					\
+	  cur_pos += 2;							\
+	  break;							\
+									\
+	case TARGET_BS:							\
+	  fputs ("\\b", STREAM);					\
+	  cur_pos += 2;							\
+	  break;							\
+									\
+	case TARGET_CR:							\
+	  fputs ("\\r", STREAM);					\
+	  cur_pos += 2;							\
+	  break;							\
+									\
+	  default:							\
+	  if (c >= ' ' && c < 0177)					\
+	    {								\
+	      putc (c, STREAM);						\
+	      cur_pos++;						\
+	    }								\
+	  else								\
+	    {								\
+	      fprintf (STREAM, "\\%03o", c);				\
+	      cur_pos += 4;						\
+	    }								\
+	}								\
+									\
+      if (cur_pos > 72 && i+1 < len)					\
+	{								\
+	  cur_pos = 17;							\
+	  fprintf (STREAM, "\"\n\t.ascii\t\"");				\
+	}								\
+    }									\
+  fprintf (STREAM, "\"\n");						\
+} while (0)
+
+/* Handle certain cpp directives used in header files on sysV.  */
+#define SCCS_DIRECTIVE
+
+/* Output #ident as a in the read-only data section.  */
+#define ASM_OUTPUT_IDENT(FILE, STRING)					\
+{									\
+  char *p = STRING;							\
+  int size = strlen (p) + 1;						\
+  rdata_section ();							\
+  assemble_string (p, size);						\
+}
 
-/* The support of .comm and .extern  below permits to take advantage
-   of the SDATA/SBSS sections supported by the MIPS ASSEMBLER and LOADER
-   However some problems have to be solved
-        a/  externs should be included ONCE
-	b/  the same external cannot appear both on an extern and .comm stmt
-	    in the same assembly
-	c/  for the whole scheme to bring some benefit, .comm should appear
-	    in front of the source asm -- whereas GCC put them at the end
-*/
 
+/* Output before read-only data.  */
 
-				/* ALL THESE PROBLEMS ARE PRESENTLY SOLVED   */
-				/* USING CONDITIONAL ASSEMBLY + FILE RESCAN  */
+#define TEXT_SECTION_ASM_OP "\t.text"
 
-#define EXTRA_SECTIONS in_sdata
+/* Output before writable data.  */
+
+#define DATA_SECTION_ASM_OP "\t.data"
+
+/* Output before writable  short data.  */
+
+#define SDATA_SECTION_ASM_OP "\t.sdata"
+
+/* Output before read-only data.  */
+
+#define RDATA_SECTION_ASM_OP "\t.rdata"
+
+/* What other sections we support other than the normal .data/.text.  */
+
+#define EXTRA_SECTIONS in_sdata, in_rdata, in_last_p1
 
 /* Define the additional functions to select our additional sections.  */
 
-       /* on the MIPS it is not a good idea to put constants  in the
-	  text section, since this defeats the sdata/data mechanism. This
-	  is especially true when -O2 is used. In this case an effort is
-	  made to address with faster (gp) register relative addressing,
-	  which can only get at sdata and sbss items (there is no stext !!)
-       */
+/* on the MIPS it is not a good idea to put constants in the text
+   section, since this defeats the sdata/data mechanism. This is
+   especially true when -O is used. In this case an effort is made to
+   address with faster (gp) register relative addressing, which can
+   only get at sdata and sbss items (there is no stext !!)  However,
+   if the constant is too large for sdata, and it's readonly, it
+   will go into the .rdata section. */
+
 #define EXTRA_SECTION_FUNCTIONS						\
 void									\
 sdata_section ()							\
@@ -1766,71 +2202,53 @@ sdata_section ()							\
     {									\
       fprintf (asm_out_file, "%s\n", SDATA_SECTION_ASM_OP);		\
       in_section = in_sdata;						\
-    }								\
+    }									\
+}									\
+									\
+void									\
+rdata_section ()							\
+{									\
+  if (in_section != in_rdata)						\
+    {									\
+      fprintf (asm_out_file, "%s\n", RDATA_SECTION_ASM_OP);		\
+      in_section = in_rdata;						\
+    }									\
 }
 
 /* Given a decl node or constant node, choose the section to output it in
    and select that section.  */
 
-       /* following takes  care of constants  emitted from
-	  the hash table entries (see above comment)
-       */
 #define SELECT_SECTION_MODE(MODE,RTX)					\
 {									\
   extern int mips_section_threshold;					\
-  if (( GET_MODE_SIZE(MODE)/ BITS_PER_UNIT)				\
-	      <= OUTPUT_MIPS_SECTION_THRESHOLD)				\
-	    sdata_section();						\
-	  else								\
-	    data_section ();						\
+  if ((GET_MODE_SIZE(MODE) / BITS_PER_UNIT) <= mips_section_threshold	\
+      && mips_section_threshold > 0)					\
+    sdata_section ();							\
+  else									\
+    rdata_section ();							\
 }									\
 
 #define SELECT_SECTION(DECL)						\
 {									\
   extern int mips_section_threshold;					\
-	  if (int_size_in_bytes (TREE_TYPE (DECL))			\
-	      <= OUTPUT_MIPS_SECTION_THRESHOLD)				\
-	    sdata_section ();						\
-	  else								\
-	    data_section ();						\
+  if (int_size_in_bytes (TREE_TYPE (DECL)) <= mips_section_threshold	\
+      && mips_section_threshold > 0)					\
+    sdata_section ();							\
+  else if (TREE_CODE (DECL) == STRING_CST)				\
+    {									\
+      if (flag_writable_strings)					\
+	data_section ();						\
+      else								\
+	rdata_section ();						\
+    }									\
+  else if (TREE_CODE (DECL) != VAR_DECL)				\
+    rdata_section ();							\
+  else if (!TREE_READONLY (DECL) || TREE_VOLATILE (DECL))		\
+    data_section ();							\
+  else									\
+    rdata_section ();							\
 }
 
-/* This says how to output an assembler line
-   to define a global common symbol.  */
-
-#define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)			\
-( ((TARGET_GP_OPT)?							\
-   fprintf((FILE),"\n#else"),0 :0),					\
- fputs ("\n\t.comm ", (FILE)),						\
- assemble_name ((FILE), (NAME)),					\
- fprintf ((FILE), ",%d\n", (ROUNDED)),					\
- (TARGET_GP_OPT ? (fputs("\n#define _gccx__",(FILE)),			\
-		   assemble_name((FILE),NAME),0):0),			\
- ((TARGET_GP_OPT)?							\
-  fprintf((FILE),"\n#endif\n#ifdef %sRESCAN_GCC","__x_"),0 :0)		\
-)
-
-
-/* This says how to output an external                                      */
-/* It would be possible not to output anything and let undefined            */
-/* symbol become external. However the assembler uses length  information on*/
-/* externals to allocate in data/sdata bss/sbss, thereby saving exec time   */
-
-#define ASM_OUTPUT_EXTERNAL(FILE,DECL,NAME)				\
-        mips_output_external(FILE,DECL,NAME)
-
-
-/* This says how to output an assembler line
-   to define a local common symbol.  */
-
-#define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)			\
-( fputs ("\n\t.lcomm\t", (FILE)),					\
-  assemble_name ((FILE), (NAME)),					\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
-
-/* This says what to print at the end of the assembly file */
-#define ASM_FILE_END(FILE)						\
-       mips_asm_file_end(FILE)
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1840,42 +2258,27 @@ sdata_section ()							\
 ( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 10),			\
   sprintf ((OUTPUT), "%s.%d", (NAME), (LABELNO)))
 
-#define ASM_OUTPUT_REG_POP(FILE,REGNO)					\
-  (fprintf (FILE,"ERROR: ASM_OUTPUT_REG_POP\n"))
-#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)					\
-  (fprintf (FILE,"ERROR: ASM_OUTPUT_REG_PUSH\n"))
+#define ASM_OUTPUT_REG_POP(STREAM,REGNO)				\
+do {									\
+  extern char *reg_numchar[];						\
+  char **reg_name_ptr = (TARGET_NAME_REGS) ? reg_names : reg_numchar;	\
+  fprintf (STREAM, "\tsubu\t%s,%s,4\n\tsw\t%s,0(%s)\n",			\
+	   reg_name_ptr[STACK_POINTER_REGNUM],				\
+	   reg_name_ptr[STACK_POINTER_REGNUM],				\
+	   reg_name_ptr[REGNO],						\
+	   reg_name_ptr[STACK_POINTER_REGNUM]);				\
+} while (0)
 
-				/*  The following macro is taken from the    */
-				/*  C-text of varasm.c. It has been modified */
-				/*  to handle the VARARG_SUSPECTED hack      */
-#define  ASM_OUTPUT_ASCII(FILE, P , SIZE)				\
-{  int i;								\
-	  fprintf ((FILE), "\t.ascii \"");				\
-          VARARGS_SUSPECT( 0 == strncmp((P),"__%%VARARGS",11));		\
-	  for (i = 0; i < (SIZE); i++)					\
-	    {								\
-	      register int c = (P)[i];					\
-	      if (i != 0 && (i / 200) * 200 == i)			\
-		fprintf ((FILE), "\"\n\t.ascii \"");			\
-	      if (c == '\"' || c == '\\')				\
-		putc ('\\', (FILE));					\
-	      if (c >= ' ' && c < 0177)					\
-		putc (c, (FILE));					\
-	      else							\
-		{							\
-		  fprintf ((FILE), "\\%o", c);				\
-		  /* After an octal-escape, if a digit follows,		\
-		     terminate one string constant and start another.	\
-		     The Vax assembler fails to stop reading the escape	\
-		     after three digits, so this is the only way we	\
-		     can get it to parse the data properly.  */		\
-		  if (i < (SIZE) - 1 && (P)[i + 1] >= '0' && (P)[i + 1] <= '9')\
-		    fprintf ((FILE), "\"\n\t.ascii \"");		\
-		}							\
-	    }								\
-	  fprintf ((FILE), "\"\n");					\
- }
-
+#define ASM_OUTPUT_REG_PUSH(STREAM,REGNO)				\
+do {									\
+  extern char *reg_numchar[];						\
+  char **reg_name_ptr = (TARGET_NAME_REGS) ? reg_names : reg_numchar;	\
+  fprintf (STREAM, "\tlw\t%s,0(%s)\n\taddu\t%s,%s,4\n",			\
+	   reg_name_ptr[REGNO],						\
+	   reg_name_ptr[STACK_POINTER_REGNUM],				\
+	   reg_name_ptr[STACK_POINTER_REGNUM],				\
+	   reg_name_ptr[STACK_POINTER_REGNUM]);				\
+} while (0)
 
 
 /* Define the parentheses used to group arithmetic operations
@@ -1884,14 +2287,27 @@ sdata_section ()							\
 #define ASM_OPEN_PAREN "("
 #define ASM_CLOSE_PAREN ")"
 
-/* Specify what to precede various sizes of constant with
-   in the output file.  */
+
+/* Tell G++'s collect that MIPS' based ports do not have leading
+   underscores.  */
+
+#ifndef NO_UNDERSCORES
+#define NO_UNDERSCORES
+#endif  NO_UNDERSCORES
+
+/* Tell G++ that we need to run collect.  */
+
+#ifndef USE_COLLECT
+#define USE_COLLECT
+#endif
+
+#ifndef EXTENDED_COFF
+#define EXTENDED_COFF
+#endif
+
+/* The following are for collect.c which has it's own idea of
+   which macros should be used.  */
 
 #define ASM_INT_OP ".word "
 #define ASM_SHORT_OP ".half "
 #define ASM_CHAR_OP ".byte "
-
-
-#define DEBUG_LOG_INSN(X)  {						\
-            extern rtx al_log_insn_debug;				\
-            al_log_insn_debug=(X); }

@@ -37,64 +37,64 @@
 
 
 /*
- *  pointer to next stack parameter in _va_buf[0]
- *  pointer to next parameter register in _va_buf[1]
- *  Count of registers seen at _va_buf[2]
- *  saved pr0..pr11 in _va_buf[3..14]
- *  # of calls to va_arg (debugging) at _va_buf[15]
+ *  pointer to next stack parameter in __va_buf[0]
+ *  pointer to next parameter register in __va_buf[1]
+ *  Count of registers seen at __va_buf[2]
+ *  saved pr0..pr11 in __va_buf[3..14]
+ *  # of calls to va_arg (debugging) at __va_buf[15]
  */
 
-typedef void *_voidptr;
+typedef void *__voidptr;
 #if 1
 
-typedef struct _va_regs {
-      _voidptr __stackp,__regp,__count;
-      _voidptr _pr0,_pr1,_pr2,_pr3,_pr4,_pr5,_pr6,_pr7,_pr8,_pr9,_pr10,_pr11;
-  } _va_regs;
+typedef struct __va_regs {
+      __voidptr __stackp,__regp,__count;
+      __voidptr __pr0,__pr1,__pr2,__pr3,__pr4,__pr5,__pr6,__pr7,__pr8,__pr9,__pr10,__pr11;
+  } __va_regs;
 
-typedef _va_regs _va_buf;
+typedef __va_regs __va_buf;
 #else
 
-/* _va_buf[0] = address of next arg passed on the stack
-   _va_buf[1] = address of next arg passed in a register
-   _va_buf[2] = register-# of next arg passed in a register
- */
-typedef _voidptr(*_va_buf);
+/* __va_buf[0] = address of next arg passed on the stack
+   __va_buf[1] = address of next arg passed in a register
+   __va_buf[2] = register-# of next arg passed in a register
+*/
+typedef __voidptr(*__va_buf);
 
 #endif
 
 #define va_alist \
-  _va0,_va1,_va2,_va3,_va4,_va5,_va6,_va7,_va8,_va9,_va10,_va11, \
- __builtin_va_alist
+  __va0,__va1,__va2,__va3,__va4,__va5,__va6,__va7,__va8,__va9,__va10,__va11, \
+  __builtin_va_alist
 
-#define va_dcl _voidptr va_alist;
+#define va_dcl __voidptr va_alist;
 
-#define va_list _va_buf
+#define va_list __va_buf
 
 
 /* __asm ("rcsp %0" : "=r" ( _AP [0]));*/
 
 #define va_start(_AP)  \
-{ _AP =  ((struct _va_regs) {						\
-   &(_AP._pr0), (void*)&__builtin_va_alist, (void*)0,			\
-        _va0,_va1,_va2,_va3,_va4,_va5,					\
-		_va6,_va7,_va8,_va9,_va10,_va11})
+  _AP =  ((struct __va_regs) {						\
+   &(_AP.__pr0), (void*)&__builtin_va_alist, (void*)0,			\
+        __va0,__va1,__va2,__va3,__va4,__va5,				\
+	__va6,__va7,__va8,__va9,__va10,__va11})
  
   
 	 
 
 #define va_arg(_AP, _MODE)	\
-({_voidptr *_ap = (_voidptr*)&_AP;					\
-  register int _size = sizeof (_MODE);					\
-  register int _onstack =						\
-	  (_size > 8 || ( (int)(_ap[2]) > 11) ||			\
-	    (_size==8 && (int)(_ap[2])==11));				\
-  register int* _param_addr =  ((int*)((_ap) [_onstack]));		\
+({__voidptr *__ap = (__voidptr*)&_AP;					\
+  register int __size = sizeof (_MODE);					\
+  register int __onstack =						\
+	  (__size > 8 || ( (int)(__ap[2]) > 11) ||			\
+	    (__size==8 && (int)(__ap[2])==11));				\
+  register int* __param_addr =  ((int*)((__ap) [__onstack]));		\
 									\
-  ((void *)_ap[_onstack])+=_size;					\
-    if (_onstack==0 || (int)(_ap[2])==11)				\
-      _ap[2]+= (_size >> 2);						\
-  *(( _MODE *)_param_addr);						\
+  ((void *)__ap[__onstack])+=__size;					\
+    if (__onstack==0 || (int)(__ap[2])==11)				\
+      __ap[2]+= (__size >> 2);						\
+  *(( _MODE *)__param_addr);						\
 })
 
-#define va_end(_X)	}
+#define va_end(_X)

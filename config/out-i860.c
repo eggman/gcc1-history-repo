@@ -275,6 +275,13 @@ single_insn_src_p (op, mode)
     case ZERO_EXTEND:
       return 1;
 
+    case PLUS:
+    case MINUS:
+      /* Detect cases that require multiple instructions.  */
+      if (CONSTANT_P (XEXP (op, 1))
+	  && !(GET_CODE (XEXP (op, 1)) == CONST_INT
+	       && SMALL_INT (XEXP (op, 1))))
+	return 0;
     case EQ:
     case NE:
     case LT:
@@ -285,21 +292,34 @@ single_insn_src_p (op, mode)
     case GTU:
     case LEU:
     case GEU:
-    case MINUS:
-    case PLUS:
       /* Not doing floating point, since they probably
 	 take longer than the branch slot they might fill.  */
       return (mode != SFmode && mode != DFmode);
+
     case AND:
+      if (GET_CODE (XEXP (op, 1)) == NOT)
+	{
+	  rtx arg = XEXP (XEXP (op, 1), 0);
+	  if (CONSTANT_P (arg)
+	      && !(GET_CODE (arg) == CONST_INT
+		   && (SMALL_INT (arg)
+		       || INTVAL (arg) & 0xffff == 0)))
+	    return 0;
+	}
     case IOR:
     case XOR:
+      /* Both small and round numbers take one instruction;
+	 others take two.  */
+      if (CONSTANT_P (XEXP (op, 1))
+	  && !(GET_CODE (XEXP (op, 1)) == CONST_INT
+	       && (SMALL_INT (XEXP (op, 1))
+		   || INTVAL (XEXP (op, 1)) & 0xffff == 0)))
+	return 0;
+
     case LSHIFT:
     case ASHIFT:
     case ASHIFTRT:
     case LSHIFTRT:
-      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
-	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
-	return 0;
       return 1;
 
     case SUBREG:
@@ -367,6 +387,13 @@ strict_single_insn_op_p (op, mode)
     case ZERO_EXTEND:
       return 1;
 
+    case PLUS:
+    case MINUS:
+      /* Detect cases that require multiple instructions.  */
+      if (CONSTANT_P (XEXP (op, 1))
+	  && !(GET_CODE (XEXP (op, 1)) == CONST_INT
+	       && SMALL_INT (XEXP (op, 1))))
+	return 0;
     case EQ:
     case NE:
     case LT:
@@ -377,18 +404,31 @@ strict_single_insn_op_p (op, mode)
     case GTU:
     case LEU:
     case GEU:
-    case MINUS:
-    case PLUS:
+      return 1;
+
     case AND:
+      if (GET_CODE (XEXP (op, 1)) == NOT)
+	{
+	  rtx arg = XEXP (XEXP (op, 1), 0);
+	  if (CONSTANT_P (arg)
+	      && !(GET_CODE (arg) == CONST_INT
+		   && (SMALL_INT (arg)
+		       || INTVAL (arg) & 0xffff == 0)))
+	    return 0;
+	}
     case IOR:
     case XOR:
+      /* Both small and round numbers take one instruction;
+	 others take two.  */
+      if (CONSTANT_P (XEXP (op, 1))
+	  && !(GET_CODE (XEXP (op, 1)) == CONST_INT
+	       && (SMALL_INT (XEXP (op, 1))
+		   || INTVAL (XEXP (op, 1)) & 0xffff == 0)))
+	return 0;
     case LSHIFT:
     case ASHIFT:
     case ASHIFTRT:
     case LSHIFTRT:
-      if ((GET_CODE (XEXP (op, 0)) == CONST_INT && ! SMALL_INT (XEXP (op, 0)))
-	  || (GET_CODE (XEXP (op, 1)) == CONST_INT && ! SMALL_INT (XEXP (op, 1))))
-	return 0;
       return 1;
 
     case SUBREG:
@@ -1072,11 +1112,7 @@ output_load_address (operands)
     abort ();
 }
 
-/* Output code to place a size count SIZE in register REG.
-   Because block moves are pipelined, we don't include the
-   first element in the transfer of SIZE to REG.
-   For this, we subtract ALIGN.  (Actually, I think it is not
-   right to subtract on this machine, so right now we don't.)  */
+/* Output code to place a size count SIZE in register REG.  */
 
 static void
 output_size_for_block_move (size, reg, align)
@@ -1227,8 +1263,9 @@ output_block_move (operands)
   xoperands[5] = operands[5];
   output_asm_insn ("mov %4,%5", xoperands);
 
+  /* Make available a register which is a temporary.  */
+
   xoperands[6] = operands[6];
-  output_asm_insn ("adds %0,%2,%6", xoperands);
 
   /* Now the actual loop.
      In xoperands, elements 1 and 0 are the input and output vectors.
@@ -1236,27 +1273,48 @@ output_block_move (operands)
 
   if (align == 1)
     {
-      output_asm_insn ("bla %5,%2,.Lm%3\n\tnop\n.Lm%3:", xoperands);
-      output_asm_insn ("ld.b %1(%2),r31", xoperands);
-      output_asm_insn ("adds %5,%6,%6", xoperands);
       output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %0,%2,%6\n.Lm%3:", xoperands);
+
+      xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
+
+      output_asm_insn ("adds %1,%2,%1", xoperands);
+      output_asm_insn ("adds %5,%2,%2\n.Lm%3:",  xoperands);
+      output_asm_insn ("ld.b 0(%1),r31", xoperands);
+      output_asm_insn ("adds %5,%1,%1", xoperands);
       output_asm_insn ("st.b r31,0(%6)", xoperands);
+      output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %5,%6,%6", xoperands);
     }
   if (align == 2)
     {
-      output_asm_insn ("bla %5,%2,.Lm%3\n\tnop\n.Lm%3:", xoperands);
-      output_asm_insn ("ld.s %1(%2),r31", xoperands);
-      output_asm_insn ("adds %5,%6,%6", xoperands);
       output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %0,%2,%6\n.Lm%3:", xoperands);
+
+      xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
+
+      output_asm_insn ("adds %1,%2,%1", xoperands);
+      output_asm_insn ("adds %5,%2,%2\n.Lm%3:",  xoperands);
+      output_asm_insn ("ld.s 0(%1),r31", xoperands);
+      output_asm_insn ("adds %5,%1,%1", xoperands);
       output_asm_insn ("st.s r31,0(%6)", xoperands);
+      output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %5,%6,%6", xoperands);
     }
   if (align == 4)
     {
-      output_asm_insn ("bla %5,%2,.Lm%3\n\tnop\n.Lm%3:", xoperands);
-      output_asm_insn ("ld.l %1(%2),r31", xoperands);
-      output_asm_insn ("adds %5,%6,%6", xoperands);
       output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %0,%2,%6\n.Lm%3:", xoperands);
+
+      xoperands[3] = gen_rtx (CONST_INT, VOIDmode, movstrsi_label++);
+
+      output_asm_insn ("adds %1,%2,%1", xoperands);
+      output_asm_insn ("adds %5,%2,%2\n.Lm%3:",  xoperands);
+      output_asm_insn ("ld.l 0(%1),r31", xoperands);
+      output_asm_insn ("adds %5,%1,%1", xoperands);
       output_asm_insn ("st.l r31,0(%6)", xoperands);
+      output_asm_insn ("bla %5,%2,.Lm%3", xoperands);
+      output_asm_insn ("adds %5,%6,%6", xoperands);
     }
 
   return "";
@@ -1295,7 +1353,7 @@ output_delayed_branch (template, operands, insn)
 
   if (GET_CODE (src) == SYMBOL_REF || GET_CODE (src) == CONST
       || (GET_CODE (src) == CONST_INT
-	  && !(SMALL_INT (src) || (INTVAL (src) & 0x3ff) == 0)))
+	  && !(SMALL_INT (src) || (INTVAL (src) & 0xffff) == 0)))
     {
       rtx xoperands[2];
       xoperands[0] = dest;
@@ -1328,7 +1386,7 @@ output_delayed_branch (template, operands, insn)
 		 && cc_prev_status.mdep == XEXP (operands[1], 0)))
 	    output_asm_insn ("orh ha%%%m1,r0,r31", xoperands);
 	  split_template = load_opcode (GET_MODE (dest),
-					"l%%%m1(r31),%0", src);
+					"l%%%m1(r31),%0", dest);
 	}
       else
 	{
@@ -1447,4 +1505,3 @@ output_delay_insn (delay_insn)
   output_asm_insn (template, recog_operand);
   return "";
 }
-

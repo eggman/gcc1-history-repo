@@ -42,7 +42,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define bzero(a,b) memset (a,0,b)
 #define bcmp(a,b,c) memcmp (a,b,c)
 
-#define LINK_SPEC "%{!e*:-e _start} -dc -dp %{g:-Bstatic}"
+#define LINK_SPEC "%{!e*:-e _start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{-Bstatic}"
 
 #ifdef __GNUC__
 #define alloca(n) __builtin_alloca(n)

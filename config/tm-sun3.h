@@ -57,9 +57,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #endif
 #endif
 
-/* Prevent error on `-sun3' option.  */
+/* Prevent error on `-sun3' and `-target sun3' options.  */
 
-#define CC1_SPEC "%{sun3:}"
+#define CC1_SPEC "%{sun3:} %{target:}"
+
+/* These compiler options take an argument.  We ignore -target for now.  */
+
+#define WORD_SWITCH_TAKES_ARG(STR)	(!strcmp (STR, "target"))
 
 /* -m68000 requires special flags to the assembler.  */
 
@@ -112,20 +116,20 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #if TARGET_DEFAULT & 0100
 /* -mfpa is the default */
 #define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
-%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{a:/usr/lib/bb_link.o -lc} %{g:-lg} \
 %{msoft-float:-L/usr/lib/fsoft}%{m68881:-L/usr/lib/f68881}\
 %{!msoft_float:%{!m68881:-L/usr/lib/ffpa}}"
 #else
 #if TARGET_DEFAULT & 2
 /* -m68881 is the default */
 #define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
-%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{a:/usr/lib/bb_link.o -lc} %{g:-lg} \
 %{msoft-float:-L/usr/lib/fsoft}%{!msoft-float:%{!mfpa:-L/usr/lib/f68881}}\
 %{mfpa:-L/usr/lib/ffpa}"
 #else
 /* -msoft-float is the default */
 #define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} \
-%{a:/usr/lib/bb_link.o} %{g:-lg} \
+%{a:/usr/lib/bb_link.o -lc} %{g:-lg} \
 %{!m68881:%{!mfpa:-L/usr/lib/fsoft}}%{m68881:-L/usr/lib/f68881}\
 %{mfpa:-L/usr/lib/ffpa}"
 #endif
@@ -151,6 +155,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)					\
   (isinf ((VALUE))							\
    ? fprintf (FILE, "\t.double 0r%s99e999\n", ((VALUE) > 0 ? "" : "-")) \
+   : double_is_minus_zero ((VALUE))					\
+   ? fprintf (FILE, "\t.long 0x80000000,0\n")				\
    : fprintf (FILE, "\t.double 0r%.20e\n", (VALUE)))
 
 /* This is how to output an assembler line defining a `float' constant.  */
@@ -159,16 +165,22 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_FLOAT(FILE,VALUE)					\
   (isinf ((VALUE))							\
    ? fprintf (FILE, "\t.single 0r%s99e999\n", ((VALUE) > 0 ? "" : "-")) \
+   : double_is_minus_zero ((VALUE))					\
+   ? fprintf (FILE, "\t.long 0x80000000\n")				\
    : fprintf (FILE, "\t.single 0r%.20e\n", (VALUE)))
 
 #undef ASM_OUTPUT_FLOAT_OPERAND
 #define ASM_OUTPUT_FLOAT_OPERAND(FILE,VALUE)				\
   (isinf ((VALUE))							\
-   ? fprintf (FILE, "#0r%s99e999", ((VALUE) > 0 ? "" : "-")) \
+   ? fprintf (FILE, "#0r%s99e999", ((VALUE) > 0 ? "" : "-")) 		\
+   : double_is_minus_zero ((VALUE))					\
+   ? fprintf (FILE, "#0r-0.0")						\
    : fprintf (FILE, "#0r%.9g", (VALUE)))
 
 #undef ASM_OUTPUT_DOUBLE_OPERAND
 #define ASM_OUTPUT_DOUBLE_OPERAND(FILE,VALUE)				\
   (isinf ((VALUE))							\
-   ? fprintf (FILE, "#0r%s99e999", ((VALUE) > 0 ? "" : "-")) \
+   ? fprintf (FILE, "#0r%s99e999", ((VALUE) > 0 ? "" : "-"))		\
+   : double_is_minus_zero ((VALUE))					\
+   ? fprintf (FILE, "#0r-0.0")						\
    : fprintf (FILE, "#0r%.20g", (VALUE)))

@@ -1,3 +1,4 @@
+
 ;;- Machine description for SPARC chip for GNU C compiler
 ;;   Copyright (C) 1988, 1989 Free Software Foundation, Inc.
 ;;   Contributed by Michael Tiemann (tiemann@mcc.com)
@@ -57,7 +58,7 @@
   [(set (cc0)
 	(compare (match_operand:DF 0 "nonmemory_operand" "f,fG")
 		 (match_operand:DF 1 "nonmemory_operand" "G,f")))]
-  ""
+  "GET_CODE (operands[0]) != CONST_INT && GET_CODE (operands[1]) != CONST_INT"
   "*
 {
   if (GET_CODE (operands[0]) == CONST_DOUBLE
@@ -83,7 +84,7 @@
   [(set (cc0)
 	(compare (match_operand:SF 0 "nonmemory_operand" "f,fG")
 		 (match_operand:SF 1 "nonmemory_operand" "G,f")))]
-  ""
+  "GET_CODE (operands[0]) != CONST_INT && GET_CODE (operands[1]) != CONST_INT"
   "*
 {
   if (GET_CODE (operands[0]) == CONST_DOUBLE
@@ -209,8 +210,12 @@
   [(set (cc0)
 	(plus:SI (match_operand:SI 0 "register_operand" "r%")
 		 (match_operand:SI 1 "arith_operand" "rI")))]
-  ""
-  "addcc %0,%1,%%g0")
+  "ignore_overflow_conditional_p (NEXT_INSN (insn))"
+  "*
+{
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"addcc %0,%1,%%g0\";
+}")
 
 (define_insn ""
   [(set (cc0)
@@ -218,8 +223,23 @@
 		 (match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(plus:SI (match_dup 0) (match_dup 1)))]
-  ""
-  "addcc %0,%1,%2")
+  "ignore_overflow_conditional_p (NEXT_INSN (insn))"
+  "*
+{
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"addcc %0,%1,%2\";
+}")
+
+(define_insn ""
+  [(set (cc0)
+	(minus:SI (match_operand:SI 0 "register_operand" "r")
+		  (match_operand:SI 1 "arith_operand" "rI")))]
+  "ignore_overflow_conditional_p (NEXT_INSN (insn))"
+  "*
+{
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"subcc %0,%1,%%g0\";
+}")
 
 (define_insn ""
   [(set (cc0)
@@ -227,8 +247,12 @@
 		  (match_operand:SI 1 "arith_operand" "rI")))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(minus:SI (match_dup 0) (match_dup 1)))]
-  ""
-  "subcc %0,%1,%2")
+  "ignore_overflow_conditional_p (NEXT_INSN (insn))"
+  "*
+{
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"subcc %0,%1,%2\";
+}")
 
 (define_insn ""
   [(set (cc0)
@@ -248,14 +272,14 @@
 
 (define_insn ""
   [(set (cc0)
-	(and:SI (match_operand:SI 0 "register_operand" "r%")
+	(and:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "andncc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
-	(and:SI (match_operand:SI 0 "register_operand" "r%")
+	(and:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(and:SI (match_dup 0) (not:SI (match_dup 1))))]
@@ -280,14 +304,14 @@
 
 (define_insn ""
   [(set (cc0)
-	(ior:SI (match_operand:SI 0 "register_operand" "r%")
+	(ior:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "orncc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
-	(ior:SI (match_operand:SI 0 "register_operand" "r%")
+	(ior:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(ior:SI (match_dup 0) (not:SI (match_dup 1))))]
@@ -312,14 +336,14 @@
 
 (define_insn ""
   [(set (cc0)
-	(xor:SI (match_operand:SI 0 "register_operand" "r%")
+	(xor:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))]
   ""
   "xnorcc %0,%1,%%g0")
 
 (define_insn ""
   [(set (cc0)
-	(xor:SI (match_operand:SI 0 "register_operand" "r%")
+	(xor:SI (match_operand:SI 0 "register_operand" "r")
 		(not:SI (match_operand:SI 1 "arith_operand" "rI"))))
    (set (match_operand:SI 2 "register_operand" "=r")
 	(xor:SI (match_dup 0) (not:SI (match_dup 1))))]
@@ -330,7 +354,7 @@
   [(set (cc0)
 	(match_operand:DF 0 "register_operand" "f"))]
   ""
-  "emit_insn (gen_rtx (USE, VOIDmode, gen_rtx (REG, DFmode, 32)));")
+  "emit_insn (gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, DFmode, 32)));")
 
 (define_insn ""
   [(set (cc0)
@@ -347,7 +371,7 @@
   [(set (cc0)
 	(match_operand:SF 0 "register_operand" "f"))]
   ""
-  "emit_insn (gen_rtx (USE, VOIDmode, gen_rtx (REG, SFmode, 32)));")
+  "emit_insn (gen_rtx (CLOBBER, VOIDmode, gen_rtx (REG, SFmode, 32)));")
 
 (define_insn ""
   [(set (cc0)
@@ -510,9 +534,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbe %l0\;nop\";
-  return \"be %l0\;nop\";
+  OUTPUT_JUMP (\"be %l0\;nop\", \"be %l0\;nop\", \"fbe %l0\;nop\");
 }")
 
 (define_insn "bne"
@@ -524,9 +546,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbne %l0\;nop\";
-  return \"bne %l0\;nop\";
+  OUTPUT_JUMP (\"bne %l0\;nop\", \"bne %l0\;nop\", \"fbne %l0\;nop\");
 }")
 
 (define_insn "bgt"
@@ -538,9 +558,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbg %l0\;nop\";
-  return \"bg %l0\;nop\";
+  OUTPUT_JUMP (\"bg %l0\;nop\", 0, \"fbg %l0\;nop\");
 }")
 
 (define_insn "bgtu"
@@ -566,9 +584,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbl %l0\;nop\";
-  return \"bl %l0\;nop\";
+  OUTPUT_JUMP (\"bl %l0\;nop\", \"bneg %l0\;nop\", \"fbl %l0\;nop\");
 }")
 
 (define_insn "bltu"
@@ -594,9 +610,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fbge %l0\;nop\";
-  return \"bge %l0\;nop\";
+  OUTPUT_JUMP (\"bge %l0\;nop\", \"bpos %l0\;nop\", \"fbge %l0\;nop\");
 }")
 
 (define_insn "bgeu"
@@ -622,9 +636,7 @@
   ""
   "*
 {
-  if (cc_prev_status.flags & CC_IN_FCCR)
-    return \"fble %l0\;nop\";
-  return \"ble %l0\;nop\";
+  OUTPUT_JUMP (\"ble %l0\;nop\", 0, \"fble %l0\;nop\");
 }")
 
 (define_insn "bleu"
@@ -651,6 +663,14 @@
   ""
   "*
 {
+  if (cc_prev_status.flags & CC_NO_OVERFLOW)
+    {
+      if (GET_CODE (operands[0]) == GT || GET_CODE (operands[0]) == LE)
+	/* These two conditions can't ignore overflow,
+	   so reinsert the deleted test instruction.  */
+	return 0;
+      return \"b%U0 %l1\;nop\";
+    }
   if (cc_prev_status.flags & CC_IN_FCCR)
     return \"fb%F0 %l1\;nop\";
   return \"b%N0 %l1\;nop\";
@@ -1920,6 +1940,13 @@
       else
 	output_asm_insn (\"fb%C0,a %l1 ! eager\", xoperands);
     }
+  else if (cc_prev_status.flags & CC_NO_OVERFLOW)
+    {
+      if (parity)
+	output_asm_insn (\"b%U0,a %l1 ! eager\", xoperands);
+      else
+	output_asm_insn (\"b%I0,a %l1 ! eager\", xoperands);
+    }
   else
     {
       if (parity)
@@ -2030,6 +2057,13 @@
 	  else
 	    output_asm_insn (\"fb%C0,a %l1 ! eager\", xoperands);
 	}
+      else if (cc_prev_status.flags & CC_NO_OVERFLOW)
+	{
+	  if (parity)
+	    output_asm_insn (\"b%U0,a %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"b%I0,a %l1 ! eager\", xoperands);
+	}
       else
 	{
 	  if (parity)
@@ -2050,6 +2084,13 @@
 	    output_asm_insn (\"fb%F0 %l1 ! eager\", xoperands);
 	  else
 	    output_asm_insn (\"fb%C0 %l1 ! eager\", xoperands);
+	}
+      else if (cc_prev_status.flags & CC_NO_OVERFLOW)
+	{
+	  if (parity)
+	    output_asm_insn (\"b%U0,a %l1 ! eager\", xoperands);
+	  else
+	    output_asm_insn (\"b%I0,a %l1 ! eager\", xoperands);
 	}
       else
 	{
@@ -2144,7 +2185,8 @@
 	 (match_operand 1 "" "i"))
    (use (reg:SI 31))]
   ;;- Don't use operand 1 for most machines.
-  ""
+  "CONSTANT_P (XEXP (operands[0], 0))
+   || GET_CODE (XEXP (operands[0], 0)) == REG"
   "*
 {
   /* strip the MEM.  */
@@ -2234,7 +2276,8 @@
 	      (match_operand 2 "" "i")))
    (use (reg:SI 31))]
   ;;- Don't use operand 2 for most machines.
-  ""
+  "CONSTANT_P (XEXP (operands[1], 0))
+   || GET_CODE (XEXP (operands[1], 0)) == REG"
   "*
 {
   /* strip the MEM.  */

@@ -177,16 +177,14 @@
   DONE;
 }")
 
-(define_expand "tsthi"
+(define_insn "tsthi"
   [(set (cc0)
-	(match_operand:HI 0 "general_operand" ""))]
+	(match_operand:HI 0 "nonimmediate_operand" "rm"))]
   ""
-  "
+  "*
 {
-  extern rtx test_op0;  extern enum machine_mode test_mode;
-  test_op0 = copy_rtx (operands[0]);
-  test_mode = HImode;
-  DONE;
+  cc_status.flags = CC_NO_OVERFLOW;
+  return \"cvthw %0,lr15\";
 }")
 
 (define_insn ""
@@ -247,16 +245,14 @@
   DONE;
 }")
 
-(define_expand "tstqi"
+(define_insn "tstqi"
   [(set (cc0)
-	(match_operand:QI 0 "general_operand" ""))]
+	(match_operand:QI 0 "nonimmediate_operand" "rm"))]
   ""
-  "
+  "*
 {
-  extern rtx test_op0;  extern enum machine_mode test_mode;
-  test_op0 = copy_rtx (operands[0]);
-  test_mode = QImode;
-  DONE;
+  cc_status.flags = CC_NO_OVERFLOW;
+  return \"cvtbw %0,lr15\";
 }")
 
 (define_insn ""
@@ -410,7 +406,7 @@
 
 (define_insn "addsi3"
   [(set (match_operand:SI 0 "register_operand" "=r,!r")
-	(plus:SI (match_operand:SI 1 "register_operand" "%0,r")
+	(plus:SI (match_operand:SI 1 "general_operand" "%0,r")
 		 (match_operand:SI 2 "general_operand" "g,rJ")))]
   ""
   "*
@@ -434,14 +430,14 @@
 
 (define_insn "mulsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(mult:SI (match_operand:SI 1 "register_operand" "%0")
+	(mult:SI (match_operand:SI 1 "general_operand" "%0")
 		 (match_operand:SI 2 "general_operand" "g")))]
   ""
   "mulw %2,%0")
 
 (define_insn "umulsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(umult:SI (match_operand:SI 1 "register_operand" "%0")
+	(umult:SI (match_operand:SI 1 "general_operand" "%0")
 		  (match_operand:SI 2 "general_operand" "g")))]
   ""
   "umulw %2,%0")
@@ -584,14 +580,18 @@
 
 (define_insn ""
   [(set (cc0)
-	(and:SI (match_operand:SI 0 "register_operand" "%r")
+	(and:SI (match_operand:SI 0 "general_operand" "%r")
 		(match_operand:SI 1 "general_operand" "g")))]
   ""
-  "bitw %1,%0");
+  "*
+{
+  cc_status.flags |= CC_NO_OVERFLOW;
+  return \"bitw %1,%0\";
+}")
 
 (define_insn "andsi3"
   [(set (match_operand:SI 0 "register_operand" "=r,r")
-	(and:SI (match_operand:SI 1 "register_operand" "%0,r")
+	(and:SI (match_operand:SI 1 "general_operand" "%0,r")
 		(match_operand:SI 2 "general_operand" "g,K")))]
   ""
   "*
@@ -620,14 +620,14 @@
 
 (define_insn "iorsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(ior:SI (match_operand:SI 1 "register_operand" "%0")
+	(ior:SI (match_operand:SI 1 "general_operand" "%0")
 		(match_operand:SI 2 "general_operand" "g")))]
   ""
   "orw %2,%0")
 
 (define_insn "xorsi3"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(xor:SI (match_operand:SI 1 "register_operand" "%0")
+	(xor:SI (match_operand:SI 1 "general_operand" "%0")
 		(match_operand:SI 2 "general_operand" "g")))]
   ""
   "xorw %2,%0")
@@ -942,37 +942,37 @@
 }")
 
 (define_insn "extendsfdf2"
-  [(set (match_operand:DF 0 "general_operand" "=r,m")
+  [(set (match_operand:DF 0 "general_operand" "=&r,m")
 	(float_extend:DF (match_operand:SF 1 "nonimmediate_operand" "rm,r")))]
   ""
   "cvtfd %1,%0")
 
 (define_insn "truncdfsf2"
-  [(set (match_operand:SF 0 "general_operand" "=r,m")
+  [(set (match_operand:SF 0 "general_operand" "=&r,m")
 	(float_truncate:SF (match_operand:DF 1 "nonimmediate_operand" "rm,r")))]
   ""
   "cvtdf %1,%0")
 
 (define_insn "floatsisf2"
-  [(set (match_operand:SF 0 "general_operand" "=r,m")
+  [(set (match_operand:SF 0 "general_operand" "=&r,m")
 	(float:SF (match_operand:SI 1 "nonimmediate_operand" "rm,r")))]
   ""
   "cvtwf %1,%0")
 
 (define_insn "floatsidf2"
-  [(set (match_operand:DF 0 "general_operand" "=r,m")
+  [(set (match_operand:DF 0 "general_operand" "=&r,m")
 	(float:DF (match_operand:SI 1 "nonimmediate_operand" "rm,r")))]
   ""
   "cvtwd %1,%0")
 
 (define_insn "fix_truncsfsi2"
-  [(set (match_operand:SI 0 "general_operand" "=r,m")
+  [(set (match_operand:SI 0 "general_operand" "=&r,m")
 	(fix:SI (fix:SF (match_operand:SF 1 "nonimmediate_operand" "rm,r"))))]
   ""
   "cvtfw %1,%0")
 
 (define_insn "fix_truncdfsi2"
-  [(set (match_operand:SI 0 "general_operand" "=r,m")
+  [(set (match_operand:SI 0 "general_operand" "=&r,m")
 	(fix:SI (fix:DF (match_operand:DF 1 "nonimmediate_operand" "rm,r"))))]
   ""
   "cvtdw %1,%0")
@@ -1197,7 +1197,7 @@
     }
 ")
 
-;; Combine two word moves with consequtive operands into one long move.
+;; Combine two word moves with consecutive operands into one long move.
 ;; Also combines immediate moves, if the high-order destination operand
 ;; is loaded with 0 or -1 and the low-order destination operand is loaded
 ;; with a constant with the same sign.
@@ -1254,7 +1254,7 @@
 
 (define_insn "adddi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(plus:DI (match_operand:DI 1 "register_operand" "%0")
+	(plus:DI (match_operand:DI 1 "nonmemory_operand" "%0")
 		 (match_operand:DI 2 "nonmemory_operand" "rF")))]
   ""
   "*
@@ -1300,7 +1300,7 @@
 
 (define_insn "iordi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(ior:DI (match_operand:DI 1 "register_operand" "%0")
+	(ior:DI (match_operand:DI 1 "nonmemory_operand" "%0")
 		(match_operand:DI 2 "nonmemory_operand" "rF")))]
   ""
   "*
@@ -1323,7 +1323,7 @@
 
 (define_insn "anddi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(and:DI (match_operand:DI 1 "register_operand" "%0")
+	(and:DI (match_operand:DI 1 "nonmemory_operand" "%0")
 		(match_operand:DI 2 "nonmemory_operand" "rF")))]
   ""
   "*
@@ -1346,7 +1346,7 @@
 
 (define_insn "xordi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(xor:DI (match_operand:DI 1 "register_operand" "%0")
+	(xor:DI (match_operand:DI 1 "nonmemory_operand" "%0")
 		(match_operand:DI 2 "nonmemory_operand" "rF")))]
   ""
   "*

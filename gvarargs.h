@@ -2,6 +2,14 @@
 /* Use the system's macros with the system's compiler.  */
 #include <varargs.h>
 #else
+/* Record that varargs.h is defined; this turns off stdarg.h.  */
+
+#ifndef _VARARGS_H
+#define _VARARGS_H
+
+#ifdef __sparc__
+#include "va-sparc.h"
+#else
 #ifdef __spur__
 #include "va-spur.h"
 #else
@@ -26,12 +34,6 @@
 #undef va_end
 #undef __va_rounded_size
 #undef va_arg
-
-/* Record that varargs.h is defined; this turns off stdarg.h.  */
-
-#ifndef _VARARGS_H
-#define _VARARGS_H
-#endif
 #endif  /* __NeXT__ */
 
 /* These macros implement traditional (non-ANSI) varargs
@@ -53,12 +55,14 @@
 #define __va_rounded_size(TYPE)  \
   (((sizeof (TYPE) + sizeof (int) - 1) / sizeof (int)) * sizeof (int))
 
-#define va_arg(AP, TYPE)						\
- (AP += __va_rounded_size (TYPE),					\
-  *((TYPE *) (AP - __va_rounded_size (TYPE))))
+#define va_arg(AP, TYPE)					\
+ (*((TYPE *) (AP += __va_rounded_size (TYPE),			\
+	      AP - __va_rounded_size (TYPE))))
 
 #endif /* not pyr */
 #endif /* not i860 */
 #endif /* not mips */
 #endif /* not spur */
+#endif /* not sparc */
+#endif /* not _VARARGS_H */
 #endif /* __GNUC__ */

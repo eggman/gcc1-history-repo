@@ -266,7 +266,19 @@ end_final (filename)
 
       /* Output the file name.  */
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, "LPBX", 1);
-      assemble_string (filename, strlen (filename) + 1);
+      {
+	int len = strlen (filename);
+	char *data_file = (char *) alloca (len + 3);
+	strcpy (data_file, filename);
+	if (len > 2 && ! strcmp (".c", data_file + len - 2))
+	  data_file[len - 2] = 0;
+	else if (len > 2 && ! strcmp (".i", data_file + len - 2))
+	  data_file[len - 2] = 0;
+	else if (len > 3 && ! strcmp (".co", data_file + len - 3))
+	  data_file[len - 3] = 0;
+	strcat (data_file, ".d");
+	assemble_string (data_file, strlen (data_file) + 1);
+      }
 
       /* Realign data section.  */
       ASM_OUTPUT_ALIGN (asm_out_file,
@@ -375,7 +387,24 @@ final_start_function (first, file, write_symbols, optimize)
      so that the function's address will not appear to be
      in the last statement of the preceding function.  */
   if (NOTE_LINE_NUMBER (first) != NOTE_INSN_DELETED)
-    output_source_line (file, first, write_symbols);
+    {
+      if (write_symbols == SDB_DEBUG)
+	/* For sdb, let's not, but say we did.
+	   We need to set last_linenum for sdbout_function_begin,
+	   but we can't have an actual line number before the .bf symbol.
+	   (sdb_begin_function_line is not set,
+	   and other compilers don't do it.)  */
+	last_linenum = NOTE_LINE_NUMBER (first);
+      else
+	output_source_line (file, first, write_symbols);
+    }
+
+  /* The Sun386i and perhaps other machines don't work right
+     if the profiling code comes after the prologue.  */
+#ifdef PROFILE_BEFORE_PROLOGUE
+  if (profile_flag)
+    profile_function (file);
+#endif /* PROFILE_BEFORE_PROLOGUE */
 
 #ifdef FUNCTION_PROLOGUE
   /* First output the function prologue: code to set up the stack frame.  */
@@ -393,69 +422,75 @@ final_start_function (first, file, write_symbols, optimize)
     }
 #endif /* FUNCTION_BLOCK_PROFILER */
 
+#ifndef PROFILE_BEFORE_PROLOGUE
   if (profile_flag)
-    {
-      int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
-      extern int current_function_returns_struct;
-      extern int current_function_needs_context;
-      int sval = current_function_returns_struct;
-      int cxt = current_function_needs_context;
-
-      data_section ();
-      ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
-      ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
-      assemble_integer_zero ();
-
-      text_section ();
-
-#ifdef STRUCT_VALUE_INCOMING_REGNUM
-      if (sval)
-	ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_INCOMING_REGNUM);
-#else
-#ifdef STRUCT_VALUE_REGNUM
-      if (sval)
-	ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_REGNUM);
-#endif
-#endif
-
-#if 0
-#ifdef STATIC_CHAIN_INCOMING_REGNUM
-      if (cxt)
-	ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_INCOMING_REGNUM);
-#else
-#ifdef STATIC_CHAIN_REGNUM
-      if (cxt)
-	ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_REGNUM);
-#endif
-#endif
-#endif /* 0 */
-
-      FUNCTION_PROFILER (file, profile_label_no);
-
-#if 0
-#ifdef STATIC_CHAIN_INCOMING_REGNUM
-      if (cxt)
-	ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_INCOMING_REGNUM);
-#else
-#ifdef STATIC_CHAIN_REGNUM
-      if (cxt)
-	ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_REGNUM);
-#endif
-#endif
-#endif /* 0 */
-
-#ifdef STRUCT_VALUE_INCOMING_REGNUM
-      if (sval)
-	ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_INCOMING_REGNUM);
-#else
-#ifdef STRUCT_VALUE_REGNUM
-      if (sval)
-	ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_REGNUM);
-#endif
-#endif
-    }
+    profile_function (file);
+#endif /* not PROFILE_BEFORE_PROLOGUE */
 
   profile_label_no++;
+}
+
+profile_function (file)
+     FILE *file;
+{
+  int align = min (BIGGEST_ALIGNMENT, BITS_PER_WORD);
+  extern int current_function_returns_struct;
+  extern int current_function_needs_context;
+  int sval = current_function_returns_struct;
+  int cxt = current_function_needs_context;
+
+  data_section ();
+  ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
+  ASM_OUTPUT_INTERNAL_LABEL (file, "LP", profile_label_no);
+  assemble_integer_zero ();
+
+  text_section ();
+
+#ifdef STRUCT_VALUE_INCOMING_REGNUM
+  if (sval)
+    ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_INCOMING_REGNUM);
+#else
+#ifdef STRUCT_VALUE_REGNUM
+  if (sval)
+    ASM_OUTPUT_REG_PUSH (file, STRUCT_VALUE_REGNUM);
+#endif
+#endif
+
+#if 0
+#ifdef STATIC_CHAIN_INCOMING_REGNUM
+  if (cxt)
+    ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_INCOMING_REGNUM);
+#else
+#ifdef STATIC_CHAIN_REGNUM
+  if (cxt)
+    ASM_OUTPUT_REG_PUSH (file, STATIC_CHAIN_REGNUM);
+#endif
+#endif
+#endif /* 0 */
+
+  FUNCTION_PROFILER (file, profile_label_no);
+
+#if 0
+#ifdef STATIC_CHAIN_INCOMING_REGNUM
+  if (cxt)
+    ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_INCOMING_REGNUM);
+#else
+#ifdef STATIC_CHAIN_REGNUM
+  if (cxt)
+    ASM_OUTPUT_REG_POP (file, STATIC_CHAIN_REGNUM);
+#endif
+#endif
+#endif /* 0 */
+
+#ifdef STRUCT_VALUE_INCOMING_REGNUM
+  if (sval)
+    ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_INCOMING_REGNUM);
+#else
+#ifdef STRUCT_VALUE_REGNUM
+  if (sval)
+    ASM_OUTPUT_REG_POP (file, STRUCT_VALUE_REGNUM);
+#endif
+#endif
 }
 
 /* Output assembler code for the end of a function.
@@ -683,16 +718,25 @@ final_scan_insn  (insn, file, write_symbols, optimize, prescan, nopeepholes)
 
 	if (profile_block_flag && new_block)
 	  {
-	    new_block = 0;
-	    /* Enable the table of basic-block use counts
-	       to point at the code it applies to.  */
-	    ASM_OUTPUT_INTERNAL_LABEL (file, "LPB", count_basic_blocks);
-	    /* Before first insn of this basic block, increment the
-	       count of times it was entered.  */
+	    rtx real_body = body;
+	    if (GET_CODE (insn) == NOTE)
+	      real_body = PATTERN (next_real_insn (insn));
+
+	    /* Don't add instructions in front of jump tables.  */
+	    if (GET_CODE (real_body) != ADDR_VEC
+		&& GET_CODE (real_body) != ADDR_DIFF_VEC)
+	      {
+		new_block = 0;
+		/* Enable the table of basic-block use counts
+		   to point at the code it applies to.  */
+		ASM_OUTPUT_INTERNAL_LABEL (file, "LPB", count_basic_blocks);
+		/* Before first insn of this basic block, increment the
+		   count of times it was entered.  */
 #ifdef BLOCK_PROFILER
-	    BLOCK_PROFILER (file, count_basic_blocks);
+		BLOCK_PROFILER (file, count_basic_blocks);
 #endif
-	    count_basic_blocks++;
+		count_basic_blocks++;
+	      }
 	  }
 
 	if (GET_CODE (body) == ASM_INPUT)

@@ -483,14 +483,16 @@ dead_or_set_p (insn, reg)
       return 1;
 
   if (GET_CODE (PATTERN (insn)) == SET)
-    return SET_DEST (PATTERN (insn)) == reg;
+    return (GET_CODE (SET_DEST (PATTERN (insn))) == REG
+	    && REGNO (SET_DEST (PATTERN (insn))) == regno);
   else if (GET_CODE (PATTERN (insn)) == PARALLEL)
     {
       register int i;
       for (i = XVECLEN (PATTERN (insn), 0) - 1; i >= 0; i--)
 	{
 	  if (GET_CODE (XVECEXP (PATTERN (insn), 0, i)) == SET
-	      && SET_DEST (XVECEXP (PATTERN (insn), 0, i)) == reg)
+	      && GET_CODE (SET_DEST (XVECEXP (PATTERN (insn), 0, i))) == REG
+              && REGNO (SET_DEST (XVECEXP (PATTERN (insn), 0, i))) == regno)
 	    return 1;
 	}
     }

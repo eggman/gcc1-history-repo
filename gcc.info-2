@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -177,7 +177,9 @@ These options control the details of C compilation itself.
           implicit declarations of functions.
 
         * The keywords `typeof', `inline', `signed', `const' and
-          `volatile' are not recognized.
+          `volatile' are not recognized.  (You can still use the
+          alternative keywords such as `__typeof__', `__inline__',
+          and so on.)
 
         * Comparisons between pointers and integers are always allowed.
 
@@ -186,7 +188,7 @@ These options control the details of C compilation itself.
 
         * Out-of-range floating point literals are not an error.
 
-        * String ``constants'' are not necessarily constant; they are
+        * String "constants" are not necessarily constant; they are
           stored in writable space, and identical looking constants
           are allocated separately.
 
@@ -392,7 +394,7 @@ These options control the details of C compilation itself.
      compile with certain obsolete, brain-damaged compilers.
 
 `-Wpointer-arith'
-     Warn about anything that depends on the ``size of'' a function
+     Warn about anything that depends on the "size of" a function
      type or of `void'.  GNU C assigns these types a size of 1, for
      convenience in calculations with `void *' pointers and pointers
      to functions.
@@ -673,7 +675,7 @@ These options control the details of C compilation itself.
           `-traditional' also has this effect.
 
           Writing into string constants is a very bad idea;
-          ``constants'' should be constant.
+          "constants" should be constant.
 
     `-fcond-mismatch'
           Allow conditional expressions with mismatched types in the
@@ -880,7 +882,7 @@ output that is not suitable for actual compilation.
 
 `-M'
      Tell the preprocessor to output a rule suitable for `make'
-     describing the dependencies of each source file.  For each
+     describing the dependencies of each object file.  For each
      source file, the preprocessor outputs one `make'-rule whose
      target is the object file name for that source file and whose
      dependencies are all the files `#include'd in it.  This rule may

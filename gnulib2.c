@@ -840,7 +840,7 @@ __floatdidf (u)
   double d;
   int negate = 0;
 
-  if (d < 0)
+  if (u < 0)
     u = -u, negate = 1;
 
   d = (unsigned int) (u >> BITS_PER_WORD);
@@ -853,6 +853,42 @@ __floatdidf (u)
 #endif
 
 #ifdef L_varargs
+#ifdef i860
+	asm ("	.text");
+	asm ("	.align	4");
+
+	asm ("___builtin_saveregs::");
+	asm ("	mov	sp,r30");
+	asm ("	andnot	0x0f,sp,sp");
+	asm ("	adds	-96,sp,sp");  /* allocate sufficient space on the stack */
+
+	asm ("	st.l	r16, 0(sp)"); /* save integer regs (r16-r27) */
+	asm ("	st.l	r17, 4(sp)"); /* int	fixed[12] */
+	asm ("	st.l	r18, 8(sp)");
+	asm ("	st.l	r19,12(sp)");
+	asm ("	st.l	r20,16(sp)");
+	asm ("	st.l	r21,20(sp)");
+	asm ("	st.l	r22,24(sp)");
+	asm ("	st.l	r23,28(sp)");
+	asm ("	st.l	r24,32(sp)");
+	asm ("	st.l	r25,36(sp)");
+	asm ("	st.l	r26,40(sp)");
+	asm ("	st.l	r27,44(sp)");
+
+	asm ("	fst.q	f8, 48(sp)"); /* save floating regs (f8-f15) */
+	asm ("	fst.q	f12,64(sp)"); /* int floating[8] */
+
+	asm ("	st.l	r28,80(sp)"); /* pointer to more args */
+	asm ("	st.l	r0, 84(sp)"); /* nfixed */
+	asm ("	st.l	r0, 88(sp)"); /* nfloating */
+	asm ("	st.l	r0, 92(sp)"); /* pad */
+
+	asm ("	mov	sp,r16");
+	asm ("	bri	r1");
+	asm ("	mov	r30,sp");
+				/* recover stack and pass address to start 
+				   of data.  */
+#endif
 #ifdef sparc
 	asm (".global ___builtin_saveregs");
 	asm ("___builtin_saveregs:");
@@ -866,6 +902,7 @@ __floatdidf (u)
 #else /* not sparc */
 #if defined(MIPSEL) | defined(R3000) | defined(R2000) | defined(mips)
 
+  asm ("	.text");
   asm ("	.ent __builtin_saveregs");
   asm ("	.globl __builtin_saveregs");
   asm ("__builtin_saveregs:");

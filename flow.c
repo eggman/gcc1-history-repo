@@ -160,6 +160,12 @@ short *reg_n_deaths;
 
 int *reg_n_calls_crossed;
 
+/* Indexed by N, gives the uid of the first insn that mentions reg N,
+   provided that reg is local to one basic block.
+   The value here is undefined otherwise.  */
+
+rtx *reg_first_use;
+
 /* Total number of instructions at which (REG n) is live.
    The larger this is, the less priority (REG n) gets for
    allocation in a real register.
@@ -644,22 +650,22 @@ life_analysis (f, nregs)
 	    }
 	  else if (GET_CODE (PATTERN (insn)) != USE)
 	    INSN_VOLATILE (insn) = volatile_refs_p (PATTERN (insn));
-	}
-      /* A SET that makes space on the stack cannot be dead.
-	 (Such SETs occur only for allocating variable-size data,
-	 so they will always have a PLUS or MINUS according to the
-	 direction of stack growth.)
-	 Even if this function never uses this stack pointer value,
-	 signal handlers do!  */
-      else if (code1 == INSN && GET_CODE (PATTERN (insn)) == SET
-	       && SET_DEST (PATTERN (insn)) == stack_pointer_rtx
+	  /* A SET that makes space on the stack cannot be dead.
+	     (Such SETs occur only for allocating variable-size data,
+	     so they will always have a PLUS or MINUS according to the
+	     direction of stack growth.)
+	     Even if this function never uses this stack pointer value,
+	     signal handlers do!  */
+	  else if (code1 == INSN && GET_CODE (PATTERN (insn)) == SET
+		   && SET_DEST (PATTERN (insn)) == stack_pointer_rtx
 #ifdef STACK_GROWS_DOWNWARD
-	       && GET_CODE (SET_SRC (PATTERN (insn))) == MINUS
+		   && GET_CODE (SET_SRC (PATTERN (insn))) == MINUS
 #else
-	       && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
+		   && GET_CODE (SET_SRC (PATTERN (insn))) == PLUS
 #endif
-	       && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx)
-	INSN_VOLATILE (insn) = 1;
+		   && XEXP (SET_SRC (PATTERN (insn)), 0) == stack_pointer_rtx)
+	    INSN_VOLATILE (insn) = 1;
+	}
     }
 
   if (n_basic_blocks > 0)
@@ -822,6 +828,7 @@ life_analysis (f, nregs)
 #endif
     }
 
+#if 0
   /* Something live during a setjmp should not be put in a register
      on certain machines which restore regs from stack frames
      rather than from the jmpbuf.
@@ -836,6 +843,24 @@ life_analysis (f, nregs)
 	reg_basic_block[i] = -1;
       }
 #endif
+#endif
+
+  /* We have a problem with any pseudoreg that
+     lives across the setjmp.  ANSI says that if a
+     user variable does not change in value
+     between the setjmp and the longjmp, then the longjmp preserves it.
+     This includes longjmp from a place where the pseudo appears dead.
+     (In principle, the value still exists if it is in scope.)
+     If the pseudo goes in a hard reg, some other value may occupy
+     that hard reg where this pseudo is dead, thus clobbering the pseudo.
+     Conclusion: such a pseudo must not go in a hard reg.  */
+  for (i = FIRST_PSEUDO_REGISTER; i < nregs; i++)
+    if (regs_live_at_setjmp[i / REGSET_ELT_BITS] & (1 << (i % REGSET_ELT_BITS))
+	&& regno_reg_rtx[i] != 0)
+      {
+	reg_live_length[i] = -1;
+	reg_basic_block[i] = -1;
+      }
 
   obstack_free (&flow_obstack, 0);
 }
@@ -862,6 +887,9 @@ allocate_for_life_analysis ()
 
   reg_n_deaths = (short *) oballoc (max_regno * sizeof (short));
   bzero (reg_n_deaths, max_regno * sizeof (short));
+
+  reg_first_use = (rtx *) oballoc (max_regno * sizeof (rtx));
+  bzero (reg_first_use, max_regno * sizeof (rtx));
 
   reg_live_length = (int *) oballoc (max_regno * sizeof (int));
   bzero (reg_live_length, max_regno * sizeof (int));
@@ -982,6 +1010,12 @@ propagate_block (old, first, last, final, significant, bnum)
 	      }
 	  }
     }
+
+  /* Include any notes at the end of the block in the scan.
+     This is in case the block ends with a call to setjmp.  */
+
+  while (NEXT_INSN (last) != 0 && GET_CODE (NEXT_INSN (last)) == NOTE)
+    last = NEXT_INSN (last);
 
   /* Scan the block an insn at a time from end to beginning.  */
 
@@ -1358,22 +1392,22 @@ mark_set_1 (needed, dead, x, insn, significant)
 
   if (reg == 0)
     return;
-
-  if (GET_CODE (reg) == STRICT_LOW_PART)
-    reg = XEXP (reg, 0);
-
-  if (GET_CODE (reg) == SUBREG || GET_CODE (reg) == ZERO_EXTRACT
-      || GET_CODE (reg) == SIGN_EXTRACT)
+  /* Modifying just one hardware register of a multi-reg value
+     or just a byte field of a register
+     does not mean the value from before this insn is now dead.
+     But it does mean liveness of that register at the end of the block
+     is significant.  */
+  while (GET_CODE (reg) == SUBREG || GET_CODE (reg) == ZERO_EXTRACT
+	 || GET_CODE (reg) == SIGN_EXTRACT
+	 || GET_CODE (reg) == STRICT_LOW_PART)
     {
-      /* Modifying just one hardware register of a multi-reg value
-	 or just a byte field of a register
-	 does not mean the value from before this insn is now dead.
-	 But it does mean liveness of that register at the end of the block
-	 is significant.  */
-      if (REG_SIZE (SUBREG_REG (reg)) > REG_SIZE (reg))
+      if (GET_CODE (reg) == ZERO_EXTRACT
+	  || GET_CODE (reg) == SIGN_EXTRACT
+	  || (GET_CODE (reg) == SUBREG
+	      && REG_SIZE (SUBREG_REG (reg)) > REG_SIZE (reg)))
 	subreg_p = 1;
 
-      reg = SUBREG_REG (reg);
+      reg = XEXP (reg, 0);
     }
 
   if (GET_CODE (reg) == REG
@@ -1458,6 +1492,9 @@ mark_set_1 (needed, dead, x, insn, significant)
 	    reg_basic_block[regno] = blocknum;
 	  else if (reg_basic_block[regno] != blocknum)
 	    reg_basic_block[regno] = REG_BLOCK_GLOBAL;
+
+	  /* Record first insn to use this reg.  */
+	  reg_first_use[regno] = insn;
 
 	  /* Count (weighted) references, stores, etc.  */
 	  reg_n_refs[regno] += loop_depth;
@@ -1669,6 +1706,13 @@ mark_used_regs (needed, live, x, final, insn)
 		    reg_basic_block[regno] = blocknum;
 		  else if (reg_basic_block[regno] != blocknum)
 		    reg_basic_block[regno] = REG_BLOCK_GLOBAL;
+
+		  /* Record the earliest insn that uses this reg,
+		     provided the reg is used only in one basic block.
+		     Do this by recording each insn, and the one that
+		     sticks is the last one scanned (the earliest insn).  */
+
+		  reg_first_use[regno] = insn;
 
 		  /* Record where each reg is used, so when the reg
 		     is set we know the next insn that uses it.  */

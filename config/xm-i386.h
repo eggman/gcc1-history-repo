@@ -38,5 +38,5 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "tm.h"
 
 #ifdef __GNUC__
-#define alloca(n) __builtin_alloca(n)
+#define alloca __builtin_alloca
 #endif

@@ -333,6 +333,7 @@ yylex ()
     
   case ' ':
   case '\t':
+  case '\r':
   case '\n':
     lexptr++;
     goto retry;

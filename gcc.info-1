@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -40,10 +40,11 @@ to report bugs.
 * Copying::         GNU General Public License says
                      how you can copy and share GNU CC.
 * Contributors::    People who have contributed to GNU CC.
-* Boycott::	    Protect your freedom--fight ``look and feel''.
+* Boycott::	    Protect your freedom--fight "look and feel".
 * Options::         Command options supported by `gcc'.
 * Installation::    How to configure, compile and install GNU CC.
 * Trouble::         If you have trouble installing GNU CC.
+* Service::         How to find suppliers of services for GNU CC users.
 * Incompatibilities:: Incompatibilities of GNU CC.
 * Extensions::      GNU extensions to the C language.
 * Bugs::            How to report bugs (if you want to get them fixed).
@@ -117,11 +118,11 @@ modification follow.
   1. This License Agreement applies to any program or other work
      which contains a notice placed by the copyright holder saying it
      may be distributed under the terms of this General Public
-     License.  The ``Program'', below, refers to any such program or
-     work, and a ``work based on the Program'' means either the
-     Program or any work containing the Program or a portion of it,
-     either verbatim or with modifications.  Each licensee is
-     addressed as ``you''.
+     License.  The "Program", below, refers to any such program or
+     work, and a "work based on the Program" means either the Program
+     or any work containing the Program or a portion of it, either
+     verbatim or with modifications.  Each licensee is addressed as
+     "you".
 
   2. You may copy and distribute verbatim copies of the Program's
      source code as you receive it, in any medium, provided that you
@@ -227,11 +228,11 @@ modification follow.
 
      Each version is given a distinguishing version number.  If the
      Program specifies a version number of the license which applies
-     to it and ``any later version'', you have the option of
-     following the terms and conditions either of that version or of
-     any later version published by the Free Software Foundation.  If
-     the Program does not specify a version number of the license,
-     you may choose any version ever published by the Free Software
+     to it and "any later version", you have the option of following
+     the terms and conditions either of that version or of any later
+     version published by the Free Software Foundation.  If the
+     Program does not specify a version number of the license, you
+     may choose any version ever published by the Free Software
      Foundation.
 
   9. If you wish to incorporate parts of the Program into other free
@@ -248,13 +249,13 @@ modification follow.
  10. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO
      WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE
      LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
-     HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM ``AS IS''
-     WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED,
-     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE
-     ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS
-     WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE
-     COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+     HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT
+     WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING,
+     BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+     AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS TO THE
+     QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
+     PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY
+     SERVICING, REPAIR OR CORRECTION.
 
  11. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN
      WRITING WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY
@@ -280,7 +281,7 @@ terms.
   To do so, attach the following notices to the program.  It is safest
 to attach them to the start of each source file to most effectively
 convey the exclusion of warranty; and each file should have at least
-the ``copyright'' line and a pointer to where the full notice is found.
+the "copyright" line and a pointer to where the full notice is found.
 
      ONE LINE TO GIVE THE PROGRAM'S NAME AND A BRIEF IDEA OF WHAT IT DOES.
      Copyright (C) 19YY  NAME OF AUTHOR
@@ -317,7 +318,7 @@ commands you use may be called something other than `show w' and
 suits your program.
 
 You should also get your employer (if you work as a programmer) or
-your school, if any, to sign a ``copyright disclaimer'' for the
+your school, if any, to sign a "copyright disclaimer" for the
 program, if necessary.  Here a sample; alter the names:
 
      Yoyodyne, Inc., hereby disclaims all copyright interest in the
@@ -341,8 +342,8 @@ GNU CC.
 
    * The idea of using RTL and some of the optimization ideas came
      from the U. of Arizona Portable Optimizer, written by Jack
-     Davidson and Christopher Fraser.  See ``Register Allocation and
-     Exhaustive Peephole Optimization'', Software Practice and
+     Davidson and Christopher Fraser.  See "Register Allocation and
+     Exhaustive Peephole Optimization", Software Practice and
      Experience 14 (9), Sept. 1984, 857-866.
 
    * Paul Rubin wrote most of the preprocessor.
@@ -398,15 +399,20 @@ GNU CC.
 
 File: gcc.info,  Node: Boycott,  Next: Options,  Prev: Contributors,  Up: Top
 
-Protect Your Freedom--Fight ``Look And Feel''
-*********************************************
+Protect Your Freedom--Fight "Look And Feel"
+*******************************************
+
+     This section is a political message from the League for
+     Programming Freedom to the users of GNU CC.  It is included here
+     as an expression of support for the League on the part of the
+     Free Software Foundation and Richard Stallman.
 
 Ashton-Tate, Apple, Lotus and Xerox are trying to create a new form
 of legal monopoly: a copyright on a class of user interfaces.  These
 monopolies would cause serious problems for users and developers of
 computer software and systems.
 
-Until three years ago, the law seemed clear: no one could restrict
+Until a few years ago, the law seemed clear: no one could restrict
 others from using a user interface; programmers were free to
 implement any interface they chose.  Imitating interfaces, sometimes
 with changes, was standard practice in the computer field.  The
@@ -417,10 +423,10 @@ VisiCalc, and dBase imitated a database program from JPL.
 
 Most computer companies, and nearly all computer users, were happy
 with this state of affairs.  The companies that are suing say it does
-not offer ``enough incentive'' to develop their products, but they
-must have considered it ``enough'' when they made their decision to
-do so.  It seems they are not satisfied with the opportunity to
-continue to compete in the marketplace--not even with a head start.
+not offer "enough incentive" to develop their products, but they must
+have considered it "enough" when they made their decision to do so. 
+It seems they are not satisfied with the opportunity to continue to
+compete in the marketplace--not even with a head start.
 
 If Xerox, Lotus, Apple and Ashton-Tate are permitted to make law
 through the courts, the precedent will hobble the software industry:
@@ -429,7 +435,7 @@ through the courts, the precedent will hobble the software industry:
      car manufacturer had to arrange the pedals in a different order.
 
    * Software will become and remain more expensive.  Users will be
-     ``locked in'' to proprietary interfaces, for which there is no
+     "locked in" to proprietary interfaces, for which there is no
      real competition.
 
    * Large companies have an unfair advantage wherever lawsuits
@@ -445,8 +451,42 @@ through the courts, the precedent will hobble the software industry:
      for fear of weakening their own legal positions.  Some users
      suggest that this stagnation may already have started.
 
-Here are some things you can do to protect your freedom to write
-programs:
+   * If you use GNU software, you might find it of some concern that
+     user interface copyright will make it hard for the Free Software
+     Foundation to develop programs compatible with the interfaces
+     that you already know.
+
+To protect our freedom from lawsuits like these, a group of
+programmers and users have formed a new grass-roots political
+organization, the League for Programming Freedom.
+
+The purpose of the League is to oppose new monopolistic practices
+such as user-interface copyright and software patents; it calls for a
+return to the legal policies of the recent past, in which these
+practices were not allowed.  The League is not concerned with free
+software as an issue, and not affiliated with the Free Software
+Foundation.
+
+The League's membership rolls include John McCarthy, inventor of
+Lisp, Marvin Minsky, founder of the Artificial Intelligence lab, Guy L.
+Steele, Jr., author of well-known books on Lisp and C, as well as
+Richard Stallman, the developer of GNU CC.  Please join and add your
+name to the list.  Membership dues in the League are $42 per year for
+programmers, managers and professionals; $10.50 for students; $21 for
+others.
+
+The League needs both activist members and members who only pay their
+dues.
+
+To join, or for more information, phone (617) 492-0023 or write to:
+
+     League for Programming Freedom
+     1 Kendall Square #143
+     P.O. Box 9171
+     Cambridge, MA 02139       league@prep.ai.mit.edu
+
+Here are some suggestions from the League for how you can protect
+your freedom to write programs:
 
    * Don't buy from Xerox, Lotus, Apple or Ashton-Tate.  Buy from
      their competitors or from the defendants they are suing.
@@ -462,14 +502,6 @@ programs:
 
    * Tell your friends and colleagues about this issue and how it
      threatens to ruin the computer industry.
-
-   * Join the League for Programming Freedom.  Phone (617) 492-0023
-     or write to:
-
-          League for Programming Freedom
-          1 Kendall Square #143
-          P.O. Box 9171
-          Cambridge, MA 02139       league@prep.ai.mit.edu
 
    * Above all, don't work for the look-and-feel plaintiffs, and
      don't accept contracts from them.

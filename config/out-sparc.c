@@ -39,6 +39,21 @@ reg_or_0_operand (op, mode)
   return (op == const0_rtx || register_operand (op, mode));
 }
 
+/* Return non-zero if INSN is a conditional insn with a predicate
+   valid after an addcc or subcc instruction.  */
+
+int
+ignore_overflow_conditional_p (insn)
+     rtx insn;
+{
+  rtx x = SET_SRC (PATTERN (insn));
+  RTX_CODE code;
+  if (GET_CODE (x) == IF_THEN_ELSE)
+    x = XEXP (x, 0);
+  code = GET_CODE (x);
+  return code == EQ || code == NE || code == GE || code == LT;
+}
+
 /* Return non-zero if this pattern, can be evaluated safely, even if it
    was not asked for.  */
 int
@@ -859,11 +874,14 @@ output_fp_move_double (operands)
 		|| XEXP (XEXP (operands[1], 0), 0) == stack_pointer_rtx)
 	       && GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == CONST_INT
 	       && (INTVAL (XEXP (XEXP (operands[1], 0), 1)) & 0x7) == 0)
+#if 0 /* An array in a structure that is a parm need not be aligned!  */
 	      /* Arrays are known to be aligned,
 		 and reg+reg addresses are used (on this machine)
 		 only for array accesses.  */
 	      || (REG_P (XEXP (XEXP (operands[1], 0), 0))
-		  && REG_P (XEXP (XEXP (operands[1], 0), 1)))))
+		  && REG_P (XEXP (XEXP (operands[1], 0), 1)))
+#endif
+	      ))
 	return "ldd %1,%0";
       if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
 	{
@@ -880,9 +898,38 @@ output_fp_move_double (operands)
 	output_asm_insn ("ld %1,%0", operands);
 	xoperands[0] = gen_rtx (REG, GET_MODE (operands[0]),
 				REGNO (operands[0]) + 1);
-	xoperands[1] = gen_rtx (MEM, GET_MODE (operands[1]),
+	if (GET_CODE (XEXP (operands[1], 0)) == PLUS
+	    && offsettable_address_p (1, GET_MODE (operands[1]),
+				      XEXP (operands[1], 0)))
+	  {
+	    xoperands[1] = adj_offsettable_operand (operands[1], 4);
+	    output_asm_insn ("ld %1,%0", xoperands);
+	  }
+	else if (GET_CODE (XEXP (operands[1], 0)) == PLUS)
+	  {
+	    rtx inc_reg = XEXP (XEXP (operands[1], 0), 0);
+	    if (inc_reg == frame_pointer_rtx
+		&& GET_CODE (XEXP (XEXP (operands[1], 0), 1)) == REG
+		&& XEXP (XEXP (operands[1], 0), 0) != frame_pointer_rtx)
+	      inc_reg = XEXP (XEXP (operands[1], 0), 1);
+	    if (inc_reg == frame_pointer_rtx)
+	      {
+		output_asm_insn ("mov %%fp,%%g1", xoperands);
+		inc_reg = gen_rtx (REG, SImode, 1);
+	      }
+	    xoperands[1] = inc_reg;
+	    output_asm_insn ("add 4,%1,%1", xoperands);
+	    xoperands[1] = operands[1];
+	    output_asm_insn ("ld %1,%0", xoperands);
+	    xoperands[1] = inc_reg;
+	    output_asm_insn ("add -4,%1,%1", xoperands);
+	  }
+	else
+	  {
+	    xoperands[1] = gen_rtx (MEM, GET_MODE (operands[1]),
 				plus_constant (XEXP (operands[1], 0), 4));
-	output_asm_insn ("ld %1,%0", xoperands);
+	    output_asm_insn ("ld %1,%0", xoperands);
+	  }
 	return "";
       }
     }
@@ -908,11 +955,14 @@ output_fp_move_double (operands)
 		|| XEXP (XEXP (operands[0], 0), 0) == stack_pointer_rtx)
 	       && GET_CODE (XEXP (XEXP (operands[0], 0), 1)) == CONST_INT
 	       && (INTVAL (XEXP (XEXP (operands[0], 0), 1)) & 0x7) == 0)
+#if 0 /* An array in a structure that is a parm need not be aligned!  */
 	      /* Arrays are known to be aligned,
 		 and reg+reg addresses are used (on this machine)
 		 only for array accesses.  */
 	      || (REG_P (XEXP (XEXP (operands[0], 0), 0))
-		  && REG_P (XEXP (XEXP (operands[0], 0), 1)))))
+		  && REG_P (XEXP (XEXP (operands[0], 0), 1)))
+#endif
+	      ))
 	return "std %1,%0";
       if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
 	{
@@ -929,9 +979,38 @@ output_fp_move_double (operands)
 	output_asm_insn ("st %r1,%0", operands);
 	xoperands[1] = gen_rtx (REG, GET_MODE (operands[1]),
 				REGNO (operands[1]) + 1);
-	xoperands[0] = gen_rtx (MEM, GET_MODE (operands[0]),
+	if (GET_CODE (XEXP (operands[0], 0)) == PLUS
+	    && offsettable_address_p (1, GET_MODE (operands[0]),
+				      XEXP (operands[0], 0)))
+	  {
+	    xoperands[0] = adj_offsettable_operand (operands[0], 4);
+	    output_asm_insn ("st %r1,%0", xoperands);
+	  }
+	else if (GET_CODE (XEXP (operands[0], 0)) == PLUS)
+	  {
+	    rtx inc_reg = XEXP (XEXP (operands[0], 0), 0);
+	    if (inc_reg == frame_pointer_rtx
+		&& GET_CODE (XEXP (XEXP (operands[0], 0), 1)) == REG
+		&& XEXP (XEXP (operands[0], 0), 0) != frame_pointer_rtx)
+	      inc_reg = XEXP (XEXP (operands[0], 0), 1);
+	    if (inc_reg == frame_pointer_rtx)
+	      {
+		output_asm_insn ("mov %%fp,%%g1", xoperands);
+		inc_reg = gen_rtx (REG, SImode, 1);
+	      }
+	    xoperands[0] = inc_reg;
+	    output_asm_insn ("add 4,%0,%0", xoperands);
+	    xoperands[0] = operands[0];
+	    output_asm_insn ("st %r1,%0", xoperands);
+	    xoperands[0] = inc_reg;
+	    output_asm_insn ("add -4,%0,%0", xoperands);
+	  }
+	else
+	  {
+	    xoperands[0] = gen_rtx (MEM, GET_MODE (operands[0]),
 				plus_constant (XEXP (operands[0], 0), 4));
-	output_asm_insn ("st %r1,%0", xoperands);
+	    output_asm_insn ("st %r1,%0", xoperands);
+	  }
 	return "";
       }
     }
@@ -947,7 +1026,9 @@ find_addr_reg (addr)
 {
   while (GET_CODE (addr) == PLUS)
     {
-      if (GET_CODE (XEXP (addr, 0)) == REG)
+      if (GET_CODE (XEXP (addr, 0)) == REG
+	  && !(GET_CODE (XEXP (addr, 1)) == REG
+	       && XEXP (addr, 0) == frame_pointer_rtx))
 	addr = XEXP (addr, 0);
       else if (GET_CODE (XEXP (addr, 1)) == REG)
 	addr = XEXP (addr, 1);
@@ -1652,11 +1733,14 @@ output_scc_insn (code, operand)
     default:
       abort ();
     }
+
   if (antisymmetric
       && (cc_status.flags & CC_REVERSED))
     output_asm_insn ("orcc %%g0,0,%0\n\torcc %%g0,1,%0\n%l1:", xoperands);
   else
     output_asm_insn ("orcc %%g0,1,%0\n\torcc %%g0,0,%0\n%l1:", xoperands);
+  cc_status.flags &= ~CC_IN_FCCR;
+
   return "";
 }
 

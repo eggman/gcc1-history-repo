@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler.  Convex version.
-   Copyright (C) 1989 Free Software Foundation, Inc.
+   Copyright (C) 1989, 1990 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -18,9 +18,24 @@ along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 
+/* Use the proper incantation to search Posix-compliant libraries. */
+
+#define LINK_SPEC \
+"%{!traditional:-Eposix}%{traditional:-Enoposix}\
+ -A__iob=___ap$iob\
+ -A_use_libc_sema=___ap$use_libc_sema\
+ -L /usr/lib"
+
+/* Use the matching startup files. */
+
+#define STARTFILE_SPEC \
+"%{pg:/usr/lib/crt/gcrt0.o}\
+%{!pg:%{p:/usr/lib/crt/mcrt0.o}\
+%{!p:/usr/lib/crt/crt0.o}}"
+
 /* Names to predefine in the preprocessor for this target machine.  */
 
-#define CPP_PREDEFINES "-Dconvex -Dparsec -Dunix"
+#define CPP_PREDEFINES "-Dconvex -Dunix"
 
 /* Print subsidiary information on the compiler version in use.  */
 
@@ -63,10 +78,6 @@ extern int target_flags;
 #ifndef TARGET_DEFAULT
 #define TARGET_DEFAULT 0
 #endif
-
-/* Pick a target if none was specified */
-
-#define OVERRIDE_OPTIONS  override_options ();
 
 /* Allow $ in identifiers */
 
@@ -133,7 +144,7 @@ extern int target_flags;
 #define STRUCTURE_SIZE_BOUNDARY 8
 
 /* A bitfield declared as `int' forces `int' alignment for the struct.  */
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* No data type wants to be aligned rounder than this.  */
 /* beware of doubles in structs -- 64 is incompatible with pcc */
@@ -734,7 +745,7 @@ extern int const_double_float_int ();
    
 /* Boolean to keep track of whether the current section is .text or not.  */
 
-int current_section_is_text;
+extern int current_section_is_text;
 
 /* Output before read-only data.  */
 
@@ -845,12 +856,12 @@ bss_section ()								\
 /* This is how to output an assembler line defining a `double' constant.  */
 
 #define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
-  fprintf (FILE, "\tds.d %.17#g\n", (VALUE))
+  fprintf (FILE, "\tds.d %.17e\n", (VALUE))
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
 #define ASM_OUTPUT_FLOAT(FILE,VALUE)  \
-  fprintf (FILE, "\tds.s %.9#g\n", (VALUE))
+  fprintf (FILE, "\tds.s %.9e\n", (VALUE))
 
 /* This is how to output an assembler line defining an `int' constant.  */
 
@@ -920,7 +931,7 @@ bss_section ()								\
    that says to advance the location counter by SIZE bytes.  */
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\tds.b %d(0)\n", (SIZE))
+  fprintf (FILE, "\tds.b %u(0)\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -928,7 +939,7 @@ bss_section ()								\
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -936,7 +947,7 @@ bss_section ()								\
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( bss_section (),				\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ":\tbs.b %d\n", (ROUNDED)))
+  fprintf ((FILE), ":\tbs.b %u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -973,7 +984,7 @@ bss_section ()								\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
       u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
-      fprintf (FILE, "#%.9#g", u.d); }			 		\
+      fprintf (FILE, "#%.9e", u.d); }			 		\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
 
 /* Print a memory operand whose address is X, on file FILE. */

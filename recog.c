@@ -254,7 +254,8 @@ address_operand (op, mode)
      register rtx op;
      enum machine_mode mode;
 {
-  return memory_address_p (mode, op);
+  return (memory_address_p (mode, op)
+	  && (GET_CODE (op) != MEM || !MEM_VOLATILE_P (op) || volatile_ok));
 }
 
 /* Return 1 if OP is a register reference of mode MODE.
@@ -746,7 +747,10 @@ offsettable_address_p (strictp, mode, y)
 
   if (CONSTANT_ADDRESS_P (y))
     return 1;
-      
+
+#ifdef OFFSETTABLE_ADDRESS_P
+  return OFFSETTABLE_ADDRESS_P (mode, y);
+#else
   /* If the expression contains a constant term,
      see if it remains valid when max possible offset is added.  */
 
@@ -773,6 +777,7 @@ offsettable_address_p (strictp, mode, y)
   z = plus_constant (y, GET_MODE_SIZE (mode) - 1);
 
   return (*addressp) (mode, z);
+#endif
 }
 
 /* Return 1 if ADDR is an address-expression whose effect depends

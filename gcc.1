@@ -13,9 +13,10 @@ gcc \- GNU project C Compiler
 This man page is an extract of the documentation of the
 .I GNU C compiler
 and is limited to the meaning of the options.
-It is updated only occasionally, because the GNU project does not use nroff.
-For complete, current documentation, refer to the Info file
-.B gcc
+.B It is not kept up to date.
+If you want to be certain of the information
+below, check it in the manual "Using and Porting GCC".  Refer to the Info file
+.B gcc.info
 or the DVI file
 .B gcc.dvi
 which are made from the Texinfo source file
@@ -364,18 +365,6 @@ execute in different places because they were moved out of loops.
 Nevertheless it proves possible to debug optimized output.
 This makes it reasonable to use the optimizer for programs
 that might have bugs.
-.TP
-.B \-gg
-Produce debugging information in GDB's own format.
-This requires the GNU assembler and linker in order to work.
-.sp
-This feature will probably be eliminated.
-It was intended to enable GDB to read the symbol table faster,
-but it doesn't result in enough of a speedup to be worth the
-larger object files and executables.
-We are working on other ways of making GDB start even faster,
-which work with DBX format debugging information and could be
-made to work with SDB format.
 .TP
 .B \-w
 Inhibit all warning messages.

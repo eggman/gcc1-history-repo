@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -38,8 +38,10 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Other Dir::     Compiling in a separate directory (not where the source is).
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
+* SCO Install::   See below for installation on SCO System V 3.2.
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
+* MIPS Install::  See below for installation on MIPS.
 
   1. Edit `Makefile'.  If you are using HPUX, or any form of system
      V, you must make a few changes described in comments at the
@@ -109,7 +111,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           (sparc).
 
     `sun386'
-          Sun 386 (``roadrunner'').
+          Sun 386 ("roadrunner").
 
     `alliant'
           Alliant FX/8 computer.  Note that the standard installed C
@@ -134,7 +136,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           The tahoe computer (running BSD, and using DBX).
 
     `decstation'
-          The DEC 3100 Mips machine (``pmax'').  Note that GNU CC
+          The DEC 3100 Mips machine ("pmax").  Note that GNU CC
           cannot generate debugging information in the unusual format
           used on the Mips.
 
@@ -154,9 +156,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           on the Mips.
 
     `iris'
-          The Mips computer, as delivered by Iris.  Note that GNU CC
-          cannot generate debugging information in the unusual format
-          used on the Mips.
+          Another variant of the Mips computer, the Silicon Graphics
+          Iris 4D.  Note that GNU CC cannot generate debugging
+          information in the unusual format used on the Mips.
 
     `convex-c1'
           Convex C1 computer.
@@ -175,7 +177,7 @@ Here is the procedure for installing GNU CC on a Unix system.
     `hp9k320-gas'
           HP 9000 series 300 using GNU assembler, linker and debugger.
           This requires the HP-adapt package, which is available
-          along with the GNU linker as part of the ``binutils''
+          along with the GNU linker as part of the "binutils"
           distribution.  This is on the GNU CC distribution tape.
 
     `hp9k320-old'
@@ -198,6 +200,9 @@ Here is the procedure for installing GNU CC on a Unix system.
 
     `next'
           NeXT system.
+
+    `tower'
+          NCR Tower 32 system.
 
     `altos'
           Altos 3068.  Note that you must use the GNU assembler,
@@ -308,6 +313,10 @@ Here is the procedure for installing GNU CC on a Unix system.
                yet in distribution; full instructions will appear
                here in the future.
 
+         `tm-tower-as.h'
+               for NCR Tower 32 systems, using the standard system
+               assembler.
+
           For the vax, use `tm-vax.h' on BSD Unix, `tm-vaxv.h' on
           system V, or `tm-vms.h' on VMS.
 
@@ -342,6 +351,15 @@ Here is the procedure for installing GNU CC on a Unix system.
           For Sparc (Sun 4) machines, use `tm-sparc.h' with operating
           system version 4, and `tm-sun4os3.h' with system version 3.
 
+          For Convex systems before version 8.1, use `tm-conv1os7.h'
+          or `tm-conv2os7.h'.  For versions 8.1 and greater, use
+          `tm-convex1.h' or `tm-convex2.h'.  You should also
+          bootstrap GCC with `pcc' rather than `cc'; one way to do
+          this is with the following commands.
+
+               ln -s /bin/pcc ./cc
+               set path = (. $path)
+
         * Make a symbolic link named `md' to the machine description
           pattern file.  It should be in the `config' subdirectory
           and its name should be `MACHINE.md'; but MACHINE is often
@@ -360,10 +378,19 @@ Here is the procedure for installing GNU CC on a Unix system.
      Bison versions older than Sept 8, 1988 will produce incorrect
      output for `c-parse.tab.c'.
 
-  5. Build the compiler.  Just type `make' in the compiler directory.
+  5. If you have a previous version of GCC installed, then chances
+     are you can compile the new version with that.  Do the following:
 
-     Ignore any warnings you may see about ``statement not reached''
-     in the `insn-emit.c'; they are normal.  Any other compilation
+          make CC="gcc -O"
+
+     Since this produces an optimized executable right away, there is
+     no need to bootstrap the result with itself except to test it. 
+     Therefore, you can skip directly to the `make install' step below.
+
+  6. Build the compiler.  Just type `make' in the compiler directory.
+
+     Ignore any warnings you may see about "statement not reached" in
+     the `insn-emit.c'; they are normal.  Any other compilation
      errors may represent bugs in the port to your machine or
      operating system, and should be investigated and reported (*note
      Bugs::.).
@@ -374,12 +401,12 @@ Here is the procedure for installing GNU CC on a Unix system.
      out of expression space; then you need to break up the statement
      where the problem happens.
 
-  6. If you are using COFF-encapsulation, you must convert `gnulib'
+  7. If you are using COFF-encapsulation, you must convert `gnulib'
      to a GNU-format library at this point.  See the file
      `README-ENCAP' in the directory containing the GNU binary file
      utilities, for directions.
 
-  7. Move the first-stage object files and executables into a
+  8. Move the first-stage object files and executables into a
      subdirectory with this command:
 
           make stage1
@@ -388,9 +415,11 @@ Here is the procedure for installing GNU CC on a Unix system.
      installation is complete, you may wish to delete these files
      with `rm -r stage1'.
 
-  8. Recompile the compiler with itself, with this command:
+  9. Recompile the compiler with itself, with this command:
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
+
+     This is called making the stage 2 compiler.
 
      On a 68000 or 68020 system lacking floating point hardware,
      unless you have selected a `tm.h' file that expects by default
@@ -398,7 +427,7 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
 
-  9. If you wish to test the compiler by compiling it with itself one
+ 10. If you wish to test the compiler by compiling it with itself one
      more time, do this (in C shell):
 
           make stage2
@@ -407,8 +436,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           cmp $file stage2/$file
           end
 
-     Aside from the `-B' option, the options should be the same as
-     when you made stage 2.
+     This is called making the stage 3 compiler.  Aside from the `-B'
+     option, the options should be the same as when you made the
+     stage 2 compiler.
 
      The `foreach' command (written in C shell) will notify you if
      any of these stage 3 object files differs from those of stage 2.
@@ -423,12 +453,15 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           for file in *.o; do
           echo $file
-          tail +10 $file > foo1
-          tail +10 stage2/$file > foo2
+          tail +10c $file > foo1
+          tail +10c stage2/$file > foo2
           cmp foo1 foo2
           done
 
- 10. Install the compiler driver, the compiler's passes and run-time
+     On MIPS machines, you should use the shell script `ecoff-cmp' to
+     compare two object files.
+
+ 11. Install the compiler driver, the compiler's passes and run-time
      support.  You can use the following command:
 
           make install
@@ -466,6 +499,18 @@ Here is the procedure for installing GNU CC on a Unix system.
      script will work on various systems because it chooses the files
      by searching all the system headers for the problem cases that
      we know about.
+
+     Use the following command to do this:
+
+          make includes
+
+     If you selected a different directory for GNU CC installation
+     when you installed it, by specifying the Make variable `prefix'
+     or `libdir', specify it the same way in this command.
+
+     Note that some systems are starting to come with ANSI C system
+     header files.  On these systems, don't run `fixincludes'; it may
+     not work, and is certainly not necessary.
 
 If you cannot install the compiler's passes and run-time support in
 `/usr/local/lib', you can alternatively use the `-B' option to
@@ -542,7 +587,7 @@ command to compile GNU CC with Sun CC:
 
 
 
-File: gcc.info,  Node: 3b1 Install,  Next: VMS Install,  Prev: Sun Install,  Up: Installation
+File: gcc.info,  Node: 3b1 Install,  Next: SCO Install,  Prev: Sun Install,  Up: Installation
 
 Installing GNU CC on the 3b1
 ============================
@@ -582,7 +627,32 @@ solve the problem, uncomment this line in `Makefile':
 
 
 
-File: gcc.info,  Node: VMS Install,  Next: HPUX Install,  Prev: 3B1 Install,  Up: Installation
+File: gcc.info,  Node: SCO Install,  Next: VMS Install,  Prev: 3B1 Install,  Up: Installation
+
+Installing GNU CC on SCO System V 3.2
+=====================================
+
+The compiler that comes with this system does not work properly with
+`-O'.  Therefore, you should redefine the Make variable `CCLIBFLAGS'
+not to use `-O'.
+
+In addition, the compiler produces incorrect output when compiling
+parts of GNU CC; the resulting executable `cc1' does not work
+properly when it is used with `-O'.
+
+Therefore, what you must do after building the first stage is use GNU
+CC to compile itself without optimization.  Here is how:
+
+     make -k cc1 CC="./gcc -B./"
+
+You can think of this as "stage 1.1" of the installation process. 
+However, using this command has the effect of discarding the faulty
+stage 1 executable for `cc1' and replacing it with stage 1.1.  You
+can then proceed with `make stage1' and the rest of installation.
+
+
+
+File: gcc.info,  Node: VMS Install,  Next: HPUX Install,  Prev: SCO Install,  Up: Installation
 
 Installing GNU CC on VMS
 ========================
@@ -656,19 +726,33 @@ get to recompile the sources.  If you must recompile, here is how:
      `inline'.)  Once you have a working 1.33 or newer GNU CC, you
      can change this file back.
 
-There is a known problem on VMS: `const' global variables don't work
-compatibly with the VMS C compiler; we don't know a way to get them
-to the linker properly.
+With this version of GNU CC, `const' global variables now work
+properly.  Unless, however, the `const' modifier is also specified in
+every external declaration of the variable in all of the source files
+that use that variable, the linker will issue warnings about
+conflicting attributes for the variable, since the linker does not
+know if the variable should be read-only.  The program will still
+work, but the variable will be placed in writable storage.
 
-Note that GNU CC on VMS does not generate debugging information to
-describe the program's symbols.  It is not straightforward to
-implement this, and we have no time to spend on it, but we might
-consent to install a very modular implementation if you write it. 
-You will probably have to modify GAS as well as GNU CC.
+Under previous versions of GNU CC, the generated code would
+occasionally give strange results when linked to the sharable
+`VAXCRTL' library.  Now this should work.
+
+Even with this version, however, GNU CC itself should not be linked
+to the sharable `VAXCRTL', unless you force the linker to use the
+`qsort' routine from `gcclib.olb'.  The `qsort' routine supplied with
+`VAXCRTL' has a bug which causes a compiler crash.  The executable
+that is generated by `make-cc1.com' uses the non-shared version of
+`VAXCRTL' (and thus the `qsort' routine from `gcclib.olb').
+
+Note that GNU CC on VMS now generates debugging information to
+describe the programs symbols to the VMS debugger.  However, you need
+version 1.37 or later of GAS in order to output them properly in the
+object file.
 
 
 
-File: gcc.info,  Node: HPUX Install,  Prev: VMS Install,  Up: Installation
+File: gcc.info,  Node: HPUX Install,  Next: MIPS Install,  Prev: VMS Install,  Up: Installation
 
 Installing GNU CC on HPUX
 =========================
@@ -677,6 +761,11 @@ To install GNU CC on HPUX, you must start by editing the file
 `Makefile'.  Search for the string `HPUX' to find comments saying
 what to change.  You need to change some variable definitions and (if
 you are using GAS) some lines in the rule for the target `gnulib'.
+
+To avoid errors when linking programs with `-g', create an empty
+library named `libg.a'.  An easy way to do this is:
+
+     ar rc /usr/local/lib/libg.a
 
 To compile with the HPUX C compiler, you must specify get the file
 `alloca.c' from GNU Emacs.  Then, when you run `make', use this
@@ -691,10 +780,22 @@ Instead, an `-I' option needs to be added to `CFLAGS' as follows:
 
 
 
-File: gcc.info,  Node: Trouble,  Next: Incompatibilities,  Prev: Installation,  Up: Top
+File: gcc.info,  Node: MIPS Install,  Prev: HPUX Install,  Up: Installation
 
-Known Causes of Trouble with GNU CC.
-************************************
+Installing GNU CC on MIPS
+=========================
+
+To avoid errors when linking programs with `-g', create an empty
+library named `libg.a'.  An easy way to do this is:
+
+     ar rc /usr/local/lib/libg.a
+
+
+
+File: gcc.info,  Node: Trouble,  Next: Service,  Prev: Installation,  Up: Top
+
+Known Causes of Trouble with GNU CC
+***********************************
 
 Here are some of the things that have caused trouble for people
 installing or using GNU CC.
@@ -772,7 +873,25 @@ installing or using GNU CC.
 
 
 
-File: gcc.info,  Node: Incompatibilities,  Next: Extensions,  Prev: Trouble,  Up: Top
+File: gcc.info,  Node: Service,  Next: Incompatibilities,  Prev: Trouble,  Up: Top
+
+How To Get Help with GNU CC
+***************************
+
+If you need help installing, using or changing GNU CC, there are two
+ways to find it:
+
+   * Send a message to a suitable network mailing list.  First try
+     `bug-gcc@prep.ai.mit.edu', and if that brings no response, try
+     `info-gcc@prep.ai.mit.edu'.
+
+   * Look in the service directory for someone who might help you for
+     a fee.  The service directory is found in the file named
+     `SERVICE' in the GNU CC distribution.
+
+
+
+File: gcc.info,  Node: Incompatibilities,  Next: Extensions,  Prev: Service,  Up: Top
 
 Incompatibilities of GNU CC
 ***************************
@@ -926,6 +1045,19 @@ GNU C to behave like older C compilers.
      The convention for structure returning is also incompatible, and
      `-fpcc-struct-return' does not help.
 
+   * On Ultrix, the Fortran compiler expects registers 2 through 5 to
+     be saved by function calls.  We have not been able to tell
+     whether the C compiler agrees with the Fortran compiler. 
+     Currently, GNU CC treats these registers as temporaries on the
+     Vax, which is compatible with BSD Unix.
+
+     If we learn for certain that Ultrix has departed from the
+     traditional BSD calling convention, we will change GNU CC for
+     Ultrix to fit.  In the mean time, you can use these options to
+     produce code compatible with the Fortran compiler:
+
+          -fcall-saved-r2 -fcall-saved-r3 -fcall-saved-r4 -fcall-saved-r5
+
 
 
 File: gcc.info,  Node: Extensions,  Next: Bugs,  Prev: Incompatibilities,  Up: Top
@@ -959,7 +1091,7 @@ macro `__GNUC__', which is always defined under GNU CC.
 * Alignment::           Inquiring about the alignment of a type or variable.
 * Inline::              Defining inline functions (as fast as macros).
 * Extended Asm::        Assembler instructions with C expressions as operands.
-                         (With them you can define ``built-in'' functions.)
+                         (With them you can define "built-in" functions.)
 * Asm Labels::          Specifying the assembler name to use for a C symbol.
 * Explicit Reg Vars::   Defining variables residing in specified registers.
 * Alternate Keywords::  `__const__', `__asm__', etc., for header files.
@@ -983,10 +1115,10 @@ For example:
 is a valid (though slightly more complex than necessary) expression
 for the absolute value of `foo ()'.
 
-This feature is especially useful in making macro definitions
-``safe'' (so that they evaluate each operand exactly once).  For
-example, the ``maximum'' function is commonly defined as a macro in
-standard C as follows:
+This feature is especially useful in making macro definitions "safe"
+(so that they evaluate each operand exactly once).  For example, the
+"maximum" function is commonly defined as a macro in standard C as
+follows:
 
      #define max(a,b) ((a) > (b) ? (a) : (b))
 
@@ -1021,7 +1153,7 @@ type name for the type of EXP:
 
 This is useful in conjunction with the statements-within-expressions
 feature.  Here is how the two together can be used to define a safe
-``maximum'' macro that operates on any arithmetic type:
+"maximum" macro that operates on any arithmetic type:
 
      #define max(a,b) \
        ({typedef _ta = (a), _tb = (b);  \
@@ -1208,151 +1340,5 @@ variable-length object:
 
 In standard C, you would have to give `contents' a length of 1, which
 means either you waste space or complicate the argument to `malloc'.
-
-
-
-File: gcc.info,  Node: Variable-Length,  Next: Subscripting,  Prev: Zero-Length,  Up: Extensions
-
-Arrays of Variable Length
-=========================
-
-Variable-length automatic arrays are allowed in GNU C.  These arrays
-are declared like any other automatic arrays, but with a length that
-is not a constant expression.  The storage is allocated at that time
-and deallocated when the brace-level is exited.  For example:
-
-     FILE *concat_fopen (char *s1, char *s2, char *mode)
-     {
-       char str[strlen (s1) + strlen (s2) + 1];
-       strcpy (str, s1);
-       strcat (str, s2);
-       return fopen (str, mode);
-     }
-
-You can also use variable-length arrays as arguments to functions:
-
-     struct entry
-     tester (int len, char data[len])
-     {
-       ...
-     }
-
-The length of an array is computed on entry to the brace-level where
-the array is declared and is remembered for the scope of the array in
-case you access it with `sizeof'.
-
-Jumping or breaking out of the scope of the array name will also
-deallocate the storage.  Jumping into the scope is not allowed; you
-will get an error message for it.
-
-You can use the function `alloca' to get an effect much like
-variable-length arrays.  The function `alloca' is available in many
-other C implementations (but not in all).  On the other hand,
-variable-length arrays are more elegant.
-
-There are other differences between these two methods.  Space
-allocated with `alloca' exists until the containing *function* returns.
-The space for a variable-length array is deallocated as soon as the
-array name's scope ends.  (If you use both variable-length arrays and
-`alloca' in the same function, deallocation of a variable-length
-array will also deallocate anything more recently allocated with
-`alloca'.)
-
-
-
-File: gcc.info,  Node: Subscripting,  Next: Pointer Arith,  Prev: Variable-Length,  Up: Extensions
-
-Non-Lvalue Arrays May Have Subscripts
-=====================================
-
-Subscripting is allowed on arrays that are not lvalues, even though
-the unary `&' operator is not.  For example, this is valid in GNU C
-though not valid in other C dialects:
-
-     struct foo {int a[4];};
-     
-     struct foo f();
-     
-     bar (int index)
-     {
-       return f().a[index];
-     }
-
-
-
-File: gcc.info,  Node: Pointer Arith,  Next: Initializers,  Prev: Subscripting,  Up: Extensions
-
-Arithmetic on `void'-Pointers and Function Pointers
-===================================================
-
-In GNU C, addition and subtraction operations are supported on
-pointers to `void' and on pointers to functions.  This is done by
-treating the size of a `void' or of a function as 1.
-
-A consequence of this is that `sizeof' is also allowed on `void' and
-on function types, and returns 1.
-
-The option `-Wpointer-arith' requests a warning if these extensions
-are used.
-
-
-
-File: gcc.info,  Node: Initializers,  Next: Constructors,  Prev: Pointer Arith,  Up: Extensions
-
-Non-Constant Initializers
-=========================
-
-The elements of an aggregate initializer for an automatic variable
-are not required to be constant expressions in GNU C.  Here is an
-example of an initializer with run-time varying elements:
-
-     foo (float f, float g)
-     {
-       float beat_freqs[2] = { f-g, f+g };
-       ...
-     }
-
-
-
-File: gcc.info,  Node: Constructors,  Next: Function Attributes,  Prev: Initializers,  Up: Extensions
-
-Constructor Expressions
-=======================
-
-GNU C supports constructor expressions.  A constructor looks like a
-cast containing an initializer.  Its value is an object of the type
-specified in the cast, containing the elements specified in the
-initializer.  The type must be a structure, union or array type.
-
-Assume that `struct foo' and `structure' are declared as shown:
-
-     struct foo {int a; char b[2];} structure;
-
-Here is an example of constructing a `struct foo' with a constructor:
-
-     structure = ((struct foo) {x + y, 'a', 0});
-
-This is equivalent to writing the following:
-
-     {
-       struct foo temp = {x + y, 'a', 0};
-       structure = temp;
-     }
-
-You can also construct an array.  If all the elements of the
-constructor are (made up of) simple constant expressions, suitable
-for use in initializers, then the constructor is an lvalue and can be
-coerced to a pointer to its first element, as shown here:
-
-     char **foo = (char *[]) { "x", "y", "z" };
-
-Array constructors whose elements are not simple constants are not
-very useful, because the constructor is not an lvalue.  There are
-only two valid ways to use it: to subscript it, or initialize an
-array variable with it.  The former is probably slower than a
-`switch' statement, while the latter does the same thing an ordinary
-C initializer would do.
-
-     output = ((int[]) { 2, x, 28 }) [input];
 
 

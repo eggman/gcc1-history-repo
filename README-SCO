@@ -1,0 +1,66 @@
+========= Checklist from of Ari Kautonen (akk@tut.fi) ======================
+
+Part 1. Compiling Gnu C in SCO Unix System V 3.2
+
+1. Rename stamp_extract.c to stamp-ext.c
+
+2. Change all occurrences of stamp-extract to stamp-ext in Makefile
+
+3. Remove all -g and -O options from the Makefile including the ones
+   in gnulib and gnulib2 compiling rules.
+
+(4. If needed use 'yacc' insteadt of 'bison' in BISON from Makefile.)
+
+5. Change all statements using 'ranlib' to use 'ar ts' insteadt.
+   Example:
+   Old: if [ -f /usr/bin/ranlib -o -f /bin/ranlib ] ; then  ranlib gnulib ;fi
+   New: ar ts gnulib
+
+6. Do not use libPW -library but use alloca.c from Gnu Emacs distribution.
+   Uncomment 'ALLOCA = alloca.o' and make the following change to Makefile:
+   Replace:
+	   alloca.o:	alloca.c
+		$(CC) $(CFLAGS) -S `echo $(srcdir)/alloca.c | sed 's,^\./,,'`
+		as alloca.s -o alloca.o
+   With:
+	   alloca.o:	alloca.c
+		$(CC) $(CFLAGS) -c $(srcdir)/alloca.c
+
+7. Run: config.gcc i386-sysv
+
+8. Run: make cpp
+
+9. Rename explow.c, reload.c and recog.c to end with .gnu.
+
+10. In csh, run the following:
+    foreach i (explow reload recog)
+      ./cpp -P -I. -I./config <$i.gnu >$i.c
+    end
+
+11. Run: make
+
+This should produce a cc-compiled gcc, that is neither optimized nor
+capable of optimization.
+
+12. Run: make stage1
+
+13. Comment out the statement 'ALLOCA = alloca.o' from Makefile
+
+14. Rename files that end with .gnu to end with .c
+
+15. Run: make CC=stage1/gcc CFLAGS="-Bstage1/"
+
+This should produce an unoptimized gcc capable of optimization.
+
+16. Run: make stage1
+
+17. Run: make CC=stage1/gcc CFLAGS="-O -g -Bstage1/"
+
+This should produce an optimized gcc capable of producing optimized and
+debuggable code.
+
+18. Change installation options in Makefile and run 'make install'
+
+That's it!  (I hope ;-))
+
+========= End checklist from of Ari Kautonen (akk@tut.fi) ==================

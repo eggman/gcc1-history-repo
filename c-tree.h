@@ -90,6 +90,9 @@ extern tree build_enumerator();
 
 extern tree make_index_type ();
 
+/* Add qualifiers to a type, in the fashion for C.  */
+extern tree c_build_type_variant ();
+
 extern tree double_type_node, long_double_type_node, float_type_node;
 extern tree char_type_node, unsigned_char_type_node, signed_char_type_node;
 

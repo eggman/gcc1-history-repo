@@ -37,6 +37,11 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 %{sun386:}"
 /* That last item is just to prevent a spurious error.  */
 
+/* It is hard to debug with shared libraries,
+   so don't use them if going to debug.  */
+
+#define LINK_SPEC "%{g:-Bstatic} %{static:-Bstatic} %{Bstatic}"
+
 /* Extra switches to give the assembler.  */
 
 #define ASM_SPEC "-i386"
@@ -89,3 +94,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Otherwise the assembler or the linker screws up.  */
 
 #define DEBUG_SYMS_TEXT
+
+/* This NOP insn makes profiling not fail.  */
+
+#define ASM_IDENTIFY_GCC(FILE) \
+fprintf (FILE, (profile_flag ? "gcc_compiled.:\n\tnop\n" : "gcc_compiled.:\n"))

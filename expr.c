@@ -29,6 +29,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "recog.h"
 #include "gvarargs.h"
 #include "typeclass.h"
+#include "recog.h"
 
 /* Decide whether a function's arguments should be processed
    from first to last or from last to first.  */
@@ -68,6 +69,11 @@ int inhibit_defer_pop;
 /* A list of all cleanups which belong to the arguments of
    function calls being expanded by expand_call.  */
 static tree cleanups_of_this_call;
+
+/* Nonzero means __builtin_saveregs has already been done in this function.
+   The value is the pseudoreg containing the value __builtin_saveregs
+   returned.  */
+static rtx saveregs_value;
 
 /* Nonzero means current function may call alloca
    as a subroutine.  (__builtin_alloca does not count.)  */
@@ -138,6 +144,7 @@ init_expr ()
 {
   init_queue ();
   may_call_alloca = 0;
+  saveregs_value = 0;
 }
 
 /* Manage the queue of increment instructions to be output
@@ -385,14 +392,24 @@ convert_move (to, from, unsignedp)
 #ifdef HAVE_slt
       else if (HAVE_slt && insn_operand_mode[(int) CODE_FOR_slt][0] == SImode)
 	{
+	  rtx temp, target;
 	  emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
 	  convert_move (gen_lowpart (SImode, to), from, unsignedp);
-	  emit_insn (gen_slt (gen_highpart (SImode, to)));
+	  emit_cmp_insn (gen_lowpart (SImode, to), const0_rtx, 0, 0, 0);
+	  target = gen_highpart (SImode, to);
+	  if (!(*insn_operand_predicate[(int) CODE_FOR_slt][0]) (target, SImode))
+	    temp = gen_reg_rtx (SImode);
+	  else
+	    temp = target;
+	  emit_insn (gen_slt (temp));
+	  if (temp != target)
+	    emit_move_insn (target, temp);
 	}
 #endif
       else
 	{
 	  register rtx label = gen_label_rtx ();
+	  rtx temp, target;
 
 	  emit_insn (gen_rtx (CLOBBER, VOIDmode, to));
 	  emit_clr_insn (gen_highpart (SImode, to));
@@ -402,9 +419,12 @@ convert_move (to, from, unsignedp)
 			 0, 0, 0);
 	  NO_DEFER_POP;
 	  emit_jump_insn (gen_bge (label));
-	  expand_unop (SImode, one_cmpl_optab,
-		       gen_highpart (SImode, to), gen_highpart (SImode, to),
-		       1);
+	  target = gen_highpart (SImode, to);
+	  temp = expand_unop (SImode, one_cmpl_optab,
+			      target, gen_highpart (SImode, to),
+			      1);
+	  if (temp != target)
+	    emit_move_insn (target, temp);
 	  emit_label (label);
 	  OK_DEFER_POP;
 	}
@@ -952,7 +972,7 @@ move_block_to_reg (regno, x, nregs)
       if (GET_CODE (x) == REG)
 	emit_move_insn (gen_rtx (REG, SImode, regno + i),
 			gen_rtx (SUBREG, SImode, x, i));
-      else if (x == dconst0_rtx)
+      else if (x == dconst0_rtx || x == const0_rtx)
 	emit_move_insn (gen_rtx (REG, SImode, regno + i),
 			const0_rtx);
       else
@@ -1041,19 +1061,20 @@ emit_move_insn (x, y)
   x = protect_from_queue (x, 1);
   y = protect_from_queue (y, 0);
 
-  if ((CONSTANT_P (y) || GET_CODE (y) == CONST_DOUBLE)
-      && ! LEGITIMATE_CONSTANT_P (y))
-    {
-      y = force_const_mem (mode, y);
-      if (! memory_address_p (mode, XEXP (y, 0)))
-	y = gen_rtx (MEM, mode, memory_address (mode, XEXP (y, 0)));
-    }
-
   if (mode == BLKmode)
     abort ();
   if (mov_optab->handlers[(int) mode].insn_code != CODE_FOR_nothing)
-    return
-      emit_insn (GEN_FCN (mov_optab->handlers[(int) mode].insn_code) (x, y));
+    {
+      int icode = (int) mov_optab->handlers[(int) mode].insn_code;
+      if (! (*insn_operand_predicate[icode][1]) (y, mode)
+	  && (CONSTANT_P (y) || GET_CODE (y) == CONST_DOUBLE))
+	{
+	  y = force_const_mem (mode, y);
+	  if (! memory_address_p (mode, XEXP (y, 0)))
+	    y = gen_rtx (MEM, mode, memory_address (mode, XEXP (y, 0)));
+	}
+      return emit_insn (GEN_FCN (icode) (x, y));
+    }
 #if 0
   /* It turns out you get much better optimization (in cse and flow)
      if you define movdi and movdf instruction patterns
@@ -1098,26 +1119,43 @@ emit_move_insn (x, y)
    Note that it is not possible for the value returned to be a QUEUED.
    The value may be stack_pointer_rtx.
 
+   EXTRA is the number of bytes of padding to push in addition to the block.
+   The padding is pushed "after" the specified size.
+
    The value we return does take account of STACK_POINTER_OFFSET.  */
 
 rtx
-push_block (size)
+push_block (size, extra)
      rtx size;
+     int extra;
 {
   register rtx temp;
-  if (CONSTANT_P (size) || GET_CODE (size) == REG)
+  if (CONSTANT_P (size))
+    anti_adjust_stack (plus_constant (size, extra));
+  else if (GET_CODE (size) == REG && extra == 0)
     anti_adjust_stack (size);
   else
-    anti_adjust_stack (copy_to_mode_reg (Pmode, size));
+    {
+      rtx temp = copy_to_mode_reg (Pmode, size);
+      if (extra != 0)
+	temp = expand_binop (Pmode, add_optab,
+			     temp, gen_rtx (CONST_INT, VOIDmode, extra),
+			     temp, 0, OPTAB_LIB_WIDEN);
+      anti_adjust_stack (temp);
+    }
 
 #ifdef STACK_GROWS_DOWNWARD
   temp = stack_pointer_rtx;
+  if (extra != 0)
+    temp = plus_constant (temp, extra);
 #else
   temp = gen_rtx (PLUS, Pmode,
 		  stack_pointer_rtx,
 		  negate_rtx (Pmode, size));
   if (GET_CODE (size) != CONST_INT)
     temp = force_operand (temp, 0);
+  if (extra != 0)
+    temp = plus_constant (temp, -extra);
 #endif
 
 #ifdef STACK_POINTER_OFFSET
@@ -1146,10 +1184,6 @@ gen_push_operand ()
    SIZE is an rtx for the size of data to be copied (in bytes),
    needed only if X is BLKmode.
 
-
-
-
-
    ALIGN (in bytes) is maximum alignment we can assume.
 
    If PARTIAL is nonzero, then copy that many of the first words
@@ -1159,6 +1193,8 @@ gen_push_operand ()
    REG must be a hard register in this case.
 
    EXTRA is the amount in bytes of extra space to leave next to this arg.
+   Within the function, we set EXTRA to zero once the padding is done,
+   to avoid padding twice.
 
    On a machine that lacks real push insns, ARGS_ADDR is the address of
    the bottom of the argument block for this call.  We use indexing off there
@@ -1200,13 +1236,21 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	  /* Push padding now if padding above and stack grows down,
 	     or if padding below and stack grows up.  */
 	  if (where_pad != none && where_pad != stack_direction)
-	    anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
+	    {
+	      anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
+	      extra = 0;
+	    }
 	}
       else
 	{
 	  /* If space already allocated, just adjust the address we use.  */
 	  if (where_pad == downward)
-	    args_so_far = plus_constant (args_so_far, extra);
+	    {
+	      args_so_far = plus_constant (args_so_far, extra);
+	    }
+	  /* If padding comes after a space already allocated,
+	     there is nothing to do.  */
+	  extra = 0;
 	}
     }
 
@@ -1273,7 +1317,10 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 
 	  /* Get the address of the stack space.  */
 	  if (! args_addr)
-	    temp = push_block (size);
+	    {
+	      temp = push_block (size, extra);
+	      extra = 0;
+	    }
 	  else if (GET_CODE (args_so_far) == CONST_INT)
 	    temp = memory_address (BLKmode,
 				   plus_constant (args_addr,
@@ -1433,7 +1480,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
 	      }
 	    else if (GET_CODE (x) == REG)
 	      wd = gen_rtx (SUBREG, SImode, x, i);
-	    else if (x == dconst0_rtx)
+	    else if (x == dconst0_rtx || x == const0_rtx)
 	      wd = const0_rtx;
 	    else
 	      abort ();
@@ -1470,7 +1517,7 @@ emit_push_insn (x, mode, size, align, partial, reg, extra, args_addr, args_so_fa
   if (partial > 0)
     move_block_to_reg (REGNO (reg), x, partial);
 
-  if (extra && args_addr == 0 && where_pad == stack_direction)
+  if (extra)
     anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, extra));
 }
 
@@ -1497,7 +1544,7 @@ emit_library_call (va_alist)
   rtx *regvec;
   rtx argblock = 0;
   CUMULATIVE_ARGS args_so_far;
-  struct arg { rtx value; enum machine_mode mode; };
+  struct arg { rtx value; enum machine_mode mode; rtx reg; int partial; };
   struct arg *argvec;
   int old_inhibit_defer_pop = inhibit_defer_pop;
   int stack_padding = 0;
@@ -1515,10 +1562,13 @@ emit_library_call (va_alist)
   /* Copy all the libcall-arguments out of the varargs data
      and into a vector ARGVEC.  */
   argvec = (struct arg *) alloca (nargs * sizeof (struct arg));
+
+  INIT_CUMULATIVE_ARGS (args_so_far, (tree)0);
   for (count = 0; count < nargs; count++)
     {
       rtx val = va_arg (p, rtx);
       enum machine_mode mode = va_arg (p, enum machine_mode);
+      int arg_size;
 
       argvec[count].value = val;
 
@@ -1540,30 +1590,33 @@ emit_library_call (va_alist)
 
       argvec[count].value = val;
       argvec[count].mode = mode;
+
+      regvec[count] = FUNCTION_ARG (args_so_far, mode, (tree)0, 1);
+
+#ifdef FUNCTION_ARG_PARTIAL_NREGS
+      argvec[count].partial
+	= FUNCTION_ARG_PARTIAL_NREGS (args_so_far, mode, (tree)0, 1);
+#else
+      argvec[count].partial = 0;
+#endif
+
+      FUNCTION_ARG_ADVANCE (args_so_far, mode, (tree)0, 1);
     }
   va_end (p);
 
   /* If we have no actual push instructions, make space for all the args
      right now.  */
 #ifndef PUSH_ROUNDING
-  INIT_CUMULATIVE_ARGS (args_so_far, (tree)0);
   for (count = 0; count < nargs; count++)
     {
       register enum machine_mode mode = argvec[count].mode;
-      register rtx reg;
-      register int partial;
+      register rtx reg = regvec[count];
+      register int partial = argvec[count].partial;
 
-      reg = FUNCTION_ARG (args_so_far, mode, (tree)0, 1);
-#ifdef FUNCTION_ARG_PARTIAL_NREGS
-      partial = FUNCTION_ARG_PARTIAL_NREGS (args_so_far, mode, (tree)0, 1);
-#else
-      partial = 0;
-#endif
       if (reg == 0 || partial != 0)
 	args_size += GET_MODE_SIZE (mode);
       if (partial != 0)
 	args_size -= partial * GET_MODE_SIZE (SImode);
-      FUNCTION_ARG_ADVANCE (args_so_far, mode, (tree)0, 1);
     }
 
   if (args_size != 0)
@@ -1576,11 +1629,9 @@ emit_library_call (va_alist)
       args_size = size.constant;
 #endif
       argblock
-	= push_block (round_push (gen_rtx (CONST_INT, VOIDmode, args_size)));
+	= push_block (round_push (gen_rtx (CONST_INT, VOIDmode, args_size)), 0);
     }
 #endif /* no PUSH_ROUNDING */
-
-  INIT_CUMULATIVE_ARGS (args_so_far, (tree)0);
 
 #ifdef PUSH_ARGS_REVERSED
   inc = -1;
@@ -1595,17 +1646,9 @@ emit_library_call (va_alist)
     {
       register enum machine_mode mode = argvec[argnum].mode;
       register rtx val = argvec[argnum].value;
-      rtx reg;
-      int partial;
+      rtx reg = regvec[argnum];
+      int partial = argvec[argnum].partial;
       int arg_size;
-
-      reg = FUNCTION_ARG (args_so_far, mode, (tree)0, 1);
-      regvec[argnum] = reg;
-#ifdef FUNCTION_ARG_PARTIAL_NREGS
-      partial = FUNCTION_ARG_PARTIAL_NREGS (args_so_far, mode, (tree)0, 1);
-#else
-      partial = 0;
-#endif
 
       if (reg != 0 && partial == 0)
 	emit_move_insn (reg, val);
@@ -1625,8 +1668,8 @@ emit_library_call (va_alist)
 	      * (PARM_BOUNDARY / BITS_PER_UNIT));
 
       args_size += arg_size;
+
       NO_DEFER_POP;
-      FUNCTION_ARG_ADVANCE (args_so_far, mode, (tree)0, 1);
     }
 
   /* For version 1.37, try deleting this entirely.  */
@@ -1732,6 +1775,8 @@ expand_assignment (to, from, want_value, suggest_reg)
 	      bitpos += (TREE_INT_CST_LOW (TREE_OPERAND (tem, 1))
 			 * TREE_INT_CST_LOW (TYPE_SIZE (TREE_TYPE (tem)))
 			 * TYPE_SIZE_UNIT (TREE_TYPE (tem)));
+	      if (TREE_THIS_VOLATILE (tem))
+		volstruct = 1;
 	    }
 	  else
 	    break;
@@ -1745,6 +1790,13 @@ expand_assignment (to, from, want_value, suggest_reg)
 	tem = stabilize_reference (tem);
 
       to_rtx = expand_expr (tem, 0, VOIDmode, 0);
+      if (volstruct)
+	{
+	  if (GET_CODE (to_rtx) == MEM)
+	    MEM_VOLATILE_P (to_rtx) = 1;
+	  else
+	    abort ();
+	}
 
       return store_field (to_rtx, bitsize, bitpos, mode1, from,
 			  (want_value
@@ -1753,7 +1805,8 @@ expand_assignment (to, from, want_value, suggest_reg)
 			   : VOIDmode),
 			  unsignedp,
 			  /* Required alignment of containing datum.  */
-			  TYPE_ALIGN (TREE_TYPE (tem)) / BITS_PER_UNIT);
+			  TYPE_ALIGN (TREE_TYPE (tem)) / BITS_PER_UNIT,
+			  int_size_in_bytes (TREE_TYPE (tem)));
     }
 
   /* Ordinary treatment.  Expand TO to get a REG or MEM rtx.
@@ -1916,7 +1969,8 @@ store_constructor (exp, target)
 		       /* The alignment of TARGET is
 			  at least what its type requires.  */
 		       VOIDmode, 0,
-		       TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT);
+		       TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT,
+		       int_size_in_bytes (TREE_TYPE (exp)));
 	}
     }
   else if (TREE_CODE (TREE_TYPE (exp)) == ARRAY_TYPE)
@@ -1960,7 +2014,8 @@ store_constructor (exp, target)
 		       /* The alignment of TARGET is
 			  at least what its type requires.  */
 		       VOIDmode, 0,
-		       TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT);
+		       TYPE_ALIGN (TREE_TYPE (exp)) / BITS_PER_UNIT,
+		       int_size_in_bytes (TREE_TYPE (exp)));
 	}
     }
 }
@@ -1976,10 +2031,12 @@ store_constructor (exp, target)
    has mode VALUE_MODE if that is convenient to do.
    In this case, UNSIGNEDP must be nonzero if the value is an unsigned type.
 
-   ALIGN is the alignment that TARGET is known to have, measured in bytes.  */
+   ALIGN is the alignment that TARGET is known to have, measured in bytes.
+   TOTAL_SIZE is its size in bytes, or -1 if variable.  */
 
 static rtx
-store_field (target, bitsize, bitpos, mode, exp, value_mode, unsignedp, align)
+store_field (target, bitsize, bitpos, mode, exp, value_mode, unsignedp, align,
+	     total_size)
      rtx target;
      int bitsize, bitpos;
      enum machine_mode mode;
@@ -1987,6 +2044,7 @@ store_field (target, bitsize, bitpos, mode, exp, value_mode, unsignedp, align)
      enum machine_mode value_mode;
      int unsignedp;
      int align;
+     int total_size;
 {
   /* If the structure is in a register or if the component
      is a bit field, we cannot use addressing to access it.
@@ -1998,10 +2056,10 @@ store_field (target, bitsize, bitpos, mode, exp, value_mode, unsignedp, align)
       store_bit_field (target, bitsize, bitpos,
 		       mode,
 		       expand_expr (exp, 0, VOIDmode, 0),
-		       align);
+		       align, total_size);
       if (value_mode != VOIDmode)
 	return extract_bit_field (target, bitsize, bitpos, unsignedp,
-				  0, value_mode, 0, align);
+				  0, value_mode, 0, align, total_size);
       return const0_rtx;
     }
   else
@@ -2193,6 +2251,17 @@ expand_expr (exp, target, tmode, modifier)
   if (mode != Pmode && modifier == EXPAND_SUM)
     modifier = EXPAND_NORMAL;
 
+  /* Ensure we reference a volatile object even if value is ignored.  */
+  if (ignore && TREE_THIS_VOLATILE (exp)
+      && mode != VOIDmode && mode != BLKmode)
+    {
+      target = gen_reg_rtx (mode);
+      temp = expand_expr (exp, target, VOIDmode, modifier);
+      if (temp != target)
+	emit_move_insn (target, temp);
+      return target;
+    }
+
   switch (code)
     {
     case PARM_DECL:
@@ -2309,8 +2378,9 @@ expand_expr (exp, target, tmode, modifier)
       else
 	{
 	  if (target == 0)
-	    target = gen_rtx (MEM, TYPE_MODE (TREE_TYPE (exp)),
-			      get_structure_value_addr (expr_size (exp)));
+	    target
+	      = assign_stack_local (TYPE_MODE (TREE_TYPE (exp)),
+				    int_size_in_bytes (TREE_TYPE (exp)));
 	  store_expr (exp, target, 0);
 	  return target;
 	}
@@ -2365,7 +2435,11 @@ expand_expr (exp, target, tmode, modifier)
 	     `mark_addressable' should already have been called
 	     for any array for which this case will be reached.  */
 
-	  tree array_adr = build (ADDR_EXPR, TYPE_POINTER_TO (type),
+	  /* Don't forget the const or volatile flag from the array element. */
+	  tree variant_type = build_type_variant (type,
+						  TREE_READONLY (exp),
+						  TREE_THIS_VOLATILE (exp));
+	  tree array_adr = build (ADDR_EXPR, TYPE_POINTER_TO (variant_type),
 				  TREE_OPERAND (exp, 0));
 	  tree index = TREE_OPERAND (exp, 1);
 	  tree elt;
@@ -2379,10 +2453,10 @@ expand_expr (exp, target, tmode, modifier)
 	  TREE_VOLATILE (array_adr) = 0;
 
 	  elt = build (INDIRECT_REF, type,
-		       fold (build (PLUS_EXPR, TYPE_POINTER_TO (type),
+		       fold (build (PLUS_EXPR, TYPE_POINTER_TO (variant_type),
 				    array_adr,
 				    fold (build (MULT_EXPR,
-						 TYPE_POINTER_TO (type),
+						 TYPE_POINTER_TO (variant_type),
 						 index, size_in_bytes (type))))));
 
 	  return expand_expr (elt, target, tmode, modifier);
@@ -2480,6 +2554,8 @@ expand_expr (exp, target, tmode, modifier)
 		bitpos += (TREE_INT_CST_LOW (TREE_OPERAND (tem, 1))
 			   * TREE_INT_CST_LOW (TYPE_SIZE (TREE_TYPE (tem)))
 			   * TYPE_SIZE_UNIT (TREE_TYPE (tem)));
+		if (TREE_THIS_VOLATILE (tem))
+		  volstruct = 1;
 	      }
 	    else
 	      break;
@@ -2494,7 +2570,8 @@ expand_expr (exp, target, tmode, modifier)
 	    || GET_CODE (op0) == SUBREG)
 	  return extract_bit_field (op0, bitsize, bitpos, unsignedp,
 				    target, mode, tmode,
-				    TYPE_ALIGN (TREE_TYPE (tem)) / BITS_PER_UNIT);
+				    TYPE_ALIGN (TREE_TYPE (tem)) / BITS_PER_UNIT,
+				    int_size_in_bytes (TREE_TYPE (tem)));
 	/* Get a reference to just this component.  */
 	if (modifier == EXPAND_CONST_ADDRESS)
 	  op0 = gen_rtx (MEM, mode1, plus_constant (XEXP (op0, 0),
@@ -3253,6 +3330,8 @@ expand_builtin (exp, target, subtarget, mode, ignore)
       abort ();
 
     case BUILT_IN_SAVEREGS:
+      if (saveregs_value != 0)
+	return saveregs_value;
       {
 	/* When this function is called, it means that registers must be
 	   saved on entry to this function.  So we migrate the
@@ -3262,8 +3341,25 @@ expand_builtin (exp, target, subtarget, mode, ignore)
 	   expand_builtin, so there is no danger of infinite recursion here.  */
 	rtx temp = expand_call (exp, target, ignore);
 	reorder_insns (NEXT_INSN (last), get_last_insn (), get_insns ());
+	saveregs_value = temp;
 	return temp;
       }
+
+    case BUILT_IN_NEXT_ARG:
+      {
+	tree fntype = TREE_TYPE (current_function_decl);
+	if (!(TYPE_ARG_TYPES (fntype) != 0
+	      && (TREE_VALUE (tree_last (TYPE_ARG_TYPES (fntype)))
+		  != void_type_node)))
+	  {
+	    error ("`stdarg.h' facilities used, but function has fixed args");
+	    return const0_rtx;
+	  }
+      }
+
+      return expand_binop (Pmode, add_optab,
+			   arg_pointer_rtx, current_function_arg_offset_rtx,
+			   0, 0, OPTAB_LIB_WIDEN);
 
     case BUILT_IN_CLASSIFY_TYPE:
       if (arglist != 0)
@@ -3387,7 +3483,7 @@ expand_builtin (exp, target, subtarget, mode, ignore)
       op0 = expand_expr (TREE_VALUE (arglist), subtarget, VOIDmode, 0);
       /* Compute ffs, into TARGET if possible.
 	 Set TARGET to wherever the result comes back.  */
-      target = expand_unop (mode, ffs_optab, op0, target, 1);
+      target = expand_unop (GET_MODE (op0), ffs_optab, op0, target, 1);
       if (target == 0)
 	abort ();
       return target;
@@ -3693,7 +3789,7 @@ emit_call_1 (funexp, funtype, stack_size, next_arg_reg, valreg, old_inhibit_defe
      we need an instruction to pop them sooner or later.
      Perhaps do it now; perhaps just record how much space to pop later.  */
 
-  if (! RETURN_POPS_ARGS (TREE_TYPE (funtype))
+  if (! RETURN_POPS_ARGS (funtype)
       && stack_size != 0)
     {
       if (flag_defer_pop && inhibit_defer_pop == 0)
@@ -3802,6 +3898,9 @@ expand_call (exp, target, ignore)
      an extra, implicit first parameter.  Otherwise,
      it is passed by being copied directly into struct_value_rtx.  */
   int structure_value_addr_parm = 0;
+  /* Save get_structure_value_addr data to prevent multiple use.  */
+  rtx saved_structure_value_addr;
+  int saved_structure_value_size;
   /* Nonzero if called function returns an aggregate in memory PCC style,
      by returning the address of where to find it.  */
   int pcc_struct_value = 0;
@@ -3811,6 +3910,8 @@ expand_call (exp, target, ignore)
   /* Number of named args.  Args after this are anonymous ones
      and they must all go on the stack.  */
   int n_named_args;
+  /* Count arg position in order args appear.  */
+  int argpos;
 
   /* Vector of information about each argument.
      Arguments are numbered in the order they will be pushed,
@@ -3834,6 +3935,8 @@ expand_call (exp, target, ignore)
   /* Address of space preallocated for stack parms
      (on machines that lack push insns), or 0 if space not preallocated.  */
   rtx argblock = 0;
+  /* Amount to align the stack by before or after we push any args.  */
+  int stack_align = 0;
 
   /* Nonzero if it is plausible that this is a call to alloca.  */
   int may_be_alloca;
@@ -3928,6 +4031,8 @@ expand_call (exp, target, ignore)
 	    }
 	  else
 	    {
+	      push_structure_value (&saved_structure_value_addr,
+				    &saved_structure_value_size);
 	      /* Make room on the stack to hold the value.  */
 	      structure_value_addr
 		= get_structure_value_addr (expr_size (exp));
@@ -3997,9 +4102,10 @@ expand_call (exp, target, ignore)
 
   /* Don't let pending stack adjusts add up to too much.
      Also, do all pending adjustments now
-     if there is any chance this might be a call to alloca.  */
+     if there is any chance this might be a call to alloca
+     or if it is const.  */
 
-  if (pending_stack_adjust >= 32
+  if (pending_stack_adjust >= 32 || is_const
       || (pending_stack_adjust > 0 && may_be_alloca))
     do_pending_stack_adjust ();
 
@@ -4070,7 +4176,8 @@ expand_call (exp, target, ignore)
 
   INIT_CUMULATIVE_ARGS (args_so_far, funtype);
 
-  for (p = actparms; p; p = TREE_CHAIN (p), i += inc)
+  /* I counts args in order (to be) pushed; ARGPOS counts in order written.  */
+  for (p = actparms, argpos = 0; p; p = TREE_CHAIN (p), i += inc, argpos++)
     {
       tree type = TREE_TYPE (TREE_VALUE (p));
       args[i].tree_value = TREE_VALUE (p);
@@ -4092,7 +4199,7 @@ expand_call (exp, target, ignore)
 	  && TREE_PURPOSE (p) != error_mark_node)
 	{
 	  args[i].reg = FUNCTION_ARG (args_so_far, TYPE_MODE (type), type,
-				      i < n_named_args);
+				      argpos < n_named_args);
 	  /* If this argument needs more than the usual parm alignment, do
 	     extrinsic padding to reach that alignment.  */
 
@@ -4142,6 +4249,17 @@ expand_call (exp, target, ignore)
 	{
 	  register int size;
 
+	  /* If we are counting "up to zero" and find a stack parm
+	     before we reach zero, skip up to zero.
+	     Negative offsets correspond to registers.  */
+	  if (stack_count_regparms && args_size.constant < 0
+	      /* This used to check args[i].partial != 0,
+		 but on the Sparc now that seems to be 0.  */
+	      && args[i].reg == 0)
+	    {
+	      args_size.constant = 0;
+	      args[i].offset.constant = 0;
+	    }
 	  size = GET_MODE_SIZE (TYPE_MODE (type));
 	  /* Compute how much space the push instruction will push.
 	     On many machines, pushing a byte will advance the stack
@@ -4162,6 +4280,18 @@ expand_call (exp, target, ignore)
       else
 	{
 	  register tree size = size_in_bytes (type);
+
+	  /* If we are counting "up to zero" and find a stack parm
+	     before we reach zero, skip up to zero.
+	     Negative offsets correspond to registers.  */
+	  if (stack_count_regparms && args_size.constant < 0
+	      /* This used to check args[i].partial != 0,
+		 but on the Sparc now that seems to be 0.  */
+	      && args[i].reg == 0)
+	    {
+	      args_size.constant = 0;
+	      args[i].offset.constant = 0;
+	    }
 
 	  /* A nonscalar.  Round its size up to a multiple
 	     of PARM_BOUNDARY bits, unless it is not supposed to be padded.  */
@@ -4319,7 +4449,7 @@ expand_call (exp, target, ignore)
     {
       old_stack_level = copy_to_mode_reg (Pmode, stack_pointer_rtx);
       old_pending_adj = pending_stack_adjust;
-      argblock = push_block (round_push (ARGS_SIZE_RTX (args_size)));
+      argblock = push_block (round_push (ARGS_SIZE_RTX (args_size)), 0);
     }
   else if (args_size.constant > 0)
     {
@@ -4327,6 +4457,7 @@ expand_call (exp, target, ignore)
 
 #ifdef STACK_BOUNDARY
       needed = (needed + STACK_BYTES - 1) / STACK_BYTES * STACK_BYTES;
+      stack_align = needed - args_size.constant;
 #endif
       args_size.constant = needed;
 
@@ -4339,19 +4470,22 @@ expand_call (exp, target, ignore)
 #endif
 	  )
 	{
-	  /* Try to reuse some or all of the pending_stack_adjust
-	     to get this space.  Maybe we can avoid any pushing.  */
-	  if (needed > pending_stack_adjust)
+	  if (inhibit_defer_pop == 0)
 	    {
-	      needed -= pending_stack_adjust;
-	      pending_stack_adjust = 0;
+	      /* Try to reuse some or all of the pending_stack_adjust
+		 to get this space.  Maybe we can avoid any pushing.  */
+	      if (needed > pending_stack_adjust)
+		{
+		  needed -= pending_stack_adjust;
+		  pending_stack_adjust = 0;
+		}
+	      else
+		{
+		  pending_stack_adjust -= needed;
+		  needed = 0;
+		}
 	    }
-	  else
-	    {
-	      pending_stack_adjust -= needed;
-	      needed = 0;
-	    }
-	  argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed));
+	  argblock = push_block (gen_rtx (CONST_INT, VOIDmode, needed), 0);
 	}
     }
 #ifndef PUSH_ROUNDING
@@ -4360,7 +4494,7 @@ expand_call (exp, target, ignore)
       /* If we have reg-parms that need to be temporarily on the stack,
 	 set up an arg block address even though there is no space
 	 to be allocated for it.  */
-      argblock = push_block (const0_rtx);
+      argblock = push_block (const0_rtx, 0);
     }
 #endif
 
@@ -4394,6 +4528,15 @@ expand_call (exp, target, ignore)
       anti_adjust_stack (protected_stack);
     }
 #endif /* STACK_GROWS_DOWNWARD */
+
+#ifdef PUSH_ARGS_REVERSED
+#ifdef STACK_BOUNDARY
+  /* If we push args individually in reverse order, perform stack alignment
+     before the first push (the last arg).  */
+  if (argblock == 0 && stack_align > 0)
+    anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, stack_align));
+#endif
+#endif
 
   /* Get the function to call, in the form of RTL.  */
   if (fndecl)
@@ -4437,6 +4580,15 @@ expand_call (exp, target, ignore)
 
   if (protected_stack != 0)
     adjust_stack (protected_stack);
+
+#ifndef PUSH_ARGS_REVERSED
+#ifdef STACK_BOUNDARY
+  /* If we pushed args in forward order, perform stack alignment
+     after pushing the last arg.  */
+  if (argblock == 0 && stack_align > 0)
+    anti_adjust_stack (gen_rtx (CONST_INT, VOIDmode, stack_align));
+#endif
+#endif
 
   /* Pass the function the address in which to return a structure value.  */
   if (structure_value_addr && ! structure_value_addr_parm)
@@ -4520,6 +4672,10 @@ expand_call (exp, target, ignore)
   if (fndecl && TREE_THIS_VOLATILE (fndecl))
     emit_barrier ();
 
+  /* If this call is to be cse'd, then make sure it balances the stack.  */
+  if (is_const)
+    do_pending_stack_adjust ();
+
   /* For calls to __builtin_new, note that it can never return 0.
      This is because a new handler will be called, and 0 it not
      among the numbers it is supposed to return.  */
@@ -4580,6 +4736,11 @@ expand_call (exp, target, ignore)
       expand_expr (TREE_VALUE (cleanups_of_this_call), 0, VOIDmode, 0);
       cleanups_of_this_call = TREE_CHAIN (cleanups_of_this_call);
     }
+
+  /* If we pushed this, pop it.  */
+  if (saved_structure_value_addr != 0)
+    pop_structure_value (saved_structure_value_addr,
+			 saved_structure_value_size);
 
   /* If size of args is variable, restore saved stack-pointer value.  */
 

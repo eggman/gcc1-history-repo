@@ -190,6 +190,7 @@ static int qty_compare ();
 static int qty_compare_1 ();
 static int reg_meets_class_p ();
 static int reg_class_subset_p ();
+static int reg_classes_overlap_p ();
 static void update_qty_class ();
 
 /* Allocate a new quantity (new within current basic block)
@@ -322,6 +323,7 @@ block_alloc (b)
   int insn_number = 0;
   int insn_count = 0;
   short *qty_order;
+  int *insn_map;
 
   call_seen = 0;
 
@@ -342,6 +344,10 @@ block_alloc (b)
 					  * sizeof (HARD_REG_SET));
   bzero (regs_live_at, (insn_count + 1) * sizeof (HARD_REG_SET));
 
+  /* This will be a map from uids to insn-numbers within the block.  */
+
+  insn_map = (int *) alloca (get_max_uid () * sizeof (int));
+
   /* Initialize table of hardware registers currently live.  */
 
 #ifdef HARD_REG_SET
@@ -355,12 +361,14 @@ block_alloc (b)
      It computes which registers to tie.  */
 
   insn = basic_block_head[b];
+  insn_number = 0;
   while (1)
     {
       register rtx body = PATTERN (insn);
 
       if (GET_CODE (insn) != NOTE)
 	insn_number++;
+      insn_map[INSN_UID (insn)] = insn_number;
 
       if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
 	  || GET_CODE (insn) == CALL_INSN)
@@ -539,6 +547,16 @@ block_alloc (b)
      If a qty's death has not been established, it indicates a dead store.
      That is ok if the insn is not entirely dead.
      So set the qty'd death to just after its birth.  */
+
+  for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
+    if (reg_basic_block[i] == b && reg_qty[i] >= 0)
+      {
+	/* In the case of a register that is used uninitialized,
+	   the code above will miss the actual first use.
+	   So count that first use as the birth.  */  
+	if (qty_birth[reg_qty[i]] > insn_map[INSN_UID (reg_first_use[i])])
+	  qty_birth[reg_qty[i]] = insn_map[INSN_UID (reg_first_use[i])];
+      }
 
   for (i = FIRST_PSEUDO_REGISTER; i < next_qty; i++)
     {
@@ -810,6 +828,15 @@ combine_regs (usedreg, setreg, b, insn_number, insn)
 	  ? reg_meets_class_p (sreg, qty_min_class[reg_qty[ureg]])
 	  : reg_meets_class_p (sreg, reg_preferred_class (ureg))))
     {
+      /* If combining these two registers would leave no satisfactory
+	 register available, don't do it.  */
+      if (ureg >= FIRST_PSEUDO_REGISTER && sreg >= FIRST_PSEUDO_REGISTER
+	  && (qty_preferred_or_nothing[reg_qty[ureg]]
+	      || reg_preferred_or_nothing (sreg))
+	  && ! (reg_classes_overlap_p
+		(reg_preferred_class (ureg), reg_preferred_class (sreg),
+		 reg_n_calls_crossed[ureg] || reg_n_calls_crossed[sreg])))
+	return 0;
       if (reg_qty[ureg] == -2)
 	reg_is_born (usedreg, insn_number);
       sqty = reg_qty[sreg] = reg_qty[ureg];
@@ -870,6 +897,29 @@ reg_class_subset_p (c1, c2)
   GO_IF_HARD_REG_SUBSET (reg_class_contents[(int)c1],
 			 reg_class_contents[(int)c2],
 			 win);
+  return 0;
+}
+
+/* Return 1 if the two specified classes have registers in common.
+   If CALL_SAVED, then consider only call-saved registers.  */
+
+static int
+reg_classes_overlap_p (c1, c2, call_saved)
+     register enum reg_class c1;
+     register enum reg_class c2;
+     int call_saved;
+{
+  HARD_REG_SET c;
+  int i;
+
+  COPY_HARD_REG_SET (c, reg_class_contents[(int) c1]);
+  AND_HARD_REG_SET (c, reg_class_contents[(int) c2]);
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    if (TEST_HARD_REG_BIT (c, i)
+	&& (! call_saved || ! call_used_regs[i]))
+      return 1;
+
   return 0;
 }
 

@@ -104,7 +104,7 @@ gen_peephole (peep)
      created just for the sake of this function.  */
   printf ("\
   bcopy (&XVECEXP (insn, 0, 0), recog_operand,\
-         UNITS_PER_WORD * XVECLEN (insn, 0));\n");
+         sizeof (rtx) * XVECLEN (insn, 0));\n");
   printf ("}\n\n");
 }
 

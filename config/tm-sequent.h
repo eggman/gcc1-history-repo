@@ -50,6 +50,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* Assember pseudo-op for shared data segment. */
 #define SHARED_SECTION_ASM_OP ".shdata"
 
+/* Control how stack adjust insns are output.  */
+#define SEQUENT_ADJUST_STACK
+
 /* %$ means print the prefix for an immediate operand.
    On the sequent, no prefix is used for such.  */
 

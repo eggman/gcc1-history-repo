@@ -245,7 +245,7 @@ dbxout_type (type, full)
      by assuming `int'.  */
   if (type == error_mark_node)
     type = integer_type_node;
-  else if (TYPE_SIZE (type) == 0)
+  else
     type = TYPE_MAIN_VARIANT (type);
 
   if (TYPE_SYMTAB_ADDRESS (type) == 0)
@@ -732,6 +732,19 @@ dbxout_symbol (decl, local)
 	  letter = 'r';
 	  current_sym_code = N_RSYM;
 	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl)));
+	}
+      else if (GET_CODE (DECL_RTL (decl)) == SUBREG)
+	{
+	  rtx value = DECL_RTL (decl);
+	  int offset = 0;
+	  while (GET_CODE (value) == SUBREG)
+	    {
+	      offset += SUBREG_WORD (value);
+	      value = SUBREG_REG (value);
+	    }
+	  letter = 'r';
+	  current_sym_code = N_RSYM;
+	  current_sym_value = DBX_REGISTER_NUMBER (REGNO (value) + offset);
 	}
       else if (GET_CODE (DECL_RTL (decl)) == MEM
 	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM

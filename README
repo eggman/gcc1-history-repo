@@ -1,6 +1,7 @@
-This directory contains the version 1.37 test release of the GNU C compiler.
+This directory contains the version 1.38 release of the GNU C compiler.
 All bugs reported for previous test releases have been fixed.
-Some bugs surely remain.
+This version probably does not have very many bugs, and we no longer
+consider it a test version.
 
 See the file gcc.texinfo for installation and porting information.
 The file INSTALL contains a copy of the installation information.

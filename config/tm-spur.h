@@ -416,13 +416,14 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* On SPUR the first five words of args are normally in registers
    and the rest are pushed.  But any arg that won't entirely fit in regs
-   is pushed.  */
+   is pushed.  Also, any non-word-aligned structure is pushed.  */
 
 #define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)		\
 (5 >= ((CUM)						\
        + ((MODE) == BLKmode				\
 	  ? (int_size_in_bytes (TYPE) + 3) / 4		\
 	  : (GET_MODE_SIZE (MODE) + 3) / 4))		\
+ && ((MODE) != BLKmode || (TYPE_ALIGN ((TYPE)) % 32 == 0)) \
  ? gen_rtx (REG, (MODE), 27 + (CUM))			\
  : 0)
 
@@ -434,6 +435,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
        + ((MODE) == BLKmode				\
 	  ? (int_size_in_bytes (TYPE) + 3) / 4		\
 	  : (GET_MODE_SIZE (MODE) + 3) / 4))		\
+ && ((MODE) != BLKmode || (TYPE_ALIGN ((TYPE)) % 32 == 0)) \
  ? gen_rtx (REG, (MODE), 11 + (CUM))			\
  : 0)
 
@@ -938,7 +940,7 @@ extern int current_function_pretend_args_size;
     fprintf (FILE, "\t.align %d\n", (LOG))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.space %d\n", (SIZE))
+  fprintf (FILE, "\t.space %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -946,7 +948,7 @@ extern int current_function_pretend_args_size;
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -954,7 +956,7 @@ extern int current_function_pretend_args_size;
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.

@@ -43,7 +43,7 @@ enum rid
   RID_INLINE,
   RID_NOALIAS,
 
-  RID_MAX,
+  RID_MAX
 };
 
 #define RID_FIRST_MODIFIER RID_UNSIGNED

@@ -232,8 +232,6 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
 #endif
 
       insn_before = get_last_insn ();
-      if (insn_before == 0)
-	abort ();
 
       /* Cannot pass FUNEXP since emit_library_call insists
 	 on getting a SYMBOL_REF.  But cse will make this SYMBOL_REF
@@ -246,7 +244,10 @@ expand_binop (mode, binoptab, op0, op1, target, unsignedp, methods)
       target = hard_libcall_value (mode);
       temp = copy_to_reg (target);
 
-      insn_first = NEXT_INSN (insn_before);
+      if (insn_before == 0)
+	insn_first = get_insns ();
+      else
+	insn_first = NEXT_INSN (insn_before);
       insn_last = get_last_insn ();
 
       REG_NOTES (insn_last)
@@ -1176,9 +1177,10 @@ expand_float (real_to, from, unsignedp)
     }
 
   /* If we are about to do some arithmetic to correct for an
-     unsigned operand, do it in a register.  */
+     unsigned operand, do it in a pseudo-register.  */
 
-  if (unsignedp && GET_CODE (to) != REG)
+  if (unsignedp
+      && ! (GET_CODE (to) == REG && REGNO (to) >= FIRST_PSEUDO_REGISTER))
     to = gen_reg_rtx (GET_MODE (to));
 
   /* Now do the basic conversion.  Do it in the specified modes if possible;

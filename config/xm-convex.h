@@ -1,5 +1,5 @@
 /* Configuration for GNU C-compiler for Convex.
-   Copyright (C) 1989 Free Software Foundation, Inc.
+   Copyright (C) 1989, 1990 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -39,4 +39,23 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #ifdef __GNUC__
 #define alloca __builtin_alloca
 #endif
+
+#ifdef _POSIX_SOURCE
+
+/* Un-hide names hidden in Posix include files.  */
+
+#define S_IFMT _S_IFMT
+#define S_IFREG _S_IFREG
+
+#else
+
+/* This definition is to prevent 8.0 include files from declaring prototypes.
+   Those include files ANSIfied, but the prototypes sometimes do not match.
+   There is no effect on pre-8.0 OS versions.  */
+
+#ifndef _PROTO
+#define _PROTO(X) ()
+#endif
+
+#endif /* _POSIX_SOURCE */
 

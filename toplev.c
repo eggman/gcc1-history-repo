@@ -24,11 +24,11 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Error messages and low-level interface to malloc also handled here.  */
 
 #include "config.h"
+#include <sys/types.h>
 #include <stdio.h>
 #include <signal.h>
 #include <setjmp.h>
 
-#include <sys/types.h>
 #include <sys/stat.h>
 
 #ifdef USG
@@ -1335,7 +1335,8 @@ rest_of_decl_compilation (decl, asmspec, top_level, at_end)
     TIMEVAR (varconst_time, dbxout_symbol (decl, 0));
 #endif
 #ifdef SDB_DEBUGGING_INFO
-  else if (write_symbols == SDB_DEBUG && TREE_CODE (decl) == TYPE_DECL)
+  else if (write_symbols == SDB_DEBUG && top_level
+	   && TREE_CODE (decl) == TYPE_DECL)
     TIMEVAR (varconst_time, sdbout_symbol (decl, 0));
 #endif
 

@@ -19,6 +19,17 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #include <stdio.h>
 
+/* This function allows any constant operand, even on VMS where some
+   constants are not normally legitimate.  */
+
+int
+supergeneral_operand (x, mode)
+     rtx x;
+     enum machine_mode mode;
+{
+  return (CONSTANT_P (x) || general_operand (x, mode));
+}
+
 print_operand_address (file, addr)
      FILE *file;
      register rtx addr;
@@ -118,7 +129,7 @@ print_operand_address (file, addr)
 	  ireg = reg2;
 	}
       if (addr != 0)
-	output_address (offset);
+	output_address (addr);
       if (breg != 0)
 	{
 	  if (GET_CODE (breg) != REG)

@@ -82,6 +82,9 @@ then
 	case $machine in
 	vax)					# for vaxen running bsd
 		;;
+	ultrix)					# for vaxen running ultrix
+		cpu_type=vax
+		;;
         tahoe)                                  # for tahoe's running bsd
                 ;;
         harris)                                 # for harris tahoe, using COFF.
@@ -112,11 +115,21 @@ then
 		cpu_type=i386
 		configuration_file=xm-${machine}.h
 		;;
+	i386-sysv4 | i386v4)		# for Intel 80386's running system V.4
+		machine=i386v4
+		cpu_type=i386
+		configuration_file=xm-i386v.h
+		;;
 	i386-sysv-gas | i386g)
 		cpu_type=i386
 		configuration_file=xm-i386v.h
-		target_machine=tm-i386gas.h
+		target_machine=tm-i386vgas.h
 		;;		
+	i386-sco)			# for Intel 80386's running SCO system
+		machine=i386sco
+		cpu_type=i386
+		configuration_file=xm-i386v.h
+		;;
 	i386-aix | ps2-aix | aix386 | ps2aix )		# for IBM PS/2 running AIX
 		machine=aix386
 		cpu_type=i386
@@ -128,17 +141,21 @@ then
 		cpu_type=m68k
 		target_machine=tm-next.h
 		;;
-	sun4 | sun-4 | sun4-os3 | sun-4-os3)
+	sun4-os3 | sun-4-os3)
 		cpu_type=sparc
 		target_machine=tm-sun4os3.h
 		;;
-	sun3 | sun-3 | sun3-os3 | sun-3-os3)
+	sun3-os3 | sun-3-os3)
 		cpu_type=m68k
 		target_machine=tm-sun3os3.h
 		;;
-	sun3-nfp | sun-3-nfp | sun3-nfp-os3 | sun-3-nfp-os3)
+	sun3-nfp-os3 | sun-3-nfp-os3)
 		cpu_type=m68k
 		target_machine=tm-sun3os3nf.h
+		;;
+	sun3-mach)
+		cpu_type=m68k
+		target_machine=tm-sun3mach.h
 		;;
 	sun2 | sun-2 | sun2-os3 | sun-2-os3)
 		cpu_type=m68k
@@ -149,15 +166,15 @@ then
 		configuration_file=xm-sun386i.h
 		target_machine=tm-sun386i.h
 		;;
-	sun4-os4 | sun-4-os4)
+	sun4 | sun-4 | sun4-os4 | sun-4-os4)
 		cpu_type=sparc
 		target_machine=tm-sparc.h
 		;;
-	sun3-os4 | sun-3-os4)
+	sun3 | sun-3 | sun3-os4 | sun-3-os4)
 		cpu_type=m68k
 		target_machine=tm-sun3.h
 		;;
-	sun3-nfp-os4 | sun-3-nfp-os4)
+	sun3-nfp | sun-3-nfp | sun3-nfp-os4 | sun-3-nfp-os4)
 		cpu_type=m68k
 		target_machine=tm-sun3-nfp.h
 		;;
@@ -221,6 +238,7 @@ then
 		cpu_type=ns32k
 		;;
 	genix)
+		target_machine=tm-genix.h
 		machine=ns32k
 		cpu_type=ns32k
 		configuration_file=xm-genix.h
@@ -232,11 +250,21 @@ then
 	alliant)				# Alliant FX/8
 		;;
 	convex-c1)				# Convex C1
-		target_machine=tm-convex1.h
+		if [ -r /usr/include/stdlib.h ]
+		then
+			target_machine=tm-convex1.h
+		else
+			target_machine=tm-conv1os7.h
+		fi
 		cpu_type=convex
 		;;
 	convex-c2)				# Convex C2
-		target_machine=tm-convex2.h
+		if [ -r /usr/include/stdlib.h ]
+		then
+			target_machine=tm-convex2.h
+		else
+			target_machine=tm-conv2os7.h
+		fi
 		cpu_type=convex
 		;;
 	iris)					# Mostly like a MIPS.
@@ -254,12 +282,21 @@ then
 		cpu_type=mips
 		target_machine=tm-mips-bsd.h
 	        ;;
+	mips-news | news-3600 | risc-news)	# Sony NEWS 3600 or risc/news.
+		cpu_type=mips
+		target_machine=tm-mips-news.h
+		;;
 	dec-3100 | decstation)		# Decstation or pmax.
 		cpu_type=mips
 		target_machine=tm-decstatn.h
 	        ;;
 	apollo68)
 		cpu_type=m68k
+		;;
+	tower)        # NCR Tower 32 SVR3. as with sdb debugging.
+		cpu_type=m68k
+		target_machine=tm-tower-as.h
+		configuration_file=xm-tower.h
 		;;
 	pyr | pyramid)
 		machine=pyr
@@ -335,7 +372,8 @@ then
 		echo "VPATH = ${srcdir}" > x
 		cat x ${srcdir}/Makefile | sed "s@^srcdir = \.@srcdir = ${srcdir}@" > Makefile
 		rm x
-		echo "dir ${srcdir}" > .gdbinit
+		echo "dir ." > .gdbinit
+		echo "dir ${srcdir}" >> .gdbinit
 		echo "source ${srcdir}/.gdbinit" >> .gdbinit
 		;;
 	esac
@@ -344,7 +382,7 @@ then
 else
 	echo "Usage: $progname machine"
 	echo -n "Where \`machine' is something like "
-	echo "\`vax', \`sun3', \`umax', etc."
+	echo "\`vax', \`sun3', \`encore', etc."
 	if [ -r config.status ]
 	then
 		cat config.status

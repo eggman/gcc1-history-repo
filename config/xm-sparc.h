@@ -31,7 +31,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Place any machine-dependent include files here, in case we
    are bootstrapping.  */
+#ifndef alloca
 #include "alloca.h"
+#endif
 
 /* target machine dependencies.
    tm.h is a symbolic link to the actual target specific file.   */

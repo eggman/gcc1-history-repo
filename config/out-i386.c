@@ -858,12 +858,14 @@ hard_regno_mode_ok (regno, mode)
 
 /* Print the name of a register based on its machine mode and number.
    If CODE is 'w', pretend the mode is HImode.
-   If CODE is 'b', pretend the mode is QImode.  */
+   If CODE is 'b', pretend the mode is QImode.
+   If CODE is 'k', pretend the mode is SImode.  */
 
 #define PRINT_REG(X, CODE, FILE) \
   do { fprintf (FILE, "%s", RP);			\
        switch ((CODE == 'w' ? 2 			\
 		: CODE == 'b' ? 1			\
+		: CODE == 'k' ? 4			\
 		: GET_MODE_SIZE (GET_MODE (X))))	\
 	 {						\
 	 case 4:					\
@@ -874,6 +876,7 @@ hard_regno_mode_ok (regno, mode)
 	   break;					\
 	 case 1:					\
 	   fputs (qi_reg_name[REGNO (X)], FILE);	\
+	   break;					\
 	 }						\
      } while (0)
 

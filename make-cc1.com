@@ -60,6 +60,7 @@ $ bison /verbose c-parse.y
 $ 20$:
 $!
 $ 'CC 'CFLAGS c-parse_tab.c /define="__inline=inline"
+$ 'CC 'CFLAGS version.c
 $ 'CC 'CFLAGS tree.c
 $ 'CC 'CFLAGS print-tree.c
 $ 'CC 'CFLAGS c-decl.c
@@ -140,7 +141,7 @@ toplev,c-parse_tab,tree,print-tree,c-decl,c-typeck,c-convert,stor-layout,fold-co
 varasm,rtl,rtlanal,expr,stmt,expmed,explow,optabs,symout,dbxout,emit-rtl,insn-emit,-
 jump,cse,loop,flow,stupid,combine,regclass,local-alloc,global-alloc,reload,-
 reload1,insn-peep,final,recog,insn-recog,insn-extract,insn-output,obstack,-
-integrate,caller-save
+integrate,caller-save,version
 $!
 $!	Done
 $!

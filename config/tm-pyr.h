@@ -230,7 +230,7 @@ extern int target_flags;
 #define FIXED_REGISTERS \
   {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,	\
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,	\
-   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,	\
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,	\
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1}
 
 /* 1 for registers not available across function calls.
@@ -242,7 +242,7 @@ extern int target_flags;
 #define CALL_USED_REGISTERS \
   {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,	\
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,	\
-   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 	\
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 	\
    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 
 /* #define DEFAULT_CALLER_SAVES */
@@ -1173,7 +1173,7 @@ extern int current_function_calls_alloca;
   fprintf (FILE, "\t.align %d\n", (LOG) < 2 ? 2 : (LOG))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.space %d\n", (SIZE))
+  fprintf (FILE, "\t.space %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1181,7 +1181,7 @@ extern int current_function_calls_alloca;
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1189,7 +1189,7 @@ extern int current_function_calls_alloca;
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* Define the parentheses used to group arithmetic operations
    in assembler code.  */

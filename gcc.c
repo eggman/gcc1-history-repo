@@ -59,6 +59,9 @@ or with constant text in a single argument.
  %w	marks the argument containing or following the %w as the
 	"output file" of this compilation.  This puts the argument
 	into the sequence of arguments that %o will substitute later.
+ %W{...}
+	like %{...} but mark last argument supplied within
+	as a file to be deleted on failure.
  %o	substitutes the names of all the output files, with spaces
 	automatically placed around them.  You should write spaces
 	around the %o as well or the results are undefined.
@@ -80,6 +83,7 @@ or with constant text in a single argument.
  %l     process LINK_SPEC as a spec.
  %L     process LIB_SPEC as a spec.
  %S     process STARTFILE_SPEC as a spec.  A capital S is actually used here.
+ %E     process ENDFILE_SPEC as a spec.  A capital E is actually used here.
  %c	process SIGNED_CHAR_SPEC as a spec.
  %C     process CPP_SPEC as a spec.  A capital C is actually used here.
  %1	process CC1_SPEC as a spec.
@@ -127,9 +131,12 @@ position among the other output files.
 #include "gvarargs.h"
 
 #ifdef USG
+#ifndef R_OK
 #define R_OK 4
 #define W_OK 2
 #define X_OK 1
+#endif
+
 #define vfork fork
 #endif /* USG */
 
@@ -187,6 +194,11 @@ void fancy_abort ();
 #define LIB_SPEC "%{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p}"
 #endif
 
+/* config.h can define ENDFILE_SPEC to override the default crtn files.  */
+#ifndef ENDFILE_SPEC
+#define ENDFILE_SPEC ""
+#endif
+
 /* config.h can define STARTFILE_SPEC to override the default crt0 files.  */
 #ifndef STARTFILE_SPEC
 #define STARTFILE_SPEC  \
@@ -233,51 +245,51 @@ struct compiler compilers[] =
   {".c",
    "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{i*} %{trigraphs} -undef \
         -D__GNUC__ %{ansi:-trigraphs -$ -D__STRICT_ANSI__} %{!ansi:%p} %P\
-        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{P}\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %{w} %C\
+        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%W{o*}}%{M*:%W{o*}} |\n\
     %{!M*:%{!E:cc1 %{!pipe:%g.cpp} %1 \
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
-		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
+		   %{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+		      %{c:%W{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
                       %{!pipe:%g.s}\n }}}"},
   {".cc",
    "cpp -+ %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{i*} \
         -undef -D__GNUC__ -D__GNUG__ %p %P\
-        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{P}\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %{w} %C\
+        %i %{!M*:%{!E:%{!pipe:%g.cpp}}}%{E:%W{o*}}%{M*:%W{o*}} |\n\
     %{!M*:%{!E:cc1plus %{!pipe:%g.cpp} %1\
 		   %{!Q:-quiet} -dumpbase %i %{Y*} %{d*} %{m*} %{f*} %{a}\
 		   %{g} %{O} %{W*} %{w} %{pedantic} %{traditional}\
 		   %{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
 		   %{pg:%{fomit-frame-pointer:%e-pg and -fomit-frame-pointer are incompatible}}\
-		   %{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
+		   %{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
               %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-		      %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+		      %{c:%W{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
                       %{!pipe:%g.s}\n }}}"},
   {".i",
    "cc1 %i %1 %{!Q:-quiet} %{Y*} %{d*} %{m*} %{f*} %{a}\
 	%{g} %{O} %{W*} %{w} %{pedantic} %{ansi} %{traditional}\
 	%{v:-version} %{gg:-symout %g.sym} %{pg:-p} %{p}\
-	%{S:%{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
+	%{S:%W{o*}%{!o*:-o %b.s}}%{!S:-o %{|!pipe:%g.s}} |\n\
     %{!S:as %{R} %{j} %{J} %{h} %{d2} %a %{gg:-G %g.sym}\
-            %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %{!pipe:%g.s}\n }"},
+            %{c:%W{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %{!pipe:%g.s}\n }"},
   {".s",
    "%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
-            %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %i\n }"},
+            %{c:%W{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o} %i\n }"},
   {".S",
    "cpp %{nostdinc} %{C} %{v} %{D*} %{U*} %{I*} %{M*} %{trigraphs} \
         -undef -D__GNUC__ -$ %p %P\
-        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic}\
-	%{Wcomment*} %{Wtrigraphs} %{Wall} %C\
-        %i %{!M*:%{!E:%{!pipe:%g.s}}}%{E:%{o*}}%{M*:%{o*}} |\n\
+        %c %{O:-D__OPTIMIZE__} %{traditional} %{pedantic} %{P}\
+	%{Wcomment*} %{Wtrigraphs} %{Wall} %{w} %C\
+        %i %{!M*:%{!E:%{!pipe:%g.s}}}%{E:%W{o*}}%{M*:%W{o*}} |\n\
     %{!M*:%{!E:%{!S:as %{R} %{j} %{J} %{h} %{d2} %a \
-                    %{c:%{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
+                    %{c:%W{o*}%{!o*:-o %w%b.o}}%{!c:-o %d%w%b.o}\
 		    %{!pipe:%g.s}\n }}}"},
   /* Mark end of table */
   {0, 0}
@@ -287,7 +299,7 @@ struct compiler compilers[] =
 char *link_spec = "%{!c:%{!M*:%{!E:%{!S:ld %{o*} %l\
  %{A} %{d} %{e*} %{N} %{n} %{r} %{s} %{S} %{T*} %{t} %{u*} %{X} %{x} %{z}\
  %{y*} %{!A:%{!nostdlib:%S}} \
- %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L gnulib%s}\n }}}}";
+ %{L*} %o %{!nostdlib:gnulib%s %{g:-lg} %L gnulib%s %{!A:%E}}\n }}}}";
 
 /* Accumulate a command (program name and args), and run it.  */
 
@@ -985,7 +997,13 @@ process_command (argc, argv)
 	  if ((SWITCH_TAKES_ARG (c) && p[1] == 0)
 	      || WORD_SWITCH_TAKES_ARG (p))
 	    switches[n_switches].part2 = argv[++i];
-	  else
+	  else if (c == 'o') {
+	    /* On some systems, ld cannot handle -o without space.
+	       So split the -o and its argument.  */
+	    switches[n_switches].part2 = (char *) xmalloc (strlen (p));
+	    strcpy (switches[n_switches].part2, &p[1]);
+	    p[1] = 0;
+	  } else
 	    switches[n_switches].part2 = 0;
 	  switches[n_switches].valid = 0;
 	  n_switches++;
@@ -1199,6 +1217,7 @@ do_spec_1 (spec, inswitch)
 	      while (*p != 0 && *p != '\n') p++;
 	      buf = (char *) alloca (p - q + 1);
 	      strncpy (buf, q, p - q);
+	      buf[p - q] = 0;
 	      error ("%s", buf);
 	      return -1;
 	    }
@@ -1226,6 +1245,22 @@ do_spec_1 (spec, inswitch)
 	  case 's':
 	    this_is_library_file = 1;
 	    break;
+
+	  case 'W':
+	    {
+	      int index = argbuf_index;
+	      /* Handle the {...} following the %W.  */
+	      if (*p != '{')
+		abort ();
+	      p = handle_braces (p + 1);
+	      if (p == 0)
+		return -1;
+	      /* If any args were output, mark the last one for deletion
+		 on failure.  */
+	      if (argbuf_index != index)
+		record_temp_file (argbuf[argbuf_index - 1], 0, 1);
+	      break;
+	    }
 
 	  case 'w':
 	    this_is_output_file = 1;
@@ -1309,6 +1344,10 @@ do_spec_1 (spec, inswitch)
 
 	  case 'S':
 	    do_spec_1 (STARTFILE_SPEC, 0);
+	    break;
+
+	  case 'E':
+	    do_spec_1 (ENDFILE_SPEC, 0);
 	    break;
 
 	  default:
@@ -1665,6 +1704,8 @@ main (argc, argv)
     signal (SIGHUP, fatal_error);
   if (signal (SIGTERM, SIG_IGN) != SIG_IGN)
     signal (SIGTERM, fatal_error);
+  if (signal (SIGPIPE, SIG_IGN) != SIG_IGN)
+    signal (SIGPIPE, fatal_error);
 
   argbuf_length = 10;
   argbuf = (char **) xmalloc (argbuf_length * sizeof (char *));
@@ -1913,7 +1954,7 @@ fatal (va_alist)
   vfprintf (stderr, format, ap);
   va_end (ap);
   fprintf (stderr, "\n");
-  delete_temp_files (0);
+  delete_temp_files ();
   exit (1);
 }  
 

@@ -48,6 +48,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #ifdef HPUX_ASM
 
+/* "-V 3" says that setjmp and longjmp need to save the fpu regs.  */
+
 #define ASM_SPEC "%{m68000:+X} -V 3"
 
 #if TARGET_DEFAULT & 02  /* -m68881 is the default */
@@ -59,13 +61,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE} -D__HPUX_ASM__"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}} -D__HPUX_ASM__"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE} -D__HPUX_ASM__"
 
 #endif /* default is -msoft-float */
 
@@ -75,13 +77,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_SPEC \
 "%{!msoft-float:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE}"
 
 #else /* default is -msoft-float */
 
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }\
-%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}}}"
+%{!ansi:%{!mc68000:%{!m68000:-Dmc68020}} -D_HPUX_SOURCE}"
 
 #endif /* default is -msoft-float */
 
@@ -91,8 +93,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
  "%{m68000:-mc68000}%{mc68000:-mc68000}%{!mc68000:%{!m68000:-mc68020}}"
 
 /* special directory for gnu libs on hp-ux system */
-#undef STANDARD_STARTFILE_PREFIX
+#ifndef STANDARD_STARTFILE_PREFIX
 #define STANDARD_STARTFILE_PREFIX "/usr/local/lib/gnu/"
+#endif
 
 #endif /* Not HPUX_ASM */
 
@@ -101,7 +104,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* These are the ones defined by HPUX cc, plus mc68000 for uniformity with
    GCC on other 68000 systems.  */
 
-#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dhpux -Dunix -D__hp9000s300 -D_HPUX_SOURCE"
+#define CPP_PREDEFINES "-Dhp9000s200 -Dhp9000s300 -DPWB -Dhpux -Dunix -D__hp9000s300 -D__hp9000s200 -D__PWB -D__hpux -D__unix"
 
 /* Every structure or union's size must be a multiple of 2 bytes.  */
 
@@ -113,13 +116,13 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* Generate calls to memcpy, memcmp and memset.  */
 #define TARGET_MEM_FUNCTIONS
 
-/* Function calls don't save any fp registers on hpux.  */
+/* Function calls do save some fp registers on hpux version 7.  */
 
 #undef CALL_USED_REGISTERS
 #define CALL_USED_REGISTERS						\
  {1, 1, 0, 0, 0, 0, 0, 0,						\
   1, 1, 0, 0, 0, 0, 0, 1,						\
-  1, 1, 1, 1, 1, 1, 1, 1}
+  1, 1, 0, 0, 0, 0, 0, 0}
 
 #ifdef HPUX_ASM
 
@@ -188,6 +191,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
   if (exact_log2 (mask) >= 0)					\
     fprintf (FILE, "\tmov.l %s,-(%%sp)\n", reg_names[15 - exact_log2 (mask)]);  \
   else if (mask) fprintf (FILE, "\tmovm.l &0x%x,-(%%sp)\n", mask); }
+
+#define PROFILE_BEFORE_PROLOGUE
 
 #define FUNCTION_PROFILER(FILE, LABEL_NO) \
    fprintf (FILE, "\tmov.l &LP%d,%%a0\n\tjsr mcount\n", (LABEL_NO));
@@ -280,7 +285,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -288,7 +293,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tlcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,2\n", (ROUNDED)))
+  fprintf ((FILE), ",%u,2\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -354,7 +359,7 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
     abort ();
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\tspace %d\n", (SIZE))
+  fprintf (FILE, "\tspace %u\n", (SIZE))
 
 #define ASM_OUTPUT_SOURCE_FILENAME(FILE, FILENAME)
 #define ASM_OUTPUT_SOURCE_LINE(FILE, LINENO)
@@ -587,10 +592,4 @@ do{  if (PREFIX[0] == 'L' && PREFIX[1] == 'I')		\
 
 #define ASM_IDENTIFY_GCC(FILE)
 
-#else /* not HPUX_ASM */
-
-#undef FUNCTION_PROFILER
-#define FUNCTION_PROFILER(FILE, LABELNO)  \
-   fprintf (FILE, "\tmovl #LP%d,d0\n\tjsr mcount\n", (LABELNO));
-
-#endif /* not HPUX_ASM */
+#endif /* HPUX_ASM */

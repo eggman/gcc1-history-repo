@@ -160,7 +160,7 @@ qualify_type (type, like)
 {
   int constflag = TREE_READONLY (type) || TREE_READONLY (like);
   int volflag = TREE_VOLATILE (type) || TREE_VOLATILE (like);
-  return build_type_variant (type, constflag, volflag);
+  return c_build_type_variant (type, constflag, volflag);
 }
 
 /* Return the common type of two types.
@@ -252,7 +252,7 @@ commontype (t1, t2)
 	  = TREE_READ_ONLY (TREE_TYPE (t1)) || TREE_READ_ONLY (TREE_TYPE (t2));
 	int volatilep
 	  = TREE_VOLATILE (TREE_TYPE (t1)) || TREE_VOLATILE (TREE_TYPE (t2));
-	return build_pointer_type (build_type_variant (target, constp, volatilep));
+	return build_pointer_type (c_build_type_variant (target, constp, volatilep));
       }
 #endif
       return build_pointer_type (commontype (TREE_TYPE (t1), TREE_TYPE (t2)));
@@ -723,8 +723,8 @@ default_conversion (exp)
 	}
 
       if (TREE_READONLY (exp) || TREE_THIS_VOLATILE (exp))
-	restype = build_type_variant (restype, TREE_READONLY (exp),
-				      TREE_THIS_VOLATILE (exp));
+	restype = c_build_type_variant (restype, TREE_READONLY (exp),
+					TREE_THIS_VOLATILE (exp));
 
       ptrtype = build_pointer_type (restype);
 
@@ -830,6 +830,13 @@ build_indirect_ref (ptr, errorstring)
 	register tree ref = build (INDIRECT_REF,
 				   TYPE_MAIN_VARIANT (t), pointer);
 
+	if (TREE_CODE (t) == VOID_TYPE
+	    || (TYPE_SIZE (t) == 0 && TREE_CODE (t) != ARRAY_TYPE))
+	  {
+	    error ("dereferencing pointer to incomplete type");
+	    return error_mark_node;
+	  }
+
 	TREE_READONLY (ref) = TREE_READONLY (t);
 	TREE_VOLATILE (ref) = TREE_VOLATILE (t) || TREE_VOLATILE (pointer);
 	TREE_THIS_VOLATILE (ref) = TREE_VOLATILE (t);
@@ -862,7 +869,7 @@ build_array_ref (array, index)
   if (TREE_CODE (TREE_TYPE (array)) == ARRAY_TYPE
       && TREE_CODE (array) != INDIRECT_REF)
     {
-      tree rval;
+      tree rval, type;
 
       index = default_conversion (index);
       if (index != error_mark_node
@@ -896,7 +903,8 @@ build_array_ref (array, index)
 	    warning ("ANSI C forbids subscripting non-lvalue array");
 	}
 
-      rval = build (ARRAY_REF, TREE_TYPE (TREE_TYPE (array)), array, index);
+      type = TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (array)));
+      rval = build (ARRAY_REF, type, array, index);
       /* Array ref is const/volatile if the array elements are.  */
       TREE_READONLY (rval) |= TREE_READONLY (TREE_TYPE (TREE_TYPE (array)));
       TREE_VOLATILE (rval) |= TREE_VOLATILE (TREE_TYPE (TREE_TYPE (array)));
@@ -1357,12 +1365,12 @@ build_binary_op_nodefault (code, op0, op1, error_code)
 	     Otherwise, the targets must be the same.  */
 	  if (comp_target_types (dt0, dt1))
 	    ;
-	  else if (tt0 == void_type_node)
+	  else if (TYPE_MAIN_VARIANT (tt0) == void_type_node)
 	    {
 	      if (pedantic && TREE_CODE (tt1) == FUNCTION_TYPE)
 		warning ("ANSI C forbids comparison of `void *' with function pointer");
 	    }
-	  else if (tt1 == void_type_node)
+	  else if (TYPE_MAIN_VARIANT (tt1) == void_type_node)
 	    {
 	      if (pedantic && TREE_CODE (tt0) == FUNCTION_TYPE)
 		warning ("ANSI C forbids comparison of `void *' with function pointer");
@@ -2128,7 +2136,7 @@ build_unary_op (code, xarg, noconvert)
       if (typecode != INTEGER_TYPE
 	  && typecode != REAL_TYPE && typecode != POINTER_TYPE
 	  /* This will convert to a pointer.  */
-	  && typecode != ARRAY_TYPE)
+	  && typecode != ARRAY_TYPE && typecode != FUNCTION_TYPE)
 	{
 	  errstring = "wrong type argument to unary exclamation mark";
 	  break;
@@ -2183,13 +2191,14 @@ build_unary_op (code, xarg, noconvert)
 
 	if (typecode == POINTER_TYPE)
 	  {
-	    if (pedantic && (TREE_CODE (argtype) == FUNCTION_TYPE
-			     || TREE_CODE (argtype) == VOID_TYPE))
+	    if (pedantic
+		&& (TREE_CODE (TREE_TYPE (result_type)) == FUNCTION_TYPE
+		    || TREE_CODE (TREE_TYPE (result_type)) == VOID_TYPE))
 	      warning ("wrong type argument to %s",
 		       ((code == PREINCREMENT_EXPR
 			 || code == POSTINCREMENT_EXPR)
 			? "increment" : "decrement"));
-	    inc = c_sizeof_nowarn (TREE_TYPE (argtype));
+	    inc = c_sizeof_nowarn (TREE_TYPE (result_type));
 	  }
 	else
 	  inc = integer_one_node;
@@ -2242,7 +2251,13 @@ build_unary_op (code, xarg, noconvert)
 
       /* Let &* cancel out to simplify resulting code.  */
       if (TREE_CODE (arg) == INDIRECT_REF)
-	return TREE_OPERAND (arg, 0);
+	{
+	  /* Don't let this be an lvalue.  */
+	  if (lvalue_p (TREE_OPERAND (arg, 0)))
+	    return build (NOP_EXPR, TREE_TYPE (TREE_OPERAND (arg, 0)),
+			  TREE_OPERAND (arg, 0));
+	  return TREE_OPERAND (arg, 0);
+	}
 
       /* For &x[y], return x+y */
       if (TREE_CODE (arg) == ARRAY_REF)
@@ -2289,9 +2304,9 @@ build_unary_op (code, xarg, noconvert)
       /* Ordinary case; arg is a COMPONENT_REF or a decl.  */
       argtype = TREE_TYPE (arg);
       if (TREE_READONLY (arg) || TREE_THIS_VOLATILE (arg))
-	argtype = build_type_variant (argtype,
-				      TREE_READONLY (arg),
-				      TREE_THIS_VOLATILE (arg));
+	argtype = c_build_type_variant (argtype,
+					TREE_READONLY (arg),
+					TREE_THIS_VOLATILE (arg));
 
       argtype = build_pointer_type (argtype);
 
@@ -2484,7 +2499,7 @@ truthvalue_conversion (expr)
 
   /* Distribute the conversion into the arms of a COND_EXPR.  */
   if (form == COND_EXPR)
-    return build (COND_EXPR, TREE_TYPE (expr),
+    return build (COND_EXPR, integer_type_node,
 		  TREE_OPERAND (expr, 0),
 		  truthvalue_conversion (TREE_OPERAND (expr, 1)),
 		  truthvalue_conversion (TREE_OPERAND (expr, 2)));
@@ -2564,6 +2579,11 @@ invert_truthvalue (arg)
 
     case TRUTH_NOT_EXPR:
       return TREE_OPERAND (arg, 0);
+
+    case COND_EXPR:
+      return build (COND_EXPR, TREE_TYPE (arg), TREE_OPERAND (arg, 0),
+		    build_unary_op (TRUTH_NOT_EXPR, TREE_OPERAND (arg, 1), 0),
+		    build_unary_op (TRUTH_NOT_EXPR, TREE_OPERAND (arg, 2), 0));
     }
   return 0;
 }
@@ -2641,6 +2661,7 @@ build_conditional_expr (ifexp, op1, op2)
       || TREE_CODE (TREE_TYPE (op2)) == ERROR_MARK)
     return error_mark_node;
 
+#if 0 /* Produces wrong result if within sizeof.  */
   /* Don't promote the operands separately if they promote
      the same way.  Return the unpromoted type and let the combined
      value get promoted if necessary.  */
@@ -2657,6 +2678,7 @@ build_conditional_expr (ifexp, op1, op2)
 
       return build (COND_EXPR, TREE_TYPE (op1), ifexp, op1, op2);
     }
+#endif
 
   /* They don't match; promote them both and then try to reconcile them.  */
 
@@ -2689,6 +2711,10 @@ build_conditional_expr (ifexp, op1, op2)
     {
       if (comp_target_types (type1, type2))
 	result_type = commontype (type1, type2);
+      else if (integer_zerop (op1) && TREE_TYPE (type1) == void_type_node)
+	result_type = qualify_type (type2, type1);
+      else if (integer_zerop (op2) && TREE_TYPE (type2) == void_type_node)
+	result_type = qualify_type (type1, type2);
       else if (TYPE_MAIN_VARIANT (TREE_TYPE (type1)) == void_type_node)
 	{
 	  if (pedantic && TREE_CODE (type2) == FUNCTION_TYPE)
@@ -2714,8 +2740,10 @@ build_conditional_expr (ifexp, op1, op2)
       else
 	{
 	  op2 = null_pointer_node;
+#if 0  /* The spec seems to say this is permitted.  */
 	  if (pedantic && TREE_CODE (type1) == FUNCTION_TYPE)
 	    warning ("ANSI C forbids conditional expr between 0 and function pointer");
+#endif
 	}
       result_type = type1;
     }
@@ -2726,8 +2754,10 @@ build_conditional_expr (ifexp, op1, op2)
       else
 	{
 	  op1 = null_pointer_node;
+#if 0  /* The spec seems to say this is permitted.  */
 	  if (pedantic && TREE_CODE (type2) == FUNCTION_TYPE)
 	    warning ("ANSI C forbids conditional expr between 0 and function pointer");
+#endif
 	}
       result_type = type2;
     }
@@ -2842,6 +2872,12 @@ build_c_cast (type, expr)
       && TREE_TYPE (value) == TREE_TYPE (TREE_OPERAND (value, 0)))
     value = TREE_OPERAND (value, 0);
 
+  if (TREE_CODE (type) == ARRAY_TYPE)
+    {
+      error ("cast specifies array type");
+      return error_mark_node;
+    }
+
   if (type == TREE_TYPE (value))
     {
       if (pedantic)
@@ -2854,7 +2890,11 @@ build_c_cast (type, expr)
   else
     {
       tree otype;
-      value = default_conversion (value);
+      /* Convert functions and arrays to pointers,
+	 but don't convert any other types.  */
+      if (TREE_CODE (TREE_TYPE (value)) == FUNCTION_TYPE
+	  || TREE_CODE (TREE_TYPE (value)) == ARRAY_TYPE)
+	value = default_conversion (value);
       otype = TREE_TYPE (value);
 
       /* Optionally warn about potentially worrysome casts.  */
@@ -3338,24 +3378,14 @@ digest_init (type, init, tail)
 	  error ("union with no members cannot be initialized");
 	  return error_mark_node;
 	}
-      if (! raw_constructor)
+
+      if (raw_constructor)
+	return process_init_constructor (type, init, 0);
+      else if (tail != 0)
 	{
-	  error ("type mismatch in initialization");
-	  return error_mark_node;
+	  *tail = old_tail_contents;
+	  return process_init_constructor (type, 0, tail);
 	}
-      if (element == 0)
-	{
-	  error ("union initializer requires one element");
-	  return error_mark_node;
-	}
-      /* Take just the first element from within the constructor
-	 and it should match the type of the first element.  */
-      element = digest_init (TREE_TYPE (TYPE_FIELDS (type)), element, 0);
-      result = build (CONSTRUCTOR, type, 0, build_tree_list (0, element));
-      TREE_LITERAL (result) = TREE_LITERAL (element);
-      TREE_STATIC (result) = (initializer_constant_valid_p (element)
-			      && TREE_LITERAL (element));
-      return result;
     }
 
   /* Initialization of an array of chars from a string constant
@@ -3383,14 +3413,12 @@ digest_init (type, init, tail)
 	    }
 	  if ((TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (string)))
 	       == char_type_node)
-	      && TYPE_PRECISION (typ1) != TYPE_PRECISION (char_type_node))
+	      && TYPE_PRECISION (typ1) == TYPE_PRECISION (integer_type_node))
 	    {
 	      error ("int-array initialized from non-wide string");
 	      return error_mark_node;
 	    }
 
-	  if (pedantic && typ1 != char_type_node)
-	    warning ("ANSI C forbids string initializer except for `char' elements");
 	  TREE_TYPE (string) = type;
 	  if (TYPE_DOMAIN (type) != 0
 	      && TREE_LITERAL (TYPE_SIZE (type)))
@@ -3580,6 +3608,37 @@ process_init_constructor (type, init, elts)
 	    allsimple = 0;
 	  members = tree_cons (field, next1, members);
 	}
+    }
+
+  if (TREE_CODE (type) == UNION_TYPE)
+    {
+      register tree field = TYPE_FIELDS (type);
+      register tree next1;
+
+      /* For a union, get the initializer for 1 fld.  */
+
+      if (TREE_VALUE (tail) != 0)
+	{
+	  tree tail1 = tail;
+	  next1 = digest_init (TREE_TYPE (field),
+			       TREE_VALUE (tail), &tail1);
+	  if (tail1 != 0 && TREE_CODE (tail1) != TREE_LIST)
+	    abort ();
+	  tail = tail1;
+	}
+      else
+	{
+	  next1 = error_mark_node;
+	  tail = TREE_CHAIN (tail);
+	}
+
+      if (next1 == error_mark_node)
+	error = 1;
+      else if (!TREE_LITERAL (next1))
+	allconstant = 0;
+      else if (! initializer_constant_valid_p (next1))
+	allsimple = 0;
+      members = tree_cons (field, next1, members);
     }
 
   /* If arguments were specified as a list, just remove the ones we used.  */

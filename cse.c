@@ -454,6 +454,8 @@ rtx_cost (x)
     }
 
   total = 2;
+  if (code == MEM)
+    total = 2 * GET_MODE_SIZE (GET_MODE (x)) / UNITS_PER_WORD;
 
   /* Sum the costs of the sub-rtx's, plus 2 just put in.  */
 
@@ -3088,10 +3090,17 @@ cse_insn (insn)
 		      && !exp_equiv_p (elt->exp, elt->exp, 1))
 		     || elt->equivalence_only)
 		elt = elt->next_same_value;
-	      src = copy_rtx (elt->exp);
-	      hash_arg_in_memory = 0;
-	      hash_arg_in_struct = 0;
-	      sets[i].src_hash_code = HASH (src, elt->mode);
+	      /* Don't replace with things that are not likely to be valid,
+		 such as arithmetic expressions, unless the destination is
+		 a register.  */
+	      if (general_operand (elt->exp, VOIDmode)
+		  || GET_CODE (dest) == REG)
+		{
+		  src = copy_rtx (elt->exp);
+		  hash_arg_in_memory = 0;
+		  hash_arg_in_struct = 0;
+		  sets[i].src_hash_code = HASH (src, elt->mode);
+		}
 	    }
 
 	  /* If ELT is a constant, is there a register
@@ -3144,10 +3153,19 @@ cse_insn (insn)
 		  SET_SRC (sets[i].rtl) = src;
 #endif
 
-		  /* Record the actual constant value in a REG_EQUIV note.  */
+		  /* Record the actual constant value
+		     in a REG_EQUIV or REG_EQUAL note.  */
 		  if (GET_CODE (SET_DEST (sets[i].rtl)) == REG)
-		    REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUIV,
-						oldsrc, REG_NOTES (insn));
+		    {
+		      /* A REG_EQUIV note means the dest never changes.
+			 Don't put one on unless there is already one.  */
+		      rtx note = find_reg_note (insn, REG_EQUIV, 0);
+		      if (note != 0)
+			XEXP (note, 0) = oldsrc;
+		      else
+			REG_NOTES (insn) = gen_rtx (EXPR_LIST, REG_EQUAL,
+						    oldsrc, REG_NOTES (insn));
+		    }
 		}
 	    }
 

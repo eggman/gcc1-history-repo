@@ -12,22 +12,20 @@ void __eprintf ();		/* Defined in gnulib */
 #ifdef __STDC__
 
 #define assert(expression)  \
-  ((expression) ? 0 : (__assert (#expression, __FILE__, __LINE__), 0))
+  ((void) ((expression) ? 0 : __assert (#expression, __FILE__, __LINE__)))
 
-#define __assert(expression, file, line)  \
+#define __assert(expression, file, lineno)  \
   (__eprintf ("Failed assertion `%s' at line %d of `%s'.\n",	\
-	      expression, line, file),				\
-   abort ())
+	      expression, lineno, file), 0)
 
 #else /* no __STDC__; i.e. -traditional.  */
 
 #define assert(expression)  \
-  ((expression) ? 0 : __assert (expression, __FILE__, __LINE__))
+  ((void) ((expression) ? 0 : __assert (expression, __FILE__, __LINE__)))
 
 #define __assert(expression, file, lineno)  \
   (__eprintf ("Failed assertion `%s' at line %d of `%s'.\n",	\
-	      "expression", lineno, file),			\
-   abort ())
+	      "expression", lineno, file), 0)
 
 #endif /* no __STDC__; i.e. -traditional.  */
 

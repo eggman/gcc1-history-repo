@@ -19,9 +19,21 @@
 *								   *
 \******************************************************************/
 
+/* Modified by Richard Stallman, November 1990, to initialize HUGE_VAL
+   specially on a Sun.
+   December 1989, add parens around `&' in pow.  */
+
 #include <errno.h>
 
 #ifndef HUGE_VAL
+#ifdef __sun__
+/* The Sun assembler fails to handle the hex constant in the usual defn.  */
+#define HUGE_VAL							\
+({									\
+  static union { int i[2]; double d; } u = { {0x7ff00000, 0} };		\
+  u.d;									\
+})
+#else
 #define HUGE_VAL							\
 ({									\
   double huge_val;							\
@@ -31,6 +43,7 @@
 	 : /* no inputs */);						\
   huge_val;								\
 })
+#endif
 #endif
 
 __inline static const double sin (double x)

@@ -30,15 +30,19 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
    Also, it is hard to debug with shared libraries,
    so don't use them if going to debug.  */
 
-#define LINK_SPEC "%{!e*:-e start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{-Bstatic}"
+#define LINK_SPEC "%{!e*:-e start} -dc -dp %{g:-Bstatic} %{static:-Bstatic} %{Bstatic}"
 
 /* Special flags to the Sun-4 assembler when using pipe for input.  */
 
 #define ASM_SPEC " %{pipe:-} "
 
-/* Prevent error on `-sun4' option.  */
+/* Prevent error on `-dalign', `-sun4' and `-target sun4' options.  */
 
-#define CC1_SPEC "%{sun4:}"
+#define CC1_SPEC "%{dalign:} %{sun4:} %{target:}"
+
+/* These compiler options take an argument.  We ignore -target for now.  */
+
+#define WORD_SWITCH_TAKES_ARG(STR)	(!strcmp (STR, "target"))
 
 /* Names to predefine in the preprocessor for this target machine.  */
 
@@ -142,7 +146,7 @@ extern int target_flags;
 #define STRUCTURE_SIZE_BOUNDARY 8
 
 /* A bitfield declared as `int' forces `int' alignment for the struct.  */
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT 64
@@ -532,14 +536,18 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    is at least partially passed in a register unless its data type forbids.  */
   
 #define FUNCTION_ARG(CUM, MODE, TYPE, NAMED)				\
-((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))	\
+((CUM) < NPARM_REGS							\
+ && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))			\
+ && ((MODE) != BLKmode || (TYPE_ALIGN ((TYPE)) % 32 == 0))		\
  ? gen_rtx (REG, (MODE), BASE_PASSING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* Define where a function finds its arguments.
    This is different from FUNCTION_ARG because of register windows.  */
 
 #define FUNCTION_INCOMING_ARG(CUM, MODE, TYPE, NAMED)			\
-((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))	\
+((CUM) < NPARM_REGS							\
+ && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))			\
+ && ((MODE) != BLKmode || (TYPE_ALIGN ((TYPE)) % 32 == 0))		\
  ? gen_rtx (REG, (MODE), BASE_INCOMING_ARG_REG (MODE) + (CUM)) : 0)
 
 /* For an arg passed partly in registers and partly in memory,
@@ -549,7 +557,9 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    needs partial registers on the Sparc.  */
   
 #define FUNCTION_ARG_PARTIAL_NREGS(CUM, MODE, TYPE, NAMED) 		\
-  (((CUM) < NPARM_REGS && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))\
+  (((CUM) < NPARM_REGS							\
+    && ((TYPE)==0 || ! TREE_ADDRESSABLE ((tree)(TYPE)))			\
+    && ((MODE) != BLKmode || (TYPE_ALIGN ((TYPE)) % 32 == 0))		\
     && ((CUM)								\
 	+ ((MODE) == BLKmode						\
 	   ? (int_size_in_bytes (TYPE) + 3) / 4				\
@@ -1109,6 +1119,13 @@ extern union tree_node *current_function_decl;
   else if (GET_CODE (EXP) == CALL)				\
     { /* all bets are off */ CC_STATUS_INIT; }			\
 }
+
+#define OUTPUT_JUMP(NORMAL, NO_OV, FLOAT)  \
+{ if (cc_prev_status.flags & CC_IN_FCCR)			\
+    return FLOAT;						\
+  if (cc_prev_status.flags & CC_NO_OVERFLOW)			\
+    return NO_OV;						\
+  return NORMAL; }
 
 /* Control the assembler format that we output.  */
 
@@ -1257,7 +1274,7 @@ extern union tree_node *current_function_decl;
     fprintf (FILE, "\t.align %d\n", (1<<(LOG)))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.skip %d\n", (SIZE))
+  fprintf (FILE, "\t.skip %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1267,7 +1284,7 @@ extern union tree_node *current_function_decl;
   assemble_name ((FILE), (NAME)),		\
   fputs ("\n.common ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,\"bss\"\n", (ROUNDED)))
+  fprintf ((FILE), ",%u,\"bss\"\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1275,7 +1292,7 @@ extern union tree_node *current_function_decl;
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\n.reserve ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,\"bss\"\n", (ROUNDED)))
+  fprintf ((FILE), ",%u,\"bss\"\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1307,7 +1324,12 @@ extern union tree_node *current_function_decl;
    On SPARC, the CODE can be `r', meaning this is a register-only operand
    and an immediate zero should be represented as `r0'.
    It can also be `m', meaning that X is a memory reference but print
-   its address as a non-memory operand.  */
+   its address as a non-memory operand.
+
+   Codes C, N, F, I, and U are used for printing the opcodes of conditional
+   branches.  C prints the opcode for a given condition; N the negated opcode.
+   F prints the negated floating point opcode (different because of nans).
+   I prints the opcode that ignores the overflow bit, and U its negation.  */
 
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { if (GET_CODE (X) == REG)					\
@@ -1336,6 +1358,24 @@ extern union tree_node *current_function_decl;
     case GEU: fputs ("geu", FILE); break;			\
     case LTU: fputs ("lu", FILE); break;			\
     case LEU: fputs ("leu", FILE); break;			\
+    }								\
+  else if ((CODE) == 'I') switch (GET_CODE (X))			\
+    {								\
+    case EQ: fputs ("e", FILE); break;				\
+    case NE: fputs ("ne", FILE); break;				\
+    case GE: fputs ("pos", FILE); break;			\
+    case LT: fputs ("neg", FILE); break;			\
+    default:							\
+       abort ();						\
+    }								\
+  else if ((CODE) == 'U') switch (GET_CODE (X))			\
+    {								\
+    case EQ: fputs ("ne", FILE); break;				\
+    case NE: fputs ("e", FILE); break;				\
+    case GE: fputs ("neg", FILE); break;			\
+    case LT: fputs ("pos", FILE); break;			\
+    default:							\
+       abort ();						\
     }								\
   else if ((CODE) == 'N') switch (GET_CODE (X))			\
     {								\

@@ -5,7 +5,8 @@
 
    Name changed to `hard-params' by Richard Stallman, April 89.
    xmalloc function defined, Richard Stallman, June 89.
-   Avoin macro in #include, Richard Stallman, Jan 90.
+   Avoid macro in #include, Richard Stallman, Jan 90.
+   Undef CHAR_BIT, etc., if defined in stdio.h, Richard Stallman, Aug 90.
 
    Copyright (c) 1988, 1989 Steven Pemberton, CWI, Amsterdam.
    All rights reserved.
@@ -193,6 +194,17 @@
 #endif
 
 #include <stdio.h>
+
+/* Kludge around the possiblity that <stdio.h> includes <limits.h> */
+#ifdef CHAR_BIT
+#undef CHAR_BIT
+#undef CHAR_MAX
+#undef CHAR_MIN
+#undef SCHAR_MAX
+#undef SCHAR_MIN
+#undef UCHAR_MAX
+#undef UCHAR_MIN
+#endif
 
 #ifdef VERIFY
 #include "limits.h"

@@ -33,11 +33,11 @@ rtx adj_offsettable_operand ();
 
 /* Output a string of assembler code.
    Defined in final.c.  */
-void output_asm_insn();
+void output_asm_insn ();
 
 /* When outputting assembler code, indicates which alternative
    of the constraints was actually satisfied.  */
-int which_alternative;
+extern int which_alternative;
 
 /* When outputting delayed branch sequences, this rtx holds the
    sequence being output.  It is null when no delayed branch
@@ -45,51 +45,51 @@ int which_alternative;
    insn output code.
 
    This variable is defined  in final.c.  */
-rtx final_sequence;
+extern rtx final_sequence;
 
 /* Nonzero if function being compiled pops its args on return.
    May affect compilation of return insn or of function epilogue.  */
 
-int current_function_pops_args;
+extern int current_function_pops_args;
 
 /* Nonzero if function being compiled needs to be given an address
    where the value should be stored.  */
 
-int current_function_returns_struct;
+extern int current_function_returns_struct;
 
 /* Nonzero if function being compiled needs to
    return the address of where it has put a structure value.  */
 
-int current_function_returns_pcc_struct;
+extern int current_function_returns_pcc_struct;
 
 /* Nonzero if function being compiled needs to be passed a static chain.  */
 
-int current_function_needs_context;
+extern int current_function_needs_context;
 
 /* Nonzero if function being compiled can call setjmp.  */
 
-int current_function_calls_setjmp;
+extern int current_function_calls_setjmp;
 
 /* Nonzero if function being compiled can call alloca,
    either as a subroutine or builtin.  */
 
-int current_function_calls_alloca;
+extern int current_function_calls_alloca;
 
 /* Nonzero if the current function returns a pointer type */
 
-int current_function_returns_pointer;
+extern int current_function_returns_pointer;
 
 /* If function's args have a fixed size, this is that size, in bytes.
    Otherwise, it is -1.
    May affect compilation of return insn or of function epilogue.  */
 
-int current_function_args_size;
+extern int current_function_args_size;
 
 /* # bytes the prologue should push and pretend that the caller pushed them.
    The prologue must do this, but only if parms can be passed in registers.  */
 
-int current_function_pretend_args_size;
+extern int current_function_pretend_args_size;
 
 /* Name of function now being compiled.  */
 
-char *current_function_name;
+extern char *current_function_name;

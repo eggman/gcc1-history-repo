@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
+#define MAYBE
 
 #include "config.h"
 
@@ -25,12 +26,78 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "tree.h"
 #include "rtl.h"
 #include <stdio.h>
+
+#if defined(USG) && !defined(MIPS_DEBUGGING_INFO)
 #include <syms.h>
 /* #include <storclass.h>  used to be this instead of syms.h.  */
 
-/* Line number of beginning of current function, minus one.  */
+#else
+/* For cross compilation, use the portable defintions from the COFF
+   documentation.  */
 
-int sdb_begin_function_line = 0;
+#define  C_EFCN          -1
+#define  C_NULL          0
+#define  C_AUTO          1
+#define  C_EXT           2
+#define  C_STAT          3
+#define  C_REG           4
+#define  C_EXTDEF        5
+#define  C_LABEL         6
+#define  C_ULABEL        7
+#define  C_MOS           8
+#define  C_ARG           9
+#define  C_STRTAG        10
+#define  C_MOU           11
+#define  C_UNTAG         12
+#define  C_TPDEF         13
+#define  C_USTATIC       14
+#define  C_ENTAG         15
+#define  C_MOE           16
+#define  C_REGPARM       17
+#define  C_FIELD         18
+#define  C_BLOCK         100
+#define  C_FCN           101
+#define  C_EOS           102
+#define  C_FILE          103
+
+#define  C_LINE          104
+#define  C_ALIAS         105
+#define  C_HIDDEN        106
+
+#define  T_NULL     0
+#define  T_ARG      1
+#define  T_CHAR     2
+#define  T_SHORT    3
+#define  T_INT      4
+#define  T_LONG     5
+#define  T_FLOAT    6
+#define  T_DOUBLE   7
+#define  T_STRUCT   8
+#define  T_UNION    9
+#define  T_ENUM     10
+#define  T_MOE      11
+#define  T_UCHAR    12
+#define  T_USHORT   13
+#define  T_UINT     14
+#define  T_ULONG    15
+
+#define  DT_NON      0
+#define  DT_PTR      1
+#define  DT_FCN      2
+#define  DT_ARY      3
+
+#define  N_BTMASK     017
+#define  N_TMASK      060
+#define  N_TMASK1     0300
+#define  N_TMASK2     0360
+#define  N_BTSHFT     4
+#define  N_TSHIFT     2
+#endif
+
+/* Line number of beginning of current function, minus one.
+   Negative means not in a function or not using sdb.  */
+
+int sdb_begin_function_line = -1;
 
 /* Counter to generate unique "names" for nameless struct members.  */
 
@@ -53,6 +120,11 @@ static int plain_type_1 ();
 
 /* Put something here if lines get too long */
 #define CONTIN
+
+/* Maximum number of dimensions the assembler will allow.  */
+#ifndef SDB_MAX_DIM
+#define SDB_MAX_DIM 4
+#endif
 
 #ifndef PUT_SDB_SCL
 #define PUT_SDB_SCL(a) fprintf(asm_out_file, "\t.scl\t%d;", (a))
@@ -92,8 +164,16 @@ do { fprintf (asm_out_file, "\t.def\t");	\
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\t.size\t%d;", a)
 #endif
 
-#ifndef PUT_SDB_DIM
-#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\t.dim\t%d;", a)
+#ifndef PUT_SDB_START_DIM
+#define PUT_SDB_START_DIM fprintf(asm_out_file, "\t.dim\t")
+#endif
+
+#ifndef PUT_SDB_NEXT_DIM
+#define PUT_SDB_NEXT_DIM(a) fprintf(asm_out_file, "%d,", a)
+#endif
+
+#ifndef PUT_SDB_LAST_DIM
+#define PUT_SDB_LAST_DIM(a) fprintf(asm_out_file, "%d;", a)
 #endif
 
 #ifndef PUT_SDB_TAG
@@ -260,18 +340,42 @@ gen_fake_label ()
 #define PUSH_DERIVED_LEVEL(DT_type,PREV) \
   ((((PREV)&~N_BTMASK)<<N_TSHIFT)|(DT_type<<N_BTSHFT)|(PREV&N_BTMASK))
 
+/* Number of elements used in sdb_dims.  */
+static int sdb_n_dims = 0;
+
+/* Table of array dimensions of current type.  */
+static int sdb_dims[SDB_MAX_DIM];
+
+/* Size of outermost array currently being processed.  */
+static int sdb_type_size = -1;
+
 static int
 plain_type (type)
      tree type;
 {
   int val = plain_type_1 (type);
-  if (TREE_CODE (type) == ARRAY_TYPE)
+
+  /* If we have already saved up some array dimensions, print them now.  */
+  if (sdb_n_dims > 0)
     {
-      int size = int_size_in_bytes (type);
+      int i;
+      PUT_SDB_START_DIM;
+      for (i = sdb_n_dims - 1; i > 0; i--)
+	PUT_SDB_NEXT_DIM (sdb_dims[i]);
+      PUT_SDB_LAST_DIM (sdb_dims[0]);
+      sdb_n_dims = 0;
+
+      sdb_type_size = int_size_in_bytes (type);
       /* Don't kill sdb if type is not laid out or has variable size.  */
-      if (size < 0)
-	size = 0;
-      PUT_SDB_SIZE (size);
+      if (sdb_type_size < 0)
+	sdb_type_size = 0;
+    }
+  /* If we have computed the size of an array containing this type,
+     print it now.  */
+  if (sdb_type_size >= 0)
+    {
+      PUT_SDB_SIZE (sdb_type_size);
+      sdb_type_size = -1;
     }
   return val;
 }
@@ -343,22 +447,30 @@ plain_type_1 (type)
 	default:
 	  return T_DOUBLE;
 	}
+
     case ARRAY_TYPE:
       {
-	int m = plain_type (TREE_TYPE (type));
-	PUT_SDB_DIM (TYPE_DOMAIN (type)
-		     ? TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type))) + 1
-		     : 0);
+	int m;
+	m = plain_type_1 (TREE_TYPE (type));
+	if (sdb_n_dims < SDB_MAX_DIM)
+	  sdb_dims[sdb_n_dims++]
+	    = (TYPE_DOMAIN (type)
+	       ? TREE_INT_CST_LOW (TYPE_MAX_VALUE (TYPE_DOMAIN (type))) + 1
+	       : 0);
 	return PUSH_DERIVED_LEVEL (DT_ARY, m);
       }
+
     case RECORD_TYPE:
     case UNION_TYPE:
     case ENUMERAL_TYPE:
       {
 	char *tag;
-	int size;
 	sdbout_record_type_name (type);
-	if (TREE_ASM_WRITTEN (type))
+	if (TREE_ASM_WRITTEN (type)
+#ifdef MAYBE
+	    && KNOWN_TYPE_TAG (type)
+#endif
+	    )
 	  {
 	    /* Output the referenced structure tag name
 	       only if the .def has already been output.
@@ -367,10 +479,9 @@ plain_type_1 (type)
 	    tag = KNOWN_TYPE_TAG (type);
 	    PUT_SDB_TAG (tag);
 	  }
-	size = int_size_in_bytes (type);
-	if (size < 0)
-	  size = 0;
-	PUT_SDB_SIZE (size);
+	sdb_type_size = int_size_in_bytes (type);
+	if (sdb_type_size < 0)
+	  sdb_type_size = 0;
 	return ((TREE_CODE (type) == RECORD_TYPE) ? T_STRUCT
 		: (TREE_CODE (type) == UNION_TYPE) ? T_UNION
 		: T_ENUM);
@@ -378,13 +489,13 @@ plain_type_1 (type)
     case POINTER_TYPE:
     case REFERENCE_TYPE:
       {
-	int m = plain_type (TREE_TYPE (type));
+	int m = plain_type_1 (TREE_TYPE (type));
 	return PUSH_DERIVED_LEVEL (DT_PTR, m);
       }
     case FUNCTION_TYPE:
     case METHOD_TYPE:
       {
-	int m = plain_type (TREE_TYPE (type));
+	int m = plain_type_1 (TREE_TYPE (type));
 	return PUSH_DERIVED_LEVEL (DT_FCN, m);
       }
     default:
@@ -467,6 +578,7 @@ sdbout_symbol (decl, local)
 {
   int letter = 0;
   tree type = TREE_TYPE (decl);
+  rtx value;
 
   /* If global, first output all types and all
      struct, enum and union tags that have been created
@@ -477,6 +589,10 @@ sdbout_symbol (decl, local)
       sdbout_tags (gettags ());
       sdbout_types (nreverse (get_permanent_types ()));
     }
+
+#ifdef MAYBE
+  sdbout_one_type (type);
+#endif
 
   switch (TREE_CODE (decl))
     {
@@ -512,48 +628,61 @@ sdbout_symbol (decl, local)
       if (TREE_EXTERNAL (decl))
 	return;
 
+      value = DECL_RTL (decl);
+
       /* Don't mention a variable at all
 	 if it was completely optimized into nothingness.  */
-      if (GET_CODE (DECL_RTL (decl)) == REG
-	  && (REGNO (DECL_RTL (decl)) < 0
-	      || REGNO (DECL_RTL (decl)) >= FIRST_PSEUDO_REGISTER))
+      if (GET_CODE (value) == REG
+	  && (REGNO (value) < 0
+	      || REGNO (value) >= FIRST_PSEUDO_REGISTER))
 	return;
 
       /* Ok, start a symtab entry and output the variable name.  */
       PUT_SDB_DEF (IDENTIFIER_POINTER (DECL_NAME (decl)));
 
-      if (GET_CODE (DECL_RTL (decl)) == MEM
-	  && GET_CODE (XEXP (DECL_RTL (decl), 0)) == SYMBOL_REF)
+      if (GET_CODE (value) == MEM
+	  && GET_CODE (XEXP (value, 0)) == SYMBOL_REF)
 	{
 	  if (TREE_PUBLIC (decl))
 	    {
-	      PUT_SDB_VAL (XEXP (DECL_RTL (decl), 0));
+	      PUT_SDB_VAL (XEXP (value, 0));
               PUT_SDB_SCL (C_EXT);
 	    }
 	  else
 	    {
-	      PUT_SDB_VAL (XEXP (DECL_RTL (decl), 0));
+	      PUT_SDB_VAL (XEXP (value, 0));
               PUT_SDB_SCL (C_STAT);
 	    }
 	}
-      else if (GET_CODE (DECL_RTL (decl)) == REG)
+      else if (GET_CODE (value) == REG)
 	{
-	  PUT_SDB_INT_VAL (DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl))));
+	  PUT_SDB_INT_VAL (DBX_REGISTER_NUMBER (REGNO (value)));
 	  PUT_SDB_SCL (C_REG);
 	}
-      else if (GET_CODE (DECL_RTL (decl)) == MEM
-	       && (GET_CODE (XEXP (DECL_RTL (decl), 0)) == MEM
-		   || (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG
-		       && REGNO (XEXP (DECL_RTL (decl), 0)) != FRAME_POINTER_REGNUM)))
+      else if (GET_CODE (value) == SUBREG)
+	{
+	  int offset = 0;
+	  while (GET_CODE (value) == SUBREG)
+	    {
+	      offset += SUBREG_WORD (value);
+	      value = SUBREG_REG (value);
+	    }
+	  PUT_SDB_INT_VAL (DBX_REGISTER_NUMBER (REGNO (value) + offset));
+	  PUT_SDB_SCL (C_REG);
+	}
+      else if (GET_CODE (value) == MEM
+	       && (GET_CODE (XEXP (value, 0)) == MEM
+		   || (GET_CODE (XEXP (value, 0)) == REG
+		       && REGNO (XEXP (value, 0)) != FRAME_POINTER_REGNUM)))
 	/* If the value is indirect by memory or by a register
 	   that isn't the frame pointer
 	   then it means the object is variable-sized and address through
 	   that register or stack slot.  DBX has no way to represent this
 	   so all we can do is output the variable as a pointer.  */
 	{
-	  if (GET_CODE (XEXP (DECL_RTL (decl), 0)) == REG)
+	  if (GET_CODE (XEXP (value, 0)) == REG)
 	    {
-	      PUT_SDB_INT_VAL (DBX_REGISTER_NUMBER (REGNO (DECL_RTL (decl))));
+	      PUT_SDB_INT_VAL (DBX_REGISTER_NUMBER (REGNO (XEXP (value, 0))));
 	      PUT_SDB_SCL (C_REG);
 	    }
 	  else
@@ -562,20 +691,20 @@ sdbout_symbol (decl, local)
 		 (CONST_INT...)))).
 		 We want the value of that CONST_INT.  */
 	      /* Encore compiler hates a newline in a macro arg, it seems.  */
-	      PUT_SDB_INT_VAL (INTVAL (XEXP (XEXP (XEXP (DECL_RTL (decl), 0), 0), 1)));
+	      PUT_SDB_INT_VAL (INTVAL (XEXP (XEXP (XEXP (value, 0), 0), 1)));
 	      PUT_SDB_SCL (C_AUTO);
 	    }
 
 	  type = build_pointer_type (TREE_TYPE (decl));
 	}
-      else if (GET_CODE (DECL_RTL (decl)) == MEM
-	       && GET_CODE (XEXP (DECL_RTL (decl), 0)) == PLUS
-	       && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 0)) == REG
-	       && GET_CODE (XEXP (XEXP (DECL_RTL (decl), 0), 1)) == CONST_INT)
+      else if (GET_CODE (value) == MEM
+	       && GET_CODE (XEXP (value, 0)) == PLUS
+	       && GET_CODE (XEXP (XEXP (value, 0), 0)) == REG
+	       && GET_CODE (XEXP (XEXP (value, 0), 1)) == CONST_INT)
 	{
 	  /* DECL_RTL looks like (MEM (PLUS (REG...) (CONST_INT...))).
 	     We want the value of that CONST_INT.  */
-	  PUT_SDB_INT_VAL (INTVAL (XEXP (XEXP (DECL_RTL (decl), 0), 1)));
+	  PUT_SDB_INT_VAL (INTVAL (XEXP (XEXP (value, 0), 1)));
 	  PUT_SDB_SCL (C_AUTO);
 	}
       else
@@ -633,11 +762,9 @@ sdbout_type (type)
 }
 
 /* Output types of the fields of type TYPE, if they are structs.
-   Don't chase through pointer types, since that could be circular.
+   Formerly did not chase through pointer types, since that could be circular.
    They must come before TYPE, since forward refs are not allowed.
-
-   This is not actually used, since the COFF assembler rejects the
-   results.  No one knows why it rejects them.  */
+   Now james@bigtex.cactus.org says to try them.  */
 
 static void
 sdbout_field_types (type)
@@ -645,7 +772,14 @@ sdbout_field_types (type)
 {
   tree tail;
   for (tail = TYPE_FIELDS (type); tail; tail = TREE_CHAIN (tail))
-    sdbout_one_type (TREE_TYPE (tail));
+    {
+#ifdef MAYBE
+      if (TREE_CODE (TREE_TYPE (tail)) == POINTER_TYPE)
+	sdbout_one_type (TREE_TYPE (TREE_TYPE (tail)));
+      else
+#endif
+	sdbout_one_type (TREE_TYPE (tail));
+    }
 }
 
 /* Use this to put out the top level defined record and union types
@@ -671,9 +805,12 @@ sdbout_one_type (type)
       if (TREE_ASM_WRITTEN (type))
 	return;
 
+      /* Output nothing if type is not yet defined.  */
+      if (TYPE_SIZE (type) == 0)
+	return;
+
       TREE_ASM_WRITTEN (type) = 1;
-#if 0  /* This change, which ought to make better output,
-	  makes the COFF assembler unhappy.  */
+#ifndef MAYBE
       /* Before really doing anything, output types we want to refer to.  */
       if (TREE_CODE (type) != ENUMERAL_TYPE)
 	sdbout_field_types (type);
@@ -891,11 +1028,11 @@ sdbout_begin_block (file, line, n)
       /* Include the outermost LET_STMT's variables in block 1.  */
       next_block_number = 0;
       do_block = 0;
-      sdbout_block (DECL_INITIAL (decl), DECL_ARGUMENTS (decl));
+      sdbout_block (DECL_INITIAL (decl));
     }
   next_block_number = 0;
   do_block = n;
-  sdbout_block (DECL_INITIAL (decl), DECL_ARGUMENTS (decl));
+  sdbout_block (DECL_INITIAL (decl));
 }
 
 /* Describe the end line-number of an internal block within a function.  */
@@ -945,7 +1082,7 @@ sdbout_end_function (line)
   PUT_SDB_FUNCTION_END (line - sdb_begin_function_line);
 
   /* Indicate we are between functions, for line-number output.  */
-  sdb_begin_function_line = 0;
+  sdb_begin_function_line = -1;
 }
 
 /* Output sdb info for the absolute end of a function.

@@ -140,7 +140,8 @@ void yyerror ();
 %type <ttype> notype_declarator after_type_declarator
 %type <ttype> parm_declarator
 
-%type <ttype> structsp component_decl_list component_decl components component_declarator
+%type <ttype> structsp component_decl_list component_decl_list2
+%type <ttype> component_decl components component_declarator
 %type <ttype> enumlist enumerator
 %type <ttype> typename absdcl absdcl1 type_quals
 %type <ttype> xexpr parms parm identifiers
@@ -220,7 +221,7 @@ datadef:
 fndef:
 	  typed_declspecs setspecs declarator
 		{ if (! start_function ($1, $3))
-		    YYERROR;
+		    YYFAIL;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -230,7 +231,7 @@ fndef:
 		{ }
 	| declmods setspecs notype_declarator
 		{ if (! start_function ($1, $3))
-		    YYERROR;
+		    YYFAIL;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -240,7 +241,7 @@ fndef:
 		{ }
 	| setspecs notype_declarator
 		{ if (! start_function (0, $2))
-		    YYERROR;
+		    YYFAIL;
 		  reinit_parse_for_function (); }
 	  xdecls
 		{ store_parm_decls (); }
@@ -463,7 +464,7 @@ primary:
 		{ if (current_function_decl == 0)
 		    {
 		      error ("braced-group within expression allowed only inside a function");
-		      YYERROR;
+		      YYFAIL;
 		    }
 		  keep_next_level ();
 		  $<ttype>$ = expand_start_stmt_expr (); }
@@ -829,11 +830,19 @@ maybecomma_warn:
 		{ if (pedantic) warning ("comma at end of enumerator list"); }
 	;
 
-component_decl_list:   /* empty */
+component_decl_list:
+	  component_decl_list2
+		{ $$ = $1; }
+	| component_decl_list2 component_decl
+		{ $$ = chainon ($1, $2);
+		  warning ("no semicolon at end of struct or union"); }
+	;
+
+component_decl_list2:	/* empty */
 		{ $$ = NULL_TREE; }
-	| component_decl_list component_decl ';'
+	| component_decl_list2 component_decl ';'
 		{ $$ = chainon ($1, $2); }
-	| component_decl_list ';'
+	| component_decl_list2 ';'
 		{ if (pedantic)
 		    warning ("extra semicolon in struct or union specified"); }
 	;
@@ -1320,6 +1329,7 @@ combine_strings (strings)
   register int length = 1;
   int wide_length = 0;
   int wide_flag = 0;
+  int nchars;
 
   if (TREE_CHAIN (strings))
     {
@@ -1333,7 +1343,7 @@ combine_strings (strings)
 	{
 	  if (TREE_TYPE (t) == int_array_type_node)
 	    {
-	      wide_length += (TREE_STRING_LENGTH (t) - 1);
+	      wide_length += (TREE_STRING_LENGTH (t) - UNITS_PER_WORD);
 	      wide_flag = 1;
 	    }
 	  else
@@ -1383,6 +1393,9 @@ combine_strings (strings)
 	wide_flag = 1;
     }
 
+  /* Compute the number of elements, for the array type.  */ 
+  nchars = wide_flag ? length / UNITS_PER_WORD : length;
+
   /* Create the array type for the string constant.
      -Wwrite-strings says make the string constant an array of const char
      so that copying it to a non-const pointer will get a warning.  */
@@ -1393,19 +1406,17 @@ combine_strings (strings)
 			      1, 0);
       TREE_TYPE (value)
 	= build_array_type (elements,
-			    build_index_type (build_int_2 (length - 1, 0)));
+			    build_index_type (build_int_2 (nchars - 1, 0)));
     }
   else
     TREE_TYPE (value)
       = build_array_type (wide_flag ? integer_type_node : char_type_node,
-			  build_index_type (build_int_2 (length - 1, 0)));
+			  build_index_type (build_int_2 (nchars - 1, 0)));
   TREE_LITERAL (value) = 1;
   TREE_STATIC (value) = 1;
   return value;
 }
 
-int lineno;			/* current line number in file being read */
-
 FILE *finput;			/* input file.
 				   Normally a pipe from the preprocessor.  */
 
@@ -1983,8 +1994,9 @@ readescape ()
       if (count == 0)
 	error ("\\x used with no following hex digits");
       else if ((count - 1) * 4 >= TYPE_PRECISION (integer_type_node)
-	       || ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4))
-		   <= firstdig))
+	       || (count > 1
+		   && ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4))
+		       <= firstdig)))
 	warning ("hex escape out of range");
       return code;
 
@@ -2417,7 +2429,7 @@ yylex ()
 		  }
 		/* ERANGE is also reported for underflow,
 		   so test the value to distinguish overflow from that.  */
-		if (*p1 != 0 && (value > 1.0 || value < 1.0))
+		if (*p1 != 0 && (value > 1.0 || value < -1.0))
 		  warning ("floating point number exceeds range of `double'");
 	      }
 #endif
@@ -2542,7 +2554,7 @@ yylex ()
 		&& int_fits_type_p (yylval.ttype, integer_type_node))
 	      type = integer_type_node;
 
-	    else if (!spec_long && base != 10
+	    else if (!spec_long && (base != 10 || spec_unsigned)
 		     && int_fits_type_p (yylval.ttype, unsigned_type_node))
 	      type = unsigned_type_node;
 
@@ -2571,6 +2583,7 @@ yylex ()
 	      }
 
 	    TREE_TYPE (yylval.ttype) = type;
+	    *p = 0;
 	  }
 
 	value = CONSTANT; break;

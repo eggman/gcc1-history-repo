@@ -53,3 +53,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* global const variables don't work,
    so turn off const-ness to prevent trouble with insn-output.c.  */
 #define const
+
+/* If compiled with GNU C, use the built-in alloca */
+#ifdef __GNUC__
+#define alloca __builtin_alloca
+#endif
+

@@ -31,6 +31,10 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define CPP_PREDEFINES "-Dunix -Di386 -Dsequent"
 
+/* Pass -Z and -ZO options to the linker.  */
+
+#define LINK_SPEC "%{Z*}"
+
 /* We don't want to output SDB debugging information.  */
 
 #undef SDB_DEBUGGING_INFO

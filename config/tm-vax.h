@@ -110,7 +110,7 @@ extern int target_flags;
 #define STRUCTURE_SIZE_BOUNDARY 8
 
 /* A bitfield declared as `int' forces `int' alignment for the struct.  */
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS (! TARGET_VAXC_ALIGNMENT)
 
 /* No data type wants to be aligned rounder than this.  */
 #define BIGGEST_ALIGNMENT (TARGET_VAXC_ALIGNMENT ? 8 : 32)
@@ -419,6 +419,26 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define FUNCTION_PROFILER(FILE, LABELNO)  \
    fprintf (FILE, "\tmovab LP%d,r0\n\tjsb mcount\n", (LABELNO));
 
+/* Output assembler code to FILE to initialize this source file's
+   basic block profiling info, if that has not already been done.  */
+
+#define FUNCTION_BLOCK_PROFILER(FILE, LABELNO)  \
+  fprintf (FILE, "\ttstl LPBX0\n\tjneq LPI%d\n\tpushal LPBX0\n\tcalls $1,__bb_init_func\nLPI%d:\n",  \
+	   LABELNO, LABELNO);
+
+/* Output assembler code to FILE to increment the entry-count for
+   the BLOCKNO'th basic block in this source file.  This is a real pain in the
+   sphincter on a VAX, since we do not want to change any of the bits in the
+   processor status word.  The way it is done here, it is pushed onto the stack
+   before any flags have changed, and then the stack is fixed up to account for
+   the fact that the instruction to restore the flags only reads a word.
+   It may seem a bit clumsy, but at least it works.
+*/
+
+#define BLOCK_PROFILER(FILE, BLOCKNO)	\
+  fprintf (FILE, "\tmovpsl -(sp)\n\tmovw (sp),2(sp)\n\taddl2 $2,sp\n\taddl2 $1,LPBX2+%d\n\tbicpsw $255\n\tbispsw (sp)+\n", \
+		4 * BLOCKNO)
+
 /* EXIT_IGNORE_STACK should be nonzero if, when returning from a function,
    the stack pointer does not matter.  The value is tested only in
    functions that have frame pointers.
@@ -467,12 +487,20 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* 1 if X is an rtx for a constant that is a valid address.  */
 
-#define CONSTANT_ADDRESS_P(X) CONSTANT_P (X)
+#define CONSTANT_ADDRESS_P(X) (CONSTANT_P (X) && LEGITIMATE_CONSTANT_P (X))
 
 /* Nonzero if the constant value X is a legitimate general operand.
    It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.  */
 
+#ifdef NO_EXTERNAL_INDIRECT_ADDRESS
+#define LEGITIMATE_CONSTANT_P(X) \
+ (! (GET_CODE ((X)) == CONST					\
+     && GET_CODE (XEXP ((X), 0)) == PLUS			\
+     && GET_CODE (XEXP (XEXP ((X), 0), 0)) == SYMBOL_REF	\
+     && EXTERNAL_SYMBOL_P (XEXP (XEXP ((X), 0), 0))))
+#else
 #define LEGITIMATE_CONSTANT_P(X) 1
+#endif
 
 /* The macros REG_OK_FOR..._P assume that the arg is a REG rtx
    and check its validity for a certain class.
@@ -514,7 +542,33 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    except for CONSTANT_ADDRESS_P which is actually machine-independent.  */
 
 /* 1 if X is an address that we could indirect through.  */
+#ifdef NO_EXTERNAL_INDIRECT_ADDRESS
+#define INDIRECTABLE_CONSTANT_ADDRESS_P(X)   				\
+  (GET_CODE (X) == LABEL_REF 						\
+   || (GET_CODE (X) == SYMBOL_REF && !EXTERNAL_SYMBOL_P (X))		\
+   || (GET_CODE (X) == CONST && LEGITIMATE_CONSTANT_P(X))		\
+   || GET_CODE (X) == CONST_INT)
+
 #define INDIRECTABLE_ADDRESS_P(X)  \
+  (INDIRECTABLE_CONSTANT_ADDRESS_P (X) 					\
+   || (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
+   || (GET_CODE (X) == PLUS						\
+       && GET_CODE (XEXP (X, 0)) == REG					\
+       && REG_OK_FOR_BASE_P (XEXP (X, 0))				\
+       && INDIRECTABLE_CONSTANT_ADDRESS_P (XEXP (X, 1))))
+#else
+#define INDIRECTABLE_CONSTANT_ADDRESS_P(X) CONSTANT_ADDRESS_P(X)
+#define INDIRECTABLE_ADDRESS_P(X)  \
+  (CONSTANT_ADDRESS_P (X)						\
+   || (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
+   || (GET_CODE (X) == PLUS						\
+       && GET_CODE (XEXP (X, 0)) == REG					\
+       && REG_OK_FOR_BASE_P (XEXP (X, 0))				\
+       && CONSTANT_ADDRESS_P (XEXP (X, 1))))
+#endif
+
+/* Non-zero if this is a valid address without indexing or indirection.  */
+#define NONINDIRECT_ADDRESS_P(X)  \
   (CONSTANT_ADDRESS_P (X)						\
    || (GET_CODE (X) == REG && REG_OK_FOR_BASE_P (X))			\
    || (GET_CODE (X) == PLUS						\
@@ -527,7 +581,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define GO_IF_NONINDEXED_ADDRESS(X, ADDR)  \
 { register rtx xfoob = (X);						\
   if (GET_CODE (xfoob) == REG) goto ADDR;				\
-  if (INDIRECTABLE_ADDRESS_P (xfoob)) goto ADDR;			\
+  if (NONINDIRECT_ADDRESS_P (xfoob)) goto ADDR;				\
   xfoob = XEXP (X, 0);							\
   if (GET_CODE (X) == MEM && INDIRECTABLE_ADDRESS_P (xfoob))		\
     goto ADDR;								\
@@ -583,12 +637,12 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
       if (INDEX_TERM_P (xfoo, MODE))					\
 	{ GO_IF_NONINDEXED_ADDRESS (XEXP (X, 0), ADDR); }		\
       /* Handle offset(reg)[index] with offset added outermost */	\
-      if (CONSTANT_ADDRESS_P (XEXP (X, 0)))				\
+      if (INDIRECTABLE_CONSTANT_ADDRESS_P (XEXP (X, 0)))		\
 	{ if (GET_CODE (XEXP (X, 1)) == REG				\
 	      && REG_OK_FOR_BASE_P (XEXP (X, 1)))			\
 	    goto ADDR;							\
 	  GO_IF_REG_PLUS_INDEX (XEXP (X, 1), MODE, ADDR); }		\
-      if (CONSTANT_ADDRESS_P (XEXP (X, 1)))				\
+      if (INDIRECTABLE_CONSTANT_ADDRESS_P (XEXP (X, 1)))		\
 	{ if (GET_CODE (XEXP (X, 0)) == REG				\
 	      && REG_OK_FOR_BASE_P (XEXP (X, 0)))			\
 	    goto ADDR;							\
@@ -953,7 +1007,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
    that says to advance the location counter by SIZE bytes.  */
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.space %d\n", (SIZE))
+  fprintf (FILE, "\t.space %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -961,7 +1015,7 @@ enum reg_class { NO_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */

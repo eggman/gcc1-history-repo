@@ -122,6 +122,11 @@ static short *n_times_set;
 
 static short *n_times_used;
 
+/* Index by register number, 1 indicates that the register
+   cannot be moved or strength reduced.  */
+
+static char *may_not_optimize;
+
 /* Nonzero means reg N has already been moved out of one loop.
    This reduces the desire to move it out of another.  */
 
@@ -194,6 +199,7 @@ static FILE *loop_dump_stream;
 struct induction;
 struct iv_class;
 
+static rtx loop_find_reg_equal ();
 static rtx verify_loop ();
 static int invariant_p ();
 static int consec_sets_invariant_p ();
@@ -349,9 +355,6 @@ scan_loop (loop_start, end, nregs)
   int insn_count;
   int tem;
   rtx temp;
-  /* Indexed by register number, contains 1 for a register whose
-     assignments may not be moved out of the loop.  */
-  char *may_not_move;
   /* Chain describing insns movable in current loop.  */
   struct movable *movables = 0;
   /* Last element in `movables' -- so we can add elements at the end.  */
@@ -367,7 +370,7 @@ scan_loop (loop_start, end, nregs)
 
   n_times_set = (short *) alloca (nregs * sizeof (short));
   n_times_used = (short *) alloca (nregs * sizeof (short));
-  may_not_move = (char *) alloca (nregs);
+  may_not_optimize = (char *) alloca (nregs);
 
   /* Determine whether this loop starts with a jump down
      to a test at the end.  */
@@ -442,15 +445,15 @@ scan_loop (loop_start, end, nregs)
     }
 
   /* Count number of times each reg is set during this loop.
-     Set MAY_NOT_MOVE[I] if it is not safe to move out
+     Set may_not_optimize[I] if it is not safe to move out
      the setting of register I.  */
 
   bzero (n_times_set, nregs * sizeof (short));
-  bzero (may_not_move, nregs);
+  bzero (may_not_optimize, nregs);
   count_loop_regs_set (loop_top ? loop_top : loop_start, end,
-		       may_not_move, &insn_count, nregs);
+		       may_not_optimize, &insn_count, nregs);
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
-    may_not_move[i] = 1, n_times_set[i] = 1;
+    may_not_optimize[i] = 1, n_times_set[i] = 1;
   bcopy (n_times_set, n_times_used, nregs * sizeof (short));
 
   if (loop_dump_stream)
@@ -496,7 +499,7 @@ scan_loop (loop_start, end, nregs)
       if (GET_CODE (p) == INSN
 	  && GET_CODE (PATTERN (p)) == SET
 	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
-	  && ! may_not_move[REGNO (SET_DEST (PATTERN (p)))])
+	  && ! may_not_optimize[REGNO (SET_DEST (PATTERN (p)))])
 	{
 	  int tem1 = 0;
 	  /* Don't try to optimize a register that was made
@@ -516,7 +519,7 @@ scan_loop (loop_start, end, nregs)
 		       || loop_reg_used_before_p (p, loop_start, scan_start, end)))
 	    ;
 	  else if (((tem = invariant_p (SET_SRC (PATTERN (p))))
-		    || ((temp = find_reg_note (p, REG_EQUAL, 0)) 
+		    || ((temp = loop_find_reg_equal (p)) 
 			&& (tem = invariant_p (XEXP (temp, 0)))))
 		   && (n_times_set[REGNO (SET_DEST (PATTERN (p)))] == 1
 		       || (tem1
@@ -530,7 +533,7 @@ scan_loop (loop_start, end, nregs)
 		      (since it might exit!)  */
 		   && ! ((maybe_never || call_passed)
 			 && (may_trap_p (SET_SRC (PATTERN (p)))
-			     || ((temp = find_reg_note (p, REG_EQUAL, 0))
+			     || ((temp = loop_find_reg_equal (p))
 				 && may_trap_p (XEXP (temp, 0))))))
 	    {
 	      register struct movable *m;
@@ -539,7 +542,7 @@ scan_loop (loop_start, end, nregs)
 	      m = (struct movable *) alloca (sizeof (struct movable));
 	      m->next = 0;
 	      m->insn = p;
-	      temp = find_reg_note (p, REG_EQUAL, 0);
+	      temp = loop_find_reg_equal (p);
 	      if (temp)
 		m->set_src = XEXP (temp, 0);
 	      else
@@ -728,6 +731,19 @@ skip_consec_insns (insn, count)
     }
 
   return insn;
+}
+
+/* Find a REG_EQUAL note in INSN but only if it is safe to use for our
+   purposes.  Those put in by CSE are not safe since they may fail to
+   use the registers that appear in the actual insn source.  */
+
+static rtx
+loop_find_reg_equal (insn)
+     rtx insn;
+{
+  return (find_reg_note (insn, REG_RETVAL, 0)
+	  ? find_reg_note (insn, REG_EQUAL, 0)
+	  : 0);
 }
 
 /* Ignore any movable whose insn falls within a libcall
@@ -1244,7 +1260,7 @@ move_movables (movables, threshold, insn_count, loop_start, end, nregs)
 
 		  delete_insn (p);
 		  do p = NEXT_INSN (p);
-		  while (GET_CODE (p) == NOTE);
+		  while (p != 0 && GET_CODE (p) == NOTE);
 		}
 
 	      /* The more regs we move, the less we like moving them.  */
@@ -2018,7 +2034,7 @@ consec_sets_invariant_p (reg, n_sets, insn)
 	  this = invariant_p (SET_SRC (PATTERN (p)));
 	  if (this != 0)
 	    value |= this;
-	  else if (temp = find_reg_note (p, REG_EQUAL, 0))
+	  else if (temp = loop_find_reg_equal (p))
 	    {
 	      this = invariant_p (XEXP (temp, 0));
 	      if (this != 0)
@@ -2670,7 +2686,8 @@ strength_reduce (scan_start, end, loop_top, insn_count,
       /* Look for a general induction variable in a register.  */
       if (GET_CODE (p) == INSN
 	  && GET_CODE (PATTERN (p)) == SET
-	  && GET_CODE (SET_DEST (PATTERN (p))) == REG)
+	  && GET_CODE (SET_DEST (PATTERN (p))) == REG
+	  && ! may_not_optimize[REGNO (SET_DEST (PATTERN (p)))])
 	{
 	  int src_regno;
 	  rtx add_val;
@@ -2690,7 +2707,7 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 						 &mult_val,
 						 &forces, &forces2))
 	       /* Giv set with call to a library routine.  */
-	       || ((regnote = find_reg_note (p, REG_EQUAL, 0))
+	       || ((regnote = loop_find_reg_equal (p))
 		   &&
 		   (benefit = general_induction_var (XEXP (regnote, 0),
 						     &src_regno,
@@ -3114,9 +3131,11 @@ strength_reduce (scan_start, end, loop_top, insn_count,
 		      {
 			if (v1->giv_type == DEST_REG
 			    || (v1->giv_type == DEST_ADDR
-				/* Test was backwards - rms, 5 Dec 89 */
-				&& only_reg_use_p (reg, *(v1->location),
-						   PATTERN (p))))
+				/* I thought the test was backwards,
+				   but then I found the real problem
+				   was in the subroutine.  */
+				&& ! other_reg_use_p (reg, *(v1->location),
+						      PATTERN (p))))
 			  break;
 		      }
 		  if (!v1)
@@ -3160,21 +3179,18 @@ strength_reduce (scan_start, end, loop_top, insn_count,
     fprintf (loop_dump_stream, "\n");
 }
 
-/* Nonzero if register REG appears somewhere within IN, except in
+/* Nonzero if register REG appears somewhere within IN, other than in
    subexpressions EQ to EXPR.  This is a modification of reg_mentioned_p.  */
 
 int
-only_reg_use_p (reg, expr, in)
+other_reg_use_p (reg, expr, in)
      register rtx reg, expr, in;
 {
   register char *fmt;
   register int i;
   register enum rtx_code code;
 
-  if (in == 0)
-    return 0;
-
-  if (reg == expr)
+  if (in == 0 || in == expr)
     return 0;
 
   if (reg == in)
@@ -3207,11 +3223,11 @@ only_reg_use_p (reg, expr, in)
 	{
 	  register int j;
 	  for (j = XVECLEN (in, i) - 1; j >= 0; j--)
-	    if (only_reg_use_p (reg, expr, XVECEXP (in, i, j)))
+	    if (other_reg_use_p (reg, expr, XVECEXP (in, i, j)))
 	      return 1;
 	}
       else if (fmt[i] == 'e'
-	       && only_reg_use_p (reg, expr, XEXP (in, i)))
+	       && other_reg_use_p (reg, expr, XEXP (in, i)))
 	return 1;
     }
   return 0;
@@ -3925,9 +3941,11 @@ general_induction_var (x, src_regno, add_val, mult_val, forces, forces2)
       else if (g)
 	{
 	  *mult_val = g->mult_val;
-	  if (GET_CODE (g->add_val) == CONST_INT)
+	  if (GET_CODE (g->add_val) == CONST_INT
+	      && nonmemory_operand (arg, GET_MODE (arg)))
 	    *add_val = plus_constant (arg, INTVAL (g->add_val));
-	  else if (GET_CODE (arg) == CONST_INT)
+	  else if (GET_CODE (arg) == CONST_INT
+		   && nonmemory_operand (g->add_val, GET_MODE (g->add_val)))
 	    *add_val = plus_constant (g->add_val, INTVAL (arg));
 	  else
 	    /* Could succeed if arg == 0, but that will never occur.  */
@@ -4280,7 +4298,7 @@ consec_sets_giv (first_benefit, p, src_regno, dest_regno,
   int count;
   int benefit = first_benefit;
   enum rtx_code code;
-  struct induction forces, forces2;
+  struct induction *forces, *forces2;
   rtx temp;
   int tem;
 
@@ -4312,10 +4330,10 @@ consec_sets_giv (first_benefit, p, src_regno, dest_regno,
 					    add_val, mult_val,
 					    &forces, &forces2))
 	      /* Giv created by call to library routine.  */
-	      || ((temp = find_reg_note (p, REG_EQUAL, 0)) &&
-		  (tem = general_induction_var (XEXP (temp, 0), &src_regno,
-						add_val, mult_val,
-						&forces, &forces2))))
+	      || ((temp = loop_find_reg_equal (p))
+		  && (tem = general_induction_var (XEXP (temp, 0), &src_regno,
+						   add_val, mult_val,
+						   &forces, &forces2))))
 	  && src_regno == v->src_regno)
 	{
 	  count--;
@@ -4806,9 +4824,8 @@ check_eliminate_biv (bl, loop_start, end)
 	      {
 		if (v->giv_type == DEST_REG
 		    || (v->giv_type == DEST_ADDR
-			/* Test was backwards - rms, 5 Dec 89 */
-			&& only_reg_use_p (reg, *(v->location),
-					   PATTERN (p))))
+			&& ! other_reg_use_p (reg, *(v->location),
+					      PATTERN (p))))
 		  break;
 	      }
 	  if (v)
@@ -4994,7 +5011,7 @@ eliminate_biv (insn, bl, loop_start)
   rtx src = SET_SRC (PATTERN (insn));
   enum rtx_code code = GET_CODE (src);
   struct induction *v, *tv;
-  rtx arg;
+  rtx arg, temp;
   int arg_operand;
   /* Mode of this biv.  */
   enum machine_mode mode = bl->biv->mode;
@@ -5017,6 +5034,12 @@ eliminate_biv (insn, bl, loop_start)
 	{
 	  /* We can test the sign of that giv's reduced reg.  */
 	  SET_SRC (PATTERN (insn)) = v->new_reg;
+	  /* If the giv has the opposite direction of change,
+	     then reverse the comparison.  */
+	  if (INTVAL (v->mult_val) < 0)
+	    SET_SRC (PATTERN (insn))
+	      = gen_rtx (COMPARE, GET_MODE (v->new_reg),
+			 const0_rtx, v->new_reg);
 	  return;
 	}
 
@@ -5038,6 +5061,14 @@ eliminate_biv (insn, bl, loop_start)
 					      v->new_reg,
 					      copy_rtx (v->add_val));
 
+	  /* If the giv has the opposite direction of change,
+	     then reverse the comparison.  */
+	  if (INTVAL (v->mult_val) < 0)
+	    {
+	      XEXP (SET_SRC (PATTERN (insn)), 0)
+		= XEXP (SET_SRC (PATTERN (insn)), 1);
+	      XEXP (SET_SRC (PATTERN (insn)), 1) = v->new_reg;
+	    }
 #if 0
 	  /* add_val must be invariant, so don't bother storing in a register */
 	  /* calculate the appropriate constant to compare against */
@@ -5093,10 +5124,19 @@ eliminate_biv (insn, bl, loop_start)
 		 put it in a register.  */
 	      if (recog (PATTERN (insn), insn) < 0)
 		{
-		  rtx temp = gen_reg_rtx (mode);
+		  temp = gen_reg_rtx (mode);
 		  emit_iv_init_code (arg, v->mult_val, v->add_val,
 				     temp, loop_start);
 		  XEXP (src, arg_operand) = temp;
+		}
+
+	      /* If the giv has the opposite direction of change,
+		 then reverse the comparison.  */
+	      if (INTVAL (v->mult_val) < 0)
+		{
+		  temp = XEXP (src, 0);
+		  XEXP (src, 0) = XEXP (src, 1);
+		  XEXP (src, 1) = temp;
 		}
 	      return;
 	    }
@@ -5121,6 +5161,15 @@ eliminate_biv (insn, bl, loop_start)
 				 compare_value, loop_start);
 	      /* Use it in this insn.  */
 	      XEXP (src, arg_operand) = compare_value;
+
+	      /* If the giv has the opposite direction of change,
+		 then reverse the comparison.  */
+	      if (INTVAL (v->mult_val) < 0)
+		{
+		  temp = XEXP (src, 0);
+		  XEXP (src, 0) = XEXP (src, 1);
+		  XEXP (src, 1) = temp;
+		}
 	      return;
 	    }
 	  abort ();
@@ -5148,6 +5197,15 @@ eliminate_biv (insn, bl, loop_start)
 		  emit_iv_init_code (arg, v->mult_val, v->add_val,
 				     compare_value, loop_start);
 		  XEXP (src, arg_operand) = compare_value;
+
+		  /* If the giv has the opposite direction of change,
+		     then reverse the comparison.  */
+		  if (INTVAL (v->mult_val) < 0)
+		    {
+		      temp = XEXP (src, 0);
+		      XEXP (src, 0) = XEXP (src, 1);
+		      XEXP (src, 1) = temp;
+		    }
 		  return;
 		}
 	    }
@@ -5178,6 +5236,15 @@ eliminate_biv (insn, bl, loop_start)
 	      XEXP (src, 1-arg_operand) = v->new_reg;
 	      /* Replace other operand with the other giv's reduced reg.  */
 	      XEXP (src, arg_operand) = tv->new_reg;
+
+	      /* If the giv has the opposite direction of change,
+		 then reverse the comparison.  */
+	      if (INTVAL (v->mult_val) < 0)
+		{
+		  temp = XEXP (src, 0);
+		  XEXP (src, 0) = XEXP (src, 1);
+		  XEXP (src, 1) = temp;
+		}
 	      return;
 	    }
 	}

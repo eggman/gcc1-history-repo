@@ -107,6 +107,10 @@ int current_function_args_size;
 
 int current_function_pretend_args_size;
 
+/* This is the offset from the arg pointer to the place where the first
+   anonymous arg can be found, if there is one.  */
+rtx current_function_arg_offset_rtx;
+
 /* Name of function now being compiled.  */
 
 char *current_function_name;
@@ -142,6 +146,10 @@ static rtx parm_birth_insn;
 /* The FUNCTION_DECL node for the function being compiled.  */
 
 static tree this_function;
+
+/* Number of binding contours started so far in this function.  */
+
+static int block_start_count;
 
 /* Offset to end of allocated area of stack frame.
    If stack grows down, this is the address of the last stack slot allocated.
@@ -252,6 +260,9 @@ struct nesting
       /* For variable binding contours.  */
       struct
 	{
+	  /* Sequence number of this binding contour within the function,
+	     in order of entry.  */
+	  int block_start_count;
 	  /* Nonzero => value to restore stack to on exit.  */
 	  rtx stack_level;
 	  /* The NOTE that starts this contour.
@@ -415,6 +426,9 @@ struct goto_fixup
   tree target;
   /* The CODE_LABEL rtx that this is jumping to.  */
   rtx target_rtl;
+  /* Number of binding contours started in current function
+     before the label reference.  */
+  int block_start_count;
   /* The outermost stack level that should be restored for this jump.
      Each time a binding contour that resets the stack is exited,
      if the target label is *not* yet defined, this slot is updated.  */
@@ -619,6 +633,7 @@ expand_fixup (tree_label, rtl_label, last_insn)
       fixup->before_jump = last_insn ? last_insn : get_last_insn ();
       fixup->target = tree_label;
       fixup->target_rtl = rtl_label;
+      fixup->block_start_count = block_start_count;
       fixup->stack_level = 0;
       fixup->cleanup_list_list
 	= (block->data.block.outer_cleanups || block->data.block.cleanups
@@ -707,14 +722,17 @@ fixup_gotos (thisblock, stack_level, cleanup_list, first_insn, dont_jump_in)
 	  f->before_jump = 0;
 	}
       /* Label has still not appeared.  If we are exiting a block with
-	 a stack level to restore, mark this stack level as needing
-	 restoration when the fixup is later finalized.
+	 a stack level to restore, that started before the fixup,
+	 mark this stack level as needing restoration
+	 when the fixup is later finalized.
 	 Also mark the cleanup_list_list element for F
 	 that corresponds to this block, so that ultimately
 	 this block's cleanups will be executed by the code above.  */
       /* Note: if THISBLOCK == 0 and we have a label that hasn't appeared,
 	 it means the label is undefined.  That's erroneous, but possible.  */
-      else if (thisblock != 0)
+      else if (thisblock != 0
+	       && (thisblock->data.block.block_start_count
+		   < f->block_start_count))
 	{
 	  tree lists = f->cleanup_list_list;
 	  for (; lists; lists = TREE_CHAIN (lists))
@@ -780,6 +798,7 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
   for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
     {
       tree val = TREE_VALUE (tail);
+      tree val1;
       int j;
       int found_equal;
 
@@ -807,18 +826,27 @@ expand_asm_operands (string, outputs, inputs, clobbers, vol, filename, line)
 	}
 
       /* If an output operand is not a variable or indirect ref,
+	 or a part of one,
 	 create a SAVE_EXPR which is a pseudo-reg
 	 to act as an intermediate temporary.
 	 Make the asm insn write into that, then copy it to
 	 the real output operand.  */
 
-      if (TREE_CODE (val) != VAR_DECL
-	  && TREE_CODE (val) != PARM_DECL
-	  && TREE_CODE (val) != INDIRECT_REF)
+      val1 = val;
+      while (TREE_CODE (val1) == COMPONENT_REF
+	     || TREE_CODE (val1) == ARRAY_REF)
+	val1 = TREE_OPERAND (val1, 0);
+
+      if (TREE_CODE (val1) != VAR_DECL
+	  && TREE_CODE (val1) != PARM_DECL
+	  && TREE_CODE (val1) != INDIRECT_REF)
 	{
 	  rtx reg = gen_reg_rtx (TYPE_MODE (TREE_TYPE (val)));
 	  /* `build' isn't safe; it really expects args to be trees.  */
 	  tree t = build_nt (SAVE_EXPR, val, reg);
+
+	  if (GET_MODE (reg) == BLKmode)
+	    abort ();
 
 	  save_expr_regs = gen_rtx (EXPR_LIST, VOIDmode, reg, save_expr_regs);
 	  TREE_VALUE (tail) = t;
@@ -1704,7 +1732,9 @@ expand_start_bindings (exit_flag)
   thisblock->data.block.label_chain = 0;
   thisblock->data.block.innermost_stack_block = stack_block_stack;
   thisblock->data.block.first_insn = note;
+  thisblock->data.block.block_start_count = ++block_start_count;
   thisblock->exit_label = exit_flag ? gen_label_rtx () : 0;
+
   block_stack = thisblock;
   nesting_stack = thisblock;
 }
@@ -2823,7 +2853,11 @@ group_case_nodes (head)
 	     /* Are their ranges consecutive?  */
 	     && tree_int_cst_equal (np->low,
 				    combine (PLUS_EXPR, node->high,
-					     build_int_2 (1, 0))))
+					     build_int_2 (1, 0)))
+	     /* An overflow is not consecutive.  */
+	     && tree_int_cst_lt (node->high, 
+				 combine (PLUS_EXPR, node->high,
+					  build_int_2 (1, 0))))
 	{
 	  node->high = np->high;
 	}
@@ -3987,8 +4021,9 @@ validize_mem (ref)
     return ref;
   if (memory_address_p (GET_MODE (ref), XEXP (ref, 0)))
     return ref;
-  return change_address (ref, VOIDmode,
-			 memory_address (GET_MODE (ref), XEXP (ref, 0)));
+  /* Don't alter REF itself, since that is probably a stack slot.  */
+  return gen_rtx (MEM, GET_MODE (ref),
+		  memory_address (GET_MODE (ref), XEXP (ref, 0)));
 }
 
 /* Assign RTL expressions to the function's parameters.
@@ -4008,6 +4043,12 @@ assign_parms (fndecl)
      given as a constant and a tree-expression.  */
   struct args_size stack_args_size;
   int first_parm_offset = FIRST_PARM_OFFSET (fndecl);
+  int first_parm_caller_offset
+#ifdef FIRST_PARM_CALLER_OFFSET
+    = FIRST_PARM_CALLER_OFFSET (fndecl);
+#else
+  = first_parm_offset;
+#endif
   tree fntype = TREE_TYPE (fndecl);
   /* This is used for the arg pointer when referring to stack args.  */
   rtx internal_arg_pointer;
@@ -4158,21 +4199,6 @@ assign_parms (fndecl)
 	    }
 	}
 
-      stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
-
-      /* Determine parm's home in the stack,
-	 in case it arrives in the stack or we should pretend it did.  */
-      stack_parm
-	= gen_rtx (MEM, passed_mode,
-		   memory_address (passed_mode,
-				   gen_rtx (PLUS, Pmode,
-					    internal_arg_pointer,
-					    stack_offset_rtx)));
-
-      /* If this is a memory ref that contains aggregate components,
-	 mark it as such for cse and loop optimize.  */
-      MEM_IN_STRUCT_P (stack_parm) = aggregate;
-
       /* Let machine desc say which reg (if any) the parm arrives in.
 	 0 means it arrives on the stack.  */
       entry_parm = 0;
@@ -4193,6 +4219,37 @@ assign_parms (fndecl)
 			    ! last_named);
 #endif
 	}
+
+#ifdef REG_PARM_STACK_SPACE
+      /* If we arrive at a stack parm while still counting space for reg parms,
+	 skip up to the offset for the first stack parm.  */
+      if (entry_parm == 0
+	  && stack_args_size.constant + first_parm_caller_offset < 0)
+	{
+	  int adjustment
+	    = -(stack_args_size.constant + first_parm_caller_offset);
+	  stack_args_size.constant += adjustment;
+	  stack_offset.constant += adjustment;
+	}
+#endif
+
+      stack_offset_rtx = ARGS_SIZE_RTX (stack_offset);
+
+      /* Determine parm's home in the stack,
+	 in case it arrives in the stack or we should pretend it did.  */
+      /* Note that this is not necessarily a valid address.
+	 We make it valid later when it is used.
+	 It is necessary for the DECL_RTL to be an explicit stack slot,
+	 but not necessary for it to be valid.  */
+      stack_parm
+	= gen_rtx (MEM, passed_mode,
+		   gen_rtx (PLUS, Pmode,
+			    internal_arg_pointer,
+			    stack_offset_rtx));
+
+      /* If this is a memory ref that contains aggregate components,
+	 mark it as such for cse and loop optimize.  */
+      MEM_IN_STRUCT_P (stack_parm) = aggregate;
 
       /* If this parm was passed part in regs and part in memory,
 	 pretend it arrived entirely in memory
@@ -4228,6 +4285,7 @@ assign_parms (fndecl)
 
 	  if (nregs > 0)
 	    {
+	      rtx valid_stack_parm = validize_mem (stack_parm);
 	      current_function_pretend_args_size
 		= (((nregs * UNITS_PER_WORD) + (PARM_BOUNDARY / BITS_PER_UNIT) - 1)
 		   / (PARM_BOUNDARY / BITS_PER_UNIT)
@@ -4236,7 +4294,7 @@ assign_parms (fndecl)
 	      i = nregs;
 	      while (--i >= 0)
 		emit_move_insn (gen_rtx (MEM, SImode,
-					 plus_constant (XEXP (stack_parm, 0),
+					 plus_constant (XEXP (valid_stack_parm, 0),
 							i * GET_MODE_SIZE (SImode))),
 				gen_rtx (REG, SImode, REGNO (entry_parm) + i));
 	      entry_parm = stack_parm;
@@ -4266,6 +4324,15 @@ assign_parms (fndecl)
 	  )
 	{
 	  tree sizetree = size_in_bytes (DECL_ARG_TYPE (parm));
+#ifdef PUSH_ROUNDING
+	  /* If this arg will be pushed with a push instruction,
+	     note how that will add to its size.  */
+	  if (DECL_MODE (parm) != BLKmode)
+	    {
+	      int old_bytes = int_size_in_bytes (DECL_ARG_TYPE (parm));
+	      sizetree = build_int_2 (PUSH_ROUNDING (old_bytes), 0);
+	    }
+#endif
 	  if (where_pad != none)
 	    {
 	      /* Round the size up to multiple of PARM_BOUNDARY bits.  */
@@ -4300,10 +4367,9 @@ assign_parms (fndecl)
 
 	  stack_parm
 	    = gen_rtx (MEM, nominal_mode,
-		       memory_address (nominal_mode,
-				       gen_rtx (PLUS, Pmode,
-						arg_pointer_rtx,
-						stack_offset_rtx)));
+		       gen_rtx (PLUS, Pmode,
+				arg_pointer_rtx,
+				stack_offset_rtx));
 
 	  /* If this is a memory ref that contains aggregate components,
 	     mark it as such for cse and loop optimize.  */
@@ -4329,12 +4395,35 @@ assign_parms (fndecl)
 	  /* If a BLKmode arrives in registers, copy it to a stack slot.  */
 	  if (GET_CODE (entry_parm) == REG)
 	    {
+#if 0 /* This was probably wrong, but save it just in case.  */
+	      rtx unpadded_stack_parm;
+
+	      /* Determine parm's home in the stack.  */
+
+	      if (stack_parm == 0)
+		unpadded_stack_parm
+		  = assign_stack_local (GET_MODE (entry_parm),
+					int_size_in_bytes (TREE_TYPE (parm)));
+	      else
+		unpadded_stack_parm
+		  = gen_rtx (MEM, passed_mode,
+			     memory_address (passed_mode,
+					     gen_rtx (PLUS, Pmode,
+						      internal_arg_pointer,
+						      ARGS_SIZE_RTX (unpadded_stack_offset))));
+
+	      /* Here we use unpadded_stack_parm because we assume
+		 that downward padding is used on big-endian machines
+		 where we would want to make the real data in the reg
+		 (which is in the low bits) end up at the padded address.  */
+#endif
 	      if (stack_parm == 0)
 		stack_parm
 		  = assign_stack_local (GET_MODE (entry_parm),
 					int_size_in_bytes (TREE_TYPE (parm)));
 
-	      move_block_from_reg (REGNO (entry_parm), stack_parm,
+	      move_block_from_reg (REGNO (entry_parm),
+				   validize_mem (stack_parm),
 				   ((int_size_in_bytes (TREE_TYPE (parm))
 				     + UNITS_PER_WORD - 1)
 				    / UNITS_PER_WORD));
@@ -4399,7 +4488,8 @@ assign_parms (fndecl)
 
 	  if (passed_mode != nominal_mode)
 	    /* Conversion is required.  */
-	    entry_parm = convert_to_mode (nominal_mode, entry_parm, 0);
+	    entry_parm = convert_to_mode (nominal_mode,
+					  validize_mem (entry_parm), 0);
 
 	  if (entry_parm != stack_parm)
 	    {
@@ -4428,6 +4518,9 @@ assign_parms (fndecl)
   last_parm_insn = get_last_insn ();
 
   current_function_args_size = stack_args_size.constant;
+
+  stack_args_size.constant += first_parm_offset;
+  current_function_arg_offset_rtx = ARGS_SIZE_RTX (stack_args_size);
 }
 
 /* Allocation of space for returned structure values.
@@ -4473,6 +4566,29 @@ get_structure_value_addr (sizex)
 
   return structure_value;
 }
+
+/* Push and pop the current structure value block.  */
+
+void
+push_structure_value (rtx_ptr, size_ptr)
+     rtx *rtx_ptr;
+     int *size_ptr;
+{
+  *rtx_ptr = structure_value;
+  *size_ptr = max_structure_value_size;
+  max_structure_value_size = 0;
+  structure_value = 0;
+}
+
+void
+pop_structure_value (rtx_value, size)
+     rtx rtx_value;
+     int size;
+{
+  structure_value = rtx_value;
+  max_structure_value_size = size;
+}
+
 
 /* Walk the tree of LET_STMTs describing the binding levels within a function
    and warn about uninitialized variables.
@@ -4534,8 +4650,10 @@ setjmp_protect (block)
    of the function.  */
 
 void
-init_function_start (subr)
+init_function_start (subr, filename, line)
      tree subr;
+     char *filename;
+     int line;
 {
   this_function = subr;
   cse_not_expected = ! optimize;
@@ -4592,7 +4710,7 @@ init_function_start (subr)
   current_function_returns_struct = 0;
 
   /* No space assigned yet for structure values.  */
-  max_structure_value_size = 0;
+  max_structure_value_size = -1;
   structure_value = 0;
 
   /* We are not currently within any block, conditional, loop or case.  */
@@ -4602,6 +4720,8 @@ init_function_start (subr)
   cond_stack = 0;
   nesting_stack = 0;
   nesting_depth = 0;
+
+  block_start_count = 0;
 
   /* We have not yet needed to make a label to jump to for tail-recursion.  */
   tail_recursion_label = 0;
@@ -4624,7 +4744,7 @@ init_function_start (subr)
 
   /* Prevent ever trying to delete the first instruction of a function.
      Also tell final how to output a linenum before the function prologue.  */
-  emit_line_note (DECL_SOURCE_FILE (subr), DECL_SOURCE_LINE (subr));
+  emit_line_note (filename, line);
   /* Make sure first insn is a note even if we don't want linenums.
      This makes sure the first insn will never be deleted.
      Also, final expects a note to appear there.  */

@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,80 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
+
+
+
+File: gcc.info,  Node: Output Template,  Next: Output Statement,  Prev: RTL Template,  Up: Machine Desc
+
+Output Templates and Operand Substitution
+=========================================
+
+The "output template" is a string which specifies how to output the
+assembler code for an instruction pattern.  Most of the template is a
+fixed string which is output literally.  The character `%' is used to
+specify where to substitute an operand; it can also be used to
+identify places where different variants of the assembler require
+different syntax.
+
+In the simplest case, a `%' followed by a digit N says to output
+operand N at that point in the string.
+
+`%' followed by a letter and a digit says to output an operand in an
+alternate fashion.  Four letters have standard, built-in meanings
+described below.  The machine description macro `PRINT_OPERAND' can
+define additional letters with nonstandard meanings.
+
+`%cDIGIT' can be used to substitute an operand that is a constant
+value without the syntax that normally indicates an immediate operand.
+
+`%nDIGIT' is like `%cDIGIT' except that the value of the constant is
+negated before printing.
+
+`%aDIGIT' can be used to substitute an operand as if it were a memory
+reference, with the actual operand treated as the address.  This may
+be useful when outputting a "load address" instruction, because often
+the assembler syntax for such an instruction requires you to write
+the operand as if it were a memory reference.
+
+`%lDIGIT' is used to substitute a `label_ref' into a jump instruction.
+
+`%' followed by a punctuation character specifies a substitution that
+does not use an operand.  Only one case is standard: `%%' outputs a
+`%' into the assembler code.  Other nonstandard cases can be defined
+in the `PRINT_OPERAND' macro.  You must also define which punctuation
+characters are valid with the `PRINT_OPERAND_PUNCT_VALID_P' macro.
+
+The template may generate multiple assembler instructions.  Write the
+text for the instructions, with `\;' between them.
+
+When the RTL contains two operands which are required by constraint
+to match each other, the output template must refer only to the
+lower-numbered operand.  Matching operands are not always identical,
+and the rest of the compiler arranges to put the proper RTL
+expression for printing into the lower-numbered operand.
+
+One use of nonstandard letters or punctuation following `%' is to
+distinguish between different assembler languages for the same
+machine; for example, Motorola syntax versus MIT syntax for the
+68000.  Motorola syntax requires periods in most opcode names, while
+MIT syntax does not.  For example, the opcode `movel' in MIT syntax
+is `move.l' in Motorola syntax.  The same file of patterns is used
+for both kinds of output syntax, but the character sequence `%.' is
+used in each place where Motorola syntax wants a period.  The
+`PRINT_OPERAND' macro for Motorola syntax defines the sequence to
+output a period; the macro for MIT syntax defines it to do nothing.
 
 
 
@@ -143,7 +205,7 @@ letters that are allowed:
      an address into a register, because reload handles these cases
      specially.
 
-     Most older machine designs have ``load address'' instructions
+     Most older machine designs have "load address" instructions
      which do just what is needed here.  Some RISC machines do not
      advertise such instructions, but the possible addresses on these
      machines are very limited, so it is easy to fake them.
@@ -208,8 +270,8 @@ letters that are allowed:
      value into a register and using the register.  This is because
      the load into the register can be done with a `moveq'
      instruction.  We arrange for this to happen by defining the
-     letter `K' to mean ``any integer outside the range -128 to
-     127'', and then specifying `Ks' in the operand constraints.
+     letter `K' to mean "any integer outside the range -128 to 127",
+     and then specifying `Ks' in the operand constraints.
 
 `g'
      Any register, memory or immediate integer operand is allowed,
@@ -242,7 +304,7 @@ letters that are allowed:
 
 `p'
      An operand that is a valid memory address is allowed.  This is
-     for ``load address'' and ``push address'' instructions.
+     for "load address" and "push address" instructions.
 
      `p' in the constraint must be accompanies by `address_operand'
      as the predicate in the `match_operand'.
@@ -281,9 +343,9 @@ to be identical.  If we are considering an insn of the form
 
 the first pattern would not apply at all, because this insn does not
 contain two identical subexpressions in the right place.  The pattern
-would say, ``That does not look like an add instruction; try other
-patterns.'' The second pattern would say, ``Yes, that's an add
-instruction, but there is something wrong with it.''  It would direct
+would say, "That does not look like an add instruction; try other
+patterns." The second pattern would say, "Yes, that's an add
+instruction, but there is something wrong with it."  It would direct
 the reload pass of the compiler to generate additional insns to make
 the constraint true.  The results might look like this:
 
@@ -424,7 +486,7 @@ is best allocated to.  The compiler examines the constraints that
 apply to the insns that use the pseudo register, looking for the
 machine-dependent letters such as `d' and `a' that specify classes of
 registers.  The pseudo register is put in whichever class gets the
-most ``votes''.  The constraint letters `g' and `r' also vote: they
+most "votes".  The constraint letters `g' and `r' also vote: they
 vote in favor of a general register.  The machine description says
 which registers are considered general.
 
@@ -522,9 +584,9 @@ Not Using Constraints
 Some machines are so clean that operand constraints are not required.
 For example, on the Vax, an operand valid in one context is valid in
 any other context.  On such a machine, every operand constraint would
-be `g', excepting only operands of ``load address'' instructions
-which are written as if they referred to a memory location's contents
-but actual refer to its address.  They would have constraint `p'.
+be `g', excepting only operands of "load address" instructions which
+are written as if they referred to a memory location's contents but
+actual refer to its address.  They would have constraint `p'.
 
 For such machines, instead of writing `g' and `p' for all the
 constraints, you can choose to write a description with empty
@@ -770,7 +832,7 @@ pattern in to accomplish a certain task.
      Extract a bit-field from operand 1 (a register or memory
      operand), where operand 2 specifies the width in bits and
      operand 3 the starting bit, and store it in operand 0.  Operand
-     0 must have `Simode'.  Operand 1 may have mode `QImode' or
+     0 must have `SImode'.  Operand 1 may have mode `QImode' or
      `SImode'; often `SImode' is allowed only for registers. 
      Operands 2 and 3 must be valid for `SImode'.
 
@@ -881,8 +943,8 @@ pattern in to accomplish a certain task.
      This pattern requires two operands: the address or offset, and a
      label which should immediately precede the jump table.  If the
      macro `CASE_VECTOR_PC_RELATIVE' is defined then the first
-     operand is an absolute address to jump to; otherwise, it is an
-     offset which counts from the address of the table.
+     operand is an offset that counts from the address of the table;
+     otherwise, it is an absolute address to jump to.
 
      The `tablejump' insn is always the last insn before the jump
      table it uses.  Its assembler code normally has no need to use
@@ -988,21 +1050,21 @@ to support on the Vax, this pattern is possible because it matches
 only a constant second argument: a special case that can be output as
 an `and not' instruction.
 
-A ``compare'' instruction whose RTL looks like this:
+A "compare" instruction whose RTL looks like this:
 
      (set (cc0) (compare OPERAND (const_int 0)))
 
-may be simplified by optimization into a ``test'' like this:
+may be simplified by optimization into a "test" like this:
 
      (set (cc0) OPERAND)
 
-So in the machine description, each ``compare'' pattern for an
-integer mode must have a corresponding ``test'' pattern that will
-match the result of such simplification.
+So in the machine description, each "compare" pattern for an integer
+mode must have a corresponding "test" pattern that will match the
+result of such simplification.
 
 In some cases machines support instructions identical except for the
 machine mode of one or more operands.  For example, there may be
-``sign-extend halfword'' and ``sign-extend byte'' instructions whose
+"sign-extend halfword" and "sign-extend byte" instructions whose
 patterns are
 
      (set (match_operand:SI 0 ...)
@@ -1030,10 +1092,10 @@ replacement offsettable address.  In order for these generated
 instructions to work, there must be patterns to copy any kind of
 valid address into a register.
 
-Most older machine designs have ``load address'' instructions which
-do just what is needed here.  Some RISC machines do not advertise
-such instructions, but the possible addresses on these machines are
-very limited, so it is easy to fake them.
+Most older machine designs have "load address" instructions which do
+just what is needed here.  Some RISC machines do not advertise such
+instructions, but the possible addresses on these machines are very
+limited, so it is easy to fake them.
 
 Auto-increment and auto-decrement addresses are an exception; there
 need not be an instruction that can copy such an address into a
@@ -1076,7 +1138,7 @@ compare instruction is superfluous.
 
 Some machines have compare-and-branch instructions and no condition
 code.  A similar technique works for them.  When it is time to
-``output'' a compare instruction, record its operands in two static
+"output" a compare instruction, record its operands in two static
 variables.  When outputting the branch-on-condition-code instruction
 that follows, actually output a compare-and-branch instruction that
 uses the remembered operands.

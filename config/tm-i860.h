@@ -109,7 +109,7 @@ extern int target_flags;
 
 /* If bit field type is int, dont let it cross an int,
    and give entire struct the alignment of an int.  */
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* Standard register usage.  */
 
@@ -693,10 +693,12 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    The MODE argument is the machine mode for the MEM expression
    that wants to use this address.
 
-   On SPARC, the actual legitimate addresses must be REG+REG or REG+SMALLINT.
+   On the i860, the actual addresses must be REG+REG or REG+SMALLINT.
    But we can treat a SYMBOL_REF as legitimate if it is part of this
    function's constant-pool, because such addresses can actually
    be output as REG+SMALLINT.
+
+   The displacement in an address must be a multiple of the alignment.
 
    Try making SYMBOL_REF (and other things which are CONSTANT_ADDRESS_P)
    a legitimate address, regardless.  Because the only insns which can use
@@ -714,7 +716,8 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 	{						\
 	  if (GET_CODE (XEXP (X, 1)) == CONST_INT	\
 	      && INTVAL (XEXP (X, 1)) >= -0x8000	\
-	      && INTVAL (XEXP (X, 1)) < 0x8000)		\
+	      && INTVAL (XEXP (X, 1)) < 0x8000		\
+	      && INTVAL (XEXP (X, 1)) & (GET_MODE_SIZE (MODE) - 1) == 0) \
 	    goto ADDR;					\
 	}						\
       else if (GET_CODE (XEXP (X, 1)) == REG		\
@@ -722,7 +725,8 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 	{						\
 	  if (GET_CODE (XEXP (X, 0)) == CONST_INT	\
 	      && INTVAL (XEXP (X, 0)) >= -0x8000	\
-	      && INTVAL (XEXP (X, 0)) < 0x8000)		\
+	      && INTVAL (XEXP (X, 0)) < 0x8000		\
+	      && INTVAL (XEXP (X, 0)) & (GET_MODE_SIZE (MODE) - 1) == 0) \
 	    goto ADDR;					\
 	}						\
     }							\
@@ -777,9 +781,16 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 
 /* Go to LABEL if ADDR (a legitimate address expression)
    has an effect that depends on the machine mode it is used for.
-   On the SPUR this is never true.  */
+   On the i860 this is never true.
+   There are some addresses that are invalid in wide modes
+   but valid for narrower modes, but they shouldn't cause trouble.  */
 
 #define GO_IF_MODE_DEPENDENT_ADDRESS(ADDR,LABEL)
+
+/* On the 860, every legit address is offsettable,
+   but GCC would have trouble figuring this out.  */
+
+#define OFFSETTABLE_ADDRESS_P(MODE, ADDR) (memory_address_p ((MODE), (ADDR)))
 
 /* Specify the machine mode that this machine uses
    for the index in the tablejump instruction.  */
@@ -849,7 +860,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
   case SYMBOL_REF:						\
     return 2;							\
   case CONST_DOUBLE:						\
-    return 4;
+    return 2 * GET_MODE_SIZE (GET_MODE (RTX)) / UNITS_PER_WORD;
 
 /* Tell final.c how to eliminate redundant test instructions.  */
 
@@ -978,12 +989,12 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
    labels a jump table.  */
 
 #define ASM_OUTPUT_CASE_LABEL(FILE,PREFIX,NUM,JUMPTABLE)	\
-  fprintf (FILE, "\t.data\n.%s%d:\n", PREFIX, NUM)
+  fprintf (FILE, ".data\n\t.align 4\n.%s%d:\n", PREFIX, NUM)
 
 /* Output at the end of a jump table.  */
 
 #define ASM_OUTPUT_CASE_END(FILE,NUM,INSN)	\
-  fprintf (FILE, "\t.text\n")
+  fprintf (FILE, ".text\n")
 
 /* This is how to store into the string LABEL
    the symbol_ref name of an internal numbered label where
@@ -1100,7 +1111,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
     fprintf (FILE, "\t.align %d\n", 1 << (LOG))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.blkb %d\n", (SIZE))
+  fprintf (FILE, "\t.blkb %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1108,7 +1119,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1116,7 +1127,7 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1141,6 +1152,13 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
 #define TARGET_FF 014
 #define TARGET_CR 015
 
+/* This assumes the compiler is running on a little-endian machine.
+   The support for the other case is left for version 2,
+   since there is nothing in version 1 to indicate the sex of the host.  */
+
+#define PRINT_OPERAND_EXTRACT_FLOAT(X)					\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);
+
 /* Print operand X (an rtx) in assembler syntax to file FILE.
    CODE is a letter or dot (`z' in `%z0') or 0 if no letter was specified.
    For `%' followed by punctuation, CODE is the punctuation and X is null.
@@ -1164,7 +1182,11 @@ enum reg_class { NO_REGS, GENERAL_REGS, FP_REGS, ALL_REGS, LIM_REG_CLASSES };
   else if (GET_CODE (X) == CONST_DOUBLE)				\
     {									\
       if (GET_MODE (X) == SFmode)					\
-        fprintf (FILE, "0x%x", CONST_DOUBLE_LOW (X));			\
+	{ union { double d; int i[2]; } u;				\
+	  union { float f; int i; } u1;					\
+	  PRINT_OPERAND_EXTRACT_FLOAT (X);				\
+	  u1.f = u.d;							\
+          fprintf (FILE, "0x%x", u1.i); }				\
       else								\
         abort ();							\
       }									\

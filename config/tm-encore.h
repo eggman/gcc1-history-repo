@@ -50,6 +50,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #undef PRINT_OPERAND
 #undef PRINT_OPERAND_ADDRESS
 #undef TARGET_VERSION
+#undef FUNCTION_PROFILER
 
 
 #define TARGET_DEFAULT 1
@@ -103,7 +104,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)		\
 ( fputs ("\t.bss ", (FILE)),					\
   assemble_name ((FILE), (NAME)),				\
-  fprintf ((FILE), ",%d,%d\n", (SIZE), (ROUNDED)))
+  fprintf ((FILE), ",%u,%u\n", (SIZE), (ROUNDED)))
 
  /*
   *  Encore assembler can't handle huge string constants like the one in
@@ -196,3 +197,6 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
   else { putc ('$', FILE); output_addr_const (FILE, X); }}
 
 #define PRINT_OPERAND_ADDRESS(FILE, ADDR)  print_operand_address(FILE, ADDR)
+
+#define FUNCTION_PROFILER(FILE, LABELNO)  \
+   fprintf (FILE, "\taddr .LP%d,r0\n\tjsr mcount\n", (LABELNO))

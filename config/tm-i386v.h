@@ -31,13 +31,16 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* Use crt1.o as a startup file and crtn.o as a closing file.  */
 
 #define STARTFILE_SPEC  \
-  "%{pg:gcrt1.o%s}%{!pg:%{p:mcrt1.o%s}%{!p:crt1.o%s}}"
+  "%{pg:gcrt1.o%s}%{!pg:%{posix:%{p:mcrtp1.o%s}%{!p:crtp1.o%s}}%{!posix:%{p:mcrt1.o%s}%{!p:crt1.o%s}}}\
+   %{p:-L/usr/lib/libp}%{pg:-L/usr/lib/libp}"
 
-#define LIB_SPEC "%{p:-L/usr/lib/libp}%{pg:-L/usr/lib/libp} -lc crtn.o%s"
+#define LIB_SPEC "%{posix:-lcposix} %{shlib:-lc_s} -lc crtn.o%s"
 
 /* Specify predefined symbols in preprocessor.  */
 
 #define CPP_PREDEFINES "-Dunix -Di386"
+
+#define CPP_SPEC "%{posix:-D_POSIX_SOURCE}"
 
 /* Allow #sccs in preprocessor.  */
 
@@ -61,7 +64,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 /* Writing `int' for a bitfield forces int alignment for the structure.  */
 
-#define PCC_BITFIELD_TYPE_MATTERS
+#define PCC_BITFIELD_TYPE_MATTERS 1
 
 /* Don't write a `.optim' pseudo; this assembler doesn't handle them.  */
 

@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,120 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
+
+
+
+File: gcc.info,  Node: Comparisons,  Next: Bit Fields,  Prev: Arithmetic,  Up: RTL
+
+Comparison Operations
+=====================
+
+Comparison operators test a relation on two operands and are
+considered to represent a machine-dependent nonzero value
+(`STORE_FLAG_VALUE') if the relation holds, or zero if it does not. 
+The mode of the comparison is determined by the operands; they must
+both be valid for a common machine mode.  A comparison with both
+operands constant would be invalid as the machine mode could not be
+deduced from it, but such a comparison should never exist in RTL due
+to constant folding.
+
+Inequality comparisons come in two flavors, signed and unsigned. 
+Thus, there are distinct expression codes `gt' and `gtu' for signed
+and unsigned greater-than.  These can produce different results for
+the same pair of integer values: for example, 1 is signed
+greater-than -1 but not unsigned greater-than, because -1 when
+regarded as unsigned is actually `0xffffffff' which is greater than 1.
+
+The signed comparisons are also used for floating point values. 
+Floating point comparisons are distinguished by the machine modes of
+the operands.
+
+The comparison operators may be used to compare the condition codes
+`(cc0)' against zero, as in `(eq (cc0) (const_int 0))'.  Such a
+construct actually refers to the result of the preceding instruction
+in which the condition codes were set.  The above example stands for
+1 if the condition codes were set to say "zero" or "equal", 0
+otherwise.  Although the same comparison operators are used for this
+as may be used in other contexts on actual data, no confusion can
+result since the machine description would never allow both kinds of
+uses in the same context.
+
+`(eq X Y)'
+     1 if the values represented by X and Y are equal, otherwise 0.
+
+`(ne X Y)'
+     1 if the values represented by X and Y are not equal, otherwise 0.
+
+`(gt X Y)'
+     1 if the X is greater than Y.  If they are fixed-point, the
+     comparison is done in a signed sense.
+
+`(gtu X Y)'
+     Like `gt' but does unsigned comparison, on fixed-point numbers
+     only.
+
+`(lt X Y)'
+`(ltu X Y)'
+     Like `gt' and `gtu' but test for "less than".
+
+`(ge X Y)'
+`(geu X Y)'
+     Like `gt' and `gtu' but test for "greater than or equal".
+
+`(le X Y)'
+`(leu X Y)'
+     Like `gt' and `gtu' but test for "less than or equal".
+
+`(if_then_else COND THEN ELSE)'
+     This is not a comparison operation but is listed here because it
+     is always used in conjunction with a comparison operation.  To
+     be precise, COND is a comparison expression.  This expression
+     represents a choice, according to COND, between the value
+     represented by THEN and the one represented by ELSE.
+
+     On most machines, `if_then_else' expressions are valid only to
+     express conditional jumps.
+
+
+
+File: gcc.info,  Node: Bit Fields,  Next: Conversions,  Prev: Comparisons,  Up: RTL
+
+Bit-fields
+==========
+
+Special expression codes exist to represent bit-field instructions. 
+These types of expressions are lvalues in RTL; they may appear on the
+left side of an assignment, indicating insertion of a value into the
+specified bit field.
+
+`(sign_extract:SI LOC SIZE POS)'
+     This represents a reference to a sign-extended bit-field
+     contained or starting in LOC (a memory or register reference). 
+     The bit field is SIZE bits wide and starts at bit POS.  The
+     compilation option `BITS_BIG_ENDIAN' says which end of the
+     memory unit POS counts from.
+
+     Which machine modes are valid for LOC depends on the machine,
+     but typically LOC should be a single byte when in memory or a
+     full word in a register.
+
+`(zero_extract:SI LOC SIZE POS)'
+     Like `sign_extract' but refers to an unsigned or zero-extended
+     bit field.  The same sequence of bits are extracted, but they
+     are filled to an entire word with zeros instead of by
+     sign-extension.
 
 
 
@@ -153,7 +255,7 @@ operands of these.
      given the value X and the rest of the register is not changed.
 
      If LVAL is `(cc0)', it has no machine mode, and X may have any
-     mode.  This represents a ``test'' or ``compare'' instruction.
+     mode.  This represents a "test" or "compare" instruction.
 
      If LVAL is `(pc)', we have a jump instruction, and the
      possibilities for X are very limited.  It may be a `label_ref'
@@ -168,7 +270,7 @@ operands of these.
 `(return)'
      Represents a return from the current function, on machines where
      this can be done with one instruction, such as Vaxes.  On
-     machines where a multi-instruction ``epilogue'' must be executed
+     machines where a multi-instruction "epilogue" must be executed
      in order to return from the function, returning is done by
      jumping to a label which precedes the epilogue, and the `return'
      expression code is never used.
@@ -205,7 +307,7 @@ operands of these.
      locations must be presumed clobbered.
 
      Note that the machine description classifies certain hard
-     registers as ``call-clobbered''.  All function call instructions
+     registers as "call-clobbered".  All function call instructions
      are assumed by default to clobber these registers, so there is
      no need to use `clobber' expressions to indicate this fact. 
      Also, each function call is assumed to have the potential to
@@ -245,7 +347,7 @@ operands of these.
      effect expressions--expressions of code `set', `call', `return',
      `clobber' or `use'.
 
-     ``In parallel'' means that first all the values used in the
+     "In parallel" means that first all the values used in the
      individual side-effects are computed, and second all the actual
      side-effects are performed.  For example,
 
@@ -457,7 +559,9 @@ Every insn has one of the following six expression codes:
      The expression code `jump_insn' is used for instructions that
      may jump (or, more generally, may contain `label_ref'
      expressions).  `jump_insn' insns have the same extra fields as
-     `insn' insns, accessed in the same way.
+     `insn' insns, accessed in the same way.  If there is an
+     instruction to return from the current function, it is recorded
+     as a `jump_insn'.
 
 `call_insn'
      The expression code `call_insn' is used for instructions that
@@ -525,7 +629,7 @@ Every insn has one of the following six expression codes:
           Appears following each call to `setjmp' or a related
           function.
 
-    `NOTE_INSN_LOOP_BEG'
+    `NOTE_INSN_LOOP_CONT'
           Appears at the place in a loop that `continue' statements
           jump to.
 
@@ -551,12 +655,12 @@ Here is a table of the extra fields of `insn', `jump_insn' and
      `asm', `addr_vec' or `addr_diff_vec' expression.
 
 `LOG_LINKS (I)'
-     A list (chain of `insn_list' expressions) of previous
-     ``related'' insns: insns which store into registers values that
-     are used for the first time in this insn.  (An additional
-     constraint is that neither a jump nor a label may come between
-     the related insns).  This list is set up by the flow analysis
-     pass; it is a null pointer until then.
+     A list (chain of `insn_list' expressions) of previous "related"
+     insns: insns which store into registers values that are used for
+     the first time in this insn.  (An additional constraint is that
+     neither a jump nor a label may come between the related insns). 
+     This list is set up by the flow analysis pass; it is a null
+     pointer until then.
 
 `REG_NOTES (I)'
      A list (chain of `expr_list' expressions) giving information
@@ -593,7 +697,7 @@ of register note:
 `REG_EQUIV'
      The register that is set by this insn will be equal to OP at run
      time, and could validly be replaced in all its occurrences by
-     OP.  (``Validly'' here refers to the data flow of the program;
+     OP.  ("Validly" here refers to the data flow of the program;
      simple replacement may make some insns invalid.)
 
      The value which the insn explicitly copies into the register may
@@ -707,8 +811,8 @@ only a stack-adjustment insn (and perhaps some `note' insns).
 
 When a subroutine returns a `BLKmode' value, it is handled by passing
 to the subroutine the address of a place to store the value.  So the
-call insn itself does not ``return'' any value, and it has the same
-RTL form as a call that returns nothing.
+call insn itself does not "return" any value, and it has the same RTL
+form as a call that returns nothing.
 
 
 
@@ -847,10 +951,10 @@ A `define_insn' is an RTL expression containing four or five operands:
      `match_operand' and `match_dup' expressions that stand for
      operands of the instruction.
 
-     If the vector has only one element, that element is what the
-     instruction should look like.  If the vector has multiple
-     elements, then the instruction looks like a `parallel'
-     expression containing that many elements as described.
+     If the vector has only one element, that element is the template
+     for the instruction pattern.  If the vector has multiple
+     elements, then the instruction pattern is a `parallel'
+     expression containing the elements described.
 
   3. A condition.  This is a string which contains a C expression
      that is the final test to decide whether an insn body matches
@@ -906,7 +1010,7 @@ Here is an actual example of an instruction pattern, for the
 This is an instruction that sets the condition codes based on the
 value of a general operand.  It has no condition, so any insn whose
 RTL description has the form shown may be handled according to this
-pattern.  The name `tstsi' means ``test a `SImode' value'' and tells
+pattern.  The name `tstsi' means "test a `SImode' value" and tells
 the RTL generation pass that, when it is necessary to test such a
 value, an insn to do so can be constructed using this pattern.
 
@@ -1045,7 +1149,7 @@ substitution of the operands.
      The machine mode M of `match_operator' works like that of
      `match_operand': it is passed as the second argument to the
      predicate function, and that function is solely responsible for
-     deciding whether the expression to be matched ``has'' that mode.
+     deciding whether the expression to be matched "has" that mode.
 
      When constructing an insn, argument 2 of the gen-function will
      specify the operation (i.e. the expression code) for the
@@ -1062,7 +1166,7 @@ substitution of the operands.
 
 `(address (match_operand:M N "address_operand" ""))'
      This complex of expressions is a placeholder for an operand
-     number N in a ``load address'' instruction: an operand which
+     number N in a "load address" instruction: an operand which
      specifies a memory location in the usual way, but for which the
      actual operand value used is the address of the location, not
      the contents of the location.
@@ -1083,67 +1187,5 @@ substitution of the operands.
      differently (such as the PDP-10), different formats would
      perhaps need different machine modes and these modes might be
      written in the `address' expression.
-
-
-
-File: gcc.info,  Node: Output Template,  Next: Output Statement,  Prev: RTL Template,  Up: Machine Desc
-
-Output Templates and Operand Substitution
-=========================================
-
-The "output template" is a string which specifies how to output the
-assembler code for an instruction pattern.  Most of the template is a
-fixed string which is output literally.  The character `%' is used to
-specify where to substitute an operand; it can also be used to
-identify places where different variants of the assembler require
-different syntax.
-
-In the simplest case, a `%' followed by a digit N says to output
-operand N at that point in the string.
-
-`%' followed by a letter and a digit says to output an operand in an
-alternate fashion.  Four letters have standard, built-in meanings
-described below.  The machine description macro `PRINT_OPERAND' can
-define additional letters with nonstandard meanings.
-
-`%cDIGIT' can be used to substitute an operand that is a constant
-value without the syntax that normally indicates an immediate operand.
-
-`%nDIGIT' is like `%cDIGIT' except that the value of the constant is
-negated before printing.
-
-`%aDIGIT' can be used to substitute an operand as if it were a memory
-reference, with the actual operand treated as the address.  This may
-be useful when outputting a ``load address'' instruction, because
-often the assembler syntax for such an instruction requires you to
-write the operand as if it were a memory reference.
-
-`%lDIGIT' is used to substitute a `label_ref' into a jump instruction.
-
-`%' followed by a punctuation character specifies a substitution that
-does not use an operand.  Only one case is standard: `%%' outputs a
-`%' into the assembler code.  Other nonstandard cases can be defined
-in the `PRINT_OPERAND' macro.  You must also define which punctuation
-characters are valid with the `PRINT_OPERAND_PUNCT_VALID_P' macro.
-
-The template may generate multiple assembler instructions.  Write the
-text for the instructions, with `\;' between them.
-
-When the RTL contains two operands which are required by constraint
-to match each other, the output template must refer only to the
-lower-numbered operand.  Matching operands are not always identical,
-and the rest of the compiler arranges to put the proper RTL
-expression for printing into the lower-numbered operand.
-
-One use of nonstandard letters or punctuation following `%' is to
-distinguish between different assembler languages for the same
-machine; for example, Motorola syntax versus MIT syntax for the
-68000.  Motorola syntax requires periods in most opcode names, while
-MIT syntax does not.  For example, the opcode `movel' in MIT syntax
-is `move.l' in Motorola syntax.  The same file of patterns is used
-for both kinds of output syntax, but the character sequence `%.' is
-used in each place where Motorola syntax wants a period.  The
-`PRINT_OPERAND' macro for Motorola syntax defines the sequence to
-output a period; the macro for MIT syntax defines it to do nothing.
 
 

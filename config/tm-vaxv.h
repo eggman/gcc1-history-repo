@@ -42,7 +42,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_LOCAL(FILE,NAME,SIZE,ROUNDED)	\
 ( fputs (".data\n", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ":\n\t.space %d\n", (ROUNDED)))
+  fprintf ((FILE), ":\n\t.space %u\n", (ROUNDED)))
 
 #define ASM_OUTPUT_ASCII(FILE,PTR,LEN)  \
 {							\

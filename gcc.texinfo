@@ -6,7 +6,7 @@
 @ifinfo
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -42,12 +42,12 @@ Foundation instead of in the original English.
 @sp 2
 @center Richard M. Stallman
 @sp 3
-@center last updated 21 February 1990
+@center last updated 4 December 1990
 @sp 1
-@center for version 1.37.1
+@center for version 1.38
 @page
 @vskip 0pt plus 1filll
-Copyright @copyright{} 1988, 1989 Free Software Foundation, Inc.
+Copyright @copyright{} 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of
 this manual provided the copyright notice and this permission notice
@@ -86,6 +86,7 @@ well as its new features and incompatibilities, and how to report bugs.
 * Options::         Command options supported by @samp{gcc}.
 * Installation::    How to configure, compile and install GNU CC.
 * Trouble::         If you have trouble installing GNU CC.
+* Service::         How to find suppliers of services for GNU CC users.
 * Incompatibilities:: Incompatibilities of GNU CC.
 * Extensions::      GNU extensions to the C language.
 * Bugs::            How to report bugs (if you want to get them fixed).
@@ -480,19 +481,26 @@ Jonathan Stone wrote the machine description for the Pyramid computer.
 @node Boycott, Options, Contributors, Top
 @chapter Protect Your Freedom---Fight ``Look And Feel''
 
+@quotation
+@i{This section is a political message from the League for Programming
+Freedom to the users of GNU CC.  It is included here as an expression
+of support for the League on the part of the Free Software Foundation
+and Richard Stallman.}
+@end quotation
+
 Ashton-Tate, Apple, Lotus and Xerox are trying to create a new form of
 legal monopoly: a copyright on a class of user interfaces.  These
 monopolies would cause serious problems for users and developers of
 computer software and systems.
 
-Until three years ago, the law seemed clear: no one could restrict
+Until a few years ago, the law seemed clear: no one could restrict
 others from using a user interface; programmers were free to implement
 any interface they chose.  Imitating interfaces, sometimes with changes,
 was standard practice in the computer field.  The interfaces we know
 evolved gradually in this way; for example, the Macintosh user interface
 drew ideas from the Xerox interface, which in turn drew on work done at
-Stanford and SRI.  1-2-3 imitated VisiCalc, and dBase imitated a database
-program from JPL.
+Stanford and SRI.  1-2-3 imitated VisiCalc, and dBase imitated a
+database program from JPL.
 
 Most computer companies, and nearly all computer users, were happy with
 this state of affairs.  The companies that are suing say it does not
@@ -528,10 +536,46 @@ Even Apple, etc., will find it harder to make improvements if
 they can no longer adapt the good ideas that others introduce, for
 fear of weakening their own legal positions.  Some users suggest that
 this stagnation may already have started.
+
+@item
+If you use GNU software, you might find it of some concern that user
+interface copyright will make it hard for the Free Software Foundation
+to develop programs compatible with the interfaces that you already
+know.
 @end itemize
 
-Here are some things you can do to protect your freedom to write
-programs:
+To protect our freedom from lawsuits like these, a group of programmers
+and users have formed a new grass-roots political organization, the
+League for Programming Freedom.
+
+The purpose of the League is to oppose new monopolistic practices such
+as user-interface copyright and software patents; it calls for a return
+to the legal policies of the recent past, in which these practices were
+not allowed.  The League is not concerned with free software as an
+issue, and not affiliated with the Free Software Foundation.
+
+The League's membership rolls include John McCarthy, inventor of Lisp,
+Marvin Minsky, founder of the Artificial Intelligence lab, Guy L.
+Steele, Jr., author of well-known books on Lisp and C, as well as
+Richard Stallman, the developer of GNU CC.  Please join and add your
+name to the list.  Membership dues in the League are $42 per year for
+programmers, managers and professionals; $10.50 for students; $21 for
+others.
+
+The League needs both activist members and members who only pay their
+dues.
+
+To join, or for more information, phone (617) 492-0023 or write to:
+
+@example
+League for Programming Freedom
+1 Kendall Square #143
+P.O. Box 9171
+Cambridge, MA 02139       league@@prep.ai.mit.edu
+@end example
+
+Here are some suggestions from the League for how you can protect your
+freedom to write programs:
 
 @itemize @bullet
 @item
@@ -552,16 +596,6 @@ is unacceptable.
 @item
 Tell your friends and colleagues about this issue and how it threatens
 to ruin the computer industry.
-
-@item
-Join the League for Programming Freedom.  Phone (617) 492-0023 or write to:
-
-@example
-League for Programming Freedom
-1 Kendall Square #143
-P.O. Box 9171
-Cambridge, MA 02139       league@@prep.ai.mit.edu
-@end example
 
 @item
 Above all, don't work for the look-and-feel plaintiffs, and don't
@@ -736,7 +770,8 @@ declarations of functions.
 
 @item
 The keywords @code{typeof}, @code{inline}, @code{signed}, @code{const}
-and @code{volatile} are not recognized.@refill
+and @code{volatile} are not recognized.  (You can still use the alternative
+keywords such as @code{__typeof__}, @code{__inline__}, and so on.)
 
 @item
 Comparisons between pointers and integers are always allowed.
@@ -1445,7 +1480,7 @@ directories from the search path except those you specify.
 
 @item -M
 Tell the preprocessor to output a rule suitable for @code{make}
-describing the dependencies of each source file.  For each source
+describing the dependencies of each object file.  For each source
 file, the preprocessor outputs one @code{make}-rule whose target is
 the object file name for that source file and whose dependencies are
 all the files @samp{#include}d in it.  This rule may be a single line
@@ -1483,8 +1518,10 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Other Dir::     Compiling in a separate directory (not where the source is).
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
+* SCO Install::   See below for installation on SCO System V 3.2.
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
+* MIPS Install::  See below for installation on MIPS.
 @end menu
 @iftex
 See below for VMS systems, and modified procedures needed on Sun
@@ -1586,8 +1623,9 @@ format used on the Mips.
 The Mips computer, M series.  Note that GNU CC cannot generate debugging
 information in the unusual format used on the Mips.
 @item iris
-The Mips computer, as delivered by Iris.  Note that GNU CC cannot
-generate debugging information in the unusual format used on the Mips.
+Another variant of the Mips computer, the Silicon Graphics Iris 4D.
+Note that GNU CC cannot generate debugging information in the unusual
+format used on the Mips.
 @item convex-c1
 Convex C1 computer.
 @item convex-c2
@@ -1617,6 +1655,8 @@ ISI 68000 or 68020 system without a 68881.
 Sony NEWS 68020 system.
 @item next
 NeXT system.
+@item tower
+NCR Tower 32 system.
 @item altos
 Altos 3068.  Note that you must use the GNU assembler, linker and
 debugger, with COFF-encapsulation.  Also, you must fix a kernel
@@ -1707,6 +1747,8 @@ for HPUX systems, if you are using the GNU assembler, linker and
 other utilities.  Not all of the pieces of GNU software needed
 for this mode of operation are as yet in distribution; full
 instructions will appear here in the future.@refill
+@item tm-tower-as.h
+for NCR Tower 32 systems, using the standard system assembler.
 @end table
 
 For the vax, use @file{tm-vax.h} on BSD Unix, @file{tm-vaxv.h} on
@@ -1743,6 +1785,16 @@ Note that Encore systems are supported only under BSD.
 For Sparc (Sun 4) machines, use @file{tm-sparc.h} with operating system
 version 4, and @file{tm-sun4os3.h} with system version 3.
 
+For Convex systems before version 8.1, use @file{tm-conv1os7.h} or
+@file{tm-conv2os7.h}.  For versions 8.1 and greater, use @file{tm-convex1.h}
+or @file{tm-convex2.h}.  You should also bootstrap GCC with @code{pcc}
+rather than @code{cc}; one way to do this is with the following commands.
+
+@example
+ln -s /bin/pcc ./cc
+set path = (. $path)
+@end example
+
 @item
 Make a symbolic link named @file{md} to the machine description
 pattern file.  It should be in the @file{config} subdirectory and its
@@ -1764,6 +1816,19 @@ and you do not plan to change the @samp{.y} files.)
 
 Bison versions older than Sept 8, 1988 will produce incorrect output
 for @file{c-parse.tab.c}.
+
+@item
+If you have a previous version of GCC installed, then chances are
+you can compile the new version with that.  Do the following:
+
+@example
+make CC="gcc -O"
+@end example
+
+@noindent
+Since this produces an optimized executable right away, there is no need
+to bootstrap the result with itself except to test it.  Therefore, you can
+skip directly to the @samp{make install} step below.
 
 @item
 Build the compiler.  Just type @samp{make} in the compiler directory.
@@ -1803,6 +1868,8 @@ Recompile the compiler with itself, with this command:
 make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
 @end example
 
+This is called making the stage 2 compiler.
+
 On a 68000 or 68020 system lacking floating point hardware,
 unless you have selected a @file{tm.h} file that expects by default
 that there is no such hardware, do this instead:
@@ -1824,8 +1891,9 @@ end
 @end example
 
 @noindent
-Aside from the @samp{-B} option, the options should be the same as
-when you made stage 2.
+This is called making the stage 3 compiler.  Aside from the @samp{-B}
+option, the options should be the same as when you made the stage 2
+compiler.
 
 The @code{foreach} command (written in C shell) will notify you if any of
 these stage 3 object files differs from those of stage 2.  On BSD systems,
@@ -1840,11 +1908,14 @@ comparison as follows (in Bourne shell):
 @example
 for file in *.o; do
 echo $file
-tail +10 $file > foo1
-tail +10 stage2/$file > foo2
+tail +10c $file > foo1
+tail +10c stage2/$file > foo2
 cmp foo1 foo2
 done
 @end example
+
+On MIPS machines, you should use the shell script @file{ecoff-cmp}
+to compare two object files.
 
 @item
 Install the compiler driver, the compiler's passes and run-time support.
@@ -1887,6 +1958,21 @@ installs modified, corrected copies of the files @file{ioctl.h},
 GNU CC will normally look for them.  This script will work on various
 systems because it chooses the files by searching all the system
 headers for the problem cases that we know about.
+
+Use the following command to do this:
+
+@example
+make includes
+@end example
+
+@noindent
+If you selected a different directory for GNU CC installation when you
+installed it, by specifying the Make variable @code{prefix} or
+@code{libdir}, specify it the same way in this command.
+
+Note that some systems are starting to come with ANSI C system header
+files.  On these systems, don't run @file{fixincludes}; it may not work,
+and is certainly not necessary.
 @end enumerate
 
 If you cannot install the compiler's passes and run-time support in
@@ -1967,7 +2053,7 @@ command to compile GNU CC with Sun CC:
 make CC="TERMCAP=x OBJS=x LIBFUNCS=x STAGESTUFF=x cc"
 @end example
 
-@node 3b1 Install, VMS Install, Sun Install, Installation
+@node 3b1 Install, SCO Install, Sun Install, Installation
 @section Installing GNU CC on the 3b1
 
 Installing GNU CC on the 3b1 is difficult if you do not already have
@@ -2015,7 +2101,31 @@ problem, uncomment this line in @file{Makefile}:
 CCLIBFLAGS = -B/usr/local/lib/gcc- -tp -Wp,-traditional
 @end example
 
-@node VMS Install, HPUX Install, 3B1 Install, Installation
+@node SCO Install, VMS Install, 3B1 Install, Installation
+@section Installing GNU CC on SCO System V 3.2
+@cindex Installation on SCO systems
+
+The compiler that comes with this system does not work properly with
+@samp{-O}.  Therefore, you should redefine the Make variable
+@code{CCLIBFLAGS} not to use @samp{-O}.
+
+In addition, the compiler produces incorrect output when compiling parts
+of GNU CC; the resulting executable @file{cc1} does not work properly
+when it is used with @samp{-O}.
+
+Therefore, what you must do after building the first stage
+is use GNU CC to compile itself without optimization.  Here is how:
+
+@example
+make -k cc1 CC="./gcc -B./"
+@end example
+
+You can think of this as ``stage 1.1'' of the installation process.
+However, using this command has the effect of discarding the faulty
+stage 1 executable for @file{cc1} and replacing it with stage 1.1.  You
+can then proceed with @samp{make stage1} and the rest of installation.
+
+@node VMS Install, HPUX Install, SCO Install, Installation
 @section Installing GNU CC on VMS
 
 The VMS version of GNU CC is distributed in a backup saveset containing
@@ -2109,17 +2219,31 @@ requires editing all the @code{gcc} commands in @file{make-cc1.com}.
 have a working 1.33 or newer GNU CC, you can change this file back.
 @end enumerate
 
-There is a known problem on VMS: @code{const} global variables don't
-work compatibly with the VMS C compiler; we don't know a way to get
-them to the linker properly.
+With this version of GNU CC, @code{const} global variables now work
+properly.  Unless, however, the @code{const} modifier is also specified
+in every external declaration of the variable in all of the source files
+that use that variable, the linker will issue warnings about conflicting
+attributes for the variable, since the linker does not know if the
+variable should be read-only.  The program will still work, but the
+variable will be placed in writable storage.
 
-Note that GNU CC on VMS does not generate debugging information to
-describe the program's symbols.  It is not straightforward to implement
-this, and we have no time to spend on it, but we might consent to
-install a very modular implementation if you write it.  You will
-probably have to modify GAS as well as GNU CC.
+Under previous versions of GNU CC, the generated code would occasionally
+give strange results when linked to the sharable @file{VAXCRTL} library.
+Now this should work.
 
-@node HPUX Install,, VMS Install, Installation
+Even with this version, however, GNU CC itself should not be linked to
+the sharable @file{VAXCRTL}, unless you force the linker to use the
+@code{qsort} routine from @file{gcclib.olb}.  The @file{qsort} routine
+supplied with @file{VAXCRTL} has a bug which causes a compiler crash.
+The executable that is generated by @file{make-cc1.com} uses the
+non-shared version of @file{VAXCRTL} (and thus the @file{qsort} routine
+from @file{gcclib.olb}).
+
+Note that GNU CC on VMS now generates debugging information to describe
+the programs symbols to the VMS debugger.  However, you need version 1.37
+or later of GAS in order to output them properly in the object file.
+
+@node HPUX Install, MIPS Install, VMS Install, Installation
 @section Installing GNU CC on HPUX
 
 To install GNU CC on HPUX, you must start by editing the file
@@ -2127,6 +2251,13 @@ To install GNU CC on HPUX, you must start by editing the file
 saying what to change.  You need to change some variable definitions and
 (if you are using GAS) some lines in the rule for the target
 @samp{gnulib}.
+
+To avoid errors when linking programs with @samp{-g}, create an empty
+library named @file{libg.a}.  An easy way to do this is:
+
+@example
+ar rc /usr/local/lib/libg.a
+@end example
 
 To compile with the HPUX C compiler, you must specify get the file
 @file{alloca.c} from GNU Emacs.  Then, when you run @code{make}, use
@@ -2144,8 +2275,18 @@ follows:
 make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -I../binutils/hp-include"
 @end example
 
-@node Trouble, Incompatibilities, Installation, Top
-@chapter Known Causes of Trouble with GNU CC.
+@node MIPS Install,, HPUX Install, Installation
+@section Installing GNU CC on MIPS
+
+To avoid errors when linking programs with @samp{-g}, create an empty
+library named @file{libg.a}.  An easy way to do this is:
+
+@example
+ar rc /usr/local/lib/libg.a
+@end example
+
+@node Trouble, Service, Installation, Top
+@chapter Known Causes of Trouble with GNU CC
 
 Here are some of the things that have caused trouble for people installing
 or using GNU CC.
@@ -2232,7 +2373,26 @@ the definition of @code{struct mumble} above the prototype.  I don't
 think it's worth being incompatible for.
 @end itemize
 
-@node Incompatibilities, Extensions, Trouble, Top
+
+@node Service, Incompatibilities, Trouble, Top
+@chapter How To Get Help with GNU CC
+
+If you need help installing, using or changing GNU CC, there are two
+ways to find it:
+
+@itemize @bullet
+@item
+Send a message to a suitable network mailing list.  First try
+@code{bug-gcc@@prep.ai.mit.edu}, and if that brings no response, try
+@code{info-gcc@@prep.ai.mit.edu}.
+
+@item
+Look in the service directory for someone who might help you for a fee.
+The service directory is found in the file named @file{SERVICE} in the
+GNU CC distribution.
+@end itemize
+
+@node Incompatibilities, Extensions, Service, Top
 @chapter Incompatibilities of GNU CC
 
 There are several noteworthy incompatibilities between GNU C and most
@@ -2399,6 +2559,21 @@ yet supported in GNU CC, so it isn't straightforward to fix it.
 
 The convention for structure returning is also incompatible, and
 @samp{-fpcc-struct-return} does not help.
+
+@item
+On Ultrix, the Fortran compiler expects registers 2 through 5 to be saved
+by function calls.  We have not been able to tell whether the C compiler
+agrees with the Fortran compiler.  Currently, GNU CC treats these registers
+as temporaries on the Vax, which is compatible with BSD Unix.
+
+If we learn for certain that Ultrix has departed from the traditional
+BSD calling convention, we will change GNU CC for Ultrix to fit.  In the
+mean time, you can use these options to produce code compatible with the
+Fortran compiler:
+
+@example
+-fcall-saved-r2 -fcall-saved-r3 -fcall-saved-r4 -fcall-saved-r5
+@end example
 @end itemize
 
 @node Extensions, Bugs, Incompatibilities, Top
@@ -2892,7 +3067,7 @@ fewer times than the program says.
 
 Note that a function that has pointer arguments and examines the data
 pointed to must @emph{not} be declared @code{const}.  Likewise, a
-function that calls a non-@code{const} function must not be
+function that calls a non-@code{const} function usually must not be
 @code{const}.
 
 Some people object to this feature, claiming that ANSI C's @code{#pragma}
@@ -3343,7 +3518,7 @@ variable the value it had at the time of the @code{setjmp}.  On some
 machines, however, @code{longjmp} will not change the value of global
 register variables.  To be portable, the function that called @code{setjmp}
 should make other arrangements to save the values of the global register
-variables, and to restore them in a @code{longjmp}.  This way, the the same
+variables, and to restore them in a @code{longjmp}.  This way, the same
 thing will happen regardless of what @code{longjmp} does.
 
 All global register variable declarations must precede all function
@@ -3384,10 +3559,10 @@ automatically, but first we need to figure out how it should choose and
 how to enable you to guide the choice.  No solution is evident.
 
 Defining such a register variable does not reserve the register; it
-remains available for other uses in places where flow control
-determines the variable's value is not live.  However, these registers
-made unavailable for use in the reload pass.  I would not be surprised
-if excessive use of this feature leaves the compiler too few available
+remains available for other uses in places where flow control determines
+the variable's value is not live.  However, these registers are made
+unavailable for use in the reload pass.  I would not be surprised if
+excessive use of this feature leaves the compiler too few available
 registers to compile certain functions.
 
 @node Alternate Keywords,, Explicit Reg Vars, Extensions
@@ -3434,6 +3609,8 @@ information that makes for fixing the bug.
 @menu
 * Criteria:  Bug Criteria.   Have you really found a bug?
 * Reporting: Bug Reporting.  How to report a bug effectively.
+* Known: Trouble.            A list of known problems.
+* Help: Service.             How to get help.
 @end menu
 
 @node Bug Criteria, Bug Reporting, Bugs, Bugs
@@ -4330,6 +4507,11 @@ in certain types of expression.  Most often they are accessed with the
 following macros:
 
 @table @code
+@item EXTERNAL_SYMBOL_P (@var{x})
+In a @code{symbol_ref} expression, nonzero if it corresponds to a variable
+declared extern in the users code.  Zero for all other variables. Stored in
+the @code{volatil} field and printed as @samp{/v}.
+
 @item MEM_VOLATILE_P (@var{x})
 In @code{mem} expressions, nonzero for volatile memory references.
 Stored in the @code{volatil} field and printed as @samp{/v}.
@@ -4389,14 +4571,17 @@ Expressions that appear more than once are copied, according to the
 rules for shared structure (@pxref{Sharing}).
 
 @item volatil
-This flag is used in @code{mem} and @code{reg} expressions and in insns.
-In RTL dump files, it is printed as @samp{/v}.
+This flag is used in @code{mem},@code{symbol_ref} and @code{reg} expressions
+and in insns.  In RTL dump files, it is printed as @samp{/v}.
 
 In a @code{mem} expression, it is 1 if the memory reference is volatile.
 Volatile memory references may not be deleted, reordered or combined.
 
 In a @code{reg} expression, it is 1 if the value is a user-level variable.
 0 indicates an internal compiler temporary.
+
+In a @code{symbol_ref} expression, it is 1 if the symbol is declared
+@code{extern}.
 
 In an insn, 1 means the insn has been deleted.
 
@@ -4764,11 +4949,28 @@ floating value.
 
 @item (cc0)
 This refers to the machine's condition code register.  It has no
-operands and may not have a machine mode.  It may be validly used in
-only two contexts: as the destination of an assignment (in test and
-compare instructions) and in comparison operators comparing against
-zero (@code{const_int} with value zero; that is to say,
-@code{const0_rtx}).
+operands and may not have a machine mode.  There are two ways to use it:
+
+@itemize @bullet
+@item
+To stand for a complete set of condition code flags.  This is best on
+most machines, where each comparison sets the entire series of flags.
+
+With this technique, @code{(cc0)} may be validly used in only two
+contexts: as the destination of an assignment (in test and compare
+instructions) and in comparison operators comparing against zero
+(@code{const_int} with value zero; that is to say, @code{const0_rtx}).
+
+@item
+To stand for a single flag that is the result of a single condition.
+This is useful on machines that have only a single flag bit, and in
+which comparison instructions must specify the condition to test.
+
+With this technique, @code{(cc0)} may be validly used in only two
+contexts: as the destination of an assignment (in test and compare
+instructions) where the source is a comparison operator, and as the
+first operand of @code{if_then_else} (in a conditional branch).
+@end itemize
 
 There is only one expression object of code @code{cc0}; it is the
 value of the variable @code{cc0_rtx}.  Any attempt to create an
@@ -4783,6 +4985,11 @@ prescription for recognizing the instructions that do so (by means of
 the macro @code{NOTICE_UPDATE_CC}).  Only instructions whose sole
 purpose is to set the condition code, and instructions that use the
 condition code, need mention @code{(cc0)}.
+
+In some cases, better code may result from recognizing combinations or
+peepholes that include instructions that set the condition codes, even
+in cases where some reloading is inevitable.  For examples, search for
+@samp{addcc} and @samp{andcc} in @file{sparc.md}.
 
 @item (pc)
 This represents the machine's program counter.  It has no operands and
@@ -4927,7 +5134,7 @@ Represents the square root of @var{x}, computed in mode @var{m}.
 a floating point mode.
 
 @item (ffs:@var{m} @var{x})
-Represents the one plus the index of the least significant 1-bit in
+Represents one plus the index of the least significant 1-bit in
 @var{x}, represented as an integer of mode @var{m}.  (The value is
 zero if @var{x} is zero.)  The mode of @var{x} need not be @var{m};
 depending on the target machine, various mode combinations may be
@@ -4937,12 +5144,13 @@ valid.
 @node Comparisons, Bit Fields, Arithmetic, RTL
 @section Comparison Operations
 
-Comparison operators test a relation on two operands and are considered to
-represent the value 1 if the relation holds, or zero if it does not.  The
-mode of the comparison is determined by the operands; they must both be
-valid for a common machine mode.  A comparison with both operands constant
-would be invalid as the machine mode could not be deduced from it, but such
-a comparison should never exist in RTL due to constant folding.
+Comparison operators test a relation on two operands and are considered
+to represent a machine-dependent nonzero value (@code{STORE_FLAG_VALUE})
+if the relation holds, or zero if it does not.  The mode of the
+comparison is determined by the operands; they must both be valid for a
+common machine mode.  A comparison with both operands constant would be
+invalid as the machine mode could not be deduced from it, but such a
+comparison should never exist in RTL due to constant folding.
 
 Inequality comparisons come in two flavors, signed and unsigned.  Thus,
 there are distinct expression codes @code{gt} and @code{gtu} for signed and
@@ -5007,7 +5215,7 @@ to express conditional jumps.
 
 Special expression codes exist to represent bit-field instructions.
 These types of expressions are lvalues in RTL; they may appear
-on the left side of a assignment, indicating insertion of a value
+on the left side of an assignment, indicating insertion of a value
 into the specified bit field.
 
 @table @code
@@ -5467,7 +5675,8 @@ These four are described in a table below.
 The expression code @code{jump_insn} is used for instructions that may jump
 (or, more generally, may contain @code{label_ref} expressions).
 @code{jump_insn} insns have the same extra fields as @code{insn} insns,
-accessed in the same way.
+accessed in the same way.  If there is an instruction to return from the
+current function, it is recorded as a @code{jump_insn}.
 
 @item call_insn
 The expression code @code{call_insn} is used for instructions that may do
@@ -5530,7 +5739,7 @@ optimization.
 @item NOTE_INSN_SETJMP
 Appears following each call to @code{setjmp} or a related function.
 
-@item NOTE_INSN_LOOP_BEG
+@item NOTE_INSN_LOOP_CONT
 Appears at the place in a loop that @code{continue} statements jump to.
 @end table
 
@@ -5864,10 +6073,10 @@ like.  It is incomplete because it may contain @code{match_operand}
 and @code{match_dup} expressions that stand for operands of the
 instruction.
 
-If the vector has only one element, that element is what the
-instruction should look like.  If the vector has multiple elements,
-then the instruction looks like a @code{parallel} expression
-containing that many elements as described.
+If the vector has only one element, that element is the template for the
+instruction pattern.  If the vector has multiple elements, then the
+instruction pattern is a @code{parallel} expression containing the
+elements described.
 
 @item
 A condition.  This is a string which contains a C expression that is
@@ -6891,7 +7100,7 @@ point.
 @item @samp{extv}
 Extract a bit-field from operand 1 (a register or memory operand),
 where operand 2 specifies the width in bits and operand 3 the starting
-bit, and store it in operand 0.  Operand 0 must have @code{Simode}.
+bit, and store it in operand 0.  Operand 0 must have @code{SImode}.
 Operand 1 may have mode @code{QImode} or @code{SImode}; often
 @code{SImode} is allowed only for registers.  Operands 2 and 3 must be
 valid for @code{SImode}.
@@ -7008,8 +7217,8 @@ is no @samp{casesi} pattern.
 This pattern requires two operands: the address or offset, and a label
 which should immediately precede the jump table.  If the macro
 @code{CASE_VECTOR_PC_RELATIVE} is defined then the first operand is an
-absolute address to jump to; otherwise, it is an offset which counts
-from the address of the table.
+offset that counts from the address of the table; otherwise, it is an
+absolute address to jump to.
 
 The @samp{tablejump} insn is always the last insn before the jump
 table it uses.  Its assembler code normally has no need to use the
@@ -7802,6 +8011,9 @@ of some instances of PCC: a bit field whose declared type is
 @code{int} has the same effect on the size and alignment of a
 structure as an actual @code{int} would have.
 
+If the macro is defined, then its definition should be a C expression; 
+a nonzero value for the expression enables PCC-compatible behavior.
+
 Just what effect that is in GNU CC depends on other parameters, but on
 most machines it would force the structure's alignment and size to a
 multiple of 32 or @code{BIGGEST_ALIGNMENT} bits.
@@ -7938,7 +8150,7 @@ stack.)
 If this macro is not defined, it means that no death notes need to be
 preserved.  This is the usual situation.
 
-@item HARD_REGNO_REGS (@var{regno}, @var{mode})
+@item HARD_REGNO_NREGS (@var{regno}, @var{mode})
 A C expression for the number of consecutive hard registers, starting
 at register number @var{regno}, required to hold a value of mode
 @var{mode}.
@@ -8397,7 +8609,7 @@ registers.
 
 The actual allocation of such space would be done either by
 the call instruction or by the function prologue, or by
-defining FIRST_PARM_CALLER_OFFSET.
+defining @code{FIRST_PARM_CALLER_OFFSET}.
 
 @item STACK_ARGS_ADJUST (@var{size})
 Define this macro if the machine requires padding on the stack for
@@ -8446,6 +8658,9 @@ arguments pop them but other functions (such as @code{printf}) pop
 nothing (the caller pops all).  When this convention is in use,
 @var{funtype} is examined to determine whether a function takes a
 fixed number of arguments.
+
+When this macro returns nonzero, the macro @code{FRAME_POINTER_REQUIRED}
+must also return nonzero for proper operation.
 
 @item FUNCTION_VALUE (@var{valtype}, @var{func})
 A C expression to create an RTX representing the place where a
@@ -8645,19 +8860,14 @@ frame pointer is in wanted, the macro can refer to the variable
 @code{frame_pointer_needed}.  The variable's value will be 1 at run
 time in a function that needs a frame pointer.
 
-On machines where arguments may be passed in registers, and not have
-stack space allocated, this macro must examine the variable
+On machines where an argument may be passed partly in registers and
+partly in memory, this macro must examine the variable
 @code{current_function_pretend_args_size}, and allocate that many bytes
 of uninitialized space on the stack just underneath the first argument
 arriving on the stack.  (This may not be at the very end of the stack,
 if the calling sequence has pushed anything else since pushing the stack
 arguments.  But usually, on such machines, nothing else has been pushed
 yet, because the function prologue itself does all the pushing.)
-
-This ``pretend argument'' space is allocated in functions that use the
-ANSI library @file{stdarg.h} to accept anonymous arguments of
-unspecified types; the last named argument is copied into the space, so
-that the anonymous arguments follow it consecutively.
 
 @item FUNCTION_PROFILER (@var{file}, @var{labelno})
 A C statement or compound statement to output to @var{file} some
@@ -8713,7 +8923,7 @@ Of course, since you are writing the definition of
 can take a short cut in the definition of this macro and use the name
 that you know will result.
 
-@item EXIT_IGNORES_STACK
+@item EXIT_IGNORE_STACK
 Define this macro as a C expression that is nonzero if the return
 instruction or the function epilogue ignores the value of the stack
 pointer; in other words, if it is safe to delete an instruction to
@@ -8722,7 +8932,7 @@ adjust the stack pointer before a return from the function.
 Note that this macro's value is relevant only for functions for which
 frame pointers are maintained.  It is never safe to delete a final
 stack adjustment in a function that has no frame pointer, and the
-compiler knows this regardless of @code{EXIT_IGNORES_STACK}.
+compiler knows this regardless of @code{EXIT_IGNORE_STACK}.
 
 @item FUNCTION_EPILOGUE (@var{file}, @var{size})
 A C compound statement that outputs the assembler code for exit from a
@@ -8858,7 +9068,9 @@ are supported.
 
 @item MAX_REGS_PER_ADDRESS
 A number, the maximum number of registers that can appear in a valid
-memory address.
+memory address.  Note that it is up to you to specify a value equal to
+the maximum number that @code{go_if_legitimate_address} would ever
+accept.
 
 @item GO_IF_LEGITIMATE_ADDRESS (@var{mode}, @var{x}, @var{label})
 A C compound statement with a conditional @code{goto @var{label};}
@@ -9378,31 +9590,6 @@ obtained with @code{GET_CODE (@var{x})}.
 @item DOLLARS_IN_IDENTIFIERS
 Define this to be nonzero if the character @samp{$} should be allowed
 by default in identifier names.
-
-@item USE_C_ALLOCA
-Define this macro to indicate that the compiler is running with the
-@code{alloca} implemented in C.  This version of @code{alloca} can be
-found in the file @file{alloca.c}; to use it, you must also alter the
-@file{Makefile} variable @code{ALLOCA}.
-
-This macro, unlike most, describes the machine that the compiler is
-running on, rather than the one the compiler is compiling for.
-Therefore, it should be set in the @file{xm-@var{machine}.h} file
-rather than in the @file{tm-@var{machine}.h} file.
-
-If you do define this macro, you should probably do it as follows:
-
-@example
-#ifndef __GNUC__
-#define USE_C_ALLOCA
-#else
-#define alloca __builtin_alloca
-#endif
-@end example
-
-@noindent
-so that when the compiler is compiled with GNU CC it uses the more
-efficient built-in @code{alloca} function.
 @end table
 
 @node Assembler Format,, Misc, Machine Macros
@@ -9783,10 +9970,10 @@ instruction to assemble a @code{float} constant whose value is
 @itemx ASM_OUTPUT_CHAR (@var{stream}, @var{exp})
 A C statement to output to the stdio stream @var{stream} an assembler
 instruction to assemble a @code{int}, @code{short} or @code{char}
-constant whose value is @var{value}.  The argument @var{exp} will be
-an RTL expression which represents a constant value.  Use
-@samp{output_addr_const (@var{exp})} to output this value as an
-assembler expression.@refill
+constant whose value is @var{value}.  The argument @var{exp} will be an
+RTL expression which represents a constant value.  Use
+@samp{output_addr_const (@var{stream}, @var{exp})} to output this value
+as an assembler expression.@refill
 
 @item ASM_OUTPUT_DOUBLE_INT (@var{stream}, @var{exp})
 A C statement to output to the stdio stream @var{stream} an assembler
@@ -9993,6 +10180,31 @@ exits after serious errors.
 @item SUCCESS_EXIT_CODE
 A C expression for the status code to be returned when the compiler
 exits without serious errors.
+
+@item USE_C_ALLOCA
+Define this macro to indicate that the compiler is running with the
+@code{alloca} implemented in C.  This version of @code{alloca} can be
+found in the file @file{alloca.c}; to use it, you must also alter the
+@file{Makefile} variable @code{ALLOCA}.
+
+This macro, unlike most, describes the machine that the compiler is
+running on, rather than the one the compiler is compiling for.
+Therefore, it should be set in the @file{xm-@var{machine}.h} file
+rather than in the @file{tm-@var{machine}.h} file.
+
+If you do define this macro, you should probably do it as follows:
+
+@example
+#ifndef __GNUC__
+#define USE_C_ALLOCA
+#else
+#define alloca __builtin_alloca
+#endif
+@end example
+
+@noindent
+so that when the compiler is compiled with GNU CC it uses the more
+efficient built-in @code{alloca} function.
 @end table
 
 In addition, configuration files for system V define @code{bcopy},

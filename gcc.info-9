@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -35,7 +35,7 @@ Describing Stack Layout
      Define this macro if pushing a word onto the stack moves the
      stack pointer to a smaller address.
 
-     When we say, ``define this macro if ...,'' it means that the
+     When we say, "define this macro if ...," it means that the
      compiler checks this macro only with `#ifdef' so the precise
      definition used does not matter.
 
@@ -98,7 +98,7 @@ Describing Stack Layout
 
      The actual allocation of such space would be done either by the
      call instruction or by the function prologue, or by defining
-     FIRST_PARM_CALLER_OFFSET.
+     `FIRST_PARM_CALLER_OFFSET'.
 
 `STACK_ARGS_ADJUST (SIZE)'
      Define this macro if the machine requires padding on the stack
@@ -135,10 +135,10 @@ Describing Stack Layout
      When a call to a library function is being considered, FUNTYPE
      will contain an identifier node for the library function.  Thus,
      if you need to distinguish among various library functions, you
-     can do so by their names.  Note that ``library function'' in
-     this context means a function used to perform arithmetic, whose
-     name is known specially in the compiler and was not mentioned in
-     the C code being compiled.
+     can do so by their names.  Note that "library function" in this
+     context means a function used to perform arithmetic, whose name
+     is known specially in the compiler and was not mentioned in the
+     C code being compiled.
 
      On the Vax, all functions always pop their arguments, so the
      definition of this macro is 1.  On the 68000, using the standard
@@ -149,6 +149,10 @@ Describing Stack Layout
      `printf') pop nothing (the caller pops all).  When this
      convention is in use, FUNTYPE is examined to determine whether a
      function takes a fixed number of arguments.
+
+     When this macro returns nonzero, the macro
+     `FRAME_POINTER_REQUIRED' must also return nonzero for proper
+     operation.
 
 `FUNCTION_VALUE (VALTYPE, FUNC)'
      A C expression to create an RTX representing the place where a
@@ -166,7 +170,7 @@ Describing Stack Layout
      calls are known.
 
 `FUNCTION_OUTGOING_VALUE (VALTYPE, FUNC)'
-     Define this macro if the target machine has ``register windows''
+     Define this macro if the target machine has "register windows"
      so that the register in which a function returns its value is
      not the same as the one in which the caller sees the value.
 
@@ -201,7 +205,7 @@ Describing Stack Layout
      This makes it possible to use a different value-returning
      convention for specific functions when all their calls are known.
 
-     Note that ``library function'' in this context means a compiler
+     Note that "library function" in this context means a compiler
      support routine, used to perform arithmetic, whose name is known
      specially by the compiler and was not mentioned in the C code
      being compiled.
@@ -247,10 +251,10 @@ Describing Stack Layout
      0.
 
 `FUNCTION_INCOMING_ARG (CUM, MODE, TYPE, NAMED)'
-     Define this macro if the target machine has ``register
-     windows'', so that the register in which a function sees an
-     arguments is not necessarily the same as the one in which the
-     caller passed the argument.
+     Define this macro if the target machine has "register windows",
+     so that the register in which a function sees an arguments is
+     not necessarily the same as the one in which the caller passed
+     the argument.
 
      For such machines, `FUNCTION_ARG' computes the register in which
      the caller passes the value, and `FUNCTION_INCOMING_ARG' should
@@ -354,8 +358,8 @@ Describing Stack Layout
      value will be 1 at run time in a function that needs a frame
      pointer.
 
-     On machines where arguments may be passed in registers, and not
-     have stack space allocated, this macro must examine the variable
+     On machines where an argument may be passed partly in registers
+     and partly in memory, this macro must examine the variable
      `current_function_pretend_args_size', and allocate that many
      bytes of uninitialized space on the stack just underneath the
      first argument arriving on the stack.  (This may not be at the
@@ -363,11 +367,6 @@ Describing Stack Layout
      anything else since pushing the stack arguments.  But usually,
      on such machines, nothing else has been pushed yet, because the
      function prologue itself does all the pushing.)
-
-     This ``pretend argument'' space is allocated in functions that
-     use the ANSI library `stdarg.h' to accept anonymous arguments of
-     unspecified types; the last named argument is copied into the
-     space, so that the anonymous arguments follow it consecutively.
 
 `FUNCTION_PROFILER (FILE, LABELNO)'
      A C statement or compound statement to output to FILE some
@@ -420,7 +419,7 @@ Describing Stack Layout
      can take a short cut in the definition of this macro and use the
      name that you know will result.
 
-`EXIT_IGNORES_STACK'
+`EXIT_IGNORE_STACK'
      Define this macro as a C expression that is nonzero if the
      return instruction or the function epilogue ignores the value of
      the stack pointer; in other words, if it is safe to delete an
@@ -431,7 +430,7 @@ Describing Stack Layout
      which frame pointers are maintained.  It is never safe to delete
      a final stack adjustment in a function that has no frame
      pointer, and the compiler knows this regardless of
-     `EXIT_IGNORES_STACK'.
+     `EXIT_IGNORE_STACK'.
 
 `FUNCTION_EPILOGUE (FILE, SIZE)'
      A C compound statement that outputs the assembler code for exit
@@ -573,7 +572,9 @@ Addressing Modes
 
 `MAX_REGS_PER_ADDRESS'
      A number, the maximum number of registers that can appear in a
-     valid memory address.
+     valid memory address.  Note that it is up to you to specify a
+     value equal to the maximum number that
+     `go_if_legitimate_address' would ever accept.
 
 `GO_IF_LEGITIMATE_ADDRESS (MODE, X, LABEL)'
      A C compound statement with a conditional `goto LABEL;' executed
@@ -634,8 +635,8 @@ Addressing Modes
      The difference between an index register and a base register is
      that the index register may be scaled.  If an address involves
      the sum of two registers, neither one of them scaled, then
-     either one may be labeled the ``base'' and the other the
-     ``index''; but whichever labeling is used must fit the machine's
+     either one may be labeled the "base" and the other the "index";
+     but whichever labeling is used must fit the machine's
      constraints of which registers may serve in each capacity.  The
      compiler will try both labelings, looking for one that is valid,
      and will reload one or both registers only if neither labeling
@@ -710,7 +711,7 @@ Parameters for Delayed Branch Optimization
      This macro must be defined if `HAVE_DELAYED_BRANCH' is defined. 
      Its definition should be a C expression returning the number of
      available delay slots following the instruction(s) output by the
-     pattern for INSN.  The definition of ``slot'' is
+     pattern for INSN.  The definition of "slot" is
      machine-dependent, and may denote instructions, bytes, or
      whatever.
 
@@ -777,7 +778,7 @@ machine-specific information by defining `CC_STATUS_MDEP'.
      component of `cc_status'.  It defaults to `int'.
 
 `CC_STATUS_MDEP_INIT'
-     A C expression to initialize the `mdep' field to ``empty''.  The
+     A C expression to initialize the `mdep' field to "empty".  The
      default definition does nothing, since most machines don't use
      the field anyway.  If you want to use the field, you should
      probably define this macro to initialize it.
@@ -1033,7 +1034,7 @@ Miscellaneous Parameters
 
 `TRULY_NOOP_TRUNCATION (OUTPREC, INPREC)'
      A C expression which is nonzero if on this machine it is safe to
-     ``convert'' an integer of INPREC bits to one of OUTPREC bits
+     "convert" an integer of INPREC bits to one of OUTPREC bits
      (where OUTPREC is smaller than INPREC) by merely operating on it
      as if it had only OUTPREC bits.
 
@@ -1103,27 +1104,5 @@ Miscellaneous Parameters
 `DOLLARS_IN_IDENTIFIERS'
      Define this to be nonzero if the character `$' should be allowed
      by default in identifier names.
-
-`USE_C_ALLOCA'
-     Define this macro to indicate that the compiler is running with
-     the `alloca' implemented in C.  This version of `alloca' can be
-     found in the file `alloca.c'; to use it, you must also alter the
-     `Makefile' variable `ALLOCA'.
-
-     This macro, unlike most, describes the machine that the compiler
-     is running on, rather than the one the compiler is compiling for.
-     Therefore, it should be set in the `xm-MACHINE.h' file rather
-     than in the `tm-MACHINE.h' file.
-
-     If you do define this macro, you should probably do it as follows:
-
-          #ifndef __GNUC__
-          #define USE_C_ALLOCA
-          #else
-          #define alloca __builtin_alloca
-          #endif
-
-     so that when the compiler is compiled with GNU CC it uses the
-     more efficient built-in `alloca' function.
 
 

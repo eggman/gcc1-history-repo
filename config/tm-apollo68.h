@@ -58,14 +58,16 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 /* -m68881 is the default */
 #define CPP_SPEC \
 "%{!msoft-float:%{mfpa:-D__HAVE_FPA__ }%{!mfpa:-D__HAVE_68881__ }}\
-%{!ansi:%{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}}"
+%{!ansi:%{m68000:-Dmc68010 }%{mc68000:-Dmc68010 }%{!mc68000:%{!m68000:-Dmc68020 }}\
+%{!ansi:-D_APOLLO_SOURCE}}"
 
 #else
 
 /* -msoft-float is the default */
 #define CPP_SPEC \
 "%{m68881:-D__HAVE_68881__ }%{mfpa:-D__HAVE_FPA__ }\
-%{!ansi:%{m68000:-Dmc68010}%{mc68000:-Dmc68010}%{!mc68000:%{!m68000:-Dmc68020}}}"
+%{!ansi:%{m68000:-Dmc68010 }%{mc68000:-Dmc68010 }%{!mc68000:%{!m68000:-Dmc68020 }}\
+%{!ansi:-D_APOLLO_SOURCE}}"
 
 #endif
 
@@ -138,16 +140,15 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 	   gen_rtx (PLUS, SImode, frame_pointer_rtx,	\
 		    gen_rtx (CONST_INT, VOIDmode, 8)))
 
-/* Specify how to pad function arguments.
-   Arguments sizes < sizeof(int) are padded upward, and larger arguments
-   are not padded at all. */
+/* Boundary (in *bits*) on which stack pointer should be aligned.  */
+#undef STACK_BOUNDARY
+#define STACK_BOUNDARY 32
 
-#define FUNCTION_ARG_PADDING(mode, size)				\
-  (((mode) == BLKmode							\
-    ? (GET_CODE (size) == CONST_INT					\
-       && INTVAL (size) < PARM_BOUNDARY / BITS_PER_UNIT)		\
-    : GET_MODE_BITSIZE (mode) < PARM_BOUNDARY)				\
-   ? upward : none)
+/* Specify how to pad function arguments.
+   Arguments are not padded at all; the stack is kept aligned on long
+   boundaries. */
+
+#define FUNCTION_ARG_PADDING(mode, size) none
 
 /* Short integral argument prototype promotion is not done */
 

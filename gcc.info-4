@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,164 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
+
+
+
+File: gcc.info,  Node: Variable-Length,  Next: Subscripting,  Prev: Zero-Length,  Up: Extensions
+
+Arrays of Variable Length
+=========================
+
+Variable-length automatic arrays are allowed in GNU C.  These arrays
+are declared like any other automatic arrays, but with a length that
+is not a constant expression.  The storage is allocated at that time
+and deallocated when the brace-level is exited.  For example:
+
+     FILE *concat_fopen (char *s1, char *s2, char *mode)
+     {
+       char str[strlen (s1) + strlen (s2) + 1];
+       strcpy (str, s1);
+       strcat (str, s2);
+       return fopen (str, mode);
+     }
+
+You can also use variable-length arrays as arguments to functions:
+
+     struct entry
+     tester (int len, char data[len])
+     {
+       ...
+     }
+
+The length of an array is computed on entry to the brace-level where
+the array is declared and is remembered for the scope of the array in
+case you access it with `sizeof'.
+
+Jumping or breaking out of the scope of the array name will also
+deallocate the storage.  Jumping into the scope is not allowed; you
+will get an error message for it.
+
+You can use the function `alloca' to get an effect much like
+variable-length arrays.  The function `alloca' is available in many
+other C implementations (but not in all).  On the other hand,
+variable-length arrays are more elegant.
+
+There are other differences between these two methods.  Space
+allocated with `alloca' exists until the containing *function* returns.
+The space for a variable-length array is deallocated as soon as the
+array name's scope ends.  (If you use both variable-length arrays and
+`alloca' in the same function, deallocation of a variable-length
+array will also deallocate anything more recently allocated with
+`alloca'.)
+
+
+
+File: gcc.info,  Node: Subscripting,  Next: Pointer Arith,  Prev: Variable-Length,  Up: Extensions
+
+Non-Lvalue Arrays May Have Subscripts
+=====================================
+
+Subscripting is allowed on arrays that are not lvalues, even though
+the unary `&' operator is not.  For example, this is valid in GNU C
+though not valid in other C dialects:
+
+     struct foo {int a[4];};
+     
+     struct foo f();
+     
+     bar (int index)
+     {
+       return f().a[index];
+     }
+
+
+
+File: gcc.info,  Node: Pointer Arith,  Next: Initializers,  Prev: Subscripting,  Up: Extensions
+
+Arithmetic on `void'-Pointers and Function Pointers
+===================================================
+
+In GNU C, addition and subtraction operations are supported on
+pointers to `void' and on pointers to functions.  This is done by
+treating the size of a `void' or of a function as 1.
+
+A consequence of this is that `sizeof' is also allowed on `void' and
+on function types, and returns 1.
+
+The option `-Wpointer-arith' requests a warning if these extensions
+are used.
+
+
+
+File: gcc.info,  Node: Initializers,  Next: Constructors,  Prev: Pointer Arith,  Up: Extensions
+
+Non-Constant Initializers
+=========================
+
+The elements of an aggregate initializer for an automatic variable
+are not required to be constant expressions in GNU C.  Here is an
+example of an initializer with run-time varying elements:
+
+     foo (float f, float g)
+     {
+       float beat_freqs[2] = { f-g, f+g };
+       ...
+     }
+
+
+
+File: gcc.info,  Node: Constructors,  Next: Function Attributes,  Prev: Initializers,  Up: Extensions
+
+Constructor Expressions
+=======================
+
+GNU C supports constructor expressions.  A constructor looks like a
+cast containing an initializer.  Its value is an object of the type
+specified in the cast, containing the elements specified in the
+initializer.  The type must be a structure, union or array type.
+
+Assume that `struct foo' and `structure' are declared as shown:
+
+     struct foo {int a; char b[2];} structure;
+
+Here is an example of constructing a `struct foo' with a constructor:
+
+     structure = ((struct foo) {x + y, 'a', 0});
+
+This is equivalent to writing the following:
+
+     {
+       struct foo temp = {x + y, 'a', 0};
+       structure = temp;
+     }
+
+You can also construct an array.  If all the elements of the
+constructor are (made up of) simple constant expressions, suitable
+for use in initializers, then the constructor is an lvalue and can be
+coerced to a pointer to its first element, as shown here:
+
+     char **foo = (char *[]) { "x", "y", "z" };
+
+Array constructors whose elements are not simple constants are not
+very useful, because the constructor is not an lvalue.  There are
+only two valid ways to use it: to subscript it, or initialize an
+array variable with it.  The former is probably slower than a
+`switch' statement, while the latter does the same thing an ordinary
+C initializer would do.
+
+     output = ((int[]) { 2, x, 28 }) [input];
 
 
 
@@ -56,7 +202,7 @@ times than the program says.
 
 Note that a function that has pointer arguments and examines the data
 pointed to must *not* be declared `const'.  Likewise, a function that
-calls a non-`const' function must not be `const'.
+calls a non-`const' function usually must not be `const'.
 
 Some people object to this feature, claiming that ANSI C's `#pragma'
 should be used instead.  There are two reasons I did not do this.
@@ -141,7 +287,7 @@ declaration, like this:
 (If you are writing a header file to be included in ANSI C programs,
 write `__inline__' instead of `inline'.  *Note Alternate Keywords::.)
 
-You can also make all ``simple enough'' functions inline with the
+You can also make all "simple enough" functions inline with the
 option `-finline-functions'.  Note that certain usages in a function
 definition can make it unsuitable for inline substitution.
 
@@ -355,11 +501,11 @@ It is a natural idea to look for a way to give access to the
 condition code left by the assembler instruction.  However, when we
 attempted to implement this, we found no way to make it work
 reliably.  The problem is that output operands might need reloading,
-which would result in additional following ``store'' instructions. 
-On most machines, these instructions would alter the condition code
+which would result in additional following "store" instructions.  On
+most machines, these instructions would alter the condition code
 before there was time to test it.  This problem doesn't arise for
-ordinary ``test'' and ``compare'' instructions because they don't
-have any output operands.
+ordinary "test" and "compare" instructions because they don't have
+any output operands.
 
 If you are writing a header file that should be includable in ANSI C
 programs, write `__asm__' instead of `asm'.  *Note Alternate
@@ -447,8 +593,8 @@ your machine, so that library routines will not clobber it.
 Naturally the register name is cpu-dependent, so you would need to
 conditionalize your program according to cpu type.  The register `a5'
 would be a good choice on a 68000 for a variable of pointer type.  On
-machines with register windows, be sure to choose a ``global''
-register that is not affected magically by the function call mechanism.
+machines with register windows, be sure to choose a "global" register
+that is not affected magically by the function call mechanism.
 
 In addition, operating systems on one type of cpu may differ in how
 they name the registers; then you would need additional conditionals.
@@ -503,7 +649,7 @@ machines, however, `longjmp' will not change the value of global
 register variables.  To be portable, the function that called
 `setjmp' should make other arrangements to save the values of the
 global register variables, and to restore them in a `longjmp'.  This
-way, the the same thing will happen regardless of what `longjmp' does.
+way, the same thing will happen regardless of what `longjmp' does.
 
 All global register variable declarations must precede all function
 definitions.  If such a declaration could appear after function
@@ -547,9 +693,9 @@ evident.
 Defining such a register variable does not reserve the register; it
 remains available for other uses in places where flow control
 determines the variable's value is not live.  However, these
-registers made unavailable for use in the reload pass.  I would not
-be surprised if excessive use of this feature leaves the compiler too
-few available registers to compile certain functions.
+registers are made unavailable for use in the reload pass.  I would
+not be surprised if excessive use of this feature leaves the compiler
+too few available registers to compile certain functions.
 
 
 
@@ -603,6 +749,8 @@ information that makes for fixing the bug.
 
 * Criteria:  Bug Criteria.   Have you really found a bug?
 * Reporting: Bug Reporting.  How to report a bug effectively.
+* Known: Trouble.            A list of known problems.
+* Help: Service.             How to get help.
 
  
 
@@ -670,8 +818,8 @@ guidelines:
 
    * If the compiler does not produce an error message for invalid
      input, that is a compiler bug.  However, you should note that
-     your idea of ``invalid input'' might be my idea of ``an
-     extension'' or ``support for traditional practice''.
+     your idea of "invalid input" might be my idea of "an extension"
+     or "support for traditional practice".
 
    * If you are an experienced user of C compilers, your suggestions
      for improvement of GNU CC are welcome in any case.
@@ -727,10 +875,9 @@ the bug if it is not known.  It isn't very important what happens if
 the bug is already known.  Therefore, always write your bug reports
 on the assumption that the bug is not known.
 
-Sometimes people give a few sketchy facts and ask, ``Does this ring a
-bell?''  Those bug reports are useless, and I urge everyone to
-*refuse to respond to them* except to chide the sender to report bugs
-properly.
+Sometimes people give a few sketchy facts and ask, "Does this ring a
+bell?"  Those bug reports are useless, and I urge everyone to *refuse
+to respond to them* except to chide the sender to report bugs properly.
 
 To enable me to fix the bug, you should include all these things:
 
@@ -773,8 +920,8 @@ To enable me to fix the bug, you should include all these things:
      and version number.
 
    * A description of what behavior you observe that you believe is
-     incorrect.  For example, ``It gets a fatal signal,'' or, ``There
-     is an incorrect assembler instruction in the output.''
+     incorrect.  For example, "It gets a fatal signal," or, "There is
+     an incorrect assembler instruction in the output."
 
      Of course, if the bug is that the compiler gets a fatal signal,
      then I will certainly notice it.  But if the bug is incorrect

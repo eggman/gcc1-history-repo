@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -251,7 +251,7 @@ uses the information to preload the operand into a register if that
 is required for valid RTL code.  If the operand is referred to more
 than once, subsequent references should use `match_dup'.
 
-The RTL template may also refer to internal ``operands'' which are
+The RTL template may also refer to internal "operands" which are
 temporary registers or labels used only within the sequence made by
 the `define_expand'.  Internal operands are substituted into the RTL
 template with `match_dup', never with `match_operand'.  The values of
@@ -578,6 +578,10 @@ be C expressions that refer to static variables, such as the
      type is `int' has the same effect on the size and alignment of a
      structure as an actual `int' would have.
 
+     If the macro is defined, then its definition should be a C
+     expression;  a nonzero value for the expression enables
+     PCC-compatible behavior.
+
      Just what effect that is in GNU CC depends on other parameters,
      but on most machines it would force the structure's alignment
      and size to a multiple of 32 or `BIGGEST_ALIGNMENT' bits.
@@ -695,9 +699,8 @@ Register Usage
 `INSN_CLOBBERS_REGNO_P (INSN, REGNO)'
      If defined, this is a C expression whose value should be nonzero
      if the insn INSN has the effect of mysteriously clobbering the
-     contents of hard register number REGNO.  By ``mysterious'' we
-     mean that the insn's RTL expression doesn't describe such an
-     effect.
+     contents of hard register number REGNO.  By "mysterious" we mean
+     that the insn's RTL expression doesn't describe such an effect.
 
      If this macro is not defined, it means that no insn clobbers
      registers mysteriously.  This is the usual situation; all else
@@ -722,7 +725,7 @@ Register Usage
      If this macro is not defined, it means that no death notes need
      to be preserved.  This is the usual situation.
 
-`HARD_REGNO_REGS (REGNO, MODE)'
+`HARD_REGNO_NREGS (REGNO, MODE)'
      A C expression for the number of consecutive hard registers,
      starting at register number REGNO, required to hold a value of
      mode MODE.
@@ -870,7 +873,7 @@ Register Usage
      If the structure value address is not passed in a register,
      define `STRUCT_VALUE' as an expression returning an RTX for the
      place where the address is passed.  If it returns a `mem' RTX,
-     the address is passed as an ``invisible'' first argument.
+     the address is passed as an "invisible" first argument.
 
 `STRUCT_VALUE_INCOMING_REGNUM'
      On some architectures the place where the structure value
@@ -1040,8 +1043,8 @@ value to return.
      The difference between an index register and a base register is
      that the index register may be scaled.  If an address involves
      the sum of two registers, neither one of them scaled, then
-     either one may be labeled the ``base'' and the other the
-     ``index''; but whichever labeling is used must fit the machine's
+     either one may be labeled the "base" and the other the "index";
+     but whichever labeling is used must fit the machine's
      constraints of which registers may serve in each capacity.  The
      compiler will try both labelings, looking for one that is valid,
      and will reload one or both registers only if neither labeling

@@ -3,7 +3,7 @@ file gcc.texinfo.
 
 This file documents the use and the internals of the GNU compiler.
 
-Copyright (C) 1988, 1989 Free Software Foundation, Inc.
+Copyright (C) 1988, 1989, 1990 Free Software Foundation, Inc.
 
 Permission is granted to make and distribute verbatim copies of this
 manual provided the copyright notice and this permission notice are
@@ -11,18 +11,18 @@ preserved on all copies.
 
 Permission is granted to copy and distribute modified versions of
 this manual under the conditions for verbatim copying, provided also
-that the sections entitled ``GNU General Public License'' and
-``Protect Your Freedom--Fight `Look And Feel''' are included exactly
-as in the original, and provided that the entire resulting derived
-work is distributed under the terms of a permission notice identical
-to this one.
+that the sections entitled "GNU General Public License" and "Protect
+Your Freedom--Fight `Look And Feel'" are included exactly as in the
+original, and provided that the entire resulting derived work is
+distributed under the terms of a permission notice identical to this
+one.
 
 Permission is granted to copy and distribute translations of this
 manual into another language, under the above conditions for modified
-versions, except that the sections entitled ``GNU General Public
-License'' and ``Protect Your Freedom--Fight `Look And Feel''' and
-this permission notice may be included in translations approved by
-the Free Software Foundation instead of in the original English.
+versions, except that the sections entitled "GNU General Public
+License" and "Protect Your Freedom--Fight `Look And Feel'" and this
+permission notice may be included in translations approved by the
+Free Software Foundation instead of in the original English.
 
 
 
@@ -407,8 +407,8 @@ Output of Assembler Code
      instruction to assemble a `int', `short' or `char' constant
      whose value is VALUE.  The argument EXP will be an RTL
      expression which represents a constant value.  Use
-     `output_addr_const (EXP)' to output this value as an assembler
-     expression.
+     `output_addr_const (STREAM, EXP)' to output this value as an
+     assembler expression.
 
 `ASM_OUTPUT_DOUBLE_INT (STREAM, EXP)'
      A C statement to output to the stdio stream STREAM an assembler
@@ -512,11 +512,11 @@ Output of Assembler Code
      The definition is a C statement or statements which output an
      assembler instruction opcode to the stdio stream STREAM.  The
      macro-operand PTR is a variable of type `char *' which points to
-     the opcode name in its ``internal'' form--the form that is
-     written in the machine description.  The definition should
-     output the opcode name to STREAM, performing any translation you
-     desire, and increment the variable PTR to point at the end of
-     the opcode so that it will not be output twice.
+     the opcode name in its "internal" form--the form that is written
+     in the machine description.  The definition should output the
+     opcode name to STREAM, performing any translation you desire,
+     and increment the variable PTR to point at the end of the opcode
+     so that it will not be output twice.
 
      In fact, your macro definition may process less than the entire
      opcode name, or more than the opcode name; but if you want to
@@ -616,8 +616,31 @@ identical.  But there are some macros that vary:
      A C expression for the status code to be returned when the
      compiler exits without serious errors.
 
+`USE_C_ALLOCA'
+     Define this macro to indicate that the compiler is running with
+     the `alloca' implemented in C.  This version of `alloca' can be
+     found in the file `alloca.c'; to use it, you must also alter the
+     `Makefile' variable `ALLOCA'.
+
+     This macro, unlike most, describes the machine that the compiler
+     is running on, rather than the one the compiler is compiling for.
+     Therefore, it should be set in the `xm-MACHINE.h' file rather
+     than in the `tm-MACHINE.h' file.
+
+     If you do define this macro, you should probably do it as follows:
+
+          #ifndef __GNUC__
+          #define USE_C_ALLOCA
+          #else
+          #define alloca __builtin_alloca
+          #endif
+
+     so that when the compiler is compiled with GNU CC it uses the
+     more efficient built-in `alloca' function.
+
 In addition, configuration files for system V define `bcopy', `bzero'
 and `bcmp' as aliases.  Some files define `alloca' as a macro when
 compiled with GNU CC, in order to take advantage of the benefit of
 GNU CC's built-in `alloca'.
+
 

@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for Convex.
-   Copyright (C) 1989 Free Software Foundation, Inc.
+   Copyright (C) 1989, 1990 Free Software Foundation, Inc.
 
 This file is part of GNU CC.
 
@@ -16,6 +16,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GNU CC; see the file COPYING.  If not, write to
 the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
+
+/* Boolean to keep track of whether the current section is .text or not.
+   Used by .align handler in tm-convex.h. */
+
+int current_section_is_text;
 
 /*
  *  set_cmp (left_rtx, right_rtx, [bhwlsd])
@@ -86,28 +91,6 @@ gen_cmp (label, cmpop, tf)
   sprintf (buf, "%s.%c %%0,%%1\n\tjbr%c.%c %%l2", cmpop, typech, regch, tf);
   output_asm_insn (buf, ops);
   return "";
-}
-
-/*
- *  pick target machine if not specified, the same as the host
- */
-
-extern int target_flags;
-
-override_options ()
-{
-#ifdef convex
-#include <sys/sysinfo.h>    
-  if (! (TARGET_C1 || TARGET_C2))
-    {
-      struct system_information sysinfo;
-      getsysinfo (sizeof sysinfo, &sysinfo);
-      if (sysinfo.cpu_type >= SI_CPUTYPE_C2MP)
-	target_flags |= 2;
-      else
-	target_flags |= 1;
-    }
-#endif
 }
 
 /*
@@ -234,4 +217,3 @@ frexp (d, exp)
   *exp = e;
   return d;
 }
-

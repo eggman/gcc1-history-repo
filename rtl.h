@@ -422,6 +422,8 @@ extern char *note_insn_name[];
 
 /* 1 in a SYMBOL_REF if it addresses this function's constants pool.  */
 #define CONSTANT_POOL_ADDRESS_P(RTX) ((RTX)->unchanging)
+/* 1 in a SYMBOL_REF if it is the name of an external symbol.  */
+#define EXTERNAL_SYMBOL_P(RTX) ((RTX)->volatil)
 
 /* For an INLINE_HEADER rtx, FIRST_FUNCTION_INSN is the first insn
    of the function that is not involved in copying parameters to

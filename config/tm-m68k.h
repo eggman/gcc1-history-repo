@@ -1097,6 +1097,9 @@ extern enum reg_class regno_reg_class[];
    can make it possibly invalid to use the saved cc's.  In those
    cases we clear out some or all of the saved cc's so they won't be used.  */
 
+/* It was claimed recently that addq, subq to an address register
+   do update the cc's, but the 68000 and 68020 manuals say otherwise.  */
+
 #define NOTICE_UPDATE_CC(EXP, INSN) \
 {								\
   /* If the cc is being set from the fpa and the
@@ -1163,6 +1166,7 @@ extern enum reg_class regno_reg_class[];
 	    cc_status.flags |= CC_NO_OVERFLOW;			\
 	  break;						\
 	case ZERO_EXTEND:					\
+	case ZERO_EXTRACT:					\
 	  /* (SET r1 (ZERO_EXTEND r2)) on this machine
 	     ends with a move insn moving r2 in r2's mode.
 	     Thus, the cc's are set for r2.
@@ -1179,11 +1183,11 @@ extern enum reg_class regno_reg_class[];
     cc_status.flags = CC_IN_68881; }
 
 #define OUTPUT_JUMP(NORMAL, FLOAT, NO_OV)  \
-{ if (cc_prev_status.flags & CC_IN_68881)			\
-    return FLOAT;						\
-  if (cc_prev_status.flags & CC_NO_OVERFLOW)			\
-    return NO_OV;						\
-  return NORMAL; }
+do { if (cc_prev_status.flags & CC_IN_68881)			\
+       return FLOAT;						\
+     if (cc_prev_status.flags & CC_NO_OVERFLOW)			\
+       return NO_OV;						\
+     return NORMAL; } while (0)
 
 /* Control the assembler format that we output.  */
 
@@ -1267,11 +1271,23 @@ extern enum reg_class regno_reg_class[];
 
 /* This is how to output an assembler line defining a `float' constant.  */
 
+/* Sun's assembler can't handle floating constants written as floating.
+   However, when cross-compiling, always use that in case format differs.  */
+
+#ifdef CROSS_COMPILER
+
+#define ASM_OUTPUT_FLOAT(FILE,VALUE)  \
+  fprintf (FILE, "\t.float 0r%.10g\n", (VALUE))
+
+#else
+
 #define ASM_OUTPUT_FLOAT(FILE,VALUE)  \
 do { union { float f; long l;} tem;			\
      tem.f = (VALUE);					\
      fprintf (FILE, "\t.long 0x%x\n", tem.l);	\
    } while (0)
+
+#endif /* not CROSS_COMPILER */
 
 /* This is how to output an assembler line defining an `int' constant.  */
 
@@ -1332,7 +1348,7 @@ do { union { float f; long l;} tem;			\
     abort ();
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t.skip %d\n", (SIZE))
+  fprintf (FILE, "\t.skip %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1340,7 +1356,7 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1348,7 +1364,7 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.
@@ -1414,6 +1430,22 @@ do { union { float f; long l;} tem;			\
   ((CODE) == '.' || (CODE) == '#' || (CODE) == '-'			\
    || (CODE) == '+' || (CODE) == '@' || (CODE) == '!')
 
+/* This assumes the compiler is running on a big-endian machine.
+   The support for the other case is left for version 2.  */
+#define PRINT_OPERAND_EXTRACT_FLOAT(X)					\
+      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);
+
+#ifdef CROSS_COMPILER
+#define PRINT_OPERAND_PRINT_FLOAT(CODE, FILE)   \
+  ASM_OUTPUT_FLOAT_OPERAND (FILE, u1.f);
+#else
+#define PRINT_OPERAND_PRINT_FLOAT(CODE, FILE)   \
+{ if (CODE == 'f')							\
+    ASM_OUTPUT_FLOAT_OPERAND (FILE, u1.f);				\
+  else									\
+    fprintf (FILE, "#0x%x", u1.i); }
+#endif
+
 #define PRINT_OPERAND(FILE, X, CODE)  \
 { int i;								\
   if (CODE == '.') ;							\
@@ -1445,15 +1477,12 @@ do { union { float f; long l;} tem;			\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) == SFmode)	\
     { union { double d; int i[2]; } u;					\
       union { float f; int i; } u1;					\
-      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
+      PRINT_OPERAND_EXTRACT_FLOAT (X);					\
       u1.f = u.d;							\
-      if (CODE == 'f')							\
-	ASM_OUTPUT_FLOAT_OPERAND (FILE, u1.f);				\
-      else								\
-        fprintf (FILE, "#0x%x", u1.i); }				\
+      PRINT_OPERAND_PRINT_FLOAT (CODE, FILE); }				\
   else if (GET_CODE (X) == CONST_DOUBLE && GET_MODE (X) != DImode)	\
     { union { double d; int i[2]; } u;					\
-      u.i[0] = CONST_DOUBLE_LOW (X); u.i[1] = CONST_DOUBLE_HIGH (X);	\
+      PRINT_OPERAND_EXTRACT_FLOAT (X);					\
       ASM_OUTPUT_DOUBLE_OPERAND (FILE, u.d); }				\
   else { putc ('#', FILE); output_addr_const (FILE, X); }}
 

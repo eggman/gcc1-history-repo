@@ -84,6 +84,12 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME)				\
     ASM_GLOBALIZE_LABEL(FILE,NAME);
 
+/* Genix wants 0l instead of 0f.  */
+
+#undef ASM_OUTPUT_DOUBLE
+#define ASM_OUTPUT_DOUBLE(FILE,VALUE)				\
+ fprintf (FILE, "\t.long 0l%.20e\n", (VALUE))
+
 /*  A bug in the GNX 3.X linker prevents symbol-table entries with a storage-
     class field of C_EFCN (-1) from being accepted. */
 

@@ -204,7 +204,7 @@ agg_mode (size)
 
 tree
 build_int (v)
-     int v;
+     unsigned int v;
 {
   register tree t;
   /* Type-size nodes already made for small sizes.  */
@@ -508,7 +508,7 @@ layout_record (rec)
 #ifdef PCC_BITFIELD_TYPE_MATTERS
       /* In PCC on Vax, Sony, etc., a bit field of declare type `int'
 	 forces the entire structure to have `int' alignment.  */
-      if (DECL_NAME (field) != 0)
+      if (PCC_BITFIELD_TYPE_MATTERS && DECL_NAME (field) != 0)
 	record_align = MAX (record_align, TYPE_ALIGN (TREE_TYPE (field)));
 #endif
 
@@ -539,17 +539,25 @@ layout_record (rec)
 	}
 
 #ifdef PCC_BITFIELD_TYPE_MATTERS
-      if (TREE_CODE (field) == FIELD_DECL
+      if (PCC_BITFIELD_TYPE_MATTERS && TREE_CODE (field) == FIELD_DECL
 	  && TREE_TYPE (field) != error_mark_node)
 	{
 	  int type_align = TYPE_ALIGN (TREE_TYPE (field));
+	  int type_size = (TREE_INT_CST_LOW (TYPE_SIZE (TREE_TYPE (field)))
+			   * TYPE_SIZE_UNIT (TREE_TYPE (field)));
 	  register tree dsize = DECL_SIZE (field);
 	  int field_size = TREE_INT_CST_LOW (dsize) * DECL_SIZE_UNIT (field);
 
 	  /* A bit field may not span the unit of alignment of its type.
-	     Advance to next boundary if necessary.  */
-	  if (const_size / type_align
-	      != (const_size + field_size - 1) / type_align)
+	     Advance to next boundary if necessary.
+	     If the type's alignment is less than its size,
+	     then the bitfield may span more than one alignment unit,
+	     but only up to the number that the type itself occupies.
+	     Thus, a bitfield declared int, if int is 4 bytes but aligned
+	     to the halfword, must fit within a 4 byte group that is
+	     halfword aligned.  */
+	  if (const_size / type_align + (type_size / type_align - 1)
+	      < (const_size + field_size - 1) / type_align)
 	    const_size = CEIL (const_size, type_align) * type_align;
 	}
 #endif
@@ -595,6 +603,7 @@ layout_record (rec)
 	      = genop (PLUS_EXPR,
 		       convert_units (var_size, size_unit, tunits),
 		       convert_units (dsize, DECL_SIZE_UNIT (field), tunits));
+	    size_unit = tunits;
 	  }
       }
     }
@@ -657,8 +666,7 @@ layout_union (rec)
 
   for (field = TYPE_FIELDS (rec); field; field = TREE_CHAIN (field))
     {
-#if 0 /* This should be in a language-specific file
-	 since it needs to use language-specific terminology.  */
+#if 0 /* Should be in a language-specific file, since message is lang spec.  */
       if (TREE_STATIC (field))
 	{
 	  error_with_decl (field, "field `%s' declared static in union");
@@ -682,7 +690,8 @@ layout_union (rec)
 #ifdef PCC_BITFIELD_TYPE_MATTERS
       /* On the m88000, a bit field of declare type `int'
 	 forces the entire union to have `int' alignment.  */
-      union_align = MAX (union_align, TYPE_ALIGN (TREE_TYPE (field)));
+      if (PCC_BITFIELD_TYPE_MATTERS)
+        union_align = MAX (union_align, TYPE_ALIGN (TREE_TYPE (field)));
 #endif
 
       /* Set union_size to max (decl_size, union_size).

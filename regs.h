@@ -49,6 +49,12 @@ extern short *reg_n_sets;
 
 extern short *reg_n_deaths;
 
+/* Indexed by N, gives the first insn that mentions reg N,
+   provided that reg is local to one basic block.
+   The value here is undefined otherwise.  */
+
+extern rtx *reg_first_use;
+
 /* Get the number of consecutive words required to hold pseudo-reg N.  */
 
 #define PSEUDO_REGNO_SIZE(N) \

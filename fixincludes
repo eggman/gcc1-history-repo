@@ -9,7 +9,9 @@
 LIB=${LIB-/usr/local/lib/gcc-include}
 
 # Make sure it exists.
-mkdir $LIB > /dev/null 2>&1
+if [ ! -d $LIB ]; then
+  mkdir $LIB || exit 1
+fi
 
 # Determine whether this system has symbolic links.
 if ln -s X $LIB/ShouldNotExist 2>/dev/null; then
@@ -24,10 +26,13 @@ cd /usr/include
 if $LINKS; then
   files=`ls -LR | sed -n s/:$//p`
 else
-  files=`find . -type d -print`
+  files=`find . -type d -print | sed '/^.$/d'`
 fi
 for file in $files; do
-  mkdir $LIB/$file > /dev/null 2>&1
+  rm -rf $LIB/$file
+  if [ ! -d $LIB/$file ]
+  then mkdir $LIB/$file
+  fi
 done
 
 # treetops gets an alternating list
@@ -40,13 +45,35 @@ if $LINKS; then
   for file in $files; do
     dest=`ls -ld $file | sed -n 's/.*-> //p'`
     if [ "$dest" ]; then    
-      if expr $dest : '[^/.].*' > /dev/null; then
-	rmdir ${LIB}/$file > /dev/null 2>&1
-	rm -f ${LIB}/$file > /dev/null 2>&1
-	ln -s $dest ${LIB}/$file > /dev/null 2>&1
-      else				# dont make links outside /usr/include
-	treetops="$treetops $dest ${LIB}/$file"
+      cwd=`pwd`
+      # In case $dest is relative, get to $file's dir first.
+      cd /usr/include
+      cd `echo ./$file | sed -n 's&[^/]*$&&p'`
+      # Check that the target directory exists.
+      # Redirections changed to avoid bug in sh on Ultrix.
+      (cd $dest) > /dev/null 2>&1
+      if [ $? = 0 ]; then
+	cd $dest
+	# X gets the dir that the link actually leads to.
+	x=`pwd`
+	# If link leads back into /usr/include,
+	# make a similar link here.
+	if expr $x : '/usr/include/.*' > /dev/null; then
+	  # Y gets the actual target dir name, relative to /usr/include.
+	  y=`echo $x | sed -n 's&/usr/include/&&p'`
+	  echo $file '->' $y ': Making link'
+	  rm -fr ${LIB}/$file > /dev/null 2>&1
+	  ln -s ${LIB}/$y ${LIB}/$file > /dev/null 2>&1
+	else
+	  # If the link is to outside /usr/include,
+	  # treat this directory as if it actually contained the files.
+# This line used to have $dest instead of $x.
+# $dest seemed to be wrong for links found in subdirectories
+# of /usr/include.  Does this change break anything?
+	  treetops="$treetops $x ${LIB}/$file"
+	fi
       fi
+      cd $cwd
     fi
   done
 fi
@@ -57,7 +84,7 @@ while [ $# != 0 ]; do
   echo "Finding header files in $1:"
   cd /usr/include
   cd $1
-  files=`find . -type f -print`
+  files=`find . -name '*.h' -type f -print`
   echo 'Checking header files:'
   for file in $files; do
     if egrep '[ 	]_IO[A-Z]*\(|#define._IO|CTRL' $file > /dev/null; then
@@ -70,10 +97,11 @@ while [ $# != 0 ]; do
 				   :loop
 	  /\\$/			N
 	  /\\$/			b loop
-	  /[ 	]_IO[A-Z]*(/	s/(\(.\),/('\''\1'\'',/
+	  /[ 	]_IO[A-Z]*[ 	]*(/	s/(\(.\),/('\''\1'\'',/
 	  /#define._IO/		s/'\''x'\''/x/g
-	  /[^A-Z]CTRL[ 	]*(/	s/\(.\))/'\''\1'\'')/
+	  /[^A-Z]CTRL[ 	]*(/	s/\([^'\'']\))/'\''\1'\'')/
 	  /#define.CTRL/		s/'\''c'\''/c/g
+	  /#define._CTRL/		s/'\''c'\''/c/g
 	' $2/$file > $2/$file.sed
 	mv $2/$file.sed $2/$file
 	if cmp $file $2/$file >/dev/null 2>&1; then
@@ -98,12 +126,39 @@ if [ -r $file ]; then
   fi
 fi
 
-if [ -r ${LIB}/sundev/vuid_event.h ]; then
-  echo Fixing sundev/vuid_event.h comment
-  ex ${LIB}/sundev/vuid_event.h <<EOF
+if [ -r ${LIB}/$file ]; then
+  echo Fixing $file comment
+  ex ${LIB}/$file <<EOF
   g/doesn't/s/doesn't/does not/
   wq
 EOF
+  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+    echo Deleting ${LIB}/$file\; no fixes were needed.
+    rm ${LIB}/$file
+  fi
+fi
+
+# Fix an error in this file: a missing semi-colon at the end of the statsswtch
+# structure definition.
+file=rpcsvc/rstat.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    cp $file ${LIB}/$file >/dev/null 2>&1	\
+    || echo "Can't copy $file"
+    chmod +w ${LIB}/$file
+  fi
+fi
+
+if [ -r ${LIB}/$file ]; then
+  echo Fixing $file, definition of statsswtch
+  ex ${LIB}/$file <<EOF
+  g/boottime$/s//&;/
+  wq
+EOF
+  if cmp $file $2/$file >/dev/null 2>&1; then
+    echo Deleting $2/$file\; no fixes were needed.
+    rm $2/$file
+  fi
 fi
 
 # Deal with yet another challenge, this in X11/Xmu.h
@@ -127,6 +182,54 @@ extern char *	sprintf();
 .
   wq
 EOF
+  if cmp $file ${LIB}/$file >/dev/null 2>&1; then
+    echo Deleting ${LIB}/$file\; no fixes were needed.
+    rm ${LIB}/$file
+  fi
+fi
+
+# Check for missing ';' in struct
+
+file=netinet/ip.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    mkdir ${LIB}/netinet 2>&-
+    sed -e '/^struct/,/^};/s/}$/};/' $file > ${LIB}/$file
+    cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
+  fi
+fi
+
+# Fix the CAT macro in memvar.h.
+
+file=pixrect/memvar.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    mkdir ${LIB}/pixrect 2>&-
+    sed -e '/^#define.CAT(a,b)/ s/IDENT(a)b/a##b/g' $file > ${LIB}/$file
+    cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
+  fi
+fi
+
+# Check for yet more missing ';' in struct (in SunOS 4.0.x)
+
+file=rpcsvc/rusers.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    mkdir ${LIB}/rpcsvc 2>&-
+    sed -e '/^struct/,/^};/s/_cnt$/_cnt;/' $file > ${LIB}/$file
+    cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
+  fi
+fi
+
+# Check for yet more missing ';' in struct (in SunOS 4.0.x)
+
+file=rpcsvc/rusers.h
+if [ -r $file ]; then
+  if [ ! -r ${LIB}/$file ]; then
+    mkdir ${LIB}/rpcsvc 2>&-
+    sed -e '/^struct/,/^};/s/_cnt$/_cnt;/' $file > ${LIB}/$file
+    cmp $file ${LIB}/$file >&- && rm -f ${LIB}/$file
+  fi
 fi
 
 echo 'Removing unneeded directories:'

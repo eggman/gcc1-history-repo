@@ -583,7 +583,7 @@ get_identifier (text)
       return idp;		/* <-- return if found */
   
   /* Not found; optionally warn about a similar identifier */
-  if (warn_id_clash && do_identifier_warnings && len > id_clash_len)
+  if (warn_id_clash && do_identifier_warnings && len >= id_clash_len)
     for (idp = hash_table[hi]; idp; idp = TREE_CHAIN (idp))
       if (!strncmp (IDENTIFIER_POINTER (idp), text, id_clash_len))
 	{
@@ -1804,7 +1804,6 @@ build_index_type (maxval)
      tree maxval;
 {
   register tree itype = make_node (INTEGER_TYPE);
-  int maxint = TREE_INT_CST_LOW (maxval);
   TYPE_PRECISION (itype) = BITS_PER_WORD;
   TYPE_MIN_VALUE (itype) = build_int_2 (0, 0);
   TREE_TYPE (TYPE_MIN_VALUE (itype)) = sizetype;
@@ -1813,7 +1812,13 @@ build_index_type (maxval)
   TYPE_SIZE (itype) = TYPE_SIZE (sizetype);
   TYPE_SIZE_UNIT (itype) = TYPE_SIZE_UNIT (sizetype);
   TYPE_ALIGN (itype) = TYPE_ALIGN (sizetype);
-  return type_hash_canon (maxint > 0 ? maxint : - maxint, itype);
+  if (TREE_CODE (maxval) == INTEGER_CST)
+    {
+      int maxint = TREE_INT_CST_LOW (maxval);
+      return type_hash_canon (maxint > 0 ? maxint : - maxint, itype);
+    }
+  else
+    return itype;
 }
 
 /* Construct, lay out and return the type of arrays of elements with ELT_TYPE
@@ -1838,6 +1843,10 @@ build_array_type (elt_type, index_type)
 
   /* Make sure TYPE_POINTER_TO (elt_type) is filled in.  */
   build_pointer_type (elt_type);
+#if 0
+  /* Also that of the main variant, which is the type the element will have. */
+  build_pointer_type (TYPE_MAIN_VARIANT (elt_type));
+#endif
 
   if (index_type == 0)
     return t;

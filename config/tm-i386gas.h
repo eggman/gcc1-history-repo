@@ -69,16 +69,23 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #define TARGET_MEM_FUNCTIONS
 
+#if 0  /* People say gas uses the log as the arg to .align.  */
 /* When using gas, .align N aligns to an N-byte boundary.  */
 
 #undef ASM_OUTPUT_ALIGN
 #define ASM_OUTPUT_ALIGN(FILE,LOG)	\
      if ((LOG)!=0) fprintf ((FILE), "\t.align %d\n", 1<<(LOG))
+#endif
 
 /* Align labels, etc. at 4-byte boundaries.  */
 
 #define ASM_OUTPUT_ALIGN_CODE(FILE) \
+     fprintf ((FILE), "\t.align 2\n");  /* Use log of 4 as arg.  */
+
+#if 0
+#define ASM_OUTPUT_ALIGN_CODE(FILE) \
      fprintf ((FILE), "\t.align 4\n");
+#endif
 
 /* Machines that use the AT&T assembler syntax
    also return floating point values in an FP register.  */

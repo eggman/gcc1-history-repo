@@ -329,9 +329,9 @@ rshift_double (l1, h1, count, prec, lv, hv, arith)
   if (count > prec)
     count = prec;
 
-  carry = arith && arg1[7] >> 7;
   while (count > 0)
     {
+      carry = arith && arg1[7] >> 7;
       for (i = 7; i >= 0; i--)
 	{
 	  carry <<= 8;
@@ -744,7 +744,7 @@ split_tree (in, code, varp, conp, varsignp)
 		 It could also be the address of a static variable.
 		 We cannot negate that, so give up.  */
 	      if (TREE_CODE (*conp) == INTEGER_CST)
-		*conp = combine (MINUS_EXPR, integer_zero_node, *conp);
+		*conp = fold (build (NEGATE_EXPR, TREE_TYPE (*conp), *conp));
 	      else
 		return 0;
 	    }
@@ -1462,7 +1462,13 @@ fold (expr)
 		TREE_SET_CODE (t,
 			       (code == PLUS_EXPR ? MINUS_EXPR : PLUS_EXPR));
 	      if (TREE_CODE (t) == MINUS_EXPR && operand_equal_p (var, arg0))
-		return convert (TREE_TYPE (t), con);
+		{
+		  /* If VAR and ARG0 cancel, return just CON or -CON.  */
+		  if (code == PLUS_EXPR)
+		    return convert (TREE_TYPE (t), con);
+		  return fold (build (NEGATE_EXPR, TREE_TYPE (t),
+				      convert (TREE_TYPE (t), con)));
+		}
 	      TREE_OPERAND (t, 0)
 		= fold (build (code, TREE_TYPE (t), arg0, con));
 	      TREE_OPERAND (t, 1) = var;

@@ -16,8 +16,10 @@ Here is the procedure for installing GNU CC on a Unix system.
 * Other Dir::     Compiling in a separate directory (not where the source is).
 * Sun Install::   See below for installation on the Sun.
 * 3B1 Install::   See below for installation on the 3B1.
+* SCO Install::   See below for installation on SCO System V 3.2.
 * VMS Install::   See below for installation on VMS.
 * HPUX Install::  See below for installation on HPUX.
+* MIPS Install::  See below for installation on MIPS.
 
   1. Edit `Makefile'.  If you are using HPUX, or any form of system
      V, you must make a few changes described in comments at the
@@ -87,7 +89,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           (sparc).
 
     `sun386'
-          Sun 386 (``roadrunner'').
+          Sun 386 ("roadrunner").
 
     `alliant'
           Alliant FX/8 computer.  Note that the standard installed C
@@ -112,7 +114,7 @@ Here is the procedure for installing GNU CC on a Unix system.
           The tahoe computer (running BSD, and using DBX).
 
     `decstation'
-          The DEC 3100 Mips machine (``pmax'').  Note that GNU CC
+          The DEC 3100 Mips machine ("pmax").  Note that GNU CC
           cannot generate debugging information in the unusual format
           used on the Mips.
 
@@ -132,9 +134,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           on the Mips.
 
     `iris'
-          The Mips computer, as delivered by Iris.  Note that GNU CC
-          cannot generate debugging information in the unusual format
-          used on the Mips.
+          Another variant of the Mips computer, the Silicon Graphics
+          Iris 4D.  Note that GNU CC cannot generate debugging
+          information in the unusual format used on the Mips.
 
     `convex-c1'
           Convex C1 computer.
@@ -153,7 +155,7 @@ Here is the procedure for installing GNU CC on a Unix system.
     `hp9k320-gas'
           HP 9000 series 300 using GNU assembler, linker and debugger.
           This requires the HP-adapt package, which is available
-          along with the GNU linker as part of the ``binutils''
+          along with the GNU linker as part of the "binutils"
           distribution.  This is on the GNU CC distribution tape.
 
     `hp9k320-old'
@@ -176,6 +178,9 @@ Here is the procedure for installing GNU CC on a Unix system.
 
     `next'
           NeXT system.
+
+    `tower'
+          NCR Tower 32 system.
 
     `altos'
           Altos 3068.  Note that you must use the GNU assembler,
@@ -286,6 +291,10 @@ Here is the procedure for installing GNU CC on a Unix system.
                yet in distribution; full instructions will appear
                here in the future.
 
+         `tm-tower-as.h'
+               for NCR Tower 32 systems, using the standard system
+               assembler.
+
           For the vax, use `tm-vax.h' on BSD Unix, `tm-vaxv.h' on
           system V, or `tm-vms.h' on VMS.
 
@@ -320,6 +329,15 @@ Here is the procedure for installing GNU CC on a Unix system.
           For Sparc (Sun 4) machines, use `tm-sparc.h' with operating
           system version 4, and `tm-sun4os3.h' with system version 3.
 
+          For Convex systems before version 8.1, use `tm-conv1os7.h'
+          or `tm-conv2os7.h'.  For versions 8.1 and greater, use
+          `tm-convex1.h' or `tm-convex2.h'.  You should also
+          bootstrap GCC with `pcc' rather than `cc'; one way to do
+          this is with the following commands.
+
+               ln -s /bin/pcc ./cc
+               set path = (. $path)
+
         * Make a symbolic link named `md' to the machine description
           pattern file.  It should be in the `config' subdirectory
           and its name should be `MACHINE.md'; but MACHINE is often
@@ -338,10 +356,19 @@ Here is the procedure for installing GNU CC on a Unix system.
      Bison versions older than Sept 8, 1988 will produce incorrect
      output for `c-parse.tab.c'.
 
-  5. Build the compiler.  Just type `make' in the compiler directory.
+  5. If you have a previous version of GCC installed, then chances
+     are you can compile the new version with that.  Do the following:
 
-     Ignore any warnings you may see about ``statement not reached''
-     in the `insn-emit.c'; they are normal.  Any other compilation
+          make CC="gcc -O"
+
+     Since this produces an optimized executable right away, there is
+     no need to bootstrap the result with itself except to test it. 
+     Therefore, you can skip directly to the `make install' step below.
+
+  6. Build the compiler.  Just type `make' in the compiler directory.
+
+     Ignore any warnings you may see about "statement not reached" in
+     the `insn-emit.c'; they are normal.  Any other compilation
      errors may represent bugs in the port to your machine or
      operating system, and should be investigated and reported (*note
      Bugs::.).
@@ -352,12 +379,12 @@ Here is the procedure for installing GNU CC on a Unix system.
      out of expression space; then you need to break up the statement
      where the problem happens.
 
-  6. If you are using COFF-encapsulation, you must convert `gnulib'
+  7. If you are using COFF-encapsulation, you must convert `gnulib'
      to a GNU-format library at this point.  See the file
      `README-ENCAP' in the directory containing the GNU binary file
      utilities, for directions.
 
-  7. Move the first-stage object files and executables into a
+  8. Move the first-stage object files and executables into a
      subdirectory with this command:
 
           make stage1
@@ -366,9 +393,11 @@ Here is the procedure for installing GNU CC on a Unix system.
      installation is complete, you may wish to delete these files
      with `rm -r stage1'.
 
-  8. Recompile the compiler with itself, with this command:
+  9. Recompile the compiler with itself, with this command:
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/"
+
+     This is called making the stage 2 compiler.
 
      On a 68000 or 68020 system lacking floating point hardware,
      unless you have selected a `tm.h' file that expects by default
@@ -376,7 +405,7 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -msoft-float"
 
-  9. If you wish to test the compiler by compiling it with itself one
+ 10. If you wish to test the compiler by compiling it with itself one
      more time, do this (in C shell):
 
           make stage2
@@ -385,8 +414,9 @@ Here is the procedure for installing GNU CC on a Unix system.
           cmp $file stage2/$file
           end
 
-     Aside from the `-B' option, the options should be the same as
-     when you made stage 2.
+     This is called making the stage 3 compiler.  Aside from the `-B'
+     option, the options should be the same as when you made the
+     stage 2 compiler.
 
      The `foreach' command (written in C shell) will notify you if
      any of these stage 3 object files differs from those of stage 2.
@@ -401,12 +431,15 @@ Here is the procedure for installing GNU CC on a Unix system.
 
           for file in *.o; do
           echo $file
-          tail +10 $file > foo1
-          tail +10 stage2/$file > foo2
+          tail +10c $file > foo1
+          tail +10c stage2/$file > foo2
           cmp foo1 foo2
           done
 
- 10. Install the compiler driver, the compiler's passes and run-time
+     On MIPS machines, you should use the shell script `ecoff-cmp' to
+     compare two object files.
+
+ 11. Install the compiler driver, the compiler's passes and run-time
      support.  You can use the following command:
 
           make install
@@ -444,6 +477,18 @@ Here is the procedure for installing GNU CC on a Unix system.
      script will work on various systems because it chooses the files
      by searching all the system headers for the problem cases that
      we know about.
+
+     Use the following command to do this:
+
+          make includes
+
+     If you selected a different directory for GNU CC installation
+     when you installed it, by specifying the Make variable `prefix'
+     or `libdir', specify it the same way in this command.
+
+     Note that some systems are starting to come with ANSI C system
+     header files.  On these systems, don't run `fixincludes'; it may
+     not work, and is certainly not necessary.
 
 If you cannot install the compiler's passes and run-time support in
 `/usr/local/lib', you can alternatively use the `-B' option to
@@ -520,7 +565,7 @@ command to compile GNU CC with Sun CC:
 
 
 
-File: gcc.info,  Node: 3b1 Install,  Next: VMS Install,  Prev: Sun Install,  Up: Installation
+File: gcc.info,  Node: 3b1 Install,  Next: SCO Install,  Prev: Sun Install,  Up: Installation
 
 Installing GNU CC on the 3b1
 ============================
@@ -560,7 +605,32 @@ solve the problem, uncomment this line in `Makefile':
 
 
 
-File: gcc.info,  Node: VMS Install,  Next: HPUX Install,  Prev: 3B1 Install,  Up: Installation
+File: gcc.info,  Node: SCO Install,  Next: VMS Install,  Prev: 3B1 Install,  Up: Installation
+
+Installing GNU CC on SCO System V 3.2
+=====================================
+
+The compiler that comes with this system does not work properly with
+`-O'.  Therefore, you should redefine the Make variable `CCLIBFLAGS'
+not to use `-O'.
+
+In addition, the compiler produces incorrect output when compiling
+parts of GNU CC; the resulting executable `cc1' does not work
+properly when it is used with `-O'.
+
+Therefore, what you must do after building the first stage is use GNU
+CC to compile itself without optimization.  Here is how:
+
+     make -k cc1 CC="./gcc -B./"
+
+You can think of this as "stage 1.1" of the installation process. 
+However, using this command has the effect of discarding the faulty
+stage 1 executable for `cc1' and replacing it with stage 1.1.  You
+can then proceed with `make stage1' and the rest of installation.
+
+
+
+File: gcc.info,  Node: VMS Install,  Next: HPUX Install,  Prev: SCO Install,  Up: Installation
 
 Installing GNU CC on VMS
 ========================
@@ -634,19 +704,33 @@ get to recompile the sources.  If you must recompile, here is how:
      `inline'.)  Once you have a working 1.33 or newer GNU CC, you
      can change this file back.
 
-There is a known problem on VMS: `const' global variables don't work
-compatibly with the VMS C compiler; we don't know a way to get them
-to the linker properly.
+With this version of GNU CC, `const' global variables now work
+properly.  Unless, however, the `const' modifier is also specified in
+every external declaration of the variable in all of the source files
+that use that variable, the linker will issue warnings about
+conflicting attributes for the variable, since the linker does not
+know if the variable should be read-only.  The program will still
+work, but the variable will be placed in writable storage.
 
-Note that GNU CC on VMS does not generate debugging information to
-describe the program's symbols.  It is not straightforward to
-implement this, and we have no time to spend on it, but we might
-consent to install a very modular implementation if you write it. 
-You will probably have to modify GAS as well as GNU CC.
+Under previous versions of GNU CC, the generated code would
+occasionally give strange results when linked to the sharable
+`VAXCRTL' library.  Now this should work.
+
+Even with this version, however, GNU CC itself should not be linked
+to the sharable `VAXCRTL', unless you force the linker to use the
+`qsort' routine from `gcclib.olb'.  The `qsort' routine supplied with
+`VAXCRTL' has a bug which causes a compiler crash.  The executable
+that is generated by `make-cc1.com' uses the non-shared version of
+`VAXCRTL' (and thus the `qsort' routine from `gcclib.olb').
+
+Note that GNU CC on VMS now generates debugging information to
+describe the programs symbols to the VMS debugger.  However, you need
+version 1.37 or later of GAS in order to output them properly in the
+object file.
 
 
 
-File: gcc.info,  Node: HPUX Install,  Prev: VMS Install,  Up: Installation
+File: gcc.info,  Node: HPUX Install,  Next: MIPS Install,  Prev: VMS Install,  Up: Installation
 
 Installing GNU CC on HPUX
 =========================
@@ -655,6 +739,11 @@ To install GNU CC on HPUX, you must start by editing the file
 `Makefile'.  Search for the string `HPUX' to find comments saying
 what to change.  You need to change some variable definitions and (if
 you are using GAS) some lines in the rule for the target `gnulib'.
+
+To avoid errors when linking programs with `-g', create an empty
+library named `libg.a'.  An easy way to do this is:
+
+     ar rc /usr/local/lib/libg.a
 
 To compile with the HPUX C compiler, you must specify get the file
 `alloca.c' from GNU Emacs.  Then, when you run `make', use this
@@ -666,3 +755,15 @@ When recompiling GNU CC with itself, do not define `ALLOCA'.
 Instead, an `-I' option needs to be added to `CFLAGS' as follows:
 
      make CC=stage1/gcc CFLAGS="-g -O -Bstage1/ -I../binutils/hp-include"
+
+
+
+File: gcc.info,  Node: MIPS Install,  Prev: HPUX Install,  Up: Installation
+
+Installing GNU CC on MIPS
+=========================
+
+To avoid errors when linking programs with `-g', create an empty
+library named `libg.a'.  An easy way to do this is:
+
+     ar rc /usr/local/lib/libg.a

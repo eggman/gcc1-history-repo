@@ -1211,6 +1211,7 @@ subst (x, from, to)
 			  XEXP (to, 0), XEXP (to, 1),
 			  XEXP (to, 2)));
 	}
+#ifndef BITS_BIG_ENDIAN
       /* If we are putting (ASHIFT 1 x) into (EQ (AND ... y) 0),
 	 arrange to return (EQ (SIGN_EXTRACT y 1 x) 0),
 	 which is what jump-on-bit instructions are written with.  */
@@ -1230,6 +1231,7 @@ subst (x, from, to)
 			  y,
 			  const1_rtx, XEXP (to, 1)));
 	}
+#endif /* not BITS_BIG_ENDIAN */
       /* Negation is a no-op before equality test against zero.  */
       if (GET_CODE (XEXP (x, 0)) == NEG && XEXP (x, 1) == const0_rtx)
 	{
@@ -1316,6 +1318,7 @@ subst (x, from, to)
 	  /* See if arg of LSHIFTRT is a register whose value we can find.  */
 	  if (GET_CODE (tmp) == REG)
 	    if (reg_n_sets[REGNO (tmp)] == 1
+		&& reg_last_set[REGNO (tmp)] != 0
 		&& SET_DEST (PATTERN (reg_last_set[REGNO (tmp)])) == tmp)
 	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
 	    else
@@ -1396,6 +1399,7 @@ subst (x, from, to)
 	  /* See if arg of LSHIFTRT is a register whose value we can find.  */
 	  if (GET_CODE (tmp) == REG)
 	    if (reg_n_sets[REGNO (tmp)] == 1
+		&& reg_last_set[REGNO (tmp)] != 0
 		&& SET_DEST (PATTERN (reg_last_set[REGNO (tmp)])) == tmp)
 	      tmp = SET_SRC (PATTERN (reg_last_set[REGNO (tmp)]));
 	    else
@@ -1639,11 +1643,13 @@ subst (x, from, to)
       if (was_replaced[1]
 	  && (GET_CODE (to) == SIGN_EXTEND
 	      || GET_CODE (to) == ZERO_EXTEND)
-	  && GET_CODE (to) == REG)
+	  && FAKE_EXTEND_SAFE_P (GET_MODE (to), XEXP (to, 0)))
 	{
 	  if (!undobuf.storage)
 	    undobuf.storage = (char *) oballoc (0);
-	  SUBST (XEXP (x, 1), gen_rtx (SUBREG, GET_MODE (to), XEXP (to, 0), 0));
+	  SUBST (XEXP (x, 1),
+		 /* This is a perverse SUBREG, wider than its base.  */
+		 gen_lowpart_for_combine (GET_MODE (to), XEXP (to, 0)));
 	}
 #endif
       /* (lshift (and (lshiftrt <foo> <X>) <Y>) <X>)

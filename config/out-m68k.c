@@ -194,6 +194,12 @@ output_move_double (operands)
 				 CONST_DOUBLE_HIGH (operands[1]));
 	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
 				 CONST_DOUBLE_LOW (operands[1]));
+#if 0 /* not HOST_WORDS_BIG_ENDIAN */
+	  latehalf[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_LOW (operands[1]));
+	  operands[1] = gen_rtx (CONST_INT, VOIDmode,
+				 CONST_DOUBLE_HIGH (operands[1]));
+#endif /* not HOST_WORDS_BIG_ENDIAN */
 	}
     }
   else
@@ -285,6 +291,18 @@ find_addr_reg (addr)
   abort ();
 }
 
+/* Test for -0.0.  */
+
+int
+double_is_minus_zero (arg)
+     double arg;
+{
+  union { double d; int i[2];} u;
+
+  u.d = arg;
+  return (u.i[1] == 0 && u.i[0] == 0x80000000);
+}
+
 char *
 output_move_const_double (operands)
      rtx *operands;
@@ -360,8 +378,14 @@ standard_68881_constant_p (x)
 {
   union {double d; int i[2];} u;
   register double d;
+
+#ifdef HOST_WORDS_BIG_ENDIAN
   u.i[0] = CONST_DOUBLE_LOW (x);
   u.i[1] = CONST_DOUBLE_HIGH (x);
+#else
+  u.i[0] = CONST_DOUBLE_HIGH (x);
+  u.i[1] = CONST_DOUBLE_LOW (x);
+#endif 
   d = u.d;
 
   if (d == 0)

@@ -243,6 +243,10 @@
 	return \"movf %1,tos\;movd tos,%0\";
       return \"movf %1,%0\";
     }
+#ifndef GAS_SYNTAX
+  /* GAS understands floating constants in ordinary movd instructions
+   * but other assembers might object.
+   */
   else if (GET_CODE (operands[1]) == CONST_DOUBLE)
     {
       union {int i[2]; float f; double d;} convrt;
@@ -254,6 +258,7 @@
       operands[1] = gen_rtx (CONST_INT, VOIDmode, convrt.i[0]);
       return \"movd %1,%0\";
     }
+#endif
   else return \"movd %1,%0\";
 }")
 
@@ -264,10 +269,38 @@
   "movmd %1,%0,4")
 
 (define_insn "movdi"
-  [(set (match_operand:DI 0 "general_operand" "=&g<")
-	(match_operand:DI 1 "general_operand" "gF"))]
+  [(set (match_operand:DI 0 "general_operand" "=&g<,*f,g")
+	(match_operand:DI 1 "general_operand" "gF,g,*f"))]
   ""
-  "* return output_move_double (operands); ")
+  "*
+{
+  if (FP_REG_P (operands[0]))
+    {
+      if (FP_REG_P (operands[1]) || GET_CODE (operands[1]) == CONST_DOUBLE)
+	return \"movl %1,%0\";
+      if (REG_P (operands[1]))
+	{
+	  rtx xoperands[2];
+	  xoperands[1] = gen_rtx (REG, SImode, REGNO (operands[1]) + 1);
+	  output_asm_insn (\"movd %1,tos\", xoperands);
+	  output_asm_insn (\"movd %1,tos\", operands);
+	  return \"movl tos,%0\";
+	}
+      return \"movl %1,%0\";
+    }
+  else if (FP_REG_P (operands[1]))
+    {
+      if (REG_P (operands[0]))
+	{
+	  output_asm_insn (\"movl %1,tos\;movd tos,%0\", operands);
+	  operands[0] = gen_rtx (REG, SImode, REGNO (operands[0]) + 1);
+	  return \"movd tos,%0\";
+	}
+      else
+        return \"movl %1,%0\";
+    }
+  return output_move_double (operands);
+}")
 
 ;; This special case must precede movsi.
 (define_insn ""
@@ -277,11 +310,25 @@
   "lprd sp,%0")
 
 (define_insn "movsi"
-  [(set (match_operand:SI 0 "general_operand" "=g<")
-	(match_operand:SI 1 "general_operand" "gx"))]
+  [(set (match_operand:SI 0 "general_operand" "=g<,*f,g")
+	(match_operand:SI 1 "general_operand" "gx,g,*f"))]
   ""
   "*
-{ if (GET_CODE (operands[1]) == CONST_INT)
+{
+  if (FP_REG_P (operands[0]))
+    {
+      if (GET_CODE (operands[1]) == REG && REGNO (operands[1]) < 8)
+	return \"movd %1,tos\;movf tos,%0\";
+      else
+	return \"movf %1,%0\";
+    }
+  else if (FP_REG_P (operands[1]))
+    {
+      if (REG_P (operands[0]))
+	return \"movf %1,tos\;movd tos,%0\";
+      return \"movf %1,%0\";
+    }
+  if (GET_CODE (operands[1]) == CONST_INT)
     {
       int i = INTVAL (operands[1]);
       if (i <= 7 && i >= -8)
@@ -695,10 +742,12 @@
   "GET_CODE (operands[0]) == CONST_INT"
   "*
 {
+#ifndef SEQUENT_ADJUST_STACK
   if (INTVAL (operands[0]) == 8)
-    return \"cmpd tos,tos # adjsp -8\";
+    return \"cmpd tos,tos\";
   if (INTVAL (operands[0]) == 4)
-    return \"cmpqd %$0,tos # adjsp -4\";
+    return \"cmpqd %$0,tos\";
+#endif
   if (INTVAL (operands[0]) < 64 && INTVAL (operands[0]) > -64)
     return \"adjspb %$%n0\";
   else if (INTVAL (operands[0]) < 8192 && INTVAL (operands[0]) >= -8192)
@@ -728,7 +777,13 @@
   "*
 {
   if (which_alternative == 1)
-    return \"addr %c2(%1),%0\";
+    {
+      int i = INTVAL (operands[2]);
+      if ( i < 0x40000000 && i >= -0x40000000 )
+	  return \"addr %c2(%1),%0\";
+      else
+	  return \"movd %1,%0\;addd %2,%0\";
+    }
   if (GET_CODE (operands[2]) == CONST_INT)
     {
       int i = INTVAL (operands[2]);
@@ -1361,7 +1416,7 @@
 	(ashift:SI (match_operand:SI 1 "general_operand" "r,0")
 		   (match_operand:SI 2 "general_operand" "I,rmn")))]
   ""
-  "* output_shift_insn (operands);")
+  "* return output_shift_insn (operands);")
 
 (define_insn "ashlhi3"
   [(set (match_operand:HI 0 "general_operand" "=g")
@@ -1371,9 +1426,9 @@
   "*
 { if (GET_CODE (operands[2]) == CONST_INT)
     if (INTVAL (operands[2]) == 1)
-      return \"addw %1,%0\";
+      return \"addw %0,%0\";
     else if (INTVAL (operands[2]) == 2)
-      return \"addw %1,%0\;addw %0,%0\";
+      return \"addw %0,%0\;addw %0,%0\";
   return \"ashw %2,%0\";
 }")
 
@@ -1721,7 +1776,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(zero_extract (match_operand:HI 0 "general_operand" "g")
+	(zero_extract (match_operand:HI 0 "general_operand" "rm")
 		      (const_int 1)
 		      (match_operand:HI 1 "general_operand" "g")))]
   ""
@@ -1732,9 +1787,9 @@
 
 (define_insn ""
   [(set (cc0)
-	(compare (zero_extract (match_operand:HI 0 "general_operand" "g")
+	(compare (zero_extract (match_operand:HI 0 "general_operand" "rm")
 			       (const_int 1)
-			       (match_operand:HI 1 "general_operand" "rmn"))
+			       (match_operand:HI 1 "general_operand" "g"))
 		 (const_int 1)))]
   ""
   "*
@@ -1744,7 +1799,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(zero_extract (match_operand:QI 0 "general_operand" "g")
+	(zero_extract (match_operand:QI 0 "general_operand" "rm")
 		      (const_int 1)
 		      (match_operand:QI 1 "general_operand" "g")))]
   ""
@@ -1755,7 +1810,7 @@
 
 (define_insn ""
   [(set (cc0)
-	(compare (zero_extract:SI (match_operand:QI 0 "general_operand" "g")
+	(compare (zero_extract:SI (match_operand:QI 0 "general_operand" "rm")
 				  (const_int 1)
 				  (match_operand:QI 1 "general_operand" "rmn"))
 		 (const_int 1)))]
@@ -1818,7 +1873,7 @@
       else
 	output_asm_insn (\"movzbd 3(sp),%0\", operands);
     }
-  return \"cmpqd %$0,tos # adjsp -4\";
+  return \"cmpqd %$0,tos\";
 }")
 
 (define_insn ""
@@ -2224,21 +2279,31 @@
   ""
   "*
 {
+#ifndef JSR_ALWAYS
   if (GET_CODE (operands[0]) == MEM)
     {
-      if (CONSTANT_ADDRESS_P (XEXP (operands[0], 0)))
-#ifdef GNX_V3
-	return \"bsr %0\";
+      rtx temp = XEXP (operands[0], 0);
+      if (CONSTANT_ADDRESS_P (temp))
+	{
+#ifdef GAS_SYNTAX
+	  operands[0] = temp;
+	  return \"bsr %0\";
 #else
-	return \"bsr %?%a0\";
-#endif
-      if (GET_CODE (XEXP (operands[0], 0)) == REG)
 #ifdef GNX_V3
+	  return \"bsr %0\";
+#else
+	  return \"bsr %?%a0\";
+#endif
+#endif
+	}
+      if (GET_CODE (XEXP (operands[0], 0)) == REG)
+#if defined(GNX_V3) || defined(GAS_SYNTAX)
 	return \"jsr %0\";
 #else
         return \"jsr %a0\";
 #endif
     }
+#endif /* not JSR_ALWAYS */
   return \"jsr %0\";
 }")
 
@@ -2249,21 +2314,31 @@
   ""
   "*
 {
-  if (GET_CODE (operands[1]) == MEM)
+#ifndef JSR_ALWAYS
+  if (GET_CODE (operands[0]) == MEM)
     {
-      if (CONSTANT_ADDRESS_P (XEXP (operands[1], 0)))
-#ifdef GNX_V3
-	return \"bsr %1\";
+      rtx temp = XEXP (operands[0], 0);
+      if (CONSTANT_ADDRESS_P (temp))
+	{
+#ifdef GAS_SYNTAX
+	  operands[0] = temp;
+	  return \"bsr %1\";
 #else
-	return \"bsr %?%a1\";
-#endif
-      if (GET_CODE (XEXP (operands[1], 0)) == REG)
 #ifdef GNX_V3
+	  return \"bsr %1\";
+#else
+	  return \"bsr %?%a1\";
+#endif
+#endif
+	}
+      if (GET_CODE (XEXP (operands[0], 0)) == REG)
+#if defined(GNX_V3) || defined(GAS_SYNTAX)
 	return \"jsr %1\";
 #else
         return \"jsr %a1\";
 #endif
     }
+#endif /* not JSR_ALWAYS */
   return \"jsr %1\";
 }")
 

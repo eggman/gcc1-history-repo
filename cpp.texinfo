@@ -1,6 +1,7 @@
 \input texinfo
 @setfilename cpp.info
 @settitle The C Preprocessor
+@setchapternewpage odd
 @ifinfo
 This file documents the GNU C Preprocessor.
 
@@ -30,9 +31,8 @@ into another language, under the above conditions for modified versions.
 @sp 6
 @center @titlefont{The C Preprocessor}
 @sp 4
-@center First Edition
-@sp 1
-@center April 1989
+@center Last revised July 1990
+@center for GCC version 1.38
 @sp 5
 @center Richard M. Stallman
 @page

@@ -8,7 +8,7 @@ Works only when an inferior is executing.
 end
 
 define pt
-set debug_dump_tree ($)
+set debug_tree ($)
 end
 
 document pt

@@ -154,9 +154,22 @@
   ""
   "movq %1,%0")
 
+;; This handles constants which are not legitimate
+;; for the sake of shared libraries on VMS.
+(define_insn ""
+  [(set (match_operand:SI 0 "general_operand" "=g")
+	(match_operand:SI 1 "" "i"))]
+  "CONSTANT_P (operands[1]) && ! LEGITIMATE_CONSTANT_P (operands[1])"
+  "*
+{
+  operands[2] = XEXP (XEXP (operands[1], 0), 0);
+  operands[1] = XEXP (XEXP (operands[1], 0), 1);
+  return \"movl %2,%0\;addl2 %1,%0\";
+}")
+
 (define_insn "movsi"
   [(set (match_operand:SI 0 "general_operand" "=g")
-	(match_operand:SI 1 "general_operand" "g"))]
+	(match_operand:SI 1 "supergeneral_operand" "g"))]
   ""
   "*
 {

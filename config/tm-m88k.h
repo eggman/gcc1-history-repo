@@ -1015,7 +1015,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
     fprintf (FILE, "\talign %d\n", 1<<(LOG))
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\tzero %d\n", (SIZE))
+  fprintf (FILE, "\tzero %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1023,7 +1023,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1031,7 +1031,7 @@ typedef struct { struct rtx_def *ccr; } cc_status_mdep;
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fprintf ((FILE), "\talign %d\n", (SIZE) <= 4 ? 4 : 8),	\
   assemble_name ((FILE), (NAME)),				\
-  fprintf ((FILE), ":\n\tzero %d\n", (ROUNDED)))
+  fprintf ((FILE), ":\n\tzero %u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.

@@ -260,6 +260,8 @@ make_decl_rtl (decl, asmspec, top_level)
 
 	  DECL_RTL (decl) = gen_rtx (MEM, DECL_MODE (decl),
 				     gen_rtx (SYMBOL_REF, Pmode, name));
+	  if (TREE_EXTERNAL (decl))
+	    EXTERNAL_SYMBOL_P (XEXP (DECL_RTL (decl), 0)) = 1; 
 	  if (TREE_VOLATILE (decl))
 	    MEM_VOLATILE_P (DECL_RTL (decl)) = 1;
 	  if (TREE_READONLY (decl))
@@ -694,7 +696,6 @@ immed_real_const_1 (d, mode)
 {
   union real_extract u;
   register rtx r;
-  REAL_VALUE_TYPE negated;
 
   /* Get the desired `double' value as a sequence of ints
      since that is how they are stored in a CONST_DOUBLE.  */
@@ -703,8 +704,7 @@ immed_real_const_1 (d, mode)
 
   /* Detect zero.  */
 
-  negated = REAL_VALUE_NEGATE (d);
-  if (REAL_VALUES_EQUAL (negated, d))
+  if (! bcmp (&CONST_DOUBLE_LOW (dconst0_rtx), &u, sizeof u))
     return (mode == DFmode ? dconst0_rtx : fconst0_rtx);
 
   if (sizeof u == 2 * sizeof (int))

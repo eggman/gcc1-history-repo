@@ -53,7 +53,7 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs (".bss ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d,4\n", (ROUNDED)))
+  fprintf ((FILE), ",%u,4\n", (ROUNDED)))
 
 #define ASM_OUTPUT_ASCII(FILE, PTR, SIZE)		\
 {							\

@@ -523,12 +523,15 @@ extern enum reg_class regno_reg_class[];
 
 #define FUNCTION_PROLOGUE(FILE, SIZE)     \
 { int fsize = ((SIZE) - STARTING_FRAME_OFFSET + 3) & -4;	\
-  if (frame_pointer_needed) {					\
-    if (TARGET_68020 || fsize < 0x8000)				\
-      fprintf(FILE,"\tlink a6,#%d\n", -fsize);			\
-    else							\
-      fprintf(FILE,"\tlink a6,#0\n\tsubl #%d,sp\n", fsize);  	\
-    fprintf(FILE, "\tmovl a0,a6@(-4)\n" ); }}
+  if (frame_pointer_needed)					\
+    {								\
+      if (fsize < 0x8000)					\
+	fprintf(FILE,"\tlinkw a6,#%d\n", -fsize);		\
+      else if (TARGET_68020)					\
+	fprintf(FILE,"\tlinkl a6,#%d\n", -fsize);		\
+      else							\
+	fprintf(FILE,"\tlinkw a6,#0\n\tsubl #%d,sp\n", fsize);  \
+      fprintf(FILE, "\tmovl a0,a6@(-4)\n" ); }}
 
 /* Output assembler code to FILE to increment profiler label # LABELNO
    for profiling a function entry.  */
@@ -1158,7 +1161,7 @@ do { union { float f; long l;} tem;			\
     fprintf (FILE, "\t.align %dn", (LOG));	
 
 #define ASM_OUTPUT_SKIP(FILE,SIZE)  \
-  fprintf (FILE, "\t. = . + %d\n", (SIZE))
+  fprintf (FILE, "\t. = . + %u\n", (SIZE))
 
 /* This says how to output an assembler line
    to define a global common symbol.  */
@@ -1166,7 +1169,7 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\t.comm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* This says how to output an assembler line
    to define a local common symbol.  */
@@ -1174,7 +1177,7 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\t.lcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 /* Store in OUTPUT a string (made with alloca) containing
    an assembler-name for a local static variable named NAME.

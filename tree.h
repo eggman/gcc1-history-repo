@@ -89,12 +89,13 @@ enum built_in_function
   BUILT_IN_GETMAN,
   BUILT_IN_SAVEREGS,
   BUILT_IN_CLASSIFY_TYPE,
+  BUILT_IN_NEXT_ARG,
 
   /* C++ extensions */
   BUILT_IN_NEW,
   BUILT_IN_VEC_NEW,
   BUILT_IN_DELETE,
-  BUILT_IN_VEC_DELETE,
+  BUILT_IN_VEC_DELETE
 };
 
 /* The definition of tree nodes fills the next several pages.  */

@@ -216,30 +216,6 @@ use each alternative.
 
 Some work has been done on this, in combine.c.
 
-* Jump-execute-next.
-
-Many recent machines have jumps which optionally execute the following
-instruction before the instruction jumped to, either conditionally or
-unconditionally.  To take advantage of this capability requires a new
-compiler pass that would reorder instructions when possible.  After
-reload may be a good place for it.
-
-On some machines, the result of a load from memory is not available
-until after the following instruction.  The easiest way to support
-these machines is to output each RTL load instruction as two assembler
-instructions, the second being a no-op.  Putting useful instructions
-after the load instructions may be a similar task to putting them
-after jump instructions.
-
-* Pipeline scheduling.
-
-On many machines, code gets faster if instructions are reordered
-so that pipelines are kept full.  Doing the best possible job of this
-requires knowing which functional units each kind of instruction executes
-in and how long the functional unit stays busy with it.  Then the
-goal is to reorder the instructions to keep many functional units
-busy but never feed them so fast they must wait.
-
 * Can optimize by changing if (x) y; else z; into z; if (x) y;
 if z and x do not interfere and z has no effects not undone by y.
 This is desirable if z is faster than jumping.
@@ -251,13 +227,6 @@ it is better to insert dbeq d0,foo before the jne.
 d0 can be a junk register.  The challenge is to fit this into
 a portable framework: when can you detect this situation and
 still be able to allocate a junk register?
-
-* For the 80387 floating point, perhaps it would be possible to use 3
-or 4 registers in the stack to hold register variables.  (It would be
-necessary to keep track of how those slots move in the stack as other
-pushes and pops are done.)  This is probably very tricky, but if
-you are a GCC wizard and you care about the speed of floating point on
-an 80386, you might want to work on it.
 
 2. Simpler porting.
 
@@ -319,13 +288,6 @@ Then use the address of the shadow label for label0 when someone asks
 for that of label0.  Jump optimization will delete all the shadow labels
 if the function has no computed gotos.
 
-* Block structure for labels.
-
-The ({...}) construct should serve as a lexical block for label names,
-so that the same label may be defined both inside and outside of it.
-Then macro definitions could use labels internally safely, by enclosing
-the label and the goto in one of these constructs.
-
 * Generated unique labels.  Have some way of generating distinct labels
 for use in extended asm statements.  I don't know what a good syntax would
 be.
@@ -339,78 +301,7 @@ where static data needs to be addressed using base registers.
 for scalars and another for large objects.  The compiler does not
 now have a way to understand this.
 
-6. Precompilation of header files.
-
-In the future, many programs will use thousands of lines of header files.
-Compiling the headers might be slower than compiling the guts of any one
-source file.  Here is a scheme for precompiling header files to make
-compilation faster for a sequence of headers which is often used.
-
-A precompiled header corresponds to a sequence of header files.  The
-preprocessor recognizes when the input starts with a sequence of
-`#include' commands and searches a data base for a precompiled header
-corresponding to that sequence.  The modtimes of all these files are
-stored in the data base so that one can tell whether the precompiled
-header is still valid.
-
-For robustness, each directory should have its own collection of
-precompiled headers and its own data base of them.  Probably each
-precompiled header would be a file and the data base would be one
-more file.
-
-The data base records the entire collection of predefined macros and
-their definitions, except for __FILE__, __LINE__ and __DATE__, for
-each precompiled header.  If this collection does not match the setup
-at the start of the current compilation (including the results of -D
-and -U switches), the precompiled header is inapplicable.  It might
-be possible to have distinct precompiled headers for the same sequence
-of header files but different collections of predefined macros.
-
-The state of any option that affects macro processing, such as -ansi
-or -traditional, must also be recorded, and the precompiled header is
-valid only if these options match.
-
-The precompiled header contains an ordered series of strings.  Some
-strings are marked "unconditional"; these must be compiled each time
-the precompiled header is used.  Other strings are have keys, which
-are identifiers.  A string with keys must be compiled if at least one
-of its keys is mentioned in the input.  The order these strings appear
-in the precompiled header is called their intrinsic order.
-
-The C preprocessor reads in the precompiled header file and scan all
-the strings, making for each key an entry in the same symbol table
-used for macros, pointing at a list of all the strings for which it is
-a key.  Each string must have a flag (one flag per string, not one per
-key per string).  The same code in `rescan' that detects references to
-macros would detect a reference to a key and flag all of the strings
-that it belongs to as needing to be output.
-
-Each of these strings is immediately recursively macroexpanded (i.e.
-`rescan' is called), but the output from this is discarded.  The
-expansion is to detect any other keys mentioned in the string, and to
-define any macros for which the string contains a #define.  The key's
-symbol table entry is be deleted to save time if the key is
-encountered again, and to avoid an infinite recursion.
-
-The unconditional strings are macroexpanded with `rescan' (but the
-output is discarded) at some time before anything is actually output.
-
-At the end of compilation, before any of the actual input text is
-output, the list of strings is scanned in the intrinsic order, and
-each string that is unconditional or flagged is output verbatim,
-except that any #define lines are discarded.
-
-Precompiled headers would be constructed by explicit request with a
-special tool.  The first step is to run cpp on the sequence of header
-files' contents.  This would use a new option that would cause all
-#define lines to be output unchanged as well as defining the macro.
-The second step is to divide the output into strings, some keyed and
-some unconditional.  This division is done without changing the order
-of the text being divided up.
-
-JNC@lcs.mit.edu has some ideas on this subject also.
-
-7. Better documentation of how GCC works and how to port it.
+6. Better documentation of how GCC works and how to port it.
 
 Here is an outline proposed by Allan Adler.
 

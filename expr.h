@@ -56,6 +56,10 @@ extern rtx save_expr_regs;
 
 extern int current_function_calls_alloca;
 
+/* This is the offset from the arg pointer to the place where the first
+   anonymous arg can be found, if there is one.  */
+extern rtx current_function_arg_offset_rtx;
+
 /* Nonzero means stack pops must not be deferred, and deferred stack
    pops must not be output.  It is nonzero inside a function call,
    inside a conditional expression, inside a statement expression,
@@ -211,7 +215,7 @@ enum optab_methods
   OPTAB_LIB,
   OPTAB_WIDEN,
   OPTAB_LIB_WIDEN,
-  OPTAB_MUST_WIDEN,
+  OPTAB_MUST_WIDEN
 };
 
 typedef rtx (*rtxfun) ();

@@ -162,7 +162,7 @@ do { union { float f; long l;} tem;			\
 	}								    \
     }									    \
   else									    \
-    fprintf (FILE, "\tspace %d\n", (SIZE))
+    fprintf (FILE, "\tspace %u\n", (SIZE))
 
 /* The beginnings of sdb support... */
 
@@ -409,7 +409,7 @@ do { union { float f; long l;} tem;			\
 #define ASM_OUTPUT_LOCAL(FILE, NAME, SIZE, ROUNDED)  \
 ( fputs ("\tlcomm ", (FILE)),			\
   assemble_name ((FILE), (NAME)),		\
-  fprintf ((FILE), ",%d\n", (ROUNDED)))
+  fprintf ((FILE), ",%u\n", (ROUNDED)))
 
 #define ASM_OUTPUT_LABELREF(FILE,NAME)	\
   fprintf (FILE, "%s", NAME)
@@ -435,7 +435,7 @@ do { fprintf (asm_out_file, "\tdef\t");	\
 #define PUT_SDB_ENDEF fputs("\tendef\n", asm_out_file)
 #define PUT_SDB_TYPE(a) fprintf(asm_out_file, "\ttype\t0%o;", a)
 #define PUT_SDB_SIZE(a) fprintf(asm_out_file, "\tsize\t%d;", a)
-#define PUT_SDB_DIM(a) fprintf(asm_out_file, "\tdim\t%d;", a)
+#define PUT_SDB_START_DIM fprintf(asm_out_file, "\tdim\t")
 
 #define PUT_SDB_TAG(a)				\
 do { fprintf (asm_out_file, "\ttag\t");	\

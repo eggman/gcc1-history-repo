@@ -377,7 +377,6 @@ save_for_inline (fndecl)
 	  PATTERN (copy) = copy_for_inline (PATTERN (insn));
 	  INSN_CODE (copy) = -1;
 	  LOG_LINKS (copy) = NULL;
-	  REG_NOTES (copy) = copy_for_inline (REG_NOTES (insn));
 	  RTX_INTEGRATED_P (copy) = RTX_INTEGRATED_P (insn);
 	  break;
 
@@ -398,6 +397,16 @@ save_for_inline (fndecl)
       PREV_INSN (copy) = last_insn;
       last_insn = copy;
     }
+
+  /* Now copy the reg notes of the insns.
+     Do this now because there can be forward references.  */
+  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
+    if (GET_CODE (insn) == INSN || GET_CODE (insn) == JUMP_INSN
+	|| GET_CODE (insn) == CALL_INSN)
+      {
+	rtx copy = insn_map[INSN_UID (insn)];
+	REG_NOTES (copy) = copy_for_inline (REG_NOTES (insn));
+      }
 
   NEXT_INSN (last_insn) = NULL;
 
@@ -1121,6 +1130,8 @@ copy_parm_decls (args, vec)
 						 TREE_TYPE (tail)));
       /* These args would always appear unused, if not for this.  */
       TREE_USED (decl) = 1;
+      /* Prevent warning for shadowing with these.  */
+      TREE_INLINE (decl) = 1;
       DECL_RTL (decl) = vec[i];
     }
 }
@@ -1163,6 +1174,8 @@ copy_decl_tree (let, level)
       TREE_VOLATILE (d) = TREE_VOLATILE (t);
       /* These args would always appear unused, if not for this.  */
       TREE_USED (d) = 1;
+      /* Prevent warning for shadowing with these.  */
+      TREE_INLINE (d) = 1;
       pushdecl (d);
     }
 
@@ -1610,14 +1623,14 @@ access_parm_map (reladdress, mode)
 	 parameter should not be inline--
 	 see function_cannot_inline_p. */
 #ifdef BYTES_BIG_ENDIAN
-      if (offset + GET_MODE_SIZE (mode)
-	  != GET_MODE_SIZE (GET_MODE (copy)))
+      if ((offset + GET_MODE_SIZE (mode)) % UNITS_PER_WORD
+	  != GET_MODE_SIZE (GET_MODE (copy)) % UNITS_PER_WORD)
 	abort ();
 #else
-      if (offset != 0)
+      if ((offset % UNITS_PER_WORD) != 0)
 	abort ();
 #endif
-      word = 0;
+      word = offset % UNITS_PER_WORD;
       if (GET_CODE (copy) == SUBREG)
 	word = SUBREG_WORD (copy), copy = SUBREG_REG (copy);
       if (CONSTANT_P (copy))
@@ -1967,7 +1980,7 @@ output_inline_function (fndecl)
   current_function_decl = fndecl;
 
   /* This call is only used to initialize global variables.  */
-  init_function_start (fndecl);
+  init_function_start (fndecl, "lossage", 1);
 
   /* Set stack frame size.  */
   assign_stack_local (BLKmode, DECL_FRAME_SIZE (fndecl));

@@ -90,6 +90,8 @@ a register with any other reload.  */
 #include "hard-reg-set.h"
 #include "flags.h"
 #include "real.h"
+
+#define min(x,y) ((x) < (y) ? (x) : (y))
 
 /* The variables set up by `find_reloads' are:
 
@@ -1621,6 +1623,8 @@ find_reloads (insn, replace, ind_ok, live_known, reload_reg_p)
 		  = (int) reg_class_subunion[this_alternative[i]][(int) REG_CLASS_FROM_LETTER (c)];
 		
 	      reg:
+		if (GET_MODE (operand) == BLKmode)
+		  break;
 		winreg = 1;
 		if (GET_CODE (operand) == REG
 		    && reg_fits_class_p (operand, this_alternative[i],
@@ -2282,8 +2286,11 @@ find_reloads_toplev (x)
 	  int offset = SUBREG_WORD (x) * UNITS_PER_WORD;
 	  rtx addr;
 #ifdef BYTES_BIG_ENDIAN
-	  offset += (GET_MODE_SIZE (GET_MODE (SUBREG_REG (x)))
-		     - GET_MODE_SIZE (GET_MODE (x)));
+	  int size;
+	  size = GET_MODE_SIZE (GET_MODE (SUBREG_REG (x)));
+	  offset += min (size, UNITS_PER_WORD);
+	  size = GET_MODE_SIZE (GET_MODE (x));
+	  offset -= min (size, UNITS_PER_WORD);
 #endif
 	  addr = plus_constant (reg_equiv_address[regno], offset);
 	  x = gen_rtx (MEM, GET_MODE (x), addr);
@@ -3062,6 +3069,13 @@ find_equiv_reg (goal, insn, class, other, reload_reg_p, goalreg, mode)
       && refers_to_regno_p (valueno,
 			    valueno + HARD_REGNO_NREGS (valueno, mode),
 			    goal, 0))
+    return 0;
+
+  /* Reject registers that overlap GOAL.  */
+
+  if (!goal_mem && !goal_const
+      && regno + HARD_REGNO_NREGS (regno, mode) > valueno
+      && regno < valueno + HARD_REGNO_NREGS (valueno, mode))
     return 0;
 
   /* Reject VALUE if it is one of the regs reserved for reloads.
